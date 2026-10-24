@@ -7,7 +7,7 @@ Cells: `PENDING (Toby)` = needs Toby's client machine; `PENDING (Task 12)` = hos
 | stage | stock Sunshine+Moonlight | source | direct | DERP |
 |---|---|---|---|---|
 | network RTT (real client path) | PENDING (Toby) | `scripts/m0-netpath.sh bawn` run on the client | PENDING (Toby) | PENDING (Toby) |
-| host capture+encode | PENDING (Task 12) | Sunshine `frame_processing_latency` | PENDING | PENDING |
+| host capture+encode | 3.2 / 5.1 / 7.2 ms (min / median / p99), measured 2026-10-24, static Steam Big Picture screen [U: content-dependent; also needs a moving-scene run] | Sunshine `frame_processing_latency` via `brisk-probe stream` | same (host side, path-independent) | same |
 | client decode | PENDING (Toby) | Moonlight Qt stats overlay | PENDING | PENDING |
 | client present queue | PENDING (Toby) | Moonlight Qt stats overlay | PENDING | PENDING |
 | total host-to-client | PENDING | sum of the above | PENDING | PENDING |
@@ -43,3 +43,20 @@ These only show the script works. Do not use them as the baseline.
 | tailnet peer `framework` (from bawn, 20 pongs) | `tailscale ping` | direct, `10.0.0.151:41641` (LAN) | 2 / 2.5 / 109 ms |
 
 bawn cannot ping its own tailnet name (`tailscale ping bawn` reports "local Tailscale IP"); the script exits 2 with a message. The `framework` p99 is one outlier of 20; not re-run, so unexplained.
+
+## Measured live on bawn (brisk-probe stream, 60 s, 2026-10-24, loopback, static Steam Big Picture)
+
+M1 gate: PASS. Sunshine v2026.914.233613, 1080p60 H.264 [U: codec/res from the probe's default StreamConfig], control+audio encryption 0x5.
+
+| metric | value |
+|---|---|
+| frames assembled | 3490 in 60 s (about 58.2 fps; gate >= 3420; a static screen may legitimately send fewer than 60) |
+| IDR frames / drops / FEC recoveries / parse errors | 3 / 0 / 0 / 0 |
+| host capture+encode (frame_processing_latency) | min 3.20, median 5.10, p99 7.20 ms |
+| arrival jitter (abs delta vs 16.67 ms) | p50 0.23, p99 4.71 ms (loopback) |
+| IDR request to next IDR frame | 13.0 ms and 18.8 ms |
+| video bitrate | 7.17 Mbit/s effective, 9.57 on the wire (includes FEC) |
+| loss | 0 missing of 50963 video, 0 of 11995 audio (loopback, so FEC recovery is untested live) |
+| control | 594 pings sent, 594 acked, 0 bad host messages |
+
+Not measured: any network path (this is bawn talking to itself), client decode/present, a moving scene, input-to-photon.
