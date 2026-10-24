@@ -109,3 +109,11 @@ from the pinned sources; the audio-encryption ones are confirmed by the live str
 ## Receive buffers
 
 `brisk-probe stream` asks for SO_RCVBUF of 2 MiB (video) and 256 KiB (audio); the summary prints the effective sizes as `rcvbuf video/audio`. Linux doubles the requested value and clamps it to `net.core.rmem_max`, so a small sysctl shows up as a smaller number there. We do not change the sysctl (no root).
+
+## Live input smoke (2026-10-24 13:08, bawn, `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 20 --input-demo`)
+Sunshine's debug log (min_log_level = debug) decoded what brisk sent, at 5.3 s into the run:
+- relative mouse move: `deltaX [5] deltaY [0]`, then `deltaX [-5] deltaY [0]` (exact).
+- keyboard: `keyAction [3]` then `[4]` (down, up), `keyCode [8010]` (VK_SHIFT 0x10 with moonlight's 0x8000 flag), modifiers 00, flags 00.
+- gamepad 0 (neutral attach/detach): Sunshine allocated "Gamepad 0 ... X-Box Series Controller" (so the active_mask path works).
+- 6 packets sent, `inputs_sent 6`, 0 bad host messages, no termination, clean cancel; the IDR request at 10 s was answered.
+Not verified live: gamepad button/stick bytes (Sunshine logs controller packets only at `verbose`; log level is `debug`), mouse buttons, scroll, rumble back-channel, more than one pad. Those need either `min_log_level = verbose` or a game that reads the pad.
