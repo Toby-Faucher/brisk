@@ -277,7 +277,8 @@ impl FrameAssembler {
         Self::default()
     }
 
-    /// Assembler whose first wanted frame index is `next` (the default is 1).
+    /// Assembler whose first wanted frame index is `next` (the default is 1). For tests/resync.
+    #[doc(hidden)]
     pub fn starting_at(next: u32) -> Self {
         Self {
             next,
@@ -376,6 +377,7 @@ impl FrameAssembler {
         let idx = frame.idx;
         self.stats.frames_dropped += idx.wrapping_sub(next) as u64;
         self.pending.retain(|f| is_before32(idx, f.idx));
+        // shortcut: `next` only advances when a frame completes, so starting >2^16 frames into a stream or after an outage that long stalls every packet as far-future; add a resync like audio's if that matters.
         self.next = idx.wrapping_add(1);
         match finish(frame) {
             Some((out, recovered)) => {

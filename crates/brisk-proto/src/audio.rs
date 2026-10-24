@@ -30,8 +30,12 @@ pub const FEC_SHARDS: usize = 2;
 pub const PARITY: [u8; 8] = [0x77, 0x40, 0x38, 0x0e, 0xc7, 0xa7, 0x0d, 0x6c];
 /// FEC blocks tracked at once; older ones are given up on.
 const MAX_BLOCKS: usize = 4;
-/// Packets this far past the oldest tracked block are bogus (a stray one would stall the stream).
+/// Packets this far past the oldest tracked block are out of window.
 const MAX_LOOKAHEAD: u16 = 1024;
+/// Out-of-window packets in a row after which the stream is assumed to have jumped (host restart,
+/// outage longer than the window): the queue resyncs to the new position. A lone stray packet
+/// cannot trigger this, so it cannot reset the queue (8 packets is 40 ms at 5 ms packets).
+const RESYNC_AFTER: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioError {
@@ -181,12 +185,23 @@ struct Block {
     done: bool,
 }
 
+impl Block {
+    /// Data packets neither received nor recovered.
+    fn missing(&self) -> u64 {
+        (0..DATA_SHARDS)
+            .filter(|&i| !self.emitted[i] && self.shards[i].is_none())
+            .count() as u64
+    }
+}
+
 /// Groups data and FEC packets into 4+2 blocks, passes data packets through at once and
 /// recovers missing ones as soon as 4 of the 6 shards are in.
 pub struct AudioFec {
     blocks: Vec<Block>,
     /// Blocks starting before this are finished with.
     floor: Option<u16>,
+    /// Consecutive out-of-window packets seen.
+    stray: u8,
     /// RTP timestamp step per packet (`x-nv-aqos.packetDuration`).
     duration: u32,
     stats: AudioFecStats,
@@ -201,6 +216,7 @@ impl AudioFec {
         Self {
             blocks: Vec::new(),
             floor: None,
+            stray: 0,
             duration: packet_duration,
             stats: AudioFecStats::default(),
         }
@@ -250,7 +266,18 @@ impl AudioFec {
             return Ok(Vec::new()); // block already finished with
         }
         if base.wrapping_sub(floor) > MAX_LOOKAHEAD {
-            return Err(AudioError::OutOfWindow);
+            self.stray += 1;
+            if self.stray < RESYNC_AFTER {
+                return Err(AudioError::OutOfWindow);
+            }
+            // Resync: give up on everything open and continue from here.
+            for b in self.blocks.drain(..) {
+                self.stats.lost += b.missing();
+            }
+            self.floor = Some(base);
+            self.stray = 0;
+        } else {
+            self.stray = 0;
         }
         let bi = match self.blocks.iter().position(|b| b.base == base) {
             Some(i) => i,
@@ -260,9 +287,7 @@ impl AudioFec {
                         .max_by_key(|&i| base.wrapping_sub(self.blocks[i].base))
                         .unwrap();
                     let b = self.blocks.remove(oldest);
-                    self.stats.lost += (0..DATA_SHARDS)
-                        .filter(|&i| !b.emitted[i] && b.shards[i].is_none())
-                        .count() as u64;
+                    self.stats.lost += b.missing();
                     self.floor = Some(b.base.wrapping_add(DATA_SHARDS as u16));
                     if is_before16(base, self.floor.unwrap()) {
                         return Ok(Vec::new());
@@ -281,6 +306,15 @@ impl AudioFec {
         };
         let b = &mut self.blocks[bi];
         if b.len != shard.len() {
+            // Like moonlight, give up on FEC for this block but still pass data through.
+            if slot < DATA_SHARDS && !b.emitted[slot] {
+                b.emitted[slot] = true;
+                return Ok(vec![AudioPayload {
+                    seq,
+                    ts,
+                    payload: shard.to_vec(),
+                }]);
+            }
             return Err(AudioError::BlockSize);
         }
         if b.shards[slot].is_some() || (slot < DATA_SHARDS && b.emitted[slot]) {

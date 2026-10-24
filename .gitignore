@@ -6,3 +6,4 @@ identity/
 research/c17-offline/.venv/
 research/c17-offline/downloads/
 research/c17-offline/
+fixtures/audio/*.key

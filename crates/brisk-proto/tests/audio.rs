@@ -102,7 +102,9 @@ fn check(frames: &[OpusFrame], base: u16, want: &[u16]) {
     ignore = "SKIPPED: no fixtures/audio/*.bin yet; recorded by the live audio step"
 )]
 fn decrypts_recorded_audio_packet() {
-    // Each NAME.bin is one datagram; NAME.key holds "<32 hex rikey> <hex rikeyid u32>" (scrubbed).
+    // Each NAME.bin is one datagram; NAME.key holds "<32 hex rikey> <hex rikeyid u32>". The key
+    // file is per-launch session material and is git-ignored: never commit it. FEC datagrams
+    // (payload type 127) are skipped; only data packets (type 97) are decrypted.
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio");
     let files: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
@@ -113,6 +115,9 @@ fn decrypts_recorded_audio_packet() {
     assert!(!files.is_empty(), "no *.bin in {}", dir.display());
     for f in files {
         let raw = std::fs::read(&f).unwrap();
+        if raw.get(1).is_some_and(|b| b & 0x7f == PT_FEC) {
+            continue;
+        }
         let meta = std::fs::read_to_string(f.with_extension("key")).unwrap();
         let (k, id) = meta.trim().split_once(' ').unwrap();
         let key: [u8; 16] = (0..16)
@@ -180,8 +185,9 @@ fn three_lost_is_not_recoverable() {
     let b = block(0);
     let mut fec = AudioFec::new(DUR);
     let frames = run(&mut fec, &b, &[1, 4, 5]);
-    check(&frames, 0, &[1]); // only the packet that arrived
-                             // Pushing the next blocks evicts the incomplete one and counts its 3 lost packets.
+    // only the packet that arrived
+    check(&frames, 0, &[1]);
+    // Pushing the next blocks evicts the incomplete one and counts its 3 lost packets.
     for base in [4, 8, 12, 16] {
         run(&mut fec, &block(base), &[0, 1, 2, 3]);
     }
@@ -201,9 +207,8 @@ fn wrong_key_errors() {
     bad[0] ^= 1;
     assert_eq!(
         parse_audio_packet(&b[0], &bad, KEY_ID),
-        Err(AudioError::BadPadding)
+        Err(AudioError::BadPadding) // A wrong rikeyid only changes the IV: CBC garbles block 0 but the padding stays valid, so
     );
-    // A wrong rikeyid only changes the IV: CBC garbles block 0 but the padding stays valid, so
     // no error, just never the original frame (the stream is unauthenticated).
     let wrong_id = parse_audio_packet(&b[0], &KEY, KEY_ID + 1).map(|f| f.data);
     assert_ne!(wrong_id, Ok(plain(0)));
@@ -216,21 +221,24 @@ fn malformed_packets_error_without_panic() {
     let ok = |d: &[u8]| parse_audio_packet(d, &KEY, KEY_ID);
     assert_eq!(ok(&d[..12]), Err(AudioError::Truncated));
     assert_eq!(ok(&[]), Err(AudioError::Truncated));
-    assert_eq!(ok(&d[..d.len() - 1]), Err(AudioError::BadPadding)); // not whole AES blocks
-    assert_eq!(ok(&d[..12 + 16]), Err(AudioError::BadPadding)); // one block: wrong padding
+    // not whole AES blocks
+    assert_eq!(ok(&d[..d.len() - 1]), Err(AudioError::BadPadding));
+    // one block: wrong padding
+    assert_eq!(ok(&d[..12 + 16]), Err(AudioError::BadPadding));
     let mut big = d.clone();
     big.resize(MAX_DATAGRAM + 1, 0);
     assert_eq!(ok(&big), Err(AudioError::TooLarge));
     let mut v = d.clone();
     v[0] = 0x00;
     assert_eq!(ok(&v), Err(AudioError::Malformed));
-    assert_eq!(ok(&b[4]), Err(AudioError::Malformed)); // FEC packet is not a data packet
-                                                       // Flipping ciphertext is not authenticated (CBC): it must not return the original frame.
+    // FEC packet is not a data packet
+    assert_eq!(ok(&b[4]), Err(AudioError::Malformed));
+    // Flipping ciphertext is not authenticated (CBC): it must not return the original frame.
     let mut v = d.clone();
     let n = v.len();
     v[n - 20] ^= 0xff;
-    assert_ne!(ok(&v).ok().map(|f| f.data), Some(plain(0)));
     // Garbage into the FEC queue never panics.
+    assert_ne!(ok(&v).ok().map(|f| f.data), Some(plain(0)));
     let mut fec = AudioFec::new(DUR);
     let mut x = 0x1234_5678u32;
     for len in 0..200 {
@@ -266,7 +274,7 @@ fn fec_header_and_window_checks() {
     bad_base[14..16].copy_from_slice(&2u16.to_be_bytes());
     assert_eq!(fec.push(&bad_base), Err(AudioError::Malformed));
     assert_eq!(fec.push(&b[4][..20]), Err(AudioError::Truncated));
-    let mut short = b[1].clone();
+    let mut short = b[4].clone();
     short.truncate(short.len() - 16);
     assert_eq!(fec.push(&short), Err(AudioError::BlockSize));
     let far = block(4 + 2048);
@@ -306,7 +314,68 @@ fn duplicate_ignored() {
     assert!(fec.push(&b[4]).unwrap().is_empty());
     assert!(fec.push(&b[4]).unwrap().is_empty());
     assert_eq!(fec.push(&b[1]).unwrap().len(), 1);
-    assert_eq!(fec.push(&b[2]).unwrap().len(), 2); // 2 and the recovered 3
-    assert!(fec.push(&b[3]).unwrap().is_empty()); // already recovered
+    // 2 and the recovered 3
+    assert_eq!(fec.push(&b[2]).unwrap().len(), 2);
+    // already recovered
+    assert!(fec.push(&b[3]).unwrap().is_empty());
     assert_eq!(fec.stats().recovered, 1);
+}
+
+#[test]
+fn parity_matrix_layout_known_answer() {
+    // Sunshine stream.cpp / moonlight RtpAudioQueue.c, row-major 2 x 4.
+    let rows = [[0x77u8, 0x40, 0x38, 0x0e], [0xc7, 0xa7, 0x0d, 0x6c]];
+    for (i, (r0, r1)) in rows[0].iter().zip(&rows[1]).enumerate() {
+        let mut shards: Vec<Vec<u8>> = (0..6).map(|j| vec![u8::from(j == i)]).collect();
+        encode_parity(&mut shards).unwrap();
+        assert_eq!((shards[4][0], shards[5][0]), (*r0, *r1));
+    }
+}
+
+#[test]
+fn far_jump_resyncs_and_output_resumes() {
+    let mut fec = AudioFec::new(DUR);
+    run(&mut fec, &block(0), &[0, 1, 2, 3]);
+    // Jump 2048 packets ahead (outage or host restart): errors first, then it resumes.
+    let mut errs = 0;
+    let mut got = 0;
+    for k in 0..4u16 {
+        for p in &block(2048 + 4 * k)[..4] {
+            match fec.push(p) {
+                Ok(v) => got += v.len(),
+                Err(e) => {
+                    assert_eq!(e, AudioError::OutOfWindow);
+                    errs += 1;
+                }
+            }
+        }
+    }
+    assert_eq!((errs, got), (7, 9));
+    // And recovery works again in the new position.
+    let b = block(2048 + 16);
+    let frames = run(&mut fec, &b, &[0, 1, 4, 5]);
+    check(&frames, 2048 + 16, &[0, 1, 2, 3]);
+}
+
+#[test]
+fn lone_stray_and_behind_packets_do_not_reset() {
+    let mut fec = AudioFec::new(DUR);
+    run(&mut fec, &block(5000), &[0, 1, 2, 3]);
+    assert_eq!(fec.push(&block(9000)[0]), Err(AudioError::OutOfWindow));
+    // Behind the floor (and the wrapped-around, far-behind view of the same): stale or stray, not a jump.
+    assert!(fec.push(&block(4000)[0]).unwrap().is_empty());
+    let frames = run(&mut fec, &block(5004), &[0, 1, 2, 3]);
+    check(&frames, 5004, &[0, 1, 2, 3]);
+}
+
+#[test]
+fn odd_sized_data_packet_still_passes_through() {
+    let b = block(0);
+    let mut fec = AudioFec::new(DUR);
+    assert_eq!(fec.push(&b[0]).unwrap().len(), 1);
+    let mut odd = b[1].clone();
+    odd.truncate(odd.len() - 16);
+    assert_eq!(fec.push(&odd).unwrap().len(), 1);
+    assert!(fec.push(&odd).is_err()); // a repeat of the odd one is not re-emitted
+    assert_eq!(fec.push(&b[2]).unwrap().len(), 1);
 }
