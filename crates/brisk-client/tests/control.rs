@@ -11,7 +11,7 @@
 
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce, Tag};
-use brisk_client::control::ControlSession;
+use brisk_client::control::{AvPing, ControlSession};
 use brisk_proto::input::{encode_input, InputEvent};
 use rusty_enet as enet;
 use std::net::{SocketAddr, UdpSocket};
@@ -21,6 +21,10 @@ use std::time::{Duration, Instant};
 
 const KEY: [u8; 16] = *b"control-test-key";
 const CONNECT_DATA: u32 = 1396329308;
+/// X-SS-Ping-Payload from fixtures/rtsp/010 and 012 (Sunshine sends one value for audio and video).
+const PING_PAYLOAD: &str = "FE073FEB9401CE42";
+/// Stands in for Sunshine's `ping_timeout` (10 s, config.cpp:815), shortened for tests.
+const FAKE_PING_TIMEOUT: Duration = Duration::from_millis(1500);
 
 #[derive(Default, Debug)]
 struct Log {
@@ -31,6 +35,12 @@ struct Log {
     msgs: Vec<(u8, u16, Vec<u8>)>,
     unencrypted: u32,
     bad_tag: u32,
+    /// Datagrams containing the ping payload, per socket [video, audio].
+    av_pings: [u32; 2],
+    /// Raw first ping seen per socket.
+    first_ping: [Option<Vec<u8>>; 2],
+    /// `recv_ping` timed out on a socket: session::stop, ENet peer disconnected.
+    stopped: bool,
 }
 
 enum Cmd {
@@ -79,6 +89,8 @@ fn iv(seq: u32, dir: u8) -> [u8; 12] {
 
 struct Fake {
     addr: SocketAddr,
+    video: SocketAddr,
+    audio: SocketAddr,
     log: Arc<Mutex<Log>>,
     tx: mpsc::Sender<Cmd>,
 }
@@ -86,6 +98,14 @@ struct Fake {
 fn fake(drop: usize) -> Fake {
     let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
     let addr = sock.local_addr().unwrap();
+    let av = [
+        UdpSocket::bind("127.0.0.1:0").unwrap(),
+        UdpSocket::bind("127.0.0.1:0").unwrap(),
+    ];
+    let (video, audio) = (av[0].local_addr().unwrap(), av[1].local_addr().unwrap());
+    for s in &av {
+        s.set_nonblocking(true).unwrap();
+    }
     let log = Arc::new(Mutex::new(Log::default()));
     let (tx, rx) = mpsc::channel::<Cmd>();
     let l = log.clone();
@@ -100,8 +120,44 @@ fn fake(drop: usize) -> Fake {
         let cipher = Aes128Gcm::new(&KEY.into());
         let mut peer: Option<enet::PeerID> = None;
         let mut seq: u32 = 0;
+        // Sunshine starts videoThread/audioThread at PLAY (stream.cpp:2289-2293); the fake is
+        // created right where PLAY would have completed.
         let started = Instant::now();
+        let mut ping_peer: [Option<SocketAddr>; 2] = [None, None];
+        let mut stopped = false;
+        let mut buf = [0u8; 2048];
         while started.elapsed() < Duration::from_secs(30) {
+            // recv_ping (stream.cpp:2092-2120): any datagram containing the payload is a ping and
+            // its source becomes the media peer. Then send some media-like datagrams there.
+            for (i, s) in av.iter().enumerate() {
+                while let Ok((n, from)) = s.recv_from(&mut buf) {
+                    let d = &buf[..n];
+                    if !d.windows(16).any(|w| w == PING_PAYLOAD.as_bytes()) {
+                        continue;
+                    }
+                    let mut log = l.lock().unwrap();
+                    log.av_pings[i] += 1;
+                    if ping_peer[i].is_none() && !stopped {
+                        ping_peer[i] = Some(from);
+                        log.first_ping[i] = Some(d.to_vec());
+                        for k in 0..3 - i {
+                            s.send_to(&[0x80 + k as u8; 100], from).unwrap();
+                        }
+                    }
+                }
+            }
+            if !stopped
+                && started.elapsed() >= FAKE_PING_TIMEOUT
+                && ping_peer.iter().any(|p| p.is_none())
+            {
+                // "Initial Ping Timeout" -> fail_guard session::stop -> broadcast loop
+                // enet_peer_disconnect_now (stream.cpp:1336-1349).
+                stopped = true;
+                l.lock().unwrap().stopped = true;
+                if let Some(id) = peer.take() {
+                    host.peer_mut(id).disconnect_now(0);
+                }
+            }
             while let Ok(c) = rx.try_recv() {
                 let Some(id) = peer else { continue };
                 let mut seal = |t: u16, p: &[u8]| {
@@ -146,7 +202,7 @@ fn fake(drop: usize) -> Fake {
                 match ev {
                     enet::EventNoRef::Connect { peer: id, data } => {
                         log.connects.push(data);
-                        if data == CONNECT_DATA {
+                        if data == CONNECT_DATA && !stopped {
                             peer = Some(id);
                         } else {
                             log.rejected += 1;
@@ -165,11 +221,14 @@ fn fake(drop: usize) -> Fake {
                             log.unencrypted += 1; // controlProtocolType 13 drops these
                             continue;
                         }
+                        if d.len() < 8 {
+                            continue;
+                        }
                         let len = u16::from_le_bytes([d[2], d[3]]) as usize;
-                        let s = u32::from_le_bytes(d[4..8].try_into().unwrap());
                         if len < 24 || d.len() < 4 + len {
                             continue; // "Control: Runt packet"
                         }
+                        let s = u32::from_le_bytes(d[4..8].try_into().unwrap());
                         let mut pt = d[24..4 + len].to_vec();
                         let ok = cipher.decrypt_in_place_detached(
                             Nonce::from_slice(&iv(s, b'C')),
@@ -189,12 +248,27 @@ fn fake(drop: usize) -> Fake {
             std::thread::sleep(Duration::from_millis(1));
         }
     });
-    Fake { addr, log, tx }
+    Fake {
+        addr,
+        video,
+        audio,
+        log,
+        tx,
+    }
 }
 
 fn types(f: &Fake) -> Vec<(u8, u16)> {
     let l = f.log.lock().unwrap();
     l.msgs.iter().map(|(c, t, _)| (*c, *t)).collect()
+}
+
+async fn av(f: &Fake) -> Option<AvPing> {
+    let ip = f.video.ip();
+    Some(
+        AvPing::new(ip, f.video.port(), f.audio.port(), PING_PAYLOAD)
+            .await
+            .unwrap(),
+    )
 }
 
 async fn settle(c: &mut ControlSession, ms: u64) {
@@ -206,7 +280,7 @@ async fn settle(c: &mut ControlSession, ms: u64) {
 #[tokio::test]
 async fn control_session_against_fake_sunshine() {
     let f = fake(0);
-    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 0xC0DE)
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 0xC0DE, av(&f).await)
         .await
         .unwrap();
     settle(&mut c, 450).await;
@@ -216,8 +290,8 @@ async fn control_session_against_fake_sunshine() {
         assert_eq!((l.unencrypted, l.bad_tag), (0, 0));
     }
     let t = types(&f);
-    // startControlStream order: index-0 (IDR on Gen7Enc) on URGENT, Start B on GENERIC.
-    assert_eq!(t[..2], [(1, 0x0302), (0, 0x0307)]);
+    // startControlStream order: index-0 (IDR on Gen7Enc) then Start B, both on GENERIC.
+    assert_eq!(t[..2], [(0, 0x0302), (0, 0x0307)]);
     let pings = t.iter().filter(|m| **m == (0, 0x0200)).count();
     assert!(pings >= 3, "{t:?}");
     assert!(c.stats.pings_acked >= 2, "{:?}", c.stats);
@@ -244,7 +318,14 @@ async fn control_session_against_fake_sunshine() {
         assert_eq!(input.len(), 1);
         assert_eq!(input[0].0, 2, "keyboard channel");
         assert_eq!(input[0].2, encode_input(&key).unwrap()[0]);
-        assert_eq!(l.msgs.iter().filter(|m| m.1 == 0x0302).count(), 2);
+        // On-demand requestIdrFrame uses CTRL_CHANNEL_URGENT (ControlStream.c:1524-1527).
+        let idr: Vec<_> = l
+            .msgs
+            .iter()
+            .filter(|m| m.1 == 0x0302)
+            .map(|m| m.0)
+            .collect();
+        assert_eq!(idr, [0, 1]);
     }
     let stats = c.disconnect().await.unwrap();
     assert!(!stats.host_disconnected);
@@ -256,10 +337,48 @@ async fn control_session_against_fake_sunshine() {
     );
 }
 
+/// Sunshine tears the session down when no video/audio ping arrives within ping_timeout.
+#[tokio::test]
+async fn control_survives_ping_timeout() {
+    let f = fake(0);
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 3, av(&f).await)
+        .await
+        .unwrap();
+    c.run_until(Instant::now() + FAKE_PING_TIMEOUT + Duration::from_secs(1))
+        .await
+        .unwrap();
+    let l = f.log.lock().unwrap();
+    assert!(!l.stopped, "fake stopped the session: no A/V ping");
+    assert!(c.is_open() && !c.stats.host_disconnected, "{:?}", c.stats);
+    // 2.5 s at 500 ms: about 5 pings per socket; SS_PING = payload ASCII + seq BE from 1.
+    assert!(l.av_pings.iter().all(|&n| n >= 4), "{:?}", l.av_pings);
+    let mut want = PING_PAYLOAD.as_bytes().to_vec();
+    want.extend_from_slice(&1u32.to_be_bytes());
+    assert_eq!(l.first_ping, [Some(want.clone()), Some(want)]);
+    // The fake answered 3 video and 2 audio datagrams of 100 bytes to the ping source.
+    assert_eq!(c.stats.media_rx_packets, [3, 2]);
+    assert_eq!(c.stats.media_rx_bytes, [300, 200]);
+    assert!(c.stats.av_pings_sent.iter().all(|&n| n >= 4));
+}
+
+/// Without A/V pings the fake ends the session at its ping timeout, as Sunshine would at 10 s.
+#[tokio::test]
+async fn control_without_av_pings_is_torn_down() {
+    let f = fake(0);
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 4, None)
+        .await
+        .unwrap();
+    c.run_until(Instant::now() + FAKE_PING_TIMEOUT + Duration::from_secs(1))
+        .await
+        .unwrap();
+    assert!(f.log.lock().unwrap().stopped);
+    assert!(!c.is_open() && c.stats.host_disconnected);
+}
+
 #[tokio::test]
 async fn control_retransmits_connect() {
     let f = fake(2); // first CONNECT and its first retransmission are lost
-    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 7)
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 7, av(&f).await)
         .await
         .unwrap();
     settle(&mut c, 300).await;
@@ -271,7 +390,7 @@ async fn control_retransmits_connect() {
 #[tokio::test]
 async fn control_wrong_connect_data_is_rejected() {
     let f = fake(0);
-    let mut c = ControlSession::connect(f.addr, CONNECT_DATA + 1, KEY, 9)
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA + 1, KEY, 9, av(&f).await)
         .await
         .unwrap();
     settle(&mut c, 500).await;
@@ -284,7 +403,7 @@ async fn control_wrong_connect_data_is_rejected() {
 #[tokio::test]
 async fn control_host_termination() {
     let f = fake(0);
-    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 11)
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 11, av(&f).await)
         .await
         .unwrap();
     settle(&mut c, 150).await;
@@ -303,7 +422,7 @@ async fn control_host_termination() {
 async fn control_connect_times_out_without_host() {
     let sock = UdpSocket::bind("127.0.0.1:0").unwrap(); // silent: never answers
     let t0 = Instant::now();
-    let r = ControlSession::connect(sock.local_addr().unwrap(), CONNECT_DATA, KEY, 1).await;
+    let r = ControlSession::connect(sock.local_addr().unwrap(), CONNECT_DATA, KEY, 1, None).await;
     assert!(r.is_err());
     let e = t0.elapsed();
     assert!(

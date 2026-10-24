@@ -11,7 +11,7 @@
 //!       at N/2; prints counters, disconnects, then cancels. Same refuse/cancel rules as launch.
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
-use brisk_client::control::{ControlSession, Stats};
+use brisk_client::control::{AvPing, ControlSession, Stats};
 use brisk_client::identity::{load_identity, load_or_create_identity, ServerCert};
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
@@ -245,20 +245,39 @@ async fn run_control(
         .ok_or("control: host did not resolve")?;
     let mut id = [0u8; 4];
     SystemRng.fill(&mut id);
-    println!("control\tconnecting {addr}");
-    let mut c = ControlSession::connect(addr, cd, rikey, u32::from_le_bytes(id)).await?;
+    let payload = p
+        .ping_payload
+        .as_deref()
+        .ok_or("SETUP(audio) reply had no X-SS-Ping-Payload")?;
+    let av = AvPing::new(addr.ip(), p.video, p.audio, payload).await?;
+    println!(
+        "control\tA/V pings to video {} audio {}; connecting {addr}",
+        p.video, p.audio
+    );
+    let mut c = ControlSession::connect(addr, cd, rikey, u32::from_le_bytes(id), Some(av)).await?;
     println!("control\tconnected; IDR request + Start B sent");
     let start = std::time::Instant::now();
     let total = std::time::Duration::from_secs(secs);
-    c.run_until(start + total / 2).await?;
-    if c.is_open() {
-        c.request_idr().await?;
-        println!(
-            "control\tIDR request at {:.1}s",
-            start.elapsed().as_secs_f32()
-        );
+    let r = async {
+        c.run_until(start + total / 2).await?;
+        if c.is_open() {
+            c.request_idr().await?;
+            println!(
+                "control\tIDR request at {:.1}s",
+                start.elapsed().as_secs_f32()
+            );
+        }
+        c.run_until(start + total).await
     }
-    c.run_until(start + total).await?;
+    .await;
+    if let Err(e) = r {
+        print_stats(&c.stats);
+        return Err(format!(
+            "control phase failed after {:.1}s: {e}",
+            start.elapsed().as_secs_f32()
+        )
+        .into());
+    }
     c.disconnect().await
 }
 
@@ -274,6 +293,12 @@ fn print_stats(st: &Stats) {
         None => println!("termination\tnone"),
     }
     println!("host_disconnected\t{}", st.host_disconnected);
+    for (i, k) in ["video", "audio"].iter().enumerate() {
+        println!(
+            "{k}\tpings sent {} rx packets {} rx bytes {}",
+            st.av_pings_sent[i], st.media_rx_packets[i], st.media_rx_bytes[i]
+        );
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]

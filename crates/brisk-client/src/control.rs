@@ -3,6 +3,11 @@
 //! host: the index-0 message (IDR request on Gen7Enc) and Start B, a 100 ms periodic ping
 //! (`lossStatsThreadFunc` with `usePeriodicPing`), host-message decode, graceful disconnect
 //! (`gracefullyDisconnectEnetPeer`, 2 s linger).
+//!
+//! [`AvPing`] keeps Sunshine's media threads alive: they wait `ping_timeout` (10 s) for a UDP
+//! datagram containing the `X-SS-Ping-Payload` on the video and audio ports and stop the whole
+//! session otherwise (stream.cpp:2092-2163). moonlight sends `SS_PING` every 500 ms
+//! (VideoStream.c:55-82, AudioStream.c:38-64); the ping's source port becomes the media peer.
 
 use brisk_proto::control::{channel, Control, ControlMsg};
 use brisk_proto::enet::{EnetEvent, EnetPeer, PeerState, MAX_DATAGRAM};
@@ -18,6 +23,9 @@ pub const CONNECT_WAIT: Duration = Duration::from_secs(10);
 pub const LINGER: Duration = Duration::from_secs(2);
 /// moonlight PERIODIC_PING_INTERVAL_MS.
 pub const PING_EVERY: Duration = Duration::from_millis(100);
+/// moonlight's video/audio ping interval.
+pub const AV_PING_EVERY: Duration = Duration::from_millis(500);
+const MEDIA_BUF: usize = 4096;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
@@ -34,6 +42,83 @@ pub struct Stats {
     pub last_rumble: Option<(u16, u16, u16)>,
     /// The host closed the ENet connection (or it timed out).
     pub host_disconnected: bool,
+    /// SS_PING datagrams sent to [video, audio].
+    pub av_pings_sent: [u32; 2],
+    /// Datagrams / bytes received on the [video, audio] sockets (not parsed).
+    pub media_rx_packets: [u64; 2],
+    pub media_rx_bytes: [u64; 2],
+}
+
+/// Video and audio UDP sockets (index 0 video, 1 audio) that ping Sunshine and count what comes
+/// back. Later tasks receive media on these same sockets.
+pub struct AvPing {
+    socks: [UdpSocket; 2],
+    targets: [SocketAddr; 2],
+    payload: [u8; 16],
+    seq: u32,
+    next: Instant,
+    bufs: [Vec<u8>; 2],
+}
+
+impl AvPing {
+    /// `payload` is `X-SS-Ping-Payload` (16 characters, sent as ASCII as moonlight does).
+    pub async fn new(
+        host: std::net::IpAddr,
+        video: u16,
+        audio: u16,
+        payload: &str,
+    ) -> crate::Result<Self> {
+        let payload: [u8; 16] = payload
+            .as_bytes()
+            .try_into()
+            .map_err(|_| format!("X-SS-Ping-Payload must be 16 characters, got {payload:?}"))?;
+        let local: SocketAddr = if host.is_ipv4() {
+            "0.0.0.0:0".parse().unwrap()
+        } else {
+            "[::]:0".parse().unwrap()
+        };
+        Ok(AvPing {
+            socks: [UdpSocket::bind(local).await?, UdpSocket::bind(local).await?],
+            targets: [SocketAddr::new(host, video), SocketAddr::new(host, audio)],
+            payload,
+            seq: 0,
+            next: Instant::now(),
+            bufs: [vec![0; MEDIA_BUF], vec![0; MEDIA_BUF]],
+        })
+    }
+
+    /// `SS_PING { payload[16], sequenceNumber u32 BE }`, counted from 1 (Video.h:51-54).
+    pub fn ping_bytes(payload: &[u8; 16], seq: u32) -> [u8; 20] {
+        let mut p = [0u8; 20];
+        p[..16].copy_from_slice(payload);
+        p[16..].copy_from_slice(&seq.to_be_bytes());
+        p
+    }
+
+    async fn ping(&mut self, stats: &mut Stats) {
+        self.seq += 1;
+        let p = Self::ping_bytes(&self.payload, self.seq);
+        for i in 0..2 {
+            // Errors ignored like moonlight (ICMP before the host binds is expected).
+            if self.socks[i].send_to(&p, self.targets[i]).await.is_ok() {
+                stats.av_pings_sent[i] += 1;
+            }
+        }
+        self.next = Instant::now() + AV_PING_EVERY;
+    }
+}
+
+async fn recv_opt(s: Option<(&UdpSocket, &mut Vec<u8>)>) -> std::io::Result<usize> {
+    match s {
+        Some((s, b)) => s.recv_from(b).await.map(|(n, _)| n),
+        None => std::future::pending().await,
+    }
+}
+
+enum Got {
+    Ctl(std::io::Result<usize>),
+    Media(usize, std::io::Result<usize>),
+    Timer,
 }
 
 pub struct ControlSession {
@@ -45,16 +130,20 @@ pub struct ControlSession {
     next_ping: Instant,
     /// We started the disconnect: the final Disconnected event is ours, not the host's.
     closing: bool,
+    buf: Vec<u8>,
+    av: Option<AvPing>,
     pub stats: Stats,
 }
 
 impl ControlSession {
-    /// ENet connect (10 s), then IDR request + Start B. `connect_id` must be random.
+    /// ENet connect (10 s), then IDR request + Start B. `connect_id` must be random. `av`
+    /// pings start at once (before the ENet connect) and run for the life of the session.
     pub async fn connect(
         addr: SocketAddr,
         connect_data: u32,
         rikey: [u8; 16],
         connect_id: u32,
+        av: Option<AvPing>,
     ) -> crate::Result<Self> {
         let local: SocketAddr = if addr.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
@@ -73,6 +162,8 @@ impl ControlSession {
             pings: HashSet::new(),
             next_ping: epoch,
             closing: false,
+            buf: vec![0u8; MAX_DATAGRAM + 1],
+            av,
             stats: Stats::default(),
         };
         s.sock.send(&hello).await?;
@@ -86,8 +177,10 @@ impl ControlSession {
         if s.peer.state() != PeerState::Connected {
             return Err(format!("control: {addr} refused the ENet connection").into());
         }
-        // Gen7Enc's index-0 slot ("Start A" on older hosts) is the IDR request.
-        s.send(&ControlMsg::IdrRequest).await?;
+        // Gen7Enc's index-0 slot ("Start A" on older hosts) is the IDR request, sent on the
+        // generic channel (ControlStream.c:1869-1875); later IDR requests use URGENT.
+        s.send_on(&ControlMsg::IdrRequest, channel::GENERIC, true)
+            .await?;
         s.stats.idr_sent += 1;
         s.send(&ControlMsg::StartB).await?;
         Ok(s)
@@ -103,6 +196,10 @@ impl ControlSession {
 
     pub async fn send(&mut self, m: &ControlMsg) -> crate::Result<()> {
         let (ch, reliable) = m.route();
+        self.send_on(m, ch, reliable).await
+    }
+
+    async fn send_on(&mut self, m: &ControlMsg, ch: u8, reliable: bool) -> crate::Result<()> {
         let w = self.ctl.encode(m)?;
         let d = self.peer.send(ch, reliable, &w, self.now())?;
         self.sock.send(&d).await?;
@@ -153,19 +250,46 @@ impl ControlSession {
         if let Some(ms) = next {
             wake = wake.min(Instant::now() + Duration::from_millis(ms as u64));
         }
-        let mut buf = vec![0u8; MAX_DATAGRAM + 1];
-        tokio::select! {
-            r = self.sock.recv(&mut buf) => match r {
-                Ok(n) => {
-                    for d in self.on_datagram(&buf[..n]) {
-                        self.sock.send(&d).await?;
-                    }
+        if let Some(av) = &mut self.av {
+            if Instant::now() >= av.next {
+                av.ping(&mut self.stats).await;
+            }
+            wake = wake.min(av.next);
+        }
+        let got = {
+            let ControlSession { sock, buf, av, .. } = self;
+            let (v, a) = match av {
+                Some(av) => {
+                    let [vs, as_] = &av.socks;
+                    let [vb, ab] = &mut av.bufs;
+                    (Some((vs, vb)), Some((as_, ab)))
                 }
-                // ICMP port unreachable on a connected socket: keep waiting, as ENet does.
-                Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
-                Err(e) => return Err(e.into()),
-            },
-            _ = tokio::time::sleep_until(wake.into()) => {}
+                None => (None, None),
+            };
+            tokio::select! {
+                r = sock.recv(buf) => Got::Ctl(r),
+                r = recv_opt(v) => Got::Media(0, r),
+                r = recv_opt(a) => Got::Media(1, r),
+                _ = tokio::time::sleep_until(wake.into()) => Got::Timer,
+            }
+        };
+        match got {
+            Got::Ctl(Ok(n)) => {
+                let buf = std::mem::take(&mut self.buf);
+                let out = self.on_datagram(&buf[..n]);
+                self.buf = buf;
+                for d in out {
+                    self.sock.send(&d).await?;
+                }
+            }
+            // ICMP port unreachable on a connected socket: keep waiting, as ENet does.
+            Got::Ctl(Err(e)) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
+            Got::Ctl(Err(e)) => return Err(e.into()),
+            Got::Media(i, Ok(n)) => {
+                self.stats.media_rx_packets[i] += 1;
+                self.stats.media_rx_bytes[i] += n as u64;
+            }
+            Got::Media(..) | Got::Timer => {}
         }
         Ok(())
     }
