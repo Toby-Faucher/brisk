@@ -1,0 +1,312 @@
+use aes::cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit};
+use aes::Aes128;
+use brisk_proto::audio::*;
+
+const KEY: [u8; 16] = *b"0123456789abcdef";
+const KEY_ID: u32 = 0x1234_5678;
+const DUR: u32 = 5;
+
+/// Encrypts like Sunshine's `encode_audio`: AES-128-CBC/PKCS7, IV = BE32(rikeyid + seq) + zeros.
+fn encrypt(key: &[u8; 16], key_id: u32, seq: u16, plain: &[u8]) -> Vec<u8> {
+    let aes = Aes128::new(key.into());
+    let mut data = plain.to_vec();
+    let pad = 16 - plain.len() % 16;
+    data.extend(std::iter::repeat_n(pad as u8, pad));
+    let mut prev = [0u8; 16];
+    prev[..4].copy_from_slice(&key_id.wrapping_add(seq as u32).to_be_bytes());
+    for c in data.chunks_mut(16) {
+        for (b, p) in c.iter_mut().zip(prev) {
+            *b ^= p;
+        }
+        let mut blk = GenericArray::clone_from_slice(c);
+        aes.encrypt_block(&mut blk);
+        c.copy_from_slice(&blk);
+        prev.copy_from_slice(c);
+    }
+    data
+}
+
+fn rtp(pt: u8, seq: u16, ts: u32, body: &[u8]) -> Vec<u8> {
+    let mut v = vec![0x80, pt];
+    v.extend(seq.to_be_bytes());
+    v.extend(ts.to_be_bytes());
+    v.extend([0; 4]);
+    v.extend(body);
+    v
+}
+
+fn plain(seq: u16) -> Vec<u8> {
+    (0..100u32).map(|i| (i as u8) ^ (seq as u8)).collect()
+}
+
+/// One FEC block as the host sends it: 4 data datagrams then 2 FEC datagrams.
+fn block(base: u16) -> Vec<Vec<u8>> {
+    let ts = |i: u16| {
+        u32::from(base)
+            .wrapping_mul(DUR)
+            .wrapping_add(i as u32 * DUR)
+    };
+    let mut shards: Vec<Vec<u8>> = (0..4)
+        .map(|i| {
+            encrypt(
+                &KEY,
+                KEY_ID,
+                base.wrapping_add(i),
+                &plain(base.wrapping_add(i)),
+            )
+        })
+        .collect();
+    shards.extend([vec![0; shards[0].len()], vec![0; shards[0].len()]]);
+    encode_parity(&mut shards).unwrap();
+    let mut out: Vec<Vec<u8>> = (0..4)
+        .map(|i| rtp(PT_AUDIO, base.wrapping_add(i), ts(i), &shards[i as usize]))
+        .collect();
+    for x in 0..2u16 {
+        let mut body = vec![x as u8, PT_AUDIO];
+        body.extend(base.to_be_bytes());
+        body.extend(ts(0).to_be_bytes());
+        body.extend([0; 4]);
+        body.extend(&shards[4 + x as usize]);
+        out.push(rtp(PT_FEC, base.wrapping_add(4 + x), 0, &body));
+    }
+    out
+}
+
+/// Feeds the packets at `keep`; returns the decrypted frames' seqs and plaintext checks.
+fn run(fec: &mut AudioFec, b: &[Vec<u8>], keep: &[usize]) -> Vec<OpusFrame> {
+    let c = AudioCipher::new(&KEY, KEY_ID);
+    keep.iter()
+        .flat_map(|&i| fec.push(&b[i]).unwrap())
+        .map(|p| c.open(&p).unwrap())
+        .collect()
+}
+
+fn check(frames: &[OpusFrame], base: u16, want: &[u16]) {
+    let mut got: Vec<_> = frames.iter().map(|f| f.seq.wrapping_sub(base)).collect();
+    got.sort();
+    assert_eq!(got, want);
+    for f in frames {
+        assert_eq!(f.data, plain(f.seq));
+        assert_eq!(
+            f.ts,
+            u32::from(base)
+                .wrapping_mul(DUR)
+                .wrapping_add(f.seq.wrapping_sub(base) as u32 * DUR)
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(
+    not(audio_fixture),
+    ignore = "SKIPPED: no fixtures/audio/*.bin yet; recorded by the live audio step"
+)]
+fn decrypts_recorded_audio_packet() {
+    // Each NAME.bin is one datagram; NAME.key holds "<32 hex rikey> <hex rikeyid u32>" (scrubbed).
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio");
+    let files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "bin"))
+        .collect();
+    assert!(!files.is_empty(), "no *.bin in {}", dir.display());
+    for f in files {
+        let raw = std::fs::read(&f).unwrap();
+        let meta = std::fs::read_to_string(f.with_extension("key")).unwrap();
+        let (k, id) = meta.trim().split_once(' ').unwrap();
+        let key: [u8; 16] = (0..16)
+            .map(|i| u8::from_str_radix(&k[2 * i..2 * i + 2], 16).unwrap())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let id = u32::from_str_radix(id, 16).unwrap();
+        let o =
+            parse_audio_packet(&raw, &key, id).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+        assert!(!o.data.is_empty() && o.data.len() <= MAX_PAYLOAD);
+    }
+}
+
+#[test]
+fn decrypts_synthetic_packet() {
+    let b = block(8);
+    let o = parse_audio_packet(&b[1], &KEY, KEY_ID).unwrap();
+    assert_eq!((o.seq, o.ts, o.data), (9, 8 * DUR + DUR, plain(9)));
+}
+
+#[test]
+fn parity_matrix_recovers_any_two_losses() {
+    // All 15 pairs of the 6 shards: the Sunshine matrix is MDS, so 4 of 6 always decode.
+    for x in 0..6 {
+        for y in x + 1..6 {
+            let b = block(0);
+            let keep: Vec<usize> = (0..6).filter(|&i| i != x && i != y).collect();
+            let mut fec = AudioFec::new(DUR);
+            let frames = run(&mut fec, &b, &keep);
+            check(&frames, 0, &[0, 1, 2, 3]);
+        }
+    }
+}
+
+#[test]
+fn recovers_one_lost_of_four() {
+    for lost in 0..4 {
+        let b = block(100);
+        let mut fec = AudioFec::new(DUR);
+        let keep: Vec<usize> = [0, 1, 2, 3, 4].into_iter().filter(|&i| i != lost).collect();
+        let frames = run(&mut fec, &b, &keep);
+        check(&frames, 100, &[0, 1, 2, 3]);
+        assert_eq!(
+            fec.stats(),
+            AudioFecStats {
+                recovered: 1,
+                lost: 0
+            }
+        );
+    }
+}
+
+#[test]
+fn recovers_two_lost() {
+    let b = block(4);
+    let mut fec = AudioFec::new(DUR);
+    let frames = run(&mut fec, &b, &[0, 3, 4, 5]);
+    check(&frames, 4, &[0, 1, 2, 3]);
+    assert_eq!(fec.stats().recovered, 2);
+}
+
+#[test]
+fn three_lost_is_not_recoverable() {
+    let b = block(0);
+    let mut fec = AudioFec::new(DUR);
+    let frames = run(&mut fec, &b, &[1, 4, 5]);
+    check(&frames, 0, &[1]); // only the packet that arrived
+                             // Pushing the next blocks evicts the incomplete one and counts its 3 lost packets.
+    for base in [4, 8, 12, 16] {
+        run(&mut fec, &block(base), &[0, 1, 2, 3]);
+    }
+    assert_eq!(
+        fec.stats(),
+        AudioFecStats {
+            recovered: 0,
+            lost: 3
+        }
+    );
+}
+
+#[test]
+fn wrong_key_errors() {
+    let b = block(0);
+    let mut bad = KEY;
+    bad[0] ^= 1;
+    assert_eq!(
+        parse_audio_packet(&b[0], &bad, KEY_ID),
+        Err(AudioError::BadPadding)
+    );
+    // A wrong rikeyid only changes the IV: CBC garbles block 0 but the padding stays valid, so
+    // no error, just never the original frame (the stream is unauthenticated).
+    let wrong_id = parse_audio_packet(&b[0], &KEY, KEY_ID + 1).map(|f| f.data);
+    assert_ne!(wrong_id, Ok(plain(0)));
+}
+
+#[test]
+fn malformed_packets_error_without_panic() {
+    let b = block(0);
+    let d = &b[0];
+    let ok = |d: &[u8]| parse_audio_packet(d, &KEY, KEY_ID);
+    assert_eq!(ok(&d[..12]), Err(AudioError::Truncated));
+    assert_eq!(ok(&[]), Err(AudioError::Truncated));
+    assert_eq!(ok(&d[..d.len() - 1]), Err(AudioError::BadPadding)); // not whole AES blocks
+    assert_eq!(ok(&d[..12 + 16]), Err(AudioError::BadPadding)); // one block: wrong padding
+    let mut big = d.clone();
+    big.resize(MAX_DATAGRAM + 1, 0);
+    assert_eq!(ok(&big), Err(AudioError::TooLarge));
+    let mut v = d.clone();
+    v[0] = 0x00;
+    assert_eq!(ok(&v), Err(AudioError::Malformed));
+    assert_eq!(ok(&b[4]), Err(AudioError::Malformed)); // FEC packet is not a data packet
+                                                       // Flipping ciphertext is not authenticated (CBC): it must not return the original frame.
+    let mut v = d.clone();
+    let n = v.len();
+    v[n - 20] ^= 0xff;
+    assert_ne!(ok(&v).ok().map(|f| f.data), Some(plain(0)));
+    // Garbage into the FEC queue never panics.
+    let mut fec = AudioFec::new(DUR);
+    let mut x = 0x1234_5678u32;
+    for len in 0..200 {
+        let g: Vec<u8> = (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x as u8
+            })
+            .collect();
+        let _ = fec.push(&g);
+        let mut g2 = g.clone();
+        if !g2.is_empty() {
+            g2[0] = 0x80;
+        }
+        if g2.len() > 1 {
+            g2[1] = if len % 2 == 0 { PT_AUDIO } else { PT_FEC };
+        }
+        let _ = fec.push(&g2);
+    }
+}
+
+#[test]
+fn fec_header_and_window_checks() {
+    let b = block(0);
+    let mut fec = AudioFec::new(DUR);
+    fec.push(&b[0]).unwrap();
+    let mut bad_idx = b[4].clone();
+    bad_idx[12] = 2;
+    assert_eq!(fec.push(&bad_idx), Err(AudioError::Malformed));
+    let mut bad_base = b[4].clone();
+    bad_base[14..16].copy_from_slice(&2u16.to_be_bytes());
+    assert_eq!(fec.push(&bad_base), Err(AudioError::Malformed));
+    assert_eq!(fec.push(&b[4][..20]), Err(AudioError::Truncated));
+    let mut short = b[1].clone();
+    short.truncate(short.len() - 16);
+    assert_eq!(fec.push(&short), Err(AudioError::BlockSize));
+    let far = block(4 + 2048);
+    assert_eq!(fec.push(&far[0]), Err(AudioError::OutOfWindow));
+    // The stream still works afterwards.
+    assert_eq!(fec.push(&b[1]).unwrap().len(), 1);
+}
+
+#[test]
+fn seq_u16_wrap() {
+    let mut fec = AudioFec::new(DUR);
+    let c = AudioCipher::new(&KEY, KEY_ID);
+    for base in [65528u16, 65532, 0, 4] {
+        let b = block(base);
+        let mut got = Vec::new();
+        for i in [0usize, 2, 3, 4] {
+            got.extend(fec.push(&b[i]).unwrap());
+        }
+        let seqs: Vec<u16> = got.iter().map(|p| p.seq).collect();
+        let want: Vec<u16> = (0..4).map(|i| base.wrapping_add(i)).collect();
+        let mut s = seqs.clone();
+        s.sort_by_key(|x| x.wrapping_sub(base));
+        assert_eq!(s, want);
+        for p in &got {
+            assert_eq!(c.open(p).unwrap().data, plain(p.seq));
+        }
+    }
+    assert_eq!(fec.stats().recovered, 4);
+}
+
+#[test]
+fn duplicate_ignored() {
+    let b = block(0);
+    let mut fec = AudioFec::new(DUR);
+    assert_eq!(fec.push(&b[0]).unwrap().len(), 1);
+    assert!(fec.push(&b[0]).unwrap().is_empty());
+    assert!(fec.push(&b[4]).unwrap().is_empty());
+    assert!(fec.push(&b[4]).unwrap().is_empty());
+    assert_eq!(fec.push(&b[1]).unwrap().len(), 1);
+    assert_eq!(fec.push(&b[2]).unwrap().len(), 2); // 2 and the recovered 3
+    assert!(fec.push(&b[3]).unwrap().is_empty()); // already recovered
+    assert_eq!(fec.stats().recovered, 1);
+}

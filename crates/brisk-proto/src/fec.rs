@@ -97,6 +97,33 @@ pub fn rs_encode(
     parity_shards: usize,
     shards: &mut [Vec<u8>],
 ) -> Result<(), FecError> {
+    encode_with(data_shards, parity_shards, shards, &|j, i| {
+        coef(parity_shards, j, i)
+    })
+}
+
+/// [`rs_encode`] with an explicit parity matrix, row-major `parity_shards x data_shards`
+/// (Sunshine overrides nanors' matrix this way for audio).
+pub fn rs_encode_matrix(
+    data_shards: usize,
+    parity_shards: usize,
+    matrix: &[u8],
+    shards: &mut [Vec<u8>],
+) -> Result<(), FecError> {
+    if matrix.len() != data_shards * parity_shards {
+        return Err(FecError::BadScheme);
+    }
+    encode_with(data_shards, parity_shards, shards, &|j, i| {
+        matrix[j * data_shards + i]
+    })
+}
+
+fn encode_with(
+    data_shards: usize,
+    parity_shards: usize,
+    shards: &mut [Vec<u8>],
+    coef: &dyn Fn(usize, usize) -> u8,
+) -> Result<(), FecError> {
     check(data_shards, parity_shards, shards.len())?;
     let bs = shards[0].len();
     if shards.iter().any(|s| s.len() != bs) {
@@ -106,7 +133,7 @@ pub fn rs_encode(
     for (j, p) in parity.iter_mut().enumerate() {
         p.fill(0);
         for (i, d) in data.iter().enumerate() {
-            axpy(p, d, coef(parity_shards, j, i));
+            axpy(p, d, coef(j, i));
         }
     }
     Ok(())
@@ -118,6 +145,33 @@ pub fn rs_decode(
     data_shards: usize,
     parity_shards: usize,
     shards: &mut [Option<Vec<u8>>],
+) -> Result<(), FecError> {
+    decode_with(data_shards, parity_shards, shards, &|j, i| {
+        coef(parity_shards, j, i)
+    })
+}
+
+/// [`rs_decode`] with an explicit parity matrix (see [`rs_encode_matrix`]); fails with
+/// `BadScheme` if the needed submatrix is singular.
+pub fn rs_decode_matrix(
+    data_shards: usize,
+    parity_shards: usize,
+    matrix: &[u8],
+    shards: &mut [Option<Vec<u8>>],
+) -> Result<(), FecError> {
+    if matrix.len() != data_shards * parity_shards {
+        return Err(FecError::BadScheme);
+    }
+    decode_with(data_shards, parity_shards, shards, &|j, i| {
+        matrix[j * data_shards + i]
+    })
+}
+
+fn decode_with(
+    data_shards: usize,
+    parity_shards: usize,
+    shards: &mut [Option<Vec<u8>>],
+    coef: &dyn Fn(usize, usize) -> u8,
 ) -> Result<(), FecError> {
     check(data_shards, parity_shards, shards.len())?;
     let mut present = shards.iter().flatten();
@@ -146,7 +200,7 @@ pub fn rs_decode(
     for (k, &j) in rows.iter().enumerate() {
         for (i, d) in shards[..data_shards].iter().enumerate() {
             if let Some(d) = d {
-                axpy(&mut rhs[k], d, coef(parity_shards, j, i));
+                axpy(&mut rhs[k], d, coef(j, i));
             }
         }
     }
@@ -154,13 +208,13 @@ pub fn rs_decode(
     // Gauss-Jordan invert m (w x w, m[k][e] = P[rows[k]][lost[e]]) into minv.
     let mut m: Vec<Vec<u8>> = rows
         .iter()
-        .map(|&j| lost.iter().map(|&e| coef(parity_shards, j, e)).collect())
+        .map(|&j| lost.iter().map(|&e| coef(j, e)).collect())
         .collect();
     let mut minv: Vec<Vec<u8>> = (0..w)
         .map(|r| (0..w).map(|c| u8::from(r == c)).collect())
         .collect();
     for c in 0..w {
-        // A Cauchy submatrix is nonsingular, so a pivot always exists.
+        // A Cauchy submatrix is nonsingular, so a pivot always exists (custom matrices may not).
         let p = (c..w).find(|&r| m[r][c] != 0).ok_or(FecError::BadScheme)?;
         m.swap(c, p);
         minv.swap(c, p);
