@@ -320,7 +320,10 @@ async fn run_control(
 
 fn print_stats(st: &Stats) {
     println!("pings\tsent {} acked {}", st.pings_sent, st.pings_acked);
-    println!("idr_requests\t{}", st.idr_sent);
+    println!(
+        "idr_requests\t{} ({} on frame loss)",
+        st.idr_sent, st.idr_on_loss
+    );
     for (t, n) in &st.host_msgs {
         println!("host_msg\t{t:#06x}\t{n}");
     }

@@ -243,6 +243,8 @@ pub struct FrameAssembler {
     /// (RtpVideoQueue.c / VideoDepacketizer.c) so early frame-2 packets cannot drop the first IDR.
     next: u32,
     stats: AssemblerStats,
+    /// Drops not yet reported by [`FrameAssembler::take_dropped`].
+    unreported_drops: u64,
 }
 
 impl Default for FrameAssembler {
@@ -251,6 +253,7 @@ impl Default for FrameAssembler {
             pending: Vec::new(),
             next: 1,
             stats: AssemblerStats::default(),
+            unreported_drops: 0,
         }
     }
 }
@@ -288,6 +291,17 @@ impl FrameAssembler {
 
     pub fn stats(&self) -> AssemblerStats {
         self.stats
+    }
+
+    /// Frames dropped since the last call. Any drop means the decoder needs an IDR (Sunshine
+    /// sends an infinite GOP, so nothing else repairs the reference chain).
+    pub fn take_dropped(&mut self) -> u64 {
+        std::mem::take(&mut self.unreported_drops)
+    }
+
+    fn dropped(&mut self, n: u64) {
+        self.stats.frames_dropped += n;
+        self.unreported_drops += n;
     }
 
     pub fn push(&mut self, p: VideoPacket) -> Vec<AssembledFrame> {
@@ -375,7 +389,7 @@ impl FrameAssembler {
 
         let frame = self.pending.remove(fi);
         let idx = frame.idx;
-        self.stats.frames_dropped += idx.wrapping_sub(next) as u64;
+        self.dropped(idx.wrapping_sub(next) as u64);
         self.pending.retain(|f| is_before32(idx, f.idx));
         // shortcut: `next` only advances when a frame completes, so starting >2^16 frames into a stream or after an outage that long stalls every packet as far-future; add a resync like audio's if that matters.
         self.next = idx.wrapping_add(1);
@@ -386,7 +400,7 @@ impl FrameAssembler {
                 vec![out]
             }
             None => {
-                self.stats.frames_dropped += 1;
+                self.dropped(1);
                 self.stats.parse_errors += 1;
                 Vec::new()
             }

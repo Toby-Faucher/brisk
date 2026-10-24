@@ -3,7 +3,7 @@
 
 mod common;
 
-use brisk_client::control::ControlSession;
+use brisk_client::control::{ControlSession, IDR_MIN_INTERVAL};
 use brisk_proto::input::{encode_input, InputEvent};
 use common::fake_host::*;
 use std::net::UdpSocket;
@@ -230,4 +230,49 @@ async fn stream_decrypts_video_and_audio() {
     .unwrap_err()
     .to_string();
     assert!(e.contains("parse_errors"), "{e}");
+}
+
+/// Runs a control session with media fed to a [`StreamRx`] for `ms`; returns the session stats
+/// and the number of IDR requests (0x0302) the fake host decoded.
+async fn run_with_loss(lose_frame: fn(u32) -> bool, interval: Duration, ms: u64) -> (u32, usize) {
+    let f = fake_with(Cfg {
+        media: Some(Media {
+            lose_frame,
+            ..Media::default()
+        }),
+        ..Cfg::default()
+    });
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 21, av(&f).await)
+        .await
+        .unwrap();
+    c.idr_min_interval = interval;
+    let mut rx = brisk_client::stream::StreamRx::new(0, KEY, 0, None).unwrap();
+    c.run_until_with(
+        Instant::now() + Duration::from_millis(ms),
+        &mut |i, d, at| rx.on_datagram(i, d, at),
+    )
+    .await
+    .unwrap();
+    let st = c.disconnect().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let idr = types(&f).iter().filter(|m| m.1 == 0x0302).count();
+    (st.idr_on_loss, idr)
+}
+
+/// One frame lost beyond FEC: exactly one IDR request on top of the opening one.
+#[tokio::test]
+async fn lost_frame_requests_one_idr() {
+    let (on_loss, idr) = run_with_loss(|i| i == 30, IDR_MIN_INTERVAL, 1500).await;
+    assert_eq!((on_loss, idr), (1, 2));
+}
+
+/// Frames keep getting lost from frame 20 (~0.33 s) on: requests keep coming, rate-limited.
+#[tokio::test]
+async fn continuing_loss_requests_are_rate_limited() {
+    let ms = 2000;
+    let gap = Duration::from_millis(300);
+    let (on_loss, idr) = run_with_loss(|i| i >= 20 && i % 2 == 0, gap, ms).await;
+    // ~1.67 s of losses every 33 ms: one request per 300 ms, not one per lost frame (~50).
+    assert!((3..=7).contains(&on_loss), "{on_loss}");
+    assert_eq!(idr, 1 + on_loss as usize);
 }

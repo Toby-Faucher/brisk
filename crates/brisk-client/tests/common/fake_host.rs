@@ -80,6 +80,8 @@ pub struct Media {
     /// Send one malformed video datagram just before this frame.
     pub corrupt_frame: Option<u32>,
     pub answer_idr: bool,
+    /// Frames for which parity + 1 data packets are dropped: more than FEC can recover.
+    pub lose_frame: fn(u32) -> bool,
     /// `SS_ENC_VIDEO` with this key (the rikey).
     pub video_key: Option<[u8; 16]>,
     /// `SS_ENC_AUDIO` with (rikey, rikeyid); plain audio otherwise.
@@ -92,6 +94,7 @@ impl Default for Media {
             loss_pct: 0,
             corrupt_frame: None,
             answer_idr: true,
+            lose_frame: |_| false,
             video_key: None,
             audio_key: None,
         }
@@ -410,7 +413,12 @@ pub fn fake_with(cfg: Cfg) -> Fake {
                         if m.corrupt_frame == Some(idx) {
                             av[0].send_to(&[0u8; 100], to).unwrap();
                         }
-                        for p in pkts {
+                        let lose = if (m.lose_frame)(idx) { parity + 1 } else { 0 };
+                        for (k, p) in pkts.into_iter().enumerate() {
+                            if k < lose {
+                                log.video_dropped += 1;
+                                continue;
+                            }
                             if dropped < parity && rnd(&mut vh.rng) % 100 < m.loss_pct as u64 {
                                 dropped += 1;
                                 log.video_dropped += 1;

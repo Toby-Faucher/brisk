@@ -269,9 +269,19 @@ fn more_than_m_losses_drops_frame_and_counts_it() {
     let bad = h.frame(1, 1, 1, &annexb(500, 1), 1);
     let parity = bad[0].len() - parse_video_packet(&bad[0][0], 0).unwrap().data_shards as usize;
     assert!(feed(&mut a, bad[0].iter().skip(parity + 1)).is_empty());
+    assert_eq!(
+        a.take_dropped(),
+        0,
+        "not known lost until a later frame completes"
+    );
     let good = h.frame(2, 1, 1, &annexb(500, 2), 1);
     let out = feed(&mut a, &good[0]);
     assert_eq!(out.iter().map(|f| f.idx).collect::<Vec<_>>(), [2]);
+    assert_eq!(
+        (a.take_dropped(), a.take_dropped()),
+        (1, 0),
+        "reported once"
+    );
     // A wholly lost frame 3 is counted too when frame 4 completes.
     h.frame(3, 1, 1, &annexb(10, 3), 1);
     assert_eq!(
@@ -280,6 +290,7 @@ fn more_than_m_losses_drops_frame_and_counts_it() {
     );
     let s = a.stats();
     assert_eq!((s.frames_ok, s.frames_dropped), (2, 2));
+    assert_eq!(a.take_dropped(), 1);
     // Late shards of the dropped frame are ignored.
     assert!(feed(&mut a, bad[0].iter().take(parity + 1)).is_empty());
 }

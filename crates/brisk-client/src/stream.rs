@@ -172,7 +172,7 @@ impl std::fmt::Display for Summary {
             .iter()
             .map(|r| r.map_or("none".into(), |ms| format!("{ms:.1}")))
             .collect();
-        let rows: [(&str, String); 19] = [
+        let rows: [(&str, String); 20] = [
             ("duration_s", format!("{:.1}", self.secs)),
             (
                 "frames_assembled",
@@ -228,6 +228,13 @@ impl std::fmt::Display for Summary {
                 ),
             ),
             ("idr_response_ms", idr.join(" ")),
+            (
+                "idr_requests",
+                format!(
+                    "{} ({} on frame loss)",
+                    self.control.idr_sent, self.control.idr_on_loss
+                ),
+            ),
             (
                 "control_pings",
                 format!(
@@ -313,12 +320,15 @@ impl StreamRx {
         self.idr_reqs.push((at, None));
     }
 
-    /// One datagram from the video (0) or audio (1) socket.
-    pub fn on_datagram(&mut self, i: usize, d: &[u8], at: Instant) {
+    /// One datagram from the video (0) or audio (1) socket. Returns true when a video frame was
+    /// found lost: the caller should request an IDR (a [`crate::control::MediaSink`]).
+    pub fn on_datagram(&mut self, i: usize, d: &[u8], at: Instant) -> bool {
         if i == 0 {
-            self.on_video(d, at)
+            self.on_video(d, at);
+            self.asm.take_dropped() > 0
         } else {
-            self.on_audio(d)
+            self.on_audio(d);
+            false
         }
     }
 

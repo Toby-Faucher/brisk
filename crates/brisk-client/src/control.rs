@@ -30,14 +30,19 @@ const MEDIA_BUF: usize = 4096;
 /// [`ControlSession::run_until_with`] (the opening IDR can land there).
 const EARLY_MAX: usize = 4096;
 
-/// Receives every video (index 0) or audio (index 1) datagram as it arrives.
-pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8], Instant);
+/// Receives every video (index 0) or audio (index 1) datagram as it arrives; returns true when
+/// the decoder needs an IDR (a frame was lost), which the session requests rate-limited.
+pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8], Instant) -> bool;
+/// Default [`ControlSession::idr_min_interval`].
+pub const IDR_MIN_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
     pub pings_sent: u32,
     pub pings_acked: u32,
     pub idr_sent: u32,
+    /// Of `idr_sent`: requests made because the sink reported a lost frame.
+    pub idr_on_loss: u32,
     pub inputs_sent: u32,
     /// Decoded host messages by packet type.
     pub host_msgs: BTreeMap<u16, u32>,
@@ -160,6 +165,11 @@ pub struct ControlSession {
     buf: Vec<u8>,
     av: Option<AvPing>,
     early: Vec<(usize, Instant, Vec<u8>)>,
+    /// The sink reported a lost frame; an IDR request is owed.
+    want_idr: bool,
+    last_idr: Option<Instant>,
+    /// Loss-triggered IDR requests are at most one per this (a field so tests can shrink it).
+    pub idr_min_interval: Duration,
     pub stats: Stats,
 }
 
@@ -193,6 +203,9 @@ impl ControlSession {
             buf: vec![0u8; MAX_DATAGRAM + 1],
             av,
             early: Vec::new(),
+            want_idr: false,
+            last_idr: None,
+            idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),
         };
         s.sock.send(&hello).await?;
@@ -211,6 +224,7 @@ impl ControlSession {
         s.send_on(&ControlMsg::IdrRequest, channel::GENERIC, true)
             .await?;
         s.stats.idr_sent += 1;
+        s.last_idr = Some(Instant::now());
         s.send(&ControlMsg::StartB).await?;
         Ok(s)
     }
@@ -238,6 +252,7 @@ impl ControlSession {
     pub async fn request_idr(&mut self) -> crate::Result<()> {
         self.send(&ControlMsg::IdrRequest).await?;
         self.stats.idr_sent += 1;
+        self.last_idr = Some(Instant::now());
         Ok(())
     }
 
@@ -251,20 +266,30 @@ impl ControlSession {
 
     /// Ping, receive and retransmit until `until`, or until the host ends the session.
     pub async fn run_until(&mut self, until: Instant) -> crate::Result<()> {
-        self.run_until_with(until, &mut |_, _, _| {}).await
+        self.run_until_with(until, &mut |_, _, _| false).await
     }
 
     /// [`Self::run_until`] that hands every media datagram to `sink`, starting with any that
-    /// arrived during the connect.
+    /// arrived during the connect, and requests an IDR (at most one per `idr_min_interval`)
+    /// when `sink` reports a lost frame.
     pub async fn run_until_with(
         &mut self,
         until: Instant,
         sink: MediaSink<'_>,
     ) -> crate::Result<()> {
         for (i, at, d) in std::mem::take(&mut self.early) {
-            sink(i, &d, at);
+            self.want_idr |= sink(i, &d, at);
         }
         while self.is_open() && Instant::now() < until {
+            if self.want_idr
+                && self
+                    .last_idr
+                    .is_none_or(|t| t.elapsed() >= self.idr_min_interval)
+            {
+                self.want_idr = false;
+                self.request_idr().await?;
+                self.stats.idr_on_loss += 1;
+            }
             if Instant::now() >= self.next_ping {
                 self.send(&ControlMsg::Ping).await?;
                 self.pings.insert(self.peer.outgoing_seq(channel::GENERIC));
@@ -335,7 +360,7 @@ impl ControlSession {
                 self.stats.media_rx_bytes[i] += n as u64;
                 let d = &self.av.as_ref().unwrap().bufs[i][..n];
                 match sink {
-                    Some(f) => f(i, d, at),
+                    Some(f) => self.want_idr |= f(i, d, at),
                     None if !self.closing && self.early.len() < EARLY_MAX => {
                         self.early.push((i, at, d.to_vec()))
                     }
@@ -400,7 +425,11 @@ impl ControlSession {
         }
         let deadline = Instant::now() + LINGER;
         while self.peer.state() != PeerState::Disconnected && Instant::now() < deadline {
-            if self.step(deadline, Some(&mut |_, _, _| {})).await.is_err() {
+            if self
+                .step(deadline, Some(&mut |_, _, _| false))
+                .await
+                .is_err()
+            {
                 break;
             }
         }
@@ -440,12 +469,18 @@ mod tests {
             early: (0..3)
                 .map(|k| (0, t0 - Duration::from_millis(100 - 17 * k), vec![k as u8]))
                 .collect(),
+            want_idr: false,
+            last_idr: None,
+            idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),
         };
         let mut got = Vec::new();
-        c.run_until_with(t0, &mut |i, d, at| got.push((i, d[0], at)))
-            .await
-            .unwrap();
+        c.run_until_with(t0, &mut |i, d, at| {
+            got.push((i, d[0], at));
+            false
+        })
+        .await
+        .unwrap();
         assert_eq!(got.len(), 3);
         assert_eq!((got[1].2 - got[0].2).as_millis(), 17);
         assert_eq!((got[2].2 - got[1].2).as_millis(), 17);
