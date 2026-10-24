@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
 
+// PUBLIC upstream Sunshine test fixtures (test_http_pairing.cpp:50), not Brisk secrets.
 const PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDLePNlWN06FLlM
 ujWzIX8UICO7SWfH5DXlafVjpxwi/WCkdO6FxixqRNGu71wMvJXFbDlNR8fqX2xo
