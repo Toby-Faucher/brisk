@@ -3,7 +3,7 @@
 
 use crate::identity::{Identity, ServerCert};
 use crate::recorder::Recorder;
-use crate::rtsp::{handshake, StreamPorts};
+use crate::rtsp::{handshake, LaunchKey, StreamPorts};
 use brisk_proto::http::{
     cancel_query, check_status, launch_query, parse_applist, parse_field, parse_launch,
     parse_serverinfo, App, LaunchOpts, LaunchReply, ServerInfo, MAX_BODY,
@@ -42,6 +42,8 @@ pub struct Session {
     pub launch_sent: bool,
     /// `/launch` came back 200: a session is certainly ours.
     pub launch_confirmed: bool,
+    /// Draws every launch key.
+    rng: Arc<Mutex<dyn Rng + Send>>,
 }
 
 const CANCEL_ATTEMPTS: u32 = 3;
@@ -59,7 +61,14 @@ impl Session {
             cancel_backoff: Duration::from_secs(1),
             launch_sent: false,
             launch_confirmed: false,
+            rng: Arc::new(Mutex::new(crate::SystemRng)),
         }
+    }
+
+    /// Replaces the CSPRNG (tests only: a predictable rng makes predictable keys).
+    #[doc(hidden)]
+    pub fn set_rng(&mut self, rng: impl Rng + Send + 'static) {
+        self.rng = Arc::new(Mutex::new(rng));
     }
 
     /// Plain HTTP when `paired` is None; HTTPS with client cert and pinned server cert otherwise
@@ -89,18 +98,29 @@ impl Session {
         )?)
     }
 
-    /// `GET /launch` (HTTPS). `cfg.rikey` is scrubbed from recordings: it keys the whole stream.
-    /// `cfg.rikey` MUST be freshly random per launch (GCM nonce reuse otherwise); never reuse a `StreamConfig`
-    /// across launches. `brisk-probe` draws it from `SystemRng` each run.
+    /// `GET /launch` (HTTPS) with a launch key drawn here, fresh every call: the control/RTSP
+    /// GCM IVs restart per session, so a reused key would repeat nonces. The key is scrubbed from
+    /// recordings (it keys the whole stream).
     pub async fn launch(
         &mut self,
         ident: &Identity,
         server: &ServerCert,
         app_id: u32,
         cfg: &StreamConfig,
-    ) -> crate::Result<LaunchReply> {
+    ) -> crate::Result<(LaunchReply, LaunchKey)> {
+        let (mut rikey, mut id) = ([0u8; 16], [0u8; 4]);
+        {
+            let mut rng = self.rng.lock().unwrap();
+            rng.fill(&mut rikey);
+            rng.fill(&mut id);
+        }
+        // Sunshine parses rikeyid as a signed int; stay positive.
+        let key = LaunchKey {
+            rikey,
+            rikeyid: u32::from_le_bytes(id) & 0x7fff_ffff,
+        };
         if let Some(rec) = &mut self.recorder {
-            rec.add_secret(&cfg.rikey);
+            rec.add_secret(&key.rikey);
         }
         let q = launch_query(
             &ident.unique_id,
@@ -108,14 +128,14 @@ impl Session {
             cfg.width,
             cfg.height,
             cfg.fps,
-            cfg.rikey,
-            cfg.rikeyid,
+            key.rikey,
+            key.rikeyid,
             &LaunchOpts::default(),
         );
         let r = self
             .get(Some((ident, server)), "/launch", &q, LAUNCH_WAIT)
             .await?;
-        Ok(parse_launch(&r)?)
+        Ok((parse_launch(&r)?, key))
     }
 
     /// `GET /cancel` (HTTPS): Sunshine stops the stream and the app.
@@ -230,7 +250,7 @@ impl Session {
             self.cancel_retry(ident, server).await?;
         }
         self.launch_sent = true;
-        let l = match self.launch(ident, server, app_id, cfg).await {
+        let (l, key) = match self.launch(ident, server, app_id, cfg).await {
             Ok(l) => l,
             Err(e) => {
                 use brisk_proto::http::HttpError::Status;
@@ -261,6 +281,7 @@ impl Session {
             &l.session_url,
             app_version,
             cfg,
+            &key,
             self.recorder.as_mut(),
         )
         .await;

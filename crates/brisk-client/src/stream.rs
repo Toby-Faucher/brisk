@@ -488,12 +488,11 @@ impl StreamRx {
 pub async fn stream(
     host: &str,
     p: &StreamPorts,
-    rikey: [u8; 16],
-    rikeyid: u32,
     connect_id: u32,
     secs: Duration,
     record: Option<&Path>,
 ) -> crate::Result<Summary> {
+    let (rikey, rikeyid) = (p.key.rikey, p.key.rikeyid);
     let mut rx = StreamRx::new(p.enc_flags, rikey, rikeyid, record)?;
     let start = Instant::now();
     let mut control = Stats::default();

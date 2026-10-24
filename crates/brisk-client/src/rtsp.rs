@@ -16,6 +16,25 @@ const WAIT: Duration = Duration::from_secs(15);
 const IF_MODIFIED: (&str, &str) = ("If-Modified-Since", "Thu, 01 Jan 1970 00:00:00 GMT");
 const CONTROL: &str = "streamid=control/13/0";
 
+/// The launch key `Session::launch` drew: AES key of encrypted RTSP, control and A/V, and the
+/// audio IV base. Fresh per launch (the GCM IVs are counters that restart every session).
+#[derive(Clone, PartialEq, Eq)]
+pub struct LaunchKey {
+    pub rikey: [u8; 16],
+    /// Positive: Sunshine parses it as a signed int.
+    pub rikeyid: u32,
+}
+
+// Manual Debug: rikey keys the whole stream and must not reach logs.
+impl std::fmt::Debug for LaunchKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LaunchKey")
+            .field("rikey", &format_args!("<redacted>"))
+            .field("rikeyid", &self.rikeyid)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamPorts {
     pub audio: u16,
@@ -28,6 +47,8 @@ pub struct StreamPorts {
     pub connect_data: Option<u32>,
     /// `SS_ENC_*` bits announced as `x-ss-general.encryptionEnabled`.
     pub enc_flags: u32,
+    /// The key this session was launched with.
+    pub key: LaunchKey,
 }
 
 struct Conn<'a> {
@@ -67,6 +88,7 @@ pub async fn handshake(
     session_url: &str,
     app_version: &str,
     cfg: &StreamConfig,
+    key: &LaunchKey,
     recorder: Option<&mut Recorder>,
 ) -> crate::Result<StreamPorts> {
     let (enc, url_host, port) = parse_session_url(session_url)?;
@@ -75,7 +97,7 @@ pub async fn handshake(
         port,
         url_host,
         cseq: 1,
-        cipher: enc.then(|| RtspCipher::client(cfg.rikey)),
+        cipher: enc.then(|| RtspCipher::client(key.rikey)),
         recorder,
     };
 
@@ -157,6 +179,7 @@ pub async fn handshake(
         ping_payload: a.header("X-SS-Ping-Payload").map(str::to_string),
         connect_data: k.header("X-SS-Connect-Data").and_then(|s| s.parse().ok()),
         enc_flags: announced.enc_flags,
+        key: key.clone(),
     })
 }
 

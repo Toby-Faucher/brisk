@@ -146,10 +146,6 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 let server = ServerCert::load(&dir)?;
                 let ident = load_identity(&dir)?;
                 let info = s.serverinfo(None).await?;
-                let mut rikey = [0u8; 16];
-                SystemRng.fill(&mut rikey);
-                let mut id = [0u8; 4];
-                SystemRng.fill(&mut id);
                 let cfg = StreamConfig {
                     width: 1920,
                     height: 1080,
@@ -158,25 +154,21 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     codec: Codec::H264,
                     packet_size: 1392,
                     fec_percent: 20,
-                    rikey,
-                    // Sunshine parses rikeyid as a signed int; stay positive.
-                    rikeyid: u32::from_le_bytes(id) & 0x7fff_ffff,
                     // stream asks for audio encryption, as Moonlight does by default, so the audio
                     // path (and the recorded samples) are the AES-CBC one.
                     enc_flags: if a.cmd == "stream" { SS_ENC_AUDIO } else { 0 },
                 };
-                let rikeyid = cfg.rikeyid;
                 let app = a.app.unwrap();
                 let (host, secs, cmd) = (a.host.clone(), a.secs, a.cmd.clone());
                 let samples = a.samples.clone();
                 let during = |p: StreamPorts| async move {
                     let stats = match cmd.as_str() {
-                        "control" => Some(run_control(&host, &p, rikey, secs).await?),
+                        "control" => Some(run_control(&host, &p, secs).await?),
                         "stream" => {
                             let mut id = [0u8; 4];
                             SystemRng.fill(&mut id);
                             let secs = std::time::Duration::from_secs(secs);
-                            let s = stream(&host, &p, rikey, rikeyid, u32::from_le_bytes(id), secs, samples.as_deref());
+                            let s = stream(&host, &p, u32::from_le_bytes(id), secs, samples.as_deref());
                             Some(s.await?.control)
                         }
                         _ => None,
@@ -267,12 +259,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
 }
 
 /// ENet control stream for `secs`, IDR request at the midpoint, graceful disconnect.
-async fn run_control(
-    host: &str,
-    p: &StreamPorts,
-    rikey: [u8; 16],
-    secs: u64,
-) -> brisk_client::Result<Stats> {
+async fn run_control(host: &str, p: &StreamPorts, secs: u64) -> brisk_client::Result<Stats> {
     let cd = p
         .connect_data
         .ok_or("SETUP(control) reply had no X-SS-Connect-Data")?;
@@ -291,7 +278,8 @@ async fn run_control(
         "control\tA/V pings to video {} audio {}; connecting {addr}",
         p.video, p.audio
     );
-    let mut c = ControlSession::connect(addr, cd, rikey, u32::from_le_bytes(id), Some(av)).await?;
+    let mut c =
+        ControlSession::connect(addr, cd, p.key.rikey, u32::from_le_bytes(id), Some(av)).await?;
     println!("control\tconnected; IDR request + Start B sent");
     let start = std::time::Instant::now();
     let total = std::time::Duration::from_secs(secs);

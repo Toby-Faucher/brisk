@@ -178,6 +178,10 @@ fn ports(f: &Fake, enc_flags: u32) -> brisk_client::rtsp::StreamPorts {
         ping_payload: Some(PING_PAYLOAD.into()),
         connect_data: Some(CONNECT_DATA),
         enc_flags,
+        key: brisk_client::rtsp::LaunchKey {
+            rikey: KEY,
+            rikeyid: 77,
+        },
     }
 }
 
@@ -197,8 +201,6 @@ async fn stream_decrypts_video_and_audio() {
     let s = brisk_client::stream::stream(
         "127.0.0.1",
         &ports(&f, enc),
-        KEY,
-        77,
         5,
         Duration::from_secs(2),
         None,
@@ -220,8 +222,6 @@ async fn stream_decrypts_video_and_audio() {
     let e = brisk_client::stream::stream(
         "127.0.0.1",
         &ports(&f, SS_ENC_CONTROL_V2 | SS_ENC_AUDIO),
-        KEY,
-        77,
         6,
         Duration::from_secs(1),
         None,

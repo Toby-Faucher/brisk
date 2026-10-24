@@ -9,8 +9,6 @@ fn cfg() -> StreamConfig {
         codec: Codec::H264,
         packet_size: 1392,
         fec_percent: 20,
-        rikey: [7; 16],
-        rikeyid: 1,
         enc_flags: SS_ENC_CONTROL_V2,
     }
 }
@@ -132,15 +130,4 @@ fn sealed_announce_fits_sunshine_buffer() {
     );
     let f = RtspCipher::client([0; 16]).seal(&req).unwrap();
     assert!(f.len() < SUNSHINE_MAX_REQUEST, "{}", f.len());
-}
-
-#[test]
-fn debug_redacts_rikey() {
-    let mut c = cfg();
-    c.rikey = [0xab; 16];
-    let d = format!("{c:?}");
-    assert!(d.contains("rikey: <redacted>"));
-    for bad in ["171", "0xab", "ab, ab", "abab", "AB"] {
-        assert!(!d.contains(bad), "{bad} leaked: {d}");
-    }
 }

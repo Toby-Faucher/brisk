@@ -55,6 +55,8 @@ fn pem_der(pem: &str) -> Vec<u8> {
 #[derive(Default)]
 struct St {
     key: [u8; 16],
+    /// rikey of every accepted `/launch`.
+    rikeys: Vec<[u8; 16]>,
     client_pem: String,
     clienthash: Vec<u8>,
     authorized: Option<Vec<u8>>,
@@ -130,6 +132,7 @@ impl Fake {
                     return r#"<root status_code="503" status_message="fake launch failure"/>"#.into();
                 }
                 let key: [u8; 16] = unhex(&q["rikey"]).unwrap().try_into().unwrap();
+                st.rikeys.push(key);
                 let enc = q["corever"] == "1" && mode != "plain";
                 self.rtsp.lock().unwrap().cipher = enc.then(|| RtspCipher::host(key));
                 let scheme = if enc { "rtspenc" } else { "rtsp" };
@@ -708,8 +711,6 @@ fn stream_cfg() -> StreamConfig {
         codec: Codec::H264,
         packet_size: 1392,
         fec_percent: 20,
-        rikey: *b"RIKEY-0123456789",
-        rikeyid: 0x01020304,
         enc_flags: 0,
     }
 }
@@ -807,10 +808,11 @@ async fn launch_recording_scrubs_rikey() {
     let (mut s, _fake, ident, server, t) = paired("ok").await;
     let dir = t.path().join("rec");
     s.recorder = Some(Recorder::new(&dir));
-    let cfg = stream_cfg();
-    s.launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, false)
+    let key = s
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg(), false)
         .await
-        .unwrap();
+        .unwrap()
+        .key;
     s.recorder.take().unwrap().finish().unwrap();
     let files = names(&dir);
     assert!(
@@ -819,7 +821,7 @@ async fn launch_recording_scrubs_rikey() {
     );
     for f in &files {
         let d = std::fs::read(dir.join(f)).unwrap();
-        for n in [cfg.rikey.to_vec(), hex(&cfg.rikey).into_bytes()] {
+        for n in [key.rikey.to_vec(), hex(&key.rikey).into_bytes()] {
             assert!(
                 !d.windows(n.len()).any(|w| w == n.as_slice()),
                 "{f} leaks rikey"
@@ -828,17 +830,46 @@ async fn launch_recording_scrubs_rikey() {
     }
 }
 
-/// Probe-style rikey draws must differ run to run (GCM key reuse otherwise).
-#[test]
-fn system_rng_rikeys_are_fresh() {
-    use brisk_client::SystemRng;
-    let draw = || {
-        let mut k = [0u8; 16];
-        SystemRng.fill(&mut k);
-        k
-    };
-    assert_ne!(draw(), draw());
+/// The same `StreamConfig` launched twice gets two different keys, each the one sent to the
+/// host (GCM nonce reuse otherwise: the RTSP/control IVs restart every launch).
+#[tokio::test]
+async fn relaunch_with_same_config_draws_a_fresh_rikey() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let cfg = stream_cfg();
+    let a = s
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, false)
+        .await
+        .unwrap()
+        .key;
+    let b = s
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, false)
+        .await
+        .unwrap()
+        .key;
+    assert_ne!(a.rikey, b.rikey);
+    assert_eq!(fake.st.lock().unwrap().rikeys, [a.rikey, b.rikey]);
+    assert!(
+        a.rikeyid < 1 << 31 && b.rikeyid < 1 << 31,
+        "rikeyid must stay positive"
+    );
+    assert_eq!(
+        format!("{a:?}"),
+        format!("LaunchKey {{ rikey: <redacted>, rikeyid: {} }}", a.rikeyid)
+    );
 }
+
+/// Repeats one 16-byte pattern: the launch key becomes `RIKEY_FIXED` / `RIKEYID_FIXED`.
+struct Fixed;
+impl Rng for Fixed {
+    fn fill(&mut self, buf: &mut [u8]) {
+        for (i, b) in buf.iter_mut().enumerate() {
+            *b = RIKEY_FIXED[i % 16];
+        }
+    }
+}
+const RIKEY_FIXED: [u8; 16] = *b"RIKEY-0123456789";
+/// LE u32 of "RIKE", already positive.
+const RIKEYID_FIXED: u32 = 0x454b_4952;
 
 fn fast(s: &mut Session) {
     s.cancel_wait = std::time::Duration::from_secs(2);
@@ -1009,11 +1040,12 @@ async fn stream_run(
     Arc<Mutex<common::fake_host::Log>>,
 ) {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
+    s.set_rng(Fixed); // the media fake must know the launch key up front
     let cfg = StreamConfig {
         enc_flags: SS_ENC_AUDIO,
         ..stream_cfg()
     };
-    let (rikey, rikeyid) = (cfg.rikey, cfg.rikeyid);
+    let (rikey, rikeyid) = (RIKEY_FIXED, RIKEYID_FIXED);
     let host = common::fake_host::fake_with(common::fake_host::Cfg {
         key: rikey,
         connect_data: 0x12345678,
@@ -1039,7 +1071,8 @@ async fn stream_run(
                 assert_eq!(f.rtsp.lock().unwrap().cancels, 0, "not cancelled yet");
                 // DESCRIBE: supported 5, requested 1; we want audio.
                 assert_eq!(p.enc_flags, SS_ENC_CONTROL_V2 | SS_ENC_AUDIO);
-                brisk_client::stream::stream("127.0.0.1", &p, rikey, rikeyid, 1, secs, record).await
+                assert_eq!((p.key.rikey, p.key.rikeyid), (rikey, rikeyid));
+                brisk_client::stream::stream("127.0.0.1", &p, 1, secs, record).await
             },
         )
         .await;
@@ -1141,10 +1174,7 @@ async fn stream_refuses_busy_host_without_launch() {
             false,
             |p| {
                 ran.store(true, Ordering::SeqCst);
-                async move {
-                    brisk_client::stream::stream("127.0.0.1", &p, [0; 16], 0, 1, secs(1), None)
-                        .await
-                }
+                async move { brisk_client::stream::stream("127.0.0.1", &p, 1, secs(1), None).await }
             },
         )
         .await
@@ -1200,7 +1230,7 @@ async fn stream_records_replayable_samples() {
     assert_eq!(frame1, 27);
     let a = dir.path().join("audio");
     let key = std::fs::read_to_string(a.join("rikey.hex")).unwrap();
-    assert_eq!(key, "52494b45592d30313233343536373839 01020304\n");
+    assert_eq!(key, "52494b45592d30313233343536373839 454b4952\n");
     assert!(std::fs::read_to_string(a.join("README.md"))
         .unwrap()
         .contains("ONE streaming session"));
@@ -1212,7 +1242,7 @@ async fn stream_records_replayable_samples() {
         if raw[1] & 0x7f == PT_FEC {
             continue;
         }
-        let o = parse_audio_packet(&raw, b"RIKEY-0123456789", 0x01020304).unwrap();
+        let o = parse_audio_packet(&raw, &RIKEY_FIXED, RIKEYID_FIXED).unwrap();
         assert_eq!(o.data.len(), 120);
         data += 1;
     }
