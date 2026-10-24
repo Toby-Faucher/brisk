@@ -281,6 +281,8 @@ impl AudioFec {
                 self.stats.lost += b.missing();
             }
             self.floor = Some(base);
+            // The restarted stream may use another packet size.
+            self.std_len = None;
             self.stray = 0;
         } else {
             self.stray = 0;

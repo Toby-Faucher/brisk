@@ -36,11 +36,20 @@ fn rtp(pt: u8, seq: u16, ts: u32, body: &[u8]) -> Vec<u8> {
 }
 
 fn plain(seq: u16) -> Vec<u8> {
-    (0..100u32).map(|i| (i as u8) ^ (seq as u8)).collect()
+    plain_n(seq, 100)
+}
+
+fn plain_n(seq: u16, n: u32) -> Vec<u8> {
+    (0..n).map(|i| (i as u8) ^ (seq as u8)).collect()
 }
 
 /// One FEC block as the host sends it: 4 data datagrams then 2 FEC datagrams.
 fn block(base: u16) -> Vec<Vec<u8>> {
+    block_n(base, 100)
+}
+
+/// [`block`] with `n` plaintext bytes per packet.
+fn block_n(base: u16, n: u32) -> Vec<Vec<u8>> {
     let ts = |i: u16| {
         u32::from(base)
             .wrapping_mul(DUR)
@@ -52,7 +61,7 @@ fn block(base: u16) -> Vec<Vec<u8>> {
                 &KEY,
                 KEY_ID,
                 base.wrapping_add(i),
-                &plain(base.wrapping_add(i)),
+                &plain_n(base.wrapping_add(i), n),
             )
         })
         .collect();
@@ -419,4 +428,28 @@ fn odd_sized_first_packet_does_not_set_block_size() {
     // The normal packets of the same block still take part in FEC recovery.
     let frames = run(&mut fec, &b, &[1, 4, 5, 3]);
     check(&frames, 4, &[1, 2, 3]);
+}
+
+#[test]
+fn resync_to_a_different_packet_size_keeps_fec_working() {
+    let mut fec = AudioFec::new(DUR);
+    run(&mut fec, &block(5000), &[0, 1, 2, 3]);
+    // Host restarts at seq 0 with larger packets (encrypted 112 -> 192 bytes).
+    for k in 0..2u16 {
+        for p in &block_n(4 * k, 180)[..4] {
+            let _ = fec.push(p);
+        }
+    }
+    let b = block_n(8, 180);
+    let c = AudioCipher::new(&KEY, KEY_ID);
+    let got: Vec<_> = [0usize, 2, 3, 4]
+        .iter()
+        .flat_map(|&i| fec.push(&b[i]).unwrap())
+        .map(|p| c.open(&p).unwrap())
+        .collect();
+    assert_eq!(got.len(), 4);
+    for f in got {
+        assert_eq!(f.data, plain_n(f.seq, 180));
+    }
+    assert_eq!(fec.stats().recovered, 1);
 }
