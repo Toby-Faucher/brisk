@@ -1,11 +1,10 @@
 # Control stream fixtures (stub)
 
-**Live-verified 2026-10-24 (no raw UDP capture committed):** `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 30` against the installed Sunshine v2026.914.233613: ENet CONNECT/VERIFY accepted, Gen7Enc AES-GCM control messages accepted in both directions (297 pings sent, 297 acked, 0 bad host messages), IDR request + Start B accepted, a second IDR request at 15 s accepted, host message 0x010e received, no termination, session cancelled cleanly. Video 24437 packets / 34.4 MB and audio 8991 packets / 3.0 MB arrived on the ping sockets. So the offsets/IV rules below are confirmed in effect; raw-byte fixtures still need a recorder for UDP (Task 12).
-
-No live capture yet. Everything in brisk_proto::{enet, control} and the fake host in
-crates/brisk-client/tests/control.rs comes from reading the pinned C sources. The first live run
-(`brisk-probe control`, with `tcpdump -w` on UDP 47999 if wanted) must confirm the byte offsets
-below. Then scrub the capture (it carries the per-session connect data and ciphertext under the
+**Live-verified 2026-10-24 (no raw UDP capture committed):** `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 30` against the installed Sunshine v2026.914.233613: ENet CONNECT/VERIFY accepted, Gen7Enc AES-GCM control messages accepted in both directions (297 pings sent, 297 acked, 0 bad host messages), IDR request + Start B accepted, a second IDR request at 15 s accepted, host message 0x010e received, no termination, session cancelled cleanly. Video 24437 packets / 34.4 MB and audio 8991 packets / 3.0 MB arrived on the ping sockets. So the offsets/IV rules below are confirmed in effect, and the 60 s live `brisk-probe stream` runs
+(docs/m0-baseline.md) used the same control path. Still no raw control-byte capture committed:
+the layouts below and the fake host in crates/brisk-client/tests/control.rs come from reading the
+pinned C sources, checked live only by Sunshine accepting them. A capture (`tcpdump -w` on UDP
+47999) would pin the byte offsets. Then scrub the capture (it carries the per-session connect data and ciphertext under the
 rikey; the rikey itself must never be stored) and commit it here.
 
 ## Client to host (ENet CONNECT, datagram 1)

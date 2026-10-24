@@ -1,5 +1,23 @@
 # M1 notes
 
+## Status (2026-10-24)
+
+| milestone | status |
+|---|---|
+| M1 (receive + control) | complete: live gate PASS (60 s `brisk-probe stream`, loopback, LAN IP and Tailscale IP of bawn itself; docs/m0-baseline.md) |
+| M0 (latency baseline) | partial: host side done (capture+encode, jitter, IDR response); network RTT, client decode and present rows PENDING (Toby) |
+
+Verified live: control stream, encrypted RTSP, video packet parsing and frame assembly, audio
+parsing and AES-CBC decryption (`SS_ENC_AUDIO`, encryption 0x5), IDR requests. Verified offline
+against real Sunshine bytes: video Reed-Solomon and the audio parity matrix (erasures of the
+recorded parity blocks, brisk-proto tests `recorded_*_fec_*`).
+Still unverified: frames spanning several FEC blocks (none recorded), FEC under real loss (the live
+runs saw none), input packet bytes (until the `--input-demo` live run), rumble, HEVC,
+`SS_ENC_VIDEO`, any real network path.
+
+Purity: `scripts/check-pure-rust.sh` fails if ring, aws-lc-sys, openssl-sys or cc is reachable
+through normal/build dependencies on any target (2026-10-24: passes).
+
 ## Control stream (Task 8)
 
 ### ENet: own minimal sans-io peer, rusty_enet only as a test-side host
@@ -74,18 +92,19 @@ without an ACK), compression, checksum, bandwidth and throttle adaptation, unseq
   graceful disconnect = `disconnect_later` + 2 s linger (Misc.c:45-80).
 
 ## Live control run (2026-10-24, bawn, Sunshine v2026.914.233613)
-Command: `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 30`. Result: ENet handshake OK, encrypted control OK both ways (297/297 pings acked, 0 bad host messages), IDR at start and at 15 s, host message 0x010e once, no termination, clean cancel, Sunshine FREE after. A/V keepalive pings accepted: video 24437 pkts (34.4 MB) and audio 8991 pkts (3.0 MB) received in 30 s (about 9.2 Mbit/s video on a static Steam Big Picture screen; [U] the bitrate depends on content and Sunshine's configured bitrate). Not yet verified live: video/audio packet parsing and FEC, input packet bytes (no observable effect yet), rumble.
+Command: `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 30`. Result: ENet handshake OK, encrypted control OK both ways (297/297 pings acked, 0 bad host messages), IDR at start and at 15 s, host message 0x010e once, no termination, clean cancel, Sunshine FREE after. A/V keepalive pings accepted: video 24437 pkts (34.4 MB) and audio 8991 pkts (3.0 MB) received in 30 s (about 9.2 Mbit/s video on a static Steam Big Picture screen; [U] the bitrate depends on content and Sunshine's configured bitrate). At the time not verified live: video/audio packet parsing and FEC (parsing since verified by the stream runs, see Status), input packet bytes (no observable effect yet), rumble.
 
-## Stream receive (Task 12, offline part)
+## Stream receive (Task 12)
 
 `brisk-probe stream` feeds every datagram on the A/V ping sockets through brisk_proto
 (`ControlSession::run_until_with` hands them to `brisk_client::stream::StreamRx`). Facts read
-from the pinned sources, not yet live-verified:
+from the pinned sources; the audio-encryption ones are confirmed by the live stream runs
+(encryption 0x5, 0 parse errors), video encryption is not (never negotiated):
 
 - Audio is encrypted only when `SS_ENC_AUDIO` is negotiated (`encode_audio(session->config.encryptionFlagsEnabled & SS_ENC_AUDIO, ...)`, stream.cpp:352-360, 1889; legacy nvFeatureFlags 0x20 also turns it on, rtsp.cpp:1163-1166). The live control run negotiated 0x1, so its audio was plain. `stream` asks for `SS_ENC_AUDIO` (Moonlight's default, [U] for moonlight-qt) so the audio path and the recorded samples are AES-CBC; Sunshine always advertises it as supported (rtsp.cpp:931).
 - Audio key: `rikey`; IV base `avRiKeyId` = the launch `rikeyid` (nvhttp.cpp:523 stores it big-endian, stream.cpp:2372 reads it back big-endian).
 - Video stays plain unless `SS_ENC_VIDEO` is negotiated (LAN encryption mode "never" by default: Sunshine does not even advertise it, rtsp.cpp:939-948). Both paths are handled.
-- Gate: parse errors (video decrypt/parse/assembler + audio FEC/decrypt) = 0, frames >= 0.95 x 60 x secs, and an IDR frame within 2 s of each IDR request (sent at secs/3 and 2 secs/3). A request in the last 2 s of the run with no IDR yet counts as unanswered.
+- Gate: parse errors (video decrypt/parse/assembler + audio FEC/decrypt) = 0, frames >= 0.95 x 60 x secs, and an IDR frame within 2 s of each IDR request (sent at secs/3 and 2 secs/3). A request in the last 2 s of the run with no IDR yet counts as unanswered. A frame lost beyond FEC also triggers an IDR request (Sunshine's GOP is infinite), at most one per 500 ms; those are counted in `idr_requests ... on frame loss` but not gated.
 
 ## Receive buffers
 

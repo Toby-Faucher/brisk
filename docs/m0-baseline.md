@@ -40,9 +40,9 @@ These only show the script works. Do not use them as the baseline.
 | target | method | verdict | min / median / p99 |
 |---|---|---|---|
 | 127.0.0.1 | `ping -c 100 -i 0.2` | loopback | 0.035 / 0.060 / 0.122 ms |
-| tailnet peer `framework` (from bawn, 20 pongs) | `tailscale ping` | direct, `10.0.0.151:41641` (LAN) | 2 / 2.5 / 109 ms |
+| a tailnet peer on the same LAN (from bawn, 20 pongs) | `tailscale ping` | direct, `<peer LAN IP>:41641` (LAN) | 2 / 2.5 / 109 ms |
 
-bawn cannot ping its own tailnet name (`tailscale ping bawn` reports "local Tailscale IP"); the script exits 2 with a message. The `framework` p99 is one outlier of 20; not re-run, so unexplained.
+bawn cannot ping its own tailnet name (`tailscale ping bawn` reports "local Tailscale IP"); the script exits 2 with a message. The peer's p99 is one outlier of 20; not re-run, so unexplained.
 
 ## Measured live on bawn (brisk-probe stream, 60 s, 2026-10-24, loopback, static Steam Big Picture)
 
