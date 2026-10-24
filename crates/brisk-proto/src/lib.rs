@@ -1,5 +1,7 @@
 //! Sans-io Moonlight/GameStream protocol.
 
+pub mod pair;
+
 pub mod version {
     pub const SUNSHINE_APPVERSION: &str = "7.1.431.-1";
 }

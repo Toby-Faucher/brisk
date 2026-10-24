@@ -2,3 +2,9 @@
 name = "brisk-proto"
 edition.workspace = true
 version.workspace = true
+
+[dependencies]
+aes = "0.8.4"
+rsa = { version = "0.9.10", features = ["sha2"] }
+sha2 = "0.10.9"
+x509-cert = { version = "0.2.5", features = ["pem"] }
