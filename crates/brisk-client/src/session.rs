@@ -35,7 +35,14 @@ pub struct Session {
     /// Updated from every plain-HTTP `serverinfo`.
     pub https_port: u16,
     pub recorder: Option<Recorder>,
+    /// Per-attempt timeout and base backoff for `cancel_retry` (fields so tests can shrink them).
+    pub cancel_wait: Duration,
+    pub cancel_backoff: Duration,
+    /// Set once `launch_probe` is about to send `/launch`: the only time a session is ours to cancel.
+    pub started: bool,
 }
+
+const CANCEL_ATTEMPTS: u32 = 3;
 
 type Tls<'a> = Option<(&'a Identity, &'a ServerCert)>;
 
@@ -46,6 +53,9 @@ impl Session {
             http_port: HTTP_PORT,
             https_port: HTTPS_PORT,
             recorder: None,
+            cancel_wait: Duration::from_secs(15),
+            cancel_backoff: Duration::from_secs(1),
+            started: false,
         }
     }
 
@@ -108,12 +118,37 @@ impl Session {
     /// `GET /cancel` (HTTPS): Sunshine stops the stream and the app.
     pub async fn cancel(&mut self, ident: &Identity, server: &ServerCert) -> crate::Result<()> {
         let q = cancel_query(&ident.unique_id);
-        check_status(&self.get(Some((ident, server)), "/cancel", &q, WAIT).await?)?;
+        let w = self.cancel_wait;
+        check_status(&self.get(Some((ident, server)), "/cancel", &q, w).await?)?;
         Ok(())
     }
 
-    /// Launch, RTSP handshake, then `cancel` whatever happened (a failed launch may still have
-    /// started the app). Returns the negotiated stream ports.
+    /// `cancel` with up to 3 attempts and a growing backoff (a single 10 s timeout was seen live).
+    pub async fn cancel_retry(
+        &mut self,
+        ident: &Identity,
+        server: &ServerCert,
+    ) -> crate::Result<()> {
+        let mut last = String::new();
+        for n in 1..=CANCEL_ATTEMPTS {
+            match self.cancel(ident, server).await {
+                Ok(()) => return Ok(()),
+                Err(e) => last = e.to_string(),
+            }
+            if n < CANCEL_ATTEMPTS {
+                tokio::time::sleep(self.cancel_backoff * n).await;
+            }
+        }
+        Err(format!(
+            "cancel FAILED after {CANCEL_ATTEMPTS} attempts: session may still be running on host; run `brisk-probe cancel --host {}` ({last})",
+            self.host
+        )
+        .into())
+    }
+
+    /// Refuse (or, with `take_over`, cancel) when the host already runs something, launch,
+    /// RTSP handshake, then cancel. Only a session this call started is ever cancelled: a rejected
+    /// launch (Sunshine answered with a status) and a busy pre-check never reach `/cancel`.
     pub async fn launch_probe(
         &mut self,
         ident: &Identity,
@@ -121,25 +156,60 @@ impl Session {
         app_id: u32,
         app_version: &str,
         cfg: &StreamConfig,
+        take_over: bool,
     ) -> crate::Result<StreamPorts> {
-        let r = async {
-            let l = self.launch(ident, server, app_id, cfg).await?;
-            handshake(
-                &self.host,
-                &l.session_url,
-                app_version,
-                cfg,
-                self.recorder.as_mut(),
-            )
-            .await
+        let info = self.serverinfo(Some((ident, server))).await?;
+        if info.current_game != 0 || info.server_state != "SUNSHINE_SERVER_FREE" {
+            let busy = format!(
+                "server busy: an app/session is already running (currentgame={}, state={})",
+                info.current_game, info.server_state
+            );
+            if !take_over {
+                return Err(
+                    format!("{busy}; not cancelling it (pass --take-over to replace it)").into(),
+                );
+            }
+            eprintln!("WARNING: --take-over: {busy}; cancelling it NOW");
+            self.cancel_retry(ident, server).await?;
         }
+        self.started = true;
+        let l = match self.launch(ident, server, app_id, cfg).await {
+            Ok(l) => l,
+            Err(e) => {
+                // A status reply means Sunshine refused: nothing of ours is running.
+                let refused = e
+                    .downcast_ref::<brisk_proto::http::HttpError>()
+                    .is_some_and(|h| matches!(h, brisk_proto::http::HttpError::Status { .. }));
+                if refused {
+                    let busy = e.to_string().contains("already running");
+                    return Err(if busy {
+                        format!("server busy: an app/session is already running (currentgame={}); not cancelling it ({e})", info.current_game)
+                    } else {
+                        format!("launch rejected: {e}; nothing to cancel")
+                    }
+                    .into());
+                }
+                // Timeout or transport error: the app may have started, so clean up.
+                return Err(match self.cancel_retry(ident, server).await {
+                    Ok(()) => e,
+                    Err(c) => format!("{e}; {c}").into(),
+                });
+            }
+        };
+        let r = handshake(
+            &self.host,
+            &l.session_url,
+            app_version,
+            cfg,
+            self.recorder.as_mut(),
+        )
         .await;
-        let c = self.cancel(ident, server).await;
+        let c = self.cancel_retry(ident, server).await;
         match (r, c) {
             (Ok(p), Ok(())) => Ok(p),
-            (Ok(_), Err(c)) => Err(format!("stream ran but cancel failed: {c}").into()),
+            (Ok(_), Err(c)) => Err(c),
             (Err(e), Ok(())) => Err(e),
-            (Err(e), Err(c)) => Err(format!("{e}; also cancel failed: {c}").into()),
+            (Err(e), Err(c)) => Err(format!("{e}; {c}").into()),
         }
     }
 

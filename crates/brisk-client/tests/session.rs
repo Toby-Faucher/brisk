@@ -18,6 +18,7 @@ use rustls::{DigitallySignedStruct, DistinguishedName, SignatureScheme};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -61,9 +62,15 @@ struct Fake {
     ident: &'static Identity,
     tls_port: u16,
     omit_len: std::sync::atomic::AtomicBool,
+    /// Pretend something else is running (`currentgame`/`state`); cleared by a `/cancel`.
+    busy: std::sync::atomic::AtomicBool,
+    launches: AtomicUsize,
+    /// Every `/cancel` request received, and how many of them to swallow without a reply.
+    cancel_reqs: AtomicUsize,
+    cancel_drop: AtomicUsize,
     st: Mutex<St>,
     rtsp_port: u16,
-    /// "ok", "plain" (rtsp:// URL), "launch-fail", "fail-ANNOUNCE", "tamper-DESCRIBE".
+    /// "ok", "plain" (rtsp:// URL), "launch-busy", "launch-fail", "fail-ANNOUNCE", "tamper-DESCRIBE".
     mode: Mutex<&'static str>,
     rtsp: Mutex<RtspSt>,
 }
@@ -87,13 +94,18 @@ impl Fake {
         let mut st = self.st.lock().unwrap();
         let authed = peer.is_some() && peer == st.authorized;
         let key = st.key;
+        let busy = self.busy.load(Ordering::SeqCst);
         match path {
             "/serverinfo" => xml(&format!(
-                "<hostname>fake</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>FAKE0123</uniqueid><HttpsPort>{}</HttpsPort><ServerCodecModeSupport>259</ServerCodecModeSupport><PairStatus>{}</PairStatus><currentgame>0</currentgame><state>SUNSHINE_SERVER_FREE</state>",
-                self.tls_port, authed as u8
+                "<hostname>fake</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>FAKE0123</uniqueid><HttpsPort>{}</HttpsPort><ServerCodecModeSupport>259</ServerCodecModeSupport><PairStatus>{}</PairStatus><currentgame>{}</currentgame><state>{}</state>",
+                self.tls_port, authed as u8, if busy {"5"} else {"0"}, if busy {"SUNSHINE_SERVER_BUSY"} else {"SUNSHINE_SERVER_FREE"}
             )),
             "/launch" if authed => {
                 let mode = *self.mode.lock().unwrap();
+                self.launches.fetch_add(1, Ordering::SeqCst);
+                if mode == "launch-busy" {
+                    return r#"<root status_code="400" status_message="An app is already running on this host"/>"#.into();
+                }
                 if mode == "launch-fail" {
                     return r#"<root status_code="503" status_message="fake launch failure"/>"#.into();
                 }
@@ -104,6 +116,12 @@ impl Fake {
                 xml(&format!("<sessionUrl0>{scheme}://127.0.0.1:{}</sessionUrl0><gamesession>1</gamesession>", self.rtsp_port))
             }
             "/cancel" if authed => {
+                self.cancel_reqs.fetch_add(1, Ordering::SeqCst);
+                if self.cancel_drop.load(Ordering::SeqCst) > 0 {
+                    self.cancel_drop.fetch_sub(1, Ordering::SeqCst);
+                    return String::new(); // serve_conn closes without replying
+                }
+                self.busy.store(false, Ordering::SeqCst);
                 self.rtsp.lock().unwrap().cancels += 1;
                 xml("<cancel>1</cancel>")
             }
@@ -185,6 +203,9 @@ async fn serve_conn<S: AsyncRead + AsyncWrite + Unpin>(
         (unpercent(k), unpercent(v))
     });
     let body = fake.handle(path, &q.collect(), peer.clone());
+    if body.is_empty() {
+        return;
+    }
     let len = if peer.is_some() && fake.omit_len.load(std::sync::atomic::Ordering::SeqCst) {
         String::new()
     } else {
@@ -375,6 +396,10 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
         ident,
         tls_port: https.local_addr().unwrap().port(),
         omit_len: Default::default(),
+        busy: Default::default(),
+        launches: Default::default(),
+        cancel_reqs: Default::default(),
+        cancel_drop: Default::default(),
         st: Mutex::default(),
     });
     let provider = Arc::new(rustls_rustcrypto::provider());
@@ -685,7 +710,7 @@ const RTSP_SEQUENCE: [(&str, &str); 7] = [
 async fn launch_ok(mode: &'static str, scheme: &str) {
     let (mut s, fake, ident, server, _t) = paired(mode).await;
     let ports = s
-        .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg())
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg(), false)
         .await
         .unwrap();
     assert_eq!(
@@ -732,13 +757,12 @@ async fn launch_plain_rtsp_handshake_then_cancel() {
 #[tokio::test]
 async fn failures_still_cancel() {
     for (mode, needle) in [
-        ("launch-fail", "fake launch failure"),
         ("fail-ANNOUNCE", "ANNOUNCE"),
         ("tamper-DESCRIBE", "authentication"),
     ] {
         let (mut s, fake, ident, server, _t) = paired(mode).await;
         let err = s
-            .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg())
+            .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg(), false)
             .await
             .unwrap_err();
         assert!(err.to_string().contains(needle), "{mode}: {err}");
@@ -752,7 +776,7 @@ async fn launch_recording_scrubs_rikey() {
     let dir = t.path().join("rec");
     s.recorder = Some(Recorder::new(&dir));
     let cfg = stream_cfg();
-    s.launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg)
+    s.launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, false)
         .await
         .unwrap();
     s.recorder.take().unwrap().finish().unwrap();
@@ -782,4 +806,98 @@ fn system_rng_rikeys_are_fresh() {
         k
     };
     assert_ne!(draw(), draw());
+}
+
+fn fast(s: &mut Session) {
+    s.cancel_wait = std::time::Duration::from_secs(2);
+    s.cancel_backoff = std::time::Duration::from_millis(10);
+}
+
+async fn probe(
+    s: &mut Session,
+    i: &Identity,
+    c: &ServerCert,
+    take_over: bool,
+) -> brisk_client::Result<brisk_client::rtsp::StreamPorts> {
+    s.launch_probe(i, c, 1, "7.1.431.-1", &stream_cfg(), take_over)
+        .await
+}
+
+#[tokio::test]
+async fn rejected_launch_never_cancels() {
+    for (mode, needle) in [
+        ("launch-busy", "server busy"),
+        ("launch-fail", "fake launch failure"),
+    ] {
+        let (mut s, fake, ident, server, _t) = paired(mode).await;
+        let err = probe(&mut s, &ident, &server, false)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(needle), "{err}");
+        assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn busy_host_refused_without_launch_unless_take_over() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    fake.busy.store(true, Ordering::SeqCst);
+    let err = probe(&mut s, &ident, &server, false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("server busy") && err.contains("currentgame=5"),
+        "{err}"
+    );
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0);
+    assert!(!s.started);
+    probe(&mut s, &ident, &server, true).await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 2); // take-over cancel, then our own
+}
+
+#[tokio::test]
+async fn cancel_retries_after_a_lost_reply() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    fast(&mut s);
+    fake.cancel_drop.store(1, Ordering::SeqCst);
+    probe(&mut s, &ident, &server, false).await.unwrap();
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 2);
+    assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+}
+
+#[tokio::test]
+async fn cancel_failing_three_times_is_a_loud_error() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    fast(&mut s);
+    fake.cancel_drop.store(3, Ordering::SeqCst);
+    let err = probe(&mut s, &ident, &server, false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("cancel FAILED after 3 attempts")
+            && err.contains("may still be running")
+            && err.contains("brisk-probe cancel --host 127.0.0.1"),
+        "{err}"
+    );
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 3);
+}
+
+/// What `brisk-probe cancel` does: retrying cancel, then serverinfo shows the host free.
+#[tokio::test]
+async fn cancel_subcommand_path_frees_host() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    fast(&mut s);
+    fake.busy.store(true, Ordering::SeqCst);
+    fake.cancel_drop.store(1, Ordering::SeqCst);
+    s.cancel_retry(&ident, &server).await.unwrap();
+    let i = s.serverinfo(Some((&ident, &server))).await.unwrap();
+    assert_eq!(
+        (i.current_game, i.server_state.as_str()),
+        (0, "SUNSHINE_SERVER_FREE")
+    );
 }

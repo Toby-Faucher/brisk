@@ -2,6 +2,9 @@
 //!   brisk-probe [--record DIR] [--config DIR] pair --host HOST [--pin NNNN]
 //!   brisk-probe [--record DIR] [--config DIR] apps --host HOST
 //!   brisk-probe [--record DIR] [--config DIR] launch --host HOST --app ID
+//!   brisk-probe [--record DIR] [--config DIR] cancel --host HOST
+//!     cancel: explicit cleanup of a session left running; prints serverinfo state after.
+//!     launch refuses a busy host unless --take-over (which cancels what is running first).
 //!     launch: 1080p60 H.264, RTSP handshake, prints server ports, then cancels (also on Ctrl-C).
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
@@ -14,13 +17,14 @@ use brisk_proto::sdp::{Codec, StreamConfig};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID)";
+const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | cancel --host HOST)";
 
 struct Args {
     cmd: String,
     host: String,
     pin: Option<String>,
     app: Option<u32>,
+    take_over: bool,
     record: Option<PathBuf>,
     config: PathBuf,
 }
@@ -28,6 +32,7 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let (mut cmd, mut host, mut pin, mut app, mut record, mut config) =
         (None, None, None, None, None, None);
+    let mut take_over = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
@@ -35,9 +40,10 @@ fn parse_args() -> Result<Args, String> {
             "--host" => host = Some(val()?),
             "--pin" => pin = Some(val()?),
             "--app" => app = Some(val()?.parse().map_err(|_| "--app must be a number")?),
+            "--take-over" => take_over = true,
             "--record" => record = Some(PathBuf::from(val()?)),
             "--config" => config = Some(PathBuf::from(val()?)),
-            "pair" | "apps" | "launch" if cmd.is_none() => cmd = Some(a),
+            "pair" | "apps" | "launch" | "cancel" if cmd.is_none() => cmd = Some(a),
             _ => return Err(format!("unexpected argument {a:?}")),
         }
     }
@@ -58,6 +64,7 @@ fn parse_args() -> Result<Args, String> {
         host: host.ok_or("missing --host")?,
         pin,
         app,
+        take_over,
         record,
         config,
     })
@@ -119,11 +126,14 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 };
                 let app = a.app.unwrap();
                 let r = tokio::select! {
-                    r = s.launch_probe(&ident, &server, app, &info.app_version, &cfg) => Some(r),
+                    r = s.launch_probe(&ident, &server, app, &info.app_version, &cfg, a.take_over) => Some(r),
                     _ = tokio::signal::ctrl_c() => None,
                 };
                 let Some(r) = r else {
-                    s.cancel(&ident, &server).await?;
+                    if !s.started {
+                        return Err("interrupted before launch; nothing cancelled".into());
+                    }
+                    s.cancel_retry(&ident, &server).await?;
                     return Err("interrupted; session cancelled".into());
                 };
                 let p = r?;
@@ -133,6 +143,19 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 );
                 println!("session\t{}\nencryption\t{:#x}", p.session_id, p.enc_flags);
                 println!("cancelled");
+                Ok(())
+            }
+            .await
+        }
+        "cancel" => {
+            async {
+                let server = ServerCert::load(&dir)?;
+                let ident = load_identity(&dir)?;
+                s.serverinfo(None).await?;
+                s.cancel_retry(&ident, &server).await?;
+                println!("cancelled");
+                let i = s.serverinfo(Some((&ident, &server))).await?;
+                println!("state\t{}\ncurrentgame\t{}", i.server_state, i.current_game);
                 Ok(())
             }
             .await
