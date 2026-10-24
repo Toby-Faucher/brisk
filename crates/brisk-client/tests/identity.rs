@@ -30,6 +30,26 @@ fn identity_roundtrip_is_0600() {
 }
 
 #[test]
+fn unreadable_identity_is_an_error_and_untouched() {
+    let t = tempfile::tempdir().unwrap();
+    load_or_create_identity(t.path()).unwrap();
+    let key = t.path().join("client.key");
+    let before = std::fs::read(&key).unwrap();
+    std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read(&key).is_ok() {
+        return; // running as root: chmod 000 does not block reads
+    }
+    assert!(load_or_create_identity(t.path()).is_err());
+    assert!(load_identity(t.path()).is_err());
+    std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read(&key).unwrap(), before);
+    // load_identity never creates
+    let empty = tempfile::tempdir().unwrap();
+    assert!(load_identity(empty.path()).is_err());
+    assert_eq!(std::fs::read_dir(empty.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn half_written_identity_is_not_loaded() {
     let t = tempfile::tempdir().unwrap();
     let a = load_or_create_identity(t.path()).unwrap();

@@ -6,9 +6,9 @@ use rsa::pkcs1v15::{Signature, SigningKey};
 use rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::Sha256;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
@@ -53,35 +53,60 @@ impl ServerCert {
     }
 }
 
-/// Loads the identity in `dir`, or generates and stores a new one if any part is missing,
-/// unreadable or mismatched (a half-written identity is replaced, not an error).
+/// Loads the existing identity in `dir`; never creates or overwrites anything.
+pub fn load_identity(dir: &Path) -> crate::Result<Identity> {
+    load(dir)?.ok_or_else(|| {
+        format!(
+            "no valid identity in {}; run `brisk-probe pair`",
+            dir.display()
+        )
+        .into()
+    })
+}
+
+/// Loads the identity in `dir`, or generates and stores a new one if a file is missing or the
+/// identity does not parse or match (a half-written identity is replaced). Any other I/O error
+/// (EACCES, EIO, ...) is returned and never leads to overwriting an existing key.
 pub fn load_or_create_identity(dir: &Path) -> crate::Result<Identity> {
-    if let Some(id) = load(dir) {
+    if let Some(id) = load(dir)? {
         return Ok(id);
     }
     let id = generate()?;
-    fs::create_dir_all(dir)?;
-    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
     write_secret(dir, KEY, &id.key_pem)?;
     write_secret(dir, CERT, &id.cert_pem)?;
     write_secret(dir, UNIQUE_ID, &id.unique_id)?;
     Ok(id)
 }
 
-fn load(dir: &Path) -> Option<Identity> {
-    let read = |n| fs::read_to_string(dir.join(n)).ok();
-    let id = Identity {
-        cert_pem: read(CERT)?,
-        key_pem: read(KEY)?,
-        unique_id: read(UNIQUE_ID)?,
+/// `Ok(None)`: a file is missing, or the identity is unparsable/mismatched. `Err`: any other I/O error.
+fn load(dir: &Path) -> crate::Result<Option<Identity>> {
+    let read = |n| match fs::read_to_string(dir.join(n)) {
+        Ok(s) => Ok(Some(s)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {e}", dir.join(n).display())),
     };
-    let cert = Certificate::from_pem(&id.cert_pem).ok()?;
-    let spki =
-        x509_cert::der::Encode::to_der(&cert.tbs_certificate.subject_public_key_info).ok()?;
-    let key = RsaPrivateKey::from_pkcs8_pem(&id.key_pem).ok()?;
-    (RsaPublicKey::from_public_key_der(&spki).ok()? == key.to_public_key()
-        && !id.unique_id.is_empty())
-    .then_some(id)
+    let (Some(cert_pem), Some(key_pem), Some(unique_id)) =
+        (read(CERT)?, read(KEY)?, read(UNIQUE_ID)?)
+    else {
+        return Ok(None);
+    };
+    let id = Identity {
+        cert_pem,
+        key_pem,
+        unique_id,
+    };
+    let ok = || -> Option<bool> {
+        let cert = Certificate::from_pem(&id.cert_pem).ok()?;
+        let spki =
+            x509_cert::der::Encode::to_der(&cert.tbs_certificate.subject_public_key_info).ok()?;
+        let key = RsaPrivateKey::from_pkcs8_pem(&id.key_pem).ok()?;
+        Some(
+            RsaPublicKey::from_public_key_der(&spki).ok()? == key.to_public_key()
+                && !id.unique_id.is_empty(),
+        )
+    };
+    Ok(ok().unwrap_or(false).then_some(id))
 }
 
 fn generate() -> crate::Result<Identity> {

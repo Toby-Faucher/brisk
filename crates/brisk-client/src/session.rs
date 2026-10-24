@@ -202,7 +202,7 @@ impl Session {
             rec.push(&format!("{label}-req"), tls.is_some(), req.as_bytes());
             rec.push(&format!("{label}-resp"), tls.is_some(), &raw);
         }
-        body(&raw).map_err(|e| format!("{path}: {e}").into())
+        body(&raw, tls.is_some()).map_err(|e| format!("{path}: {e}").into())
     }
 }
 
@@ -272,8 +272,9 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
     Ok(buf)
 }
 
-/// Body of a raw HTTP/1.1 response; enforces Content-Length when present, rejects chunked.
-fn body(raw: &[u8]) -> crate::Result<String> {
+/// Body of a raw HTTP/1.1 response; enforces Content-Length (required when `need_len`, i.e. over
+/// TLS where a close without close_notify is tolerated), rejects chunked.
+fn body(raw: &[u8], need_len: bool) -> crate::Result<String> {
     let end = raw
         .windows(4)
         .position(|w| w == b"\r\n\r\n")
@@ -286,10 +287,12 @@ fn body(raw: &[u8]) -> crate::Result<String> {
         .and_then(|c| c.parse().ok())
         .ok_or("bad http status line")?;
     let mut body = &raw[end + 4..];
+    let mut has_len = false;
     for (k, v) in lines.filter_map(|l| l.split_once(':')) {
         match k.trim().to_ascii_lowercase().as_str() {
             "transfer-encoding" => return Err("chunked http response not supported".into()),
             "content-length" => {
+                has_len = true;
                 let n: usize = v.trim().parse().map_err(|_| "bad content-length")?;
                 if body.len() < n {
                     return Err("truncated http response body".into());
@@ -298,6 +301,9 @@ fn body(raw: &[u8]) -> crate::Result<String> {
             }
             _ => {}
         }
+    }
+    if need_len && !has_len {
+        return Err("https response without content-length".into());
     }
     let body = String::from_utf8(body.to_vec()).map_err(|_| "non-utf8 http body")?;
     if status != 200 && body.trim().is_empty() {
@@ -384,11 +390,20 @@ mod tests {
     #[test]
     fn body_checks_length_and_status() {
         let ok = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello trailing";
-        assert_eq!(body(ok).unwrap(), "hello");
-        assert!(body(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort").is_err());
-        assert!(body(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello").is_err());
-        assert!(body(b"HTTP/1.1 404 Not Found\r\n\r\n").is_err());
-        assert!(body(b"HTTP/1.1 200 OK\r\nContent").is_err());
+        assert_eq!(body(ok, false).unwrap(), "hello");
+        assert!(body(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort", false).is_err());
+        assert!(body(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello",
+            false
+        )
+        .is_err());
+        assert!(body(b"HTTP/1.1 404 Not Found\r\n\r\n", false).is_err());
+        assert!(body(b"HTTP/1.1 200 OK\r\nContent", false).is_err());
+        assert!(body(b"HTTP/1.1 200 OK\r\n\r\nhi", true).is_err());
+        assert_eq!(
+            body(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", true).unwrap(),
+            "hi"
+        );
         assert_eq!(enc("a b/+Z~"), "a%20b%2F%2BZ~");
     }
 }

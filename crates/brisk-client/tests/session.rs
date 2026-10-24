@@ -58,6 +58,7 @@ struct Fake {
     pin: String,
     ident: &'static Identity,
     tls_port: u16,
+    omit_len: std::sync::atomic::AtomicBool,
     st: Mutex<St>,
 }
 
@@ -153,8 +154,15 @@ async fn serve_conn<S: AsyncRead + AsyncWrite + Unpin>(
         let (k, v) = kv.split_once('=').unwrap();
         (unpercent(k), unpercent(v))
     });
-    let body = fake.handle(path, &q.collect(), peer);
-    let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    let body = fake.handle(path, &q.collect(), peer.clone());
+    let len = if peer.is_some() && fake.omit_len.load(std::sync::atomic::Ordering::SeqCst) {
+        String::new()
+    } else {
+        format!("Content-Length: {}\r\n", body.len())
+    };
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\n{len}Connection: close\r\n\r\n{body}"
+    );
     s.write_all(resp.as_bytes()).await.unwrap();
     s.flush().await.unwrap();
     // Dropped without close_notify on TLS, to exercise the client's Content-Length check.
@@ -205,6 +213,7 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
         pin: pin.into(),
         ident,
         tls_port: https.local_addr().unwrap().port(),
+        omit_len: Default::default(),
         st: Mutex::default(),
     });
     let provider = Arc::new(rustls_rustcrypto::provider());
@@ -280,6 +289,60 @@ async fn pair_then_applist_over_pinned_https() {
         apps.iter().map(|a| a.title.as_str()).collect::<Vec<_>>(),
         ["Desktop", "Steam Big Picture"]
     );
+}
+
+#[tokio::test]
+async fn https_response_without_content_length_is_an_error() {
+    let t = tempfile::tempdir().unwrap();
+    let ident = load_or_create_identity(t.path()).unwrap();
+    let (mut s, fake) = start("4821", 0).await;
+    let server = s
+        .pair(t.path(), &ident, "4821", Box::new(brisk_client::SystemRng))
+        .await
+        .unwrap();
+    s.serverinfo(None).await.unwrap();
+    fake.omit_len
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let err = s.applist(&ident, &server).await.unwrap_err();
+    assert!(err.to_string().contains("content-length"), "{err}");
+}
+
+/// The pinned verifier must still check the handshake signature: a server that presents the
+/// pinned cert but signs with another key (so the cert bytes match) has to be refused.
+#[tokio::test]
+async fn pinned_verifier_rejects_bad_handshake_signature() {
+    let t = tempfile::tempdir().unwrap();
+    let ident = load_or_create_identity(t.path()).unwrap();
+    let (mut s, fake) = start("4821", 0).await;
+    let pinned = ServerCert {
+        pem: fake.ident.cert_pem.clone(),
+    };
+    s.serverinfo(None).await.unwrap();
+    s.serverinfo(Some((&ident, &pinned))).await.unwrap(); // control: honest server passes
+
+    let provider = Arc::new(rustls_rustcrypto::provider());
+    let other_key = rsa::pkcs8::SecretDocument::from_pkcs8_pem(&server_ident(1).key_pem).unwrap();
+    let cfg = rustls::ServerConfig::builder_with_provider(provider.clone())
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_client_cert_verifier(Arc::new(AnyClient(
+            provider.signature_verification_algorithms,
+        )))
+        .with_single_cert(
+            vec![pem_der(&fake.ident.cert_pem).into()],
+            PrivateKeyDer::Pkcs8(other_key.as_bytes().to_vec().into()),
+        );
+    let Ok(cfg) = cfg else {
+        return; // rustls refused the mismatched key/cert pair outright, nothing to test
+    };
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(cfg));
+    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    s.https_port = l.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let (c, _) = l.accept().await.unwrap();
+        let _ = acceptor.accept(c).await;
+    });
+    assert!(s.serverinfo(Some((&ident, &pinned))).await.is_err());
 }
 
 #[tokio::test]
