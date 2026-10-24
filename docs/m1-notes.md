@@ -4,16 +4,21 @@
 
 | milestone | status |
 |---|---|
-| M1 (receive + control) | complete: live gate PASS (60 s `brisk-probe stream`, loopback, LAN IP and Tailscale IP of bawn itself; docs/m0-baseline.md) |
+| M1 (receive + control) | complete: live gate PASS (60 s `brisk-probe stream`, loopback, LAN IP and Tailscale IP of bawn itself; docs/m0-baseline.md); live input smoke PASS for relative mouse move, keyboard down/up, gamepad 0 attach/detach (see Live input smoke) |
 | M0 (latency baseline) | partial: host side done (capture+encode, jitter, IDR response); network RTT, client decode and present rows PENDING (Toby) |
 
 Verified live: control stream, encrypted RTSP, video packet parsing and frame assembly, audio
-parsing and AES-CBC decryption (`SS_ENC_AUDIO`, encryption 0x5), IDR requests. Verified offline
-against real Sunshine bytes: video Reed-Solomon and the audio parity matrix (erasures of the
-recorded parity blocks, brisk-proto tests `recorded_*_fec_*`).
-Still unverified: frames spanning several FEC blocks (none recorded), FEC under real loss (the live
-runs saw none), input packet bytes (until the `--input-demo` live run), rumble, HEVC,
-`SS_ENC_VIDEO`, any real network path.
+parsing and AES-CBC decryption (`SS_ENC_AUDIO`, encryption 0x5), IDR requests, the input demo's
+packets (decoded in Sunshine's debug log). Verified offline against real Sunshine bytes: video
+Reed-Solomon and the audio parity matrix (erasures of the recorded parity blocks, brisk-proto
+tests `recorded_*_fec_*`).
+Not verified live: gamepad button/stick bytes (Sunshine logs controller packets only at
+`verbose`), mouse buttons, scroll, the rumble back-channel, more than one pad, HEVC,
+`SS_ENC_VIDEO`, frames spanning several FEC blocks (none recorded), real packet loss and ENet
+retransmit, any real network path.
+
+Side effect: `--input-demo`'s gamepad attach makes Sunshine create a virtual Xbox pad on the host
+for a moment (Steam may show "controller connected"); the demo detaches it again.
 
 Purity: `scripts/check-pure-rust.sh` fails if ring, aws-lc-sys, openssl-sys or cc is reachable
 through normal/build dependencies on any target (2026-10-24: passes).
