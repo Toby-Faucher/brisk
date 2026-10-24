@@ -1,0 +1,3 @@
+{"Self":{"HostName":"bawn","DNSName":"bawn.example.ts.net.","TailscaleIPs":["100.64.0.1"]},
+ "Peer":{"nodekey:a":{"HostName":"direct-peer","DNSName":"direct-peer.example.ts.net.","TailscaleIPs":["100.64.0.2"],"CurAddr":"192.0.2.5:41641","Relay":"den"},
+         "nodekey:b":{"HostName":"derp-peer","DNSName":"derp-peer.example.ts.net.","TailscaleIPs":["100.64.0.3"],"CurAddr":"","Relay":"den"}}}
