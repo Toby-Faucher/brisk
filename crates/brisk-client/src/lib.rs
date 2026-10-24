@@ -149,3 +149,32 @@ impl brisk_proto::pair::Rng for SystemRng {
         rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, buf)
     }
 }
+
+/// The library logs through `tracing`; [`StderrLog`] prints warnings and errors to stderr, nothing else.
+pub struct StderrLog;
+
+impl tracing::Subscriber for StderrLog {
+    fn enabled(&self, m: &tracing::Metadata<'_>) -> bool {
+        *m.level() <= tracing::Level::WARN
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1) // spans are not used
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, e: &tracing::Event<'_>) {
+        struct Msg(String);
+        impl tracing::field::Visit for Msg {
+            fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+                if f.name() == "message" {
+                    self.0 = format!("{v:?}");
+                }
+            }
+        }
+        let mut m = Msg(String::new());
+        e.record(&mut m);
+        eprintln!("{}: {}", e.metadata().level(), m.0);
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}

@@ -1,0 +1,196 @@
+//! WebTransport over HTTP/3 on quinn, server side: the subset Chrome needs to open one session
+//! and receive server-initiated unidirectional streams (draft-ietf-webtrans-http3; framing from
+//! `web-transport-proto`).
+//!
+//! Per connection: we open our control stream with SETTINGS (WebTransport, extended CONNECT,
+//! datagrams), accept the browser's CONNECT on its first bidirectional stream and answer 200 only
+//! when the path is the session token. The browser's own uni streams (H3 control, QPACK) are kept
+//! open and ignored; its WebTransport uni streams are short messages for the bridge.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use bytes::Bytes;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc;
+use web_transport_proto::{ConnectRequest, ConnectResponse, Settings, StreamUni, VarInt};
+
+use crate::quic_crypto::{endpoint_config, server_config, ServerCrypto};
+
+pub const ALPN: &[u8] = b"h3";
+/// Largest browser-to-bridge message (a uni stream); longer ones are dropped.
+pub const MAX_MSG: usize = 64;
+/// Messages queued from the browser before new ones are dropped.
+const INBOX: usize = 16;
+
+#[derive(Debug)]
+pub enum Error {
+    Connection(quinn::ConnectionError),
+    Write(quinn::WriteError),
+    /// The CONNECT request was missing, malformed or not for our token.
+    Refused(String),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Connection(e) => write!(f, "webtransport: {e}"),
+            Error::Write(e) => write!(f, "webtransport: {e}"),
+            Error::Refused(s) => write!(f, "webtransport refused: {s}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<quinn::ConnectionError> for Error {
+    fn from(e: quinn::ConnectionError) -> Self {
+        Error::Connection(e)
+    }
+}
+impl From<quinn::WriteError> for Error {
+    fn from(e: quinn::WriteError) -> Self {
+        Error::Write(e)
+    }
+}
+
+/// A QUIC endpoint for WebTransport on `addr` (refuses the unspecified address: bind a
+/// Tailscale or loopback IP).
+pub fn endpoint(
+    addr: SocketAddr,
+    certs: Vec<CertificateDer<'static>>,
+    key: PrivateKeyDer<'static>,
+) -> std::io::Result<quinn::Endpoint> {
+    if addr.ip().is_unspecified() {
+        return Err(std::io::Error::other(
+            "refusing to listen on all interfaces: give a Tailscale or loopback IP",
+        ));
+    }
+    let crypto = ServerCrypto::new(certs, key, &[ALPN]).map_err(std::io::Error::other)?;
+    let mut t = quinn::TransportConfig::default();
+    t.keep_alive_interval(Some(Duration::from_secs(1)));
+    t.max_idle_timeout(Some(
+        quinn::IdleTimeout::try_from(Duration::from_secs(10)).expect("10 s fits"),
+    ));
+    let socket = std::net::UdpSocket::bind(addr)?;
+    quinn::Endpoint::new(
+        endpoint_config(),
+        Some(server_config(crypto, t)),
+        socket,
+        Arc::new(quinn::TokioRuntime),
+    )
+}
+
+/// One WebTransport session (one browser tab).
+pub struct Session {
+    conn: quinn::Connection,
+    /// `0x54, session id`: written first on every uni stream we open.
+    uni_header: Bytes,
+    // Closing either of these ends the session or the HTTP/3 connection.
+    _control: quinn::SendStream,
+    _connect: (quinn::SendStream, quinn::RecvStream),
+}
+
+/// HTTP/3 + WebTransport handshake on a new connection; only a CONNECT to `/<token>` succeeds.
+/// Also returns the browser's messages (the payload of each of its uni streams, at most
+/// [`MAX_MSG`] bytes).
+pub async fn accept(
+    conn: quinn::Connection,
+    token: &str,
+) -> Result<(Session, mpsc::Receiver<Bytes>), Error> {
+    let mut control = conn.open_uni().await?;
+    let mut settings = Settings::default();
+    settings.enable_webtransport(1);
+    settings
+        .write(&mut control)
+        .await
+        .map_err(|e| Error::Refused(format!("settings: {e}")))?;
+
+    let (tx, inbox) = mpsc::channel(INBOX);
+    tokio::spawn(browser_uni_streams(conn.clone(), tx));
+
+    let (mut send, mut recv) = conn.accept_bi().await?;
+    let req = ConnectRequest::read(&mut recv)
+        .await
+        .map_err(|e| Error::Refused(format!("CONNECT: {e}")))?;
+    if req.url.path() != format!("/{token}") {
+        let _ = ConnectResponse::new(http::StatusCode::NOT_FOUND)
+            .write(&mut send)
+            .await;
+        let _ = send.finish();
+        return Err(Error::Refused("wrong session token".into()));
+    }
+    ConnectResponse::new(http::StatusCode::OK)
+        .write(&mut send)
+        .await
+        .map_err(|e| Error::Refused(format!("CONNECT reply: {e}")))?;
+
+    let session_id = VarInt::try_from(u64::from(quinn::VarInt::from(send.id())))
+        .expect("a QUIC stream id is a varint");
+    let mut h = Vec::new();
+    StreamUni::WEBTRANSPORT.encode(&mut h);
+    session_id.encode(&mut h);
+    let s = Session {
+        conn,
+        uni_header: h.into(),
+        _control: control,
+        _connect: (send, recv),
+    };
+    Ok((s, inbox))
+}
+
+/// Takes the browser's uni streams. Each gets its own task: the HTTP/3 control and QPACK
+/// streams may stay silent for a long time and must not block the WebTransport ones behind them.
+/// quinn caps them at 100 concurrent streams.
+async fn browser_uni_streams(conn: quinn::Connection, tx: mpsc::Sender<Bytes>) {
+    while let Ok(s) = conn.accept_uni().await {
+        tokio::spawn(browser_uni(s, tx.clone()));
+    }
+}
+
+/// A WebTransport message to forward, or an HTTP/3 stream (control, QPACK), drained until it
+/// ends: stopping it would be a connection error.
+async fn browser_uni(mut s: quinn::RecvStream, tx: mpsc::Sender<Bytes>) -> Option<()> {
+    let typ = VarInt::read(&mut s).await.ok()?;
+    if StreamUni(typ) != StreamUni::WEBTRANSPORT {
+        tokio::io::copy(&mut s, &mut tokio::io::sink()).await.ok()?;
+        return Some(());
+    }
+    VarInt::read(&mut s).await.ok()?; // session id: a connection has one session
+    let mut m = Vec::with_capacity(MAX_MSG);
+    (&mut s)
+        .take(MAX_MSG as u64 + 1)
+        .read_to_end(&mut m)
+        .await
+        .ok()?;
+    if m.len() <= MAX_MSG {
+        let _ = tx.try_send(m.into()); // full inbox: drop
+    }
+    Some(())
+}
+
+impl Session {
+    /// A new uni stream with send priority `priority` (higher goes first) and the WebTransport
+    /// header already queued.
+    pub async fn open_uni(&self, priority: i32) -> Result<quinn::SendStream, Error> {
+        let mut s = self.conn.open_uni().await?;
+        let _ = s.set_priority(priority);
+        s.write_all(&self.uni_header).await?;
+        Ok(s)
+    }
+
+    /// Resolves when the browser closes the session or the connection dies.
+    pub async fn closed(&self) -> quinn::ConnectionError {
+        self.conn.closed().await
+    }
+
+    pub fn remote(&self) -> SocketAddr {
+        self.conn.remote_address()
+    }
+
+    pub fn close(&self) {
+        self.conn.close(0u32.into(), b"replaced");
+    }
+}

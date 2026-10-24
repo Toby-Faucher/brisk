@@ -550,8 +550,9 @@ pub async fn stream_tap(
     run(host, p, connect_id, secs, record, false, Some(tap)).await
 }
 
-/// `Some` when a tap connection arrived before any RTP video datagram.
-async fn race(
+/// `Some` when a tap connection arrived before any RTP video datagram (the bridge runs its own
+/// tap loop after this).
+pub async fn race(
     c: &mut ControlSession,
     l: &TapListener,
     cd: u32,

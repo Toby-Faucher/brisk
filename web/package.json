@@ -1,0 +1,20 @@
+{
+  "name": "brisk-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "test": "vitest run",
+    "headless": "node scripts/headless.mjs"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^9.1.1",
+    "astro": "^7.4.2",
+    "svelte": "^5.57.2"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1",
+    "vitest": "^5.0.5"
+  }
+}

@@ -7,3 +7,6 @@ research/c17-offline/.venv/
 research/c17-offline/downloads/
 research/c17-offline/
 fixtures/audio/*.key
+web/node_modules/
+web/dist/
+web/.astro/

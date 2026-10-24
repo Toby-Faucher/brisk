@@ -1,0 +1,80 @@
+---
+// Minimal shell (the real UI comes later). Query: ?wt=<bridge WebTransport URL>&hash=<cert SHA-256 hex>
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Brisk</title>
+    <style>
+      body { margin: 0; background: #000; color: #ccc; font: 12px ui-monospace, monospace; }
+      canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+      #stats { position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px; background: #000b; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <canvas id="video"></canvas>
+    <pre id="stats">connecting…</pre>
+    <script>
+      import { startVideo, type Video } from '../lib/video';
+
+      const out = document.getElementById('stats')!;
+      const ms = (v: number | null) => (v === null ? '-' : v.toFixed(1));
+
+      function show(v: Video, t0: number) {
+        const s = v.stats;
+        out.textContent = [
+          `codec ${s.codec ?? '-'} supported ${s.supported ?? '-'} hw ${s.hardwareAcceleration ?? '-'} ${s.width}x${s.height}`,
+          `received ${s.framesReceived}  decoded ${s.framesDecoded}  presented ${s.framesPresented}`,
+          `dropped ${s.framesDropped}  skipped ${s.framesSkipped}  streams reset ${s.streamsReset}  key requests ${s.keyRequests}`,
+          `decode errors ${s.decodeErrors}  decodeQueueSize ${s.decodeQueueSize}`,
+          `bridge_write-capture p50 ${ms(s.bridgeCaptureMs.pct(50))} p99 ${ms(s.bridgeCaptureMs.pct(99))} ms (bawn clock)`,
+          `decode p50 ${ms(s.decodeMs.pct(50))} p99 ${ms(s.decodeMs.pct(99))} ms   present p50 ${ms(s.presentMs.pct(50))} p99 ${ms(s.presentMs.pct(99))} ms`,
+          `arrival jitter p50 ${ms(s.jitterMs.pct(50))} p99 ${ms(s.jitterMs.pct(99))} ms   delay over best p50 ${ms(queueOverMin(v, 50))} p99 ${ms(queueOverMin(v, 99))} ms`,
+          `up ${((performance.now() - t0) / 1000).toFixed(0)} s${s.lastError ? `   last error: ${s.lastError}` : ''}`,
+        ].join('\n');
+      }
+
+      function queueOverMin(v: Video, p: number) {
+        const x = v.stats.queueMs.pct(p);
+        const m = v.stats.queueMs.min();
+        return x === null || m === null ? null : x - m;
+      }
+
+      function hexBytes(h: string) {
+        return Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
+      }
+
+      async function main() {
+        const q = new URLSearchParams(location.search);
+        const url = q.get('wt');
+        const hash = q.get('hash');
+        if (!url || !hash) throw new Error('missing ?wt=...&hash=... (brisk-bridge prints the full page URL)');
+        if (!('WebTransport' in window) || !('VideoDecoder' in window)) {
+          throw new Error('this browser lacks WebTransport or WebCodecs (or the page is not a secure context)');
+        }
+        const t = new WebTransport(url, {
+          serverCertificateHashes: [{ algorithm: 'sha-256', value: hexBytes(hash) }],
+        });
+        await t.ready;
+        const v = startVideo(t, document.getElementById('video') as HTMLCanvasElement);
+        (window as any).brisk = v;
+        const t0 = performance.now();
+        const timer = setInterval(() => show(v, t0), 500);
+        t.closed
+          .then(() => 'closed', (e) => String(e))
+          .then((why) => {
+            clearInterval(timer);
+            show(v, t0);
+            out.textContent += `\nsession ended: ${why}`;
+            (window as any).briskEnded = why;
+          });
+      }
+
+      main().catch((e) => {
+        out.textContent = `error: ${e}`;
+        (window as any).briskEnded = String(e);
+      });
+    </script>
+  </body>
+</html>

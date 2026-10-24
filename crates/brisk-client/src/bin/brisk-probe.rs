@@ -28,7 +28,7 @@ use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
 use brisk_client::stream::{media_setup, stream, stream_tap, Outcome};
 use brisk_client::tap::{tap_path, TapListener};
-use brisk_client::{Error, SystemRng};
+use brisk_client::{Error, StderrLog, SystemRng};
 use brisk_proto::pair::Rng;
 use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO};
 use std::path::PathBuf;
@@ -421,35 +421,6 @@ fn print_stats(st: &Stats) {
             st.av_pings_sent[i], st.media_rx_packets[i], st.media_rx_bytes[i]
         );
     }
-}
-
-/// The library logs through `tracing`; this prints warnings and errors to stderr, nothing else.
-struct StderrLog;
-
-impl tracing::Subscriber for StderrLog {
-    fn enabled(&self, m: &tracing::Metadata<'_>) -> bool {
-        *m.level() <= tracing::Level::WARN
-    }
-    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-        tracing::span::Id::from_u64(1) // spans are not used
-    }
-    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
-    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
-    fn event(&self, e: &tracing::Event<'_>) {
-        struct Msg(String);
-        impl tracing::field::Visit for Msg {
-            fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
-                if f.name() == "message" {
-                    self.0 = format!("{v:?}");
-                }
-            }
-        }
-        let mut m = Msg(String::new());
-        e.record(&mut m);
-        eprintln!("{}: {}", e.metadata().level(), m.0);
-    }
-    fn enter(&self, _: &tracing::span::Id) {}
-    fn exit(&self, _: &tracing::span::Id) {}
 }
 
 #[tokio::main(flavor = "current_thread")]

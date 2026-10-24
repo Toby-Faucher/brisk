@@ -1,0 +1,25 @@
+[package]
+name = "brisk-bridge"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+aes = "0.8.4"
+aes-gcm = "0.10.3"
+brisk-client = { path = "../brisk-client" }
+brisk-proto = { path = "../brisk-proto" }
+bytes = "1"
+hkdf = "0.12.4"
+hmac = "0.12.1"
+http = "1"
+# No rustls/ring feature: quinn's own rustls glue needs ring or aws-lc (C/asm); src/quic_crypto.rs
+# is the pure-Rust replacement.
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio"] }
+quinn-proto = { version = "0.11", default-features = false }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+rustls-rustcrypto = "=0.0.2-alpha"
+sha2 = "0.10.9"
+tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros", "signal", "sync"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+web-transport-proto = "0.6"

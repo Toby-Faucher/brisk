@@ -78,3 +78,16 @@ Same `brisk-probe stream --secs 60` but addressed to bawn's own LAN IP (bond0) a
 | effective SO_RCVBUF video / audio | n/a (before 12b) | 4 MiB / 512 KiB | 4 MiB / 512 KiB |
 
 The arrival-jitter p99 of about 4.8 ms is identical across all three, so it comes from the host's frame pacing and not the network. [U] likely the timer-paced KMS capture noted in the design doc; not yet tested (capture=kms, encoder=vaapi on this box).
+
+## M2: Brisk bridge to the browser (2026-10-24, Task 4)
+
+Client decode and present measured by the page (`web/src/lib/video.ts`): decode = `VideoDecoder`
+output callback minus the `decode()` call, present = canvas paint on `requestAnimationFrame` minus
+the output callback (the newest frame wins; older ones are closed unpainted).
+
+| stage | headless Chromium on bawn (software decode, no GPU; NOT the real client) | laptop Chrome |
+|---|---|---|
+| client decode | p50 4.1, p99 11.4 ms (10 min, 34619 frames, 0 errors) | PENDING (Toby, docs/m2-notes.md "Toby to run") |
+| client present queue | p50 9.9, p99 19.4 ms (headless rAF) | PENDING (Toby) |
+| `bridge_write - capture` (bawn clock) | p50 6.0, p99 8.0 ms vs `frame_processing_latency` p50 5.9, p99 7.9 ms: M2 gate PASS | same host side |
+
