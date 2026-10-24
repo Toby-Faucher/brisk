@@ -1,0 +1,6 @@
+RTSP/1.0 200 OK
+CSeq: 3
+Session: DEADBEEFCAFE;timeout = 90
+Transport: server_port=48000
+X-SS-Ping-Payload: FE073FEB9401CE42
+

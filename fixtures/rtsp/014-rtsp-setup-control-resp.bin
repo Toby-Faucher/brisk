@@ -1,0 +1,6 @@
+RTSP/1.0 200 OK
+CSeq: 5
+Session: DEADBEEFCAFE;timeout = 90
+Transport: server_port=47999
+X-SS-Connect-Data: 1396329308
+
