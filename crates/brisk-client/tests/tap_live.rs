@@ -266,3 +266,38 @@ fn tap_rx_gate_counts_drops_idr_and_latency() {
     let s = rx.summary(10.0, &Stats::default());
     assert!(s.failures.iter().any(|f| f.contains("idx")), "{s}");
 }
+
+/// A header longer than 256 bytes (header_len 300, future fields) is accepted and skipped.
+#[tokio::test]
+async fn listener_accepts_header_len_300() {
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("tap.sock");
+    let l = TapListener::bind(&path).unwrap();
+    let mut m = msg(1, CD, 9, 1, 0, ANNEXB);
+    m[6..8].copy_from_slice(&300u16.to_le_bytes());
+    m.splice(44..44, std::iter::repeat_n(0xEE, 256));
+    let p = peer(&path);
+    p.send(&m).unwrap();
+    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD)).await;
+    let mut c = r.expect("accept hung").expect("header_len 300 refused");
+    let f = c.recv().await.unwrap();
+    assert_eq!((f.idx, &f.annexb[..]), (9, ANNEXB));
+}
+
+/// A same-uid peer whose first message is not a tap frame is closed like a stale session; the
+/// accept goes on to the next connection.
+#[tokio::test]
+async fn listener_skips_garbage_first_message() {
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("tap.sock");
+    let l = TapListener::bind(&path).unwrap();
+    let junk = peer(&path);
+    junk.send(b"not a tap message, but long enough to look like a header")
+        .unwrap();
+    let ours = peer(&path);
+    ours.send(&msg(1, CD, 5, 1, 0, ANNEXB)).unwrap();
+    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD)).await;
+    let mut c = r.expect("accept hung").expect("garbage aborted the accept");
+    assert_eq!(c.recv().await.unwrap().idx, 5);
+    assert!(closed(&junk));
+}

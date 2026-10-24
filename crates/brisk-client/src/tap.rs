@@ -122,8 +122,13 @@ impl TapListener {
             }
             s.set_nonblocking(true)?;
             let c = TapConn::new(s)?;
-            let Some(h) = c.peek_header().await? else {
-                continue; // closed before its first frame
+            let h = match c.peek_header().await {
+                Ok(Some(h)) => h,
+                Ok(None) => continue, // closed before its first frame
+                Err(e) => {
+                    tracing::warn!("tap: closed a connection whose first message is bad: {e}");
+                    continue;
+                }
             };
             if h.connect_data != connect_data {
                 tracing::warn!(
@@ -199,7 +204,8 @@ impl TapConn {
 
     /// Header of the next message without consuming it; `None` on EOF.
     async fn peek_header(&self) -> crate::Result<Option<TapHeader>> {
-        let mut b = [MaybeUninit::<u8>::uninit(); 256];
+        // Up to the largest header_len, so any header parses; the payload is not needed.
+        let mut b = vec![MaybeUninit::<u8>::uninit(); u16::MAX as usize];
         let n = self
             .fd
             .async_io(Interest::READABLE, |s| s.peek(&mut b))

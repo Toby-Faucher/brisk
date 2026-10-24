@@ -40,6 +40,8 @@ pub const IDR_MIN_INTERVAL: Duration = Duration::from_millis(500);
 pub const IDR_CMD_INTERVAL: Duration = Duration::from_millis(100);
 /// Commands a [`ControlHandle`] can queue before `send` waits for the session.
 const CMD_QUEUE: usize = 64;
+/// A handle call waits at most this long for room in the queue (the session is not being run).
+const CMD_WAIT: Duration = Duration::from_secs(1);
 
 enum Cmd {
     Idr,
@@ -54,10 +56,15 @@ pub struct ControlHandle(mpsc::Sender<Cmd>);
 
 impl ControlHandle {
     async fn send(&self, c: Cmd) -> crate::Result<()> {
-        self.0
-            .send(c)
-            .await
-            .map_err(|_| crate::Error::Closed("control session"))
+        use mpsc::error::SendTimeoutError;
+        match self.0.send_timeout(c, CMD_WAIT).await {
+            Ok(()) => Ok(()),
+            Err(SendTimeoutError::Closed(_)) => Err(crate::Error::Closed("control session")),
+            Err(SendTimeoutError::Timeout(_)) => Err(crate::Error::Timeout(format!(
+                "control session took no command for {}s (not running?)",
+                CMD_WAIT.as_secs()
+            ))),
+        }
     }
 
     /// Asks for an IDR frame; requests within [`IDR_CMD_INTERVAL`] of the last IDR request are
@@ -421,6 +428,24 @@ impl ControlSession {
     /// One wait: a datagram, an ENet timer, or `until`. Media goes to `sink`, or is kept for
     /// later while connecting (`None`).
     async fn step(&mut self, until: Instant, sink: Option<MediaSink<'_>>) -> crate::Result<()> {
+        let r = self.step_inner(until, sink).await;
+        // Ended or ending: handles get `Closed` from now on instead of a queue nobody reads.
+        if self.closing
+            || !matches!(
+                self.peer.state(),
+                PeerState::Connecting | PeerState::Connected
+            )
+        {
+            self.cmd_rx.close();
+        }
+        r
+    }
+
+    async fn step_inner(
+        &mut self,
+        until: Instant,
+        sink: Option<MediaSink<'_>>,
+    ) -> crate::Result<()> {
         let (out, next) = match self.peer.poll_timeout(self.now()) {
             Ok(v) => v,
             Err(e) => {
@@ -545,6 +570,7 @@ impl ControlSession {
     /// else reset. Returns the counters.
     pub async fn disconnect(mut self) -> crate::Result<Stats> {
         self.closing = true;
+        self.cmd_rx.close();
         let now = self.now();
         let mut out = self.peer.disconnect(now);
         if self.stats.termination.is_some() {

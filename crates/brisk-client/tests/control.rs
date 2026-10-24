@@ -527,3 +527,61 @@ async fn stream_tap_falls_back_to_rtp() {
     };
     assert!(s.passed() && s.frames >= 114, "{s}");
 }
+
+/// The host ends the session while a handle is held and the session is kept (not dropped, not
+/// disconnected): handle calls fail with `Closed` at once instead of being queued as Ok.
+#[tokio::test]
+async fn control_handle_reports_closed_after_host_ends_session() {
+    let f = fake(0);
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 35, av(&f).await)
+        .await
+        .unwrap();
+    let h = c.handle();
+    settle(&mut c, 150).await;
+    f.tx.send(Cmd::Terminate).unwrap();
+    c.run_until(Instant::now() + Duration::from_secs(3))
+        .await
+        .unwrap();
+    assert!(!c.is_open());
+    let quick = Duration::from_millis(500);
+    let r = tokio::time::timeout(quick, h.request_idr())
+        .await
+        .expect("request_idr hung");
+    assert!(matches!(r, Err(brisk_client::Error::Closed(_))), "{r:?}");
+    let key = InputEvent::Key {
+        vk: 0x41,
+        down: true,
+        modifiers: 0,
+    };
+    let r = tokio::time::timeout(quick, h.send_input(key))
+        .await
+        .expect("send_input hung");
+    assert!(matches!(r, Err(brisk_client::Error::Closed(_))), "{r:?}");
+    drop(c);
+}
+
+/// A session that is held but never run does not drain commands: once the queue is full a handle
+/// call gives up with a typed error after a bounded wait instead of blocking forever.
+#[tokio::test]
+async fn control_handle_does_not_hang_on_an_idle_session() {
+    let f = fake(0);
+    let c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 37, av(&f).await)
+        .await
+        .unwrap();
+    let h = c.handle();
+    let mut results = Vec::new();
+    for _ in 0..66 {
+        let r = tokio::time::timeout(Duration::from_secs(5), h.request_idr())
+            .await
+            .expect("request_idr hung");
+        results.push(r);
+    }
+    assert!(results[..64].iter().all(|r| r.is_ok()), "{results:?}");
+    assert!(
+        results[64..]
+            .iter()
+            .all(|r| matches!(r, Err(brisk_client::Error::Timeout(_)))),
+        "{results:?}"
+    );
+    drop(c);
+}
