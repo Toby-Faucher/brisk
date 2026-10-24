@@ -3,7 +3,7 @@
 
 mod common;
 
-use brisk_client::control::{ControlSession, IDR_MIN_INTERVAL};
+use brisk_client::control::{ControlSession, IDR_MIN_INTERVAL, INPUT_DEMO_GAP};
 use brisk_proto::input::{encode_input, InputEvent};
 use common::fake_host::*;
 use std::net::UdpSocket;
@@ -204,6 +204,7 @@ async fn stream_decrypts_video_and_audio() {
         5,
         Duration::from_secs(2),
         None,
+        false,
     )
     .await
     .unwrap();
@@ -225,6 +226,7 @@ async fn stream_decrypts_video_and_audio() {
         6,
         Duration::from_secs(1),
         None,
+        false,
     )
     .await
     .unwrap_err()
@@ -275,4 +277,72 @@ async fn continuing_loss_requests_are_rate_limited() {
     // ~1.67 s of losses every 33 ms: one request per 300 ms, not one per lost frame (~50).
     assert!((3..=7).contains(&on_loss), "{on_loss}");
     assert_eq!(idr, 1 + on_loss as usize);
+}
+
+/// Input packets as the fake decoded them: (ENet channel, plaintext packet).
+fn inputs(f: &Fake) -> Vec<(u8, Vec<u8>)> {
+    let l = f.log.lock().unwrap();
+    l.msgs
+        .iter()
+        .filter(|m| m.1 == 0x0206)
+        .map(|m| (m.0, m.2.clone()))
+        .collect()
+}
+
+/// `--input-demo` bytes, written out by hand from moonlight Input.h (as tests/input.rs in
+/// brisk-proto), not with `encode_input`: size u32 BE (= len - 4), magic u32 LE, body.
+#[rustfmt::skip]
+fn input_demo_wire() -> Vec<(u8, Vec<u8>)> {
+    let pad = |mask: u8| vec![
+        0, 0, 0, 30, 0x0C, 0, 0, 0, // NV_MULTI_CONTROLLER_PACKET
+        0x1A, 0, 0, 0, mask, 0, 0x14, 0, // headerB, controller 0, activeGamepadMask, midB
+        0, 0, 0, 0, // buttonFlags 0, lt 0, rt 0
+        0, 0, 0, 0, 0, 0, 0, 0, // lx ly rx ry 0
+        0x9C, 0, 0, 0, 0x55, 0, // tailA, buttonFlags2 0, tailB
+    ];
+    vec![
+        (3, vec![0, 0, 0, 8, 7, 0, 0, 0, 0, 5, 0, 0]), // mouse rel dx +5 BE
+        (3, vec![0, 0, 0, 8, 7, 0, 0, 0, 0xFF, 0xFB, 0, 0]), // dx -5
+        (2, vec![0, 0, 0, 10, 3, 0, 0, 0, 0, 0x10, 0x80, 0, 0, 0]), // VK_SHIFT|0x8000 LE down
+        (2, vec![0, 0, 0, 10, 4, 0, 0, 0, 0, 0x10, 0x80, 0, 0, 0]), // up
+        (0x10, pad(1)),
+        (0x10, pad(0)),
+    ]
+}
+
+#[tokio::test]
+async fn input_demo_reaches_the_host_as_expected_bytes() {
+    let f = fake(0);
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 13, av(&f).await)
+        .await
+        .unwrap();
+    let t0 = Instant::now();
+    assert_eq!(c.input_demo(&mut |_, _, _| false).await.unwrap(), 6);
+    assert!(t0.elapsed() >= INPUT_DEMO_GAP * 6);
+    settle(&mut c, 200).await;
+    assert_eq!(inputs(&f), input_demo_wire());
+    assert_eq!(c.stats.inputs_sent, 6);
+    c.disconnect().await.unwrap();
+}
+
+/// `stream --input-demo`: the demo runs inside the gated stream, which still passes.
+#[tokio::test]
+async fn stream_input_demo_passes_gate() {
+    let f = fake_with(Cfg {
+        media: Some(Media::default()),
+        ..Cfg::default()
+    });
+    let s = brisk_client::stream::stream(
+        "127.0.0.1",
+        &ports(&f, 0),
+        8,
+        Duration::from_secs(2),
+        None,
+        true,
+    )
+    .await
+    .unwrap();
+    assert!(s.passed() && s.control.inputs_sent == 6, "{s}");
+    assert!(s.to_string().contains("inputs_sent        6"), "{s}");
+    assert_eq!(inputs(&f), input_demo_wire());
 }

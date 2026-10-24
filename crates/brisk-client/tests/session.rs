@@ -1072,7 +1072,7 @@ async fn stream_run(
                 // DESCRIBE: supported 5, requested 1; we want audio.
                 assert_eq!(p.enc_flags, SS_ENC_CONTROL_V2 | SS_ENC_AUDIO);
                 assert_eq!((p.key.rikey, p.key.rikeyid), (rikey, rikeyid));
-                brisk_client::stream::stream("127.0.0.1", &p, 1, secs, record).await
+                brisk_client::stream::stream("127.0.0.1", &p, 1, secs, record, false).await
             },
         )
         .await;
@@ -1174,7 +1174,9 @@ async fn stream_refuses_busy_host_without_launch() {
             false,
             |p| {
                 ran.store(true, Ordering::SeqCst);
-                async move { brisk_client::stream::stream("127.0.0.1", &p, 1, secs(1), None).await }
+                async move {
+                    brisk_client::stream::stream("127.0.0.1", &p, 1, secs(1), None, false).await
+                }
             },
         )
         .await

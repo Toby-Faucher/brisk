@@ -172,7 +172,7 @@ impl std::fmt::Display for Summary {
             .iter()
             .map(|r| r.map_or("none".into(), |ms| format!("{ms:.1}")))
             .collect();
-        let rows: [(&str, String); 20] = [
+        let rows: [(&str, String); 21] = [
             ("duration_s", format!("{:.1}", self.secs)),
             (
                 "frames_assembled",
@@ -235,6 +235,7 @@ impl std::fmt::Display for Summary {
                     self.control.idr_sent, self.control.idr_on_loss
                 ),
             ),
+            ("inputs_sent", self.control.inputs_sent.to_string()),
             (
                 "control_pings",
                 format!(
@@ -482,7 +483,8 @@ impl StreamRx {
 }
 
 /// The control session for `secs` with the media fed into a [`StreamRx`], IDR requests at 1/3
-/// and 2/3, then a graceful disconnect. Prints the summary block (also on error) and returns it;
+/// and 2/3 (and [`ControlSession::input_demo`] at 1/6 with `input_demo`), then a graceful
+/// disconnect. Prints the summary block (also on error) and returns it;
 /// a failed gate is an error so the caller exits non-zero. Run it inside `launch_session` so the
 /// session is cancelled either way.
 pub async fn stream(
@@ -491,6 +493,7 @@ pub async fn stream(
     connect_id: u32,
     secs: Duration,
     record: Option<&Path>,
+    input_demo: bool,
 ) -> crate::Result<Summary> {
     let (rikey, rikeyid) = (p.key.rikey, p.key.rikeyid);
     let mut rx = StreamRx::new(p.enc_flags, rikey, rikeyid, record)?;
@@ -517,6 +520,19 @@ pub async fn stream(
         );
         let mut c = ControlSession::connect(addr, cd, rikey, connect_id, Some(av)).await?;
         let r = async {
+            if input_demo {
+                c.run_until_with(start + secs / 6, &mut |i, d, at| rx.on_datagram(i, d, at))
+                    .await?;
+                if c.is_open() {
+                    let n = c
+                        .input_demo(&mut |i, d, at| rx.on_datagram(i, d, at))
+                        .await?;
+                    println!(
+                        "input_demo\tsent {n} packets at {:.1}s",
+                        start.elapsed().as_secs_f32()
+                    );
+                }
+            }
             for k in 1..=3u32 {
                 c.run_until_with(start + secs * k / 3, &mut |i, d, at| {
                     rx.on_datagram(i, d, at)

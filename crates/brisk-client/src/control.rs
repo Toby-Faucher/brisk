@@ -36,6 +36,43 @@ pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8], Instant) -> bool;
 /// Default [`ControlSession::idr_min_interval`].
 pub const IDR_MIN_INTERVAL: Duration = Duration::from_millis(500);
 
+/// `--input-demo`: a harmless sequence that ends where it started. Mouse +5 then -5 px, Shift
+/// down then up, gamepad 0 attached then detached with nothing pressed and sticks centred
+/// (Sunshine allocates the pad on its `activeGamepadMask` bit and frees it when the bit clears,
+/// input.cpp:1575-1580). No clicks, no other keys, no stick or trigger movement.
+pub const INPUT_DEMO: [InputEvent; 6] = [
+    InputEvent::MouseMoveRel { dx: 5, dy: 0 },
+    InputEvent::MouseMoveRel { dx: -5, dy: 0 },
+    InputEvent::Key {
+        vk: 0x10, // VK_SHIFT
+        down: true,
+        modifiers: 0,
+    },
+    InputEvent::Key {
+        vk: 0x10,
+        down: false,
+        modifiers: 0,
+    },
+    neutral_pad(1),
+    neutral_pad(0),
+];
+/// Pause after each [`INPUT_DEMO`] event, so the host sees separate events.
+pub const INPUT_DEMO_GAP: Duration = Duration::from_millis(50);
+
+const fn neutral_pad(active_mask: u16) -> InputEvent {
+    InputEvent::Gamepad {
+        index: 0,
+        active_mask,
+        buttons: 0,
+        lt: 0,
+        rt: 0,
+        lx: 0,
+        ly: 0,
+        rx: 0,
+        ry: 0,
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
     pub pings_sent: u32,
@@ -262,6 +299,18 @@ impl ControlSession {
             self.stats.inputs_sent += 1;
         }
         Ok(())
+    }
+
+    /// Sends [`INPUT_DEMO`], [`INPUT_DEMO_GAP`] apart, media still going to `sink`. Returns the
+    /// number of input packets sent.
+    pub async fn input_demo(&mut self, sink: MediaSink<'_>) -> crate::Result<u32> {
+        let before = self.stats.inputs_sent;
+        for ev in &INPUT_DEMO {
+            self.send_input(ev).await?;
+            self.run_until_with(Instant::now() + INPUT_DEMO_GAP, &mut *sink)
+                .await?;
+        }
+        Ok(self.stats.inputs_sent - before)
     }
 
     /// Ping, receive and retransmit until `until`, or until the host ends the session.

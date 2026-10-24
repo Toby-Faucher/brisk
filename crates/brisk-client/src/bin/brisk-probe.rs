@@ -2,8 +2,8 @@
 //!   brisk-probe [--record DIR] [--config DIR] pair --host HOST [--pin NNNN]
 //!   brisk-probe [--record DIR] [--config DIR] apps --host HOST
 //!   brisk-probe [--record DIR] [--config DIR] launch --host HOST --app ID
-//!   brisk-probe [--record DIR] [--config DIR] control --host HOST --app ID [--secs N]
-//!   brisk-probe [--record DIR] [--config DIR] stream --host HOST --app ID [--secs N] [--record-samples DIR]
+//!   brisk-probe [--record DIR] [--config DIR] control --host HOST --app ID [--secs N] [--input-demo]
+//!   brisk-probe [--record DIR] [--config DIR] stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo]
 //!   brisk-probe [--record DIR] [--config DIR] cancel --host HOST
 //!     cancel: explicit cleanup of a session left running; prints serverinfo state after.
 //!     launch refuses a busy host unless --take-over (which cancels what is running first).
@@ -13,6 +13,8 @@
 //!     stream: as control (default 60 s), receiving and assembling video and audio, IDR requests
 //!       at N/3 and 2N/3; prints the summary block; exits non-zero on a failed M1 gate (after the
 //!       cancel). --record-samples DIR writes the first video/audio datagrams for the replay tests.
+//!     --input-demo (control, stream): at N/4 (control) or N/6 (stream) send a harmless input
+//!       sequence: mouse +5/-5 px, Shift down/up, gamepad 0 neutral attach/detach. No clicks.
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
 use brisk_client::control::{AvPing, ControlSession, Stats};
@@ -27,7 +29,7 @@ use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--take-over] | stream --host HOST --app ID [--secs N] [--record-samples DIR] [--take-over] | cancel --host HOST)";
+const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--input-demo] [--take-over] | stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo] [--take-over] | cancel --host HOST)";
 
 struct Args {
     cmd: String,
@@ -35,6 +37,7 @@ struct Args {
     pin: Option<String>,
     app: Option<u32>,
     take_over: bool,
+    input_demo: bool,
     secs: u64,
     record: Option<PathBuf>,
     samples: Option<PathBuf>,
@@ -55,6 +58,7 @@ fn parse_args() -> Result<Args, String> {
     let (mut cmd, mut host, mut pin, mut app, mut record, mut config) =
         (None, None, None, None, None, None);
     let mut take_over = false;
+    let mut input_demo = false;
     let mut secs = None;
     let mut samples = None;
     let mut it = std::env::args().skip(1);
@@ -65,6 +69,7 @@ fn parse_args() -> Result<Args, String> {
             "--pin" => pin = Some(val()?),
             "--app" => app = Some(val()?.parse().map_err(|_| "--app must be a number")?),
             "--take-over" => take_over = true,
+            "--input-demo" => input_demo = true,
             "--secs" => secs = Some(val()?.parse().map_err(|_| "--secs must be a number")?),
             "--record-samples" => samples = Some(PathBuf::from(val()?)),
             "--record" => record = Some(PathBuf::from(val()?)),
@@ -80,6 +85,9 @@ fn parse_args() -> Result<Args, String> {
     }
     if samples.is_some() && cmd.as_deref() != Some("stream") {
         return Err("--record-samples is only for stream".into());
+    }
+    if input_demo && !matches!(cmd.as_deref(), Some("control" | "stream")) {
+        return Err("--input-demo is only for control and stream".into());
     }
     let secs = secs.unwrap_or(if cmd.as_deref() == Some("stream") {
         60
@@ -102,6 +110,7 @@ fn parse_args() -> Result<Args, String> {
         pin,
         app,
         take_over,
+        input_demo,
         secs,
         record,
         samples,
@@ -159,16 +168,16 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     enc_flags: if a.cmd == "stream" { SS_ENC_AUDIO } else { 0 },
                 };
                 let app = a.app.unwrap();
-                let (host, secs, cmd) = (a.host.clone(), a.secs, a.cmd.clone());
+                let (host, secs, cmd, demo) = (a.host.clone(), a.secs, a.cmd.clone(), a.input_demo);
                 let samples = a.samples.clone();
                 let during = |p: StreamPorts| async move {
                     let stats = match cmd.as_str() {
-                        "control" => Some(run_control(&host, &p, secs).await?),
+                        "control" => Some(run_control(&host, &p, secs, demo).await?),
                         "stream" => {
                             let mut id = [0u8; 4];
                             SystemRng.fill(&mut id);
                             let secs = std::time::Duration::from_secs(secs);
-                            let s = stream(&host, &p, u32::from_le_bytes(id), secs, samples.as_deref());
+                            let s = stream(&host, &p, u32::from_le_bytes(id), secs, samples.as_deref(), demo);
                             Some(s.await?.control)
                         }
                         _ => None,
@@ -258,8 +267,14 @@ async fn run(a: Args) -> brisk_client::Result<()> {
     r
 }
 
-/// ENet control stream for `secs`, IDR request at the midpoint, graceful disconnect.
-async fn run_control(host: &str, p: &StreamPorts, secs: u64) -> brisk_client::Result<Stats> {
+/// ENet control stream for `secs`, IDR request at the midpoint, [`ControlSession::input_demo`]
+/// at a quarter with `input_demo`, graceful disconnect.
+async fn run_control(
+    host: &str,
+    p: &StreamPorts,
+    secs: u64,
+    input_demo: bool,
+) -> brisk_client::Result<Stats> {
     let cd = p
         .connect_data
         .ok_or("SETUP(control) reply had no X-SS-Connect-Data")?;
@@ -284,6 +299,16 @@ async fn run_control(host: &str, p: &StreamPorts, secs: u64) -> brisk_client::Re
     let start = std::time::Instant::now();
     let total = std::time::Duration::from_secs(secs);
     let r = async {
+        if input_demo {
+            c.run_until(start + total / 4).await?;
+            if c.is_open() {
+                let n = c.input_demo(&mut |_, _, _| false).await?;
+                println!(
+                    "input_demo\tsent {n} packets at {:.1}s (mouse +5/-5, Shift down/up, gamepad 0 neutral attach/detach)",
+                    start.elapsed().as_secs_f32()
+                );
+            }
+        }
         c.run_until(start + total / 2).await?;
         if c.is_open() {
             c.request_idr().await?;
@@ -315,6 +340,7 @@ fn print_stats(st: &Stats) {
     for (t, n) in &st.host_msgs {
         println!("host_msg\t{t:#06x}\t{n}");
     }
+    println!("inputs_sent\t{}", st.inputs_sent);
     println!("bad_host_msgs\t{}", st.bad_msgs);
     match st.termination {
         Some(ec) => println!("termination\t{ec:#010x}"),
