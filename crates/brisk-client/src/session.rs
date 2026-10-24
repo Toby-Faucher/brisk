@@ -377,7 +377,14 @@ impl Session {
             rec.push(&format!("{label}-req"), tls.is_some(), req.as_bytes());
             rec.push(&format!("{label}-resp"), tls.is_some(), &raw);
         }
-        body(&raw, tls.is_some()).map_err(|e| format!("{path}: {e}").into())
+        // Keep a typed `HttpError` (a refusal) intact: callers decide on it, e.g. never cancel.
+        body(&raw, tls.is_some()).map_err(|e| {
+            if e.is::<brisk_proto::http::HttpError>() {
+                e
+            } else {
+                format!("{path}: {e}").into()
+            }
+        })
     }
 }
 

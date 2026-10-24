@@ -19,13 +19,13 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-const EMPTY_400: &str = "<<empty-400>>";
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
 
+const EMPTY_400: &str = "<<empty-400>>";
 const SERVER_SECRET: [u8; 16] = *b"FAKE-SRV-SECRET!";
 const SERVER_CHALLENGE: [u8; 16] = *b"FAKE-SRV-CHALNGE";
 
@@ -109,7 +109,11 @@ impl Fake {
                     return r#"<root status_code="400" status_message="An app is already running on this host"/>"#.into();
                 }
                 match mode {
-                    "launch-empty-400" => return EMPTY_400.into(),
+                    "launch-empty-400" => {
+                        // Worst case: our app id is "running", so a wrongful cancel_if_ours would send /cancel.
+                        self.game.store(q["appid"].parse().unwrap(), Ordering::SeqCst);
+                        return EMPTY_400.into();
+                    }
                     "launch-drop-ours" => self.game.store(q["appid"].parse().unwrap(), Ordering::SeqCst),
                     "launch-drop-other" => self.game.store(77, Ordering::SeqCst),
                     _ => {}
@@ -844,6 +848,7 @@ async fn probe(
 async fn rejected_launch_never_cancels() {
     for (mode, needle) in [
         ("launch-busy", "server busy"),
+        ("launch-empty-400", "server busy"),
         ("launch-fail", "fake launch failure"),
     ] {
         let (mut s, fake, ident, server, _t) = paired(mode).await;
@@ -851,7 +856,8 @@ async fn rejected_launch_never_cancels() {
             .await
             .unwrap_err()
             .to_string();
-        assert!(err.contains(needle), "{err}");
+        assert!(err.contains(needle), "{mode}: {err}");
+        assert!(!err.contains("outcome unknown"), "{mode}: {err}");
         assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0, "{mode}");
     }
 }
