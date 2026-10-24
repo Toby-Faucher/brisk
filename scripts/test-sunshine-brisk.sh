@@ -4,12 +4,14 @@ set -u
 s=$(cd "$(dirname "$0")" && pwd)/sunshine-brisk.sh
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 mkdir -p "$t/bin" "$t/p/bin" "$t/src/.git"; : > "$t/p/bin/sunshine"; chmod +x "$t/p/bin/sunshine"
-for c in sudoq getcap git cmake; do printf '#!/bin/sh\necho "%s $*" >> "%s/log"\n' "$c" "$t" > "$t/bin/$c"; done
+printf '#!/bin/sh\necho "cmake $*" >> "%s/log"\ntouch "%s/cmake.marker"\n' "$t" "$t" > "$t/bin/cmake"
+for c in sudoq getcap git ionice nice; do printf '#!/bin/sh\necho "%s $*" >> "%s/log"\n' "$c" "$t" > "$t/bin/$c"; done
 # systemctl: `show` reports $EXEC (a path) as the running ExecStart
-printf '#!/bin/sh\necho "systemctl $*" >> "%s/log"\n[ "$2" = show ] && echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }"\nexit 0\n' "$t" > "$t/bin/systemctl"
+printf '#!/bin/sh\necho "systemctl $*" >> "%s/log"\n[ "$2" = is-active ] && [ -n "${INACTIVE:-}" ] && exit 1\n[ "$2" = show ] && echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }"\nexit 0\n' "$t" > "$t/bin/systemctl"
 # systemd-run: fails if SR_FAIL, else reports the enforced memory.max
-printf '#!/bin/sh\necho "systemd-run $*" >> "%s/log"\n[ -z "${SR_FAIL:-}" ] || exit 1\necho "${MEMMAX:-9663676416}"\n' "$t" > "$t/bin/systemd-run"
+printf '#!/bin/sh\necho "systemd-run $*" >> "%s/log"\n[ -z "${SR_FAIL:-}" ] || exit 1\nwhile [ "$1" != -c3 ]; do shift; done; shift\n[ "$1" = sh ] && { echo "${MEMMAX:-9663676416}"; exit 0; }\nexec "$@"\n' "$t" > "$t/bin/systemd-run"
 printf '#!/bin/sh\nif [ -n "${NOANSWER:-}" ]; then exit 0; fi\necho "<currentgame>0</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>"\n' > "$t/bin/curl"
+printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/ionice"; printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/nice"
 chmod +x "$t"/bin/*
 export PATH=$t/bin:$PATH SB_PREFIX=$t/p SB_DROPIN_DIR=$t/d SB_SRC=$t/src
 chk() { grep -qF -- "$1" "$2" || { echo "FAIL: '$1' not in $2"; cat "$2"; exit 1; }; }
@@ -35,6 +37,14 @@ chk "systemctl --user restart app-dev.lizardbyte.app.Sunshine.service" $L
 # rollback: removes dropin, restarts (even with no answer); second call is a no-op
 : > $L; NOANSWER=1 $s rollback >/dev/null; [ ! -e "$t/d/brisk.conf" ] || fail "dropin remains"; chk " restart " $L
 : > $L; $s rollback >/dev/null; no restart $L; no daemon-reload $L
+# rollback must not strand: busy refuses without deleting; conf-gone-but-brisk-running still restarts
+printf x > "$t/d/brisk.conf"; : > $L
+STATE=SUNSHINE_SERVER_BUSY $s rollback >/dev/null 2>&1 && fail "busy rollback should refuse"; [ -f "$t/d/brisk.conf" ] || fail "refused rollback deleted conf"; no " restart " $L
+STATE=SUNSHINE_SERVER_BUSY FORCE=1 $s rollback >/dev/null 2>&1 || fail "FORCE rollback"; chk " restart " $L
+printf x > "$t/d/brisk.conf"; $s rollback >/dev/null; [ ! -e "$t/d/brisk.conf" ] || fail "FREE rollback keeps conf"
+: > $L; EXEC=$B $s rollback >/dev/null; chk " restart " $L
+# enable recovers from a failed (inactive) unit even if ExecStart already brisk
+printf x > "$t/d/brisk.conf"; : > $L; EXEC=$B INACTIVE=1 $s enable >/dev/null; chk " restart " $L
 $s status | grep -q "serverinfo: answers" || fail status
 
 # build: every cmake step goes through the capped scope, jobs <= 6, default 3
@@ -42,8 +52,10 @@ $s status | grep -q "serverinfo: answers" || fail status
 for step in "cmake -S $t/src" "cmake --build $t/src/build -j3" "cmake --install $t/src/build"; do chk "$CAP $step" $L; done
 SB_JOBS=6 $s build >/dev/null 2>&1 || fail "-j6 should be allowed"
 # refusals: systemd-run failing, unenforced cap, bad jobs, brisk binary running
-: > $L; SR_FAIL=1 $s build >/dev/null 2>&1 && fail "build must refuse when systemd-run fails"; no "^cmake" $L
-: > $L; MEMMAX=max $s build >/dev/null 2>&1 && fail "build must refuse when cap not enforced"; no "^cmake" $L
+: > $L; rm -f $t/cmake.marker; SR_FAIL=1 $s build >/dev/null 2>&1 && fail "build must refuse when systemd-run fails"
+[ "$(grep -c '^systemd-run' $L)" = 1 ] && ! grep '^systemd-run' $L | grep -q cmake || fail "only the cap probe may run before refusal"; [ ! -e $t/cmake.marker ] || fail "cmake ran"
+: > $L; rm -f $t/cmake.marker; MEMMAX=max $s build >/dev/null 2>&1 && fail "build must refuse when cap not enforced"
+[ ! -e $t/cmake.marker ] && ! grep -q '^cmake' $L || fail "cmake ran despite unenforced cap"
 SB_JOBS=20 $s build >/dev/null 2>&1 && fail "-j20 accepted"
 EXEC=$B $s build >/dev/null 2>&1 && fail "build must refuse while brisk binary runs"
 # bad SB_JOBS must not break rollback/status

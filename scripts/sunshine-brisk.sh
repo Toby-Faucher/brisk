@@ -27,7 +27,8 @@ require_idle() {
     echo "serverinfo: no answer (restart allowed)"; return
   fi
   case $s in *SUNSHINE_SERVER_FREE*"<currentgame>0</currentgame>"*|*"<currentgame>0</currentgame>"*SUNSHINE_SERVER_FREE*) ;;
-    *) die "Sunshine is busy (not FREE / currentgame != 0); refusing to restart" ;; esac
+    *) if [ "${BUSY_OK:-}" = 1 ]; then echo "WARNING: Sunshine is busy; FORCE=1 will END THE LIVE STREAM" >&2; return; fi
+       die "Sunshine is busy (not FREE / currentgame != 0); refusing to restart" ;; esac
 }
 
 # reset-failed first so a crashed brisk unit cannot block the restart with the start-rate limit
@@ -81,12 +82,15 @@ cmd_install() {
 
 cmd_enable() {
   [ -f "$DROPIN_DIR/brisk.conf" ] || die "no brisk.conf; run install first"
-  if running_brisk; then echo "already running brisk binary; nothing to do"; return; fi
+  if running_brisk && systemctl --user is-active -q "$UNIT"; then echo "already running brisk binary; nothing to do"; return; fi
   restart
 }
 cmd_rollback() {
-  [ -f "$DROPIN_DIR/brisk.conf" ] || { echo "no brisk.conf; nothing to roll back"; return; }
-  rm -f "$DROPIN_DIR/brisk.conf"; ALLOW_DEAD=1 restart
+  if [ ! -f "$DROPIN_DIR/brisk.conf" ] && ! running_brisk; then echo "no brisk.conf and unit not on brisk; nothing to roll back"; return; fi
+  # idle check BEFORE deleting anything, so a refused rollback changes nothing; FORCE=1 overrides busy (rollback only)
+  ALLOW_DEAD=1 BUSY_OK=${FORCE:-} require_idle
+  rm -f "$DROPIN_DIR/brisk.conf"
+  ALLOW_DEAD=1 BUSY_OK=${FORCE:-} restart
 }
 
 cmd_status() {
