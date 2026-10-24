@@ -51,7 +51,10 @@ fn overlapping_secrets_fully_replaced() {
 #[test]
 fn multiple_secrets() {
     let secrets = vec![b"PIN1".to_vec(), b"rikey".to_vec()];
-    assert_eq!(scrub(b"PIN1-rikey-PIN1", &secrets), b"\0\0\0\0-\0\0\0\0\0-\0\0\0\0");
+    assert_eq!(
+        scrub(b"PIN1-rikey-PIN1", &secrets),
+        b"\0\0\0\0-\0\0\0\0\0-\0\0\0\0"
+    );
 }
 
 #[test]

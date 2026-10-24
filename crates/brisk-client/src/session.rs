@@ -34,13 +34,21 @@ type Tls<'a> = Option<(&'a Identity, &'a ServerCert)>;
 
 impl Session {
     pub fn new(host: &str) -> Self {
-        Session { host: host.to_owned(), http_port: HTTP_PORT, https_port: HTTPS_PORT, recorder: None }
+        Session {
+            host: host.to_owned(),
+            http_port: HTTP_PORT,
+            https_port: HTTPS_PORT,
+            recorder: None,
+        }
     }
 
     /// Plain HTTP when `paired` is None; HTTPS with client cert and pinned server cert otherwise
     /// (only then does Sunshine report `PairStatus` 1).
     pub async fn serverinfo(&mut self, paired: Tls<'_>) -> crate::Result<ServerInfo> {
-        let q: Vec<_> = paired.iter().map(|(id, _)| ("uniqueid".to_string(), id.unique_id.clone())).collect();
+        let q: Vec<_> = paired
+            .iter()
+            .map(|(id, _)| ("uniqueid".to_string(), id.unique_id.clone()))
+            .collect();
         let info = parse_serverinfo(&self.get(paired, "/serverinfo", &q, WAIT).await?)?;
         if paired.is_none() {
             self.https_port = info.https_port;
@@ -48,19 +56,37 @@ impl Session {
         Ok(info)
     }
 
-    pub async fn applist(&mut self, ident: &Identity, server: &ServerCert) -> crate::Result<Vec<App>> {
+    pub async fn applist(
+        &mut self,
+        ident: &Identity,
+        server: &ServerCert,
+    ) -> crate::Result<Vec<App>> {
         let q = [("uniqueid".to_string(), ident.unique_id.clone())];
-        Ok(parse_applist(&self.get(Some((ident, server)), "/applist", &q, WAIT).await?)?)
+        Ok(parse_applist(
+            &self
+                .get(Some((ident, server)), "/applist", &q, WAIT)
+                .await?,
+        )?)
     }
 
     /// Phases 1-4 over HTTP, phase 5 (`pairchallenge`) over HTTPS pinned to the phase-1 cert.
     /// Writes `dir/server.pem` only after phase 5 succeeds. `rng` draws salt, challenge and secret.
-    pub async fn pair(&mut self, dir: &Path, ident: &Identity, pin: &str, rng: Box<dyn Rng>) -> crate::Result<ServerCert> {
+    pub async fn pair(
+        &mut self,
+        dir: &Path,
+        ident: &Identity,
+        pin: &str,
+        rng: Box<dyn Rng>,
+    ) -> crate::Result<ServerCert> {
         if let Some(rec) = &mut self.recorder {
-            identity_secrets(ident).iter().for_each(|s| rec.add_secret(s)); // client cert travels hex in phase 1
+            identity_secrets(ident)
+                .iter()
+                .for_each(|s| rec.add_secret(s)); // client cert travels hex in phase 1
         }
         let drawn = Arc::new(Mutex::new(vec![]));
-        let r = self.pair_inner(ident, pin, Box::new(Tap(rng, drawn.clone()))).await;
+        let r = self
+            .pair_inner(ident, pin, Box::new(Tap(rng, drawn.clone())))
+            .await;
         if let Some(rec) = &mut self.recorder {
             drawn.lock().unwrap().iter().for_each(|s| rec.add_secret(s));
         }
@@ -69,15 +95,24 @@ impl Session {
         Ok(server)
     }
 
-    async fn pair_inner(&mut self, ident: &Identity, pin: &str, mut rng: Box<dyn Rng>) -> crate::Result<ServerCert> {
+    async fn pair_inner(
+        &mut self,
+        ident: &Identity,
+        pin: &str,
+        mut rng: Box<dyn Rng>,
+    ) -> crate::Result<ServerCert> {
         self.serverinfo(None).await?; // learn HttpsPort for phase 5
         let mut salt = [0u8; 16];
         rng.fill(&mut salt);
         let mut pc = PairingClient::new(&ident.cert_pem, &ident.key_pem, &ident.unique_id, rng)?;
 
-        let r = self.get(None, "/pair", &pc.getservercert(salt, pin), PIN_WAIT).await?;
+        let r = self
+            .get(None, "/pair", &pc.getservercert(salt, pin), PIN_WAIT)
+            .await?;
         let plain = paired_field(&r, "plaincert")?;
-        let server = ServerCert { pem: String::from_utf8(unhex(&plain)?).map_err(|_| PairError::BadCert)? };
+        let server = ServerCert {
+            pem: String::from_utf8(unhex(&plain)?).map_err(|_| PairError::BadCert)?,
+        };
         if let Some(rec) = &mut self.recorder {
             rec.add_secret(server.pem.as_bytes());
         }
@@ -92,12 +127,17 @@ impl Session {
             rec.add_secret(&b[..b.len().min(16)]); // server secret travels in clear hex
         }
         let q = pc.on_serverchallenge_resp(&ps).map_err(|e| match e {
-            PairError::HashMismatch => "pairing failed: wrong PIN (server secret does not match the PIN-derived hash)".into(),
+            PairError::HashMismatch => {
+                "pairing failed: wrong PIN (server secret does not match the PIN-derived hash)"
+                    .into()
+            }
             e => crate::Error::from(e),
         })?;
 
         let r = self.get(None, "/pair", &q, WAIT).await?;
-        let q = pc.on_pairingsecret_resp(&parse_field(&r, "paired")?).map_err(|_| "pairing failed: server rejected our pairing secret")?;
+        let q = pc
+            .on_pairingsecret_resp(&parse_field(&r, "paired")?)
+            .map_err(|_| "pairing failed: server rejected our pairing secret")?;
 
         let r = self.get(Some((ident, &server)), "/pair", &q, WAIT).await?;
         paired_field(&r, "paired")?;
@@ -105,10 +145,27 @@ impl Session {
     }
 
     /// One GET with `Connection: close`; returns the body. Records request and response bytes.
-    async fn get(&mut self, tls: Tls<'_>, path: &str, query: &[(String, String)], wait: Duration) -> crate::Result<String> {
-        let port = if tls.is_some() { self.https_port } else { self.http_port };
-        let q: Vec<_> = query.iter().map(|(k, v)| format!("{}={}", enc(k), enc(v))).collect();
-        let req = format!("GET {path}?{} HTTP/1.1\r\nHost: {}:{port}\r\nConnection: close\r\n\r\n", q.join("&"), self.host);
+    async fn get(
+        &mut self,
+        tls: Tls<'_>,
+        path: &str,
+        query: &[(String, String)],
+        wait: Duration,
+    ) -> crate::Result<String> {
+        let port = if tls.is_some() {
+            self.https_port
+        } else {
+            self.http_port
+        };
+        let q: Vec<_> = query
+            .iter()
+            .map(|(k, v)| format!("{}={}", enc(k), enc(v)))
+            .collect();
+        let req = format!(
+            "GET {path}?{} HTTP/1.1\r\nHost: {}:{port}\r\nConnection: close\r\n\r\n",
+            q.join("&"),
+            self.host
+        );
         let host = self.host.clone();
         let raw = tokio::time::timeout(wait, async {
             let tcp = TcpStream::connect((host.as_str(), port)).await?;
@@ -116,18 +173,29 @@ impl Session {
                 None => exchange(tcp, &req).await,
                 Some((id, srv)) => {
                     let name = ServerName::try_from(host.clone())?;
-                    let s = tokio_rustls::TlsConnector::from(Arc::new(tls_config(id, srv)?)).connect(name, tcp).await?;
+                    let s = tokio_rustls::TlsConnector::from(Arc::new(tls_config(id, srv)?))
+                        .connect(name, tcp)
+                        .await?;
                     exchange(s, &req).await
                 }
             }
         })
         .await
-        .map_err(|_| format!("{path}: no reply from {}:{port} within {}s", self.host, wait.as_secs()))?
+        .map_err(|_| {
+            format!(
+                "{path}: no reply from {}:{port} within {}s",
+                self.host,
+                wait.as_secs()
+            )
+        })?
         .map_err(|e| format!("{path} ({}:{port}): {e}", self.host))?;
         let label = path.trim_start_matches('/');
         if let Some(rec) = &mut self.recorder {
             if let Some((id, srv)) = tls {
-                for s in identity_secrets(id).into_iter().chain([srv.pem.clone().into_bytes()]) {
+                for s in identity_secrets(id)
+                    .into_iter()
+                    .chain([srv.pem.clone().into_bytes()])
+                {
                     rec.add_secret(&s);
                 }
             }
@@ -148,8 +216,13 @@ fn paired_field(xml: &str, name: &'static str) -> crate::Result<String> {
 
 /// Key PEM, key DER and client cert PEM: what the recorder must never write.
 fn identity_secrets(id: &Identity) -> Vec<Vec<u8>> {
-    let mut v = vec![id.key_pem.clone().into_bytes(), id.cert_pem.clone().into_bytes()];
-    if let Ok(d) = <rsa::pkcs8::SecretDocument as rsa::pkcs8::DecodePrivateKey>::from_pkcs8_pem(&id.key_pem) {
+    let mut v = vec![
+        id.key_pem.clone().into_bytes(),
+        id.cert_pem.clone().into_bytes(),
+    ];
+    if let Ok(d) =
+        <rsa::pkcs8::SecretDocument as rsa::pkcs8::DecodePrivateKey>::from_pkcs8_pem(&id.key_pem)
+    {
         v.push(d.as_bytes().to_vec());
     }
     v
@@ -167,13 +240,18 @@ impl Rng for Tap {
 fn enc(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()
 }
 
-async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, req: &str) -> crate::Result<Vec<u8>> {
+async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
+    mut s: S,
+    req: &str,
+) -> crate::Result<Vec<u8>> {
     s.write_all(req.as_bytes()).await?;
     s.flush().await?;
     let limit = MAX_BODY + 16 * 1024;
@@ -196,10 +274,17 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, req: &str) -> cra
 
 /// Body of a raw HTTP/1.1 response; enforces Content-Length when present, rejects chunked.
 fn body(raw: &[u8]) -> crate::Result<String> {
-    let end = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or("truncated http response (no header end)")?;
+    let end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or("truncated http response (no header end)")?;
     let head = std::str::from_utf8(&raw[..end]).map_err(|_| "non-utf8 http header")?;
     let mut lines = head.split("\r\n");
-    let status: u16 = lines.next().and_then(|l| l.split(' ').nth(1)).and_then(|c| c.parse().ok()).ok_or("bad http status line")?;
+    let status: u16 = lines
+        .next()
+        .and_then(|l| l.split(' ').nth(1))
+        .and_then(|c| c.parse().ok())
+        .ok_or("bad http status line")?;
     let mut body = &raw[end + 4..];
     for (k, v) in lines.filter_map(|l| l.split_once(':')) {
         match k.trim().to_ascii_lowercase().as_str() {
@@ -227,14 +312,23 @@ fn provider() -> Arc<CryptoProvider> {
 
 fn tls_config(id: &Identity, srv: &ServerCert) -> crate::Result<rustls::ClientConfig> {
     let p = provider();
-    let pem_der = |pem: &str| -> crate::Result<CertificateDer<'static>> { Ok(x509_cert::Certificate::from_pem(pem)?.to_der()?.into()) };
-    let key = <rsa::pkcs8::SecretDocument as rsa::pkcs8::DecodePrivateKey>::from_pkcs8_pem(&id.key_pem)?;
-    let verifier = PinnedCert { der: pem_der(&srv.pem)?.to_vec(), algs: p.signature_verification_algorithms };
+    let pem_der = |pem: &str| -> crate::Result<CertificateDer<'static>> {
+        Ok(x509_cert::Certificate::from_pem(pem)?.to_der()?.into())
+    };
+    let key =
+        <rsa::pkcs8::SecretDocument as rsa::pkcs8::DecodePrivateKey>::from_pkcs8_pem(&id.key_pem)?;
+    let verifier = PinnedCert {
+        der: pem_der(&srv.pem)?.to_vec(),
+        algs: p.signature_verification_algorithms,
+    };
     Ok(rustls::ClientConfig::builder_with_provider(p)
         .with_safe_default_protocol_versions()?
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(verifier))
-        .with_client_auth_cert(vec![pem_der(&id.cert_pem)?], PrivateKeyDer::Pkcs8(key.as_bytes().to_vec().into()))?)
+        .with_client_auth_cert(
+            vec![pem_der(&id.cert_pem)?],
+            PrivateKeyDer::Pkcs8(key.as_bytes().to_vec().into()),
+        )?)
 }
 
 /// Accepts exactly one server cert (byte-equal DER): no CA chain, no hostname, no expiry check,
@@ -246,17 +340,36 @@ struct PinnedCert {
 }
 
 impl ServerCertVerifier for PinnedCert {
-    fn verify_server_cert(&self, ee: &CertificateDer<'_>, _: &[CertificateDer<'_>], _: &ServerName<'_>, _: &[u8], _: UnixTime) -> Result<ServerCertVerified, rustls::Error> {
+    fn verify_server_cert(
+        &self,
+        ee: &CertificateDer<'_>,
+        _: &[CertificateDer<'_>],
+        _: &ServerName<'_>,
+        _: &[u8],
+        _: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
         if ee.as_ref() == self.der.as_slice() {
             Ok(ServerCertVerified::assertion())
         } else {
-            Err(rustls::Error::InvalidCertificate(CertificateError::ApplicationVerificationFailure))
+            Err(rustls::Error::InvalidCertificate(
+                CertificateError::ApplicationVerificationFailure,
+            ))
         }
     }
-    fn verify_tls12_signature(&self, m: &[u8], c: &CertificateDer<'_>, d: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
+    fn verify_tls12_signature(
+        &self,
+        m: &[u8],
+        c: &CertificateDer<'_>,
+        d: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls12_signature(m, c, d, &self.algs)
     }
-    fn verify_tls13_signature(&self, m: &[u8], c: &CertificateDer<'_>, d: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
+    fn verify_tls13_signature(
+        &self,
+        m: &[u8],
+        c: &CertificateDer<'_>,
+        d: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls13_signature(m, c, d, &self.algs)
     }
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {

@@ -59,7 +59,8 @@ X4wnh1bwdiidqpcgyuKossLOPxbS786WmsesaAWPnpoY6M8aija+ALwNNuWWmyMg
 const SALT: &str = "ff5dc6eda99339a8a0793e216c4257c4";
 const PIN: &str = "5338";
 const CLIENT_CHALLENGE: &str = "741CD3D6890C16DA39D53BCA0893AAF0";
-const SERVER_CHALLENGE_RESP: &str = "920BABAE9F7599AA1CA8EC87FB3454C91872A7D8D5127DDC176C2FDAE635CF7A";
+const SERVER_CHALLENGE_RESP: &str =
+    "920BABAE9F7599AA1CA8EC87FB3454C91872A7D8D5127DDC176C2FDAE635CF7A";
 const SERVER_CHALLENGE: &str = "AAAAAAAAAAAAAAAA";
 const CLIENT_PAIRING_SECRET: &str = concat!(
     "000102030405060708090A0B0C0D0EFF", // secret
@@ -79,36 +80,57 @@ impl Rng for QueueRng {
 }
 
 fn client() -> PairingClient {
-    let rng = QueueRng(vec![b"CLIENT CHALLENGE".to_vec(), unhex("000102030405060708090A0B0C0D0EFF").unwrap()]);
+    let rng = QueueRng(vec![
+        b"CLIENT CHALLENGE".to_vec(),
+        unhex("000102030405060708090A0B0C0D0EFF").unwrap(),
+    ]);
     PairingClient::new(PUBLIC_CERT, PRIVATE_KEY, "1234", Box::new(rng)).unwrap()
 }
 
 fn param<'a>(p: &'a [(String, String)], k: &str) -> &'a str {
-    &p.iter().find(|(n, _)| n == k).unwrap_or_else(|| panic!("missing {k}")).1
+    &p.iter()
+        .find(|(n, _)| n == k)
+        .unwrap_or_else(|| panic!("missing {k}"))
+        .1
 }
 
 fn cert_sig() -> Vec<u8> {
-    Certificate::from_pem(PUBLIC_CERT).unwrap().signature.raw_bytes().to_vec()
+    Certificate::from_pem(PUBLIC_CERT)
+        .unwrap()
+        .signature
+        .raw_bytes()
+        .to_vec()
 }
 
 fn sign(data: &[u8]) -> Vec<u8> {
     use rsa::pkcs8::DecodePrivateKey;
     use rsa::signature::{SignatureEncoding, Signer};
     let key = rsa::RsaPrivateKey::from_pkcs8_pem(PRIVATE_KEY).unwrap();
-    rsa::pkcs1v15::SigningKey::<Sha256>::new(key).sign(data).to_vec()
+    rsa::pkcs1v15::SigningKey::<Sha256>::new(key)
+        .sign(data)
+        .to_vec()
 }
 
 #[test]
 fn aes_key_from_salt_and_pin() {
     let k = derive_aes_key(salt(), PIN);
-    assert_eq!(hex(&aes_ecb_encrypt(&k.aes_key, b"CLIENT CHALLENGE")), CLIENT_CHALLENGE);
-    assert_eq!(aes_ecb_decrypt(&k.aes_key, &unhex(CLIENT_CHALLENGE).unwrap()).unwrap(), b"CLIENT CHALLENGE");
+    assert_eq!(
+        hex(&aes_ecb_encrypt(&k.aes_key, b"CLIENT CHALLENGE")),
+        CLIENT_CHALLENGE
+    );
+    assert_eq!(
+        aes_ecb_decrypt(&k.aes_key, &unhex(CLIENT_CHALLENGE).unwrap()).unwrap(),
+        b"CLIENT CHALLENGE"
+    );
 }
 
 #[test]
 fn wrong_pin_changes_ciphertext() {
     let k = derive_aes_key(salt(), "0000");
-    assert_ne!(hex(&aes_ecb_encrypt(&k.aes_key, b"CLIENT CHALLENGE")), CLIENT_CHALLENGE);
+    assert_ne!(
+        hex(&aes_ecb_encrypt(&k.aes_key, b"CLIENT CHALLENGE")),
+        CLIENT_CHALLENGE
+    );
 }
 
 #[test]
@@ -116,8 +138,16 @@ fn server_challenge_resp_vector() {
     // The Sunshine vector uses an 8-byte server challenge (test override), so it cannot travel
     // through a real 48-byte challengeresponse; check the function PairingClient uses directly.
     let k = derive_aes_key(salt(), PIN);
-    let secret: [u8; 16] = unhex("000102030405060708090A0B0C0D0EFF").unwrap().try_into().unwrap();
-    let resp = server_challenge_resp(&k.aes_key, &unhex(SERVER_CHALLENGE).unwrap(), &cert_sig(), &secret);
+    let secret: [u8; 16] = unhex("000102030405060708090A0B0C0D0EFF")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let resp = server_challenge_resp(
+        &k.aes_key,
+        &unhex(SERVER_CHALLENGE).unwrap(),
+        &cert_sig(),
+        &secret,
+    );
     assert_eq!(hex(&resp), SERVER_CHALLENGE_RESP);
 }
 
@@ -129,7 +159,10 @@ fn phase_sequence_with_fixed_rng() {
     let p1 = c.getservercert(salt(), PIN);
     assert_eq!(param(&p1, "phrase"), "getservercert");
     assert_eq!(param(&p1, "salt"), SALT.to_uppercase());
-    assert_eq!(unhex(param(&p1, "clientcert")).unwrap(), PUBLIC_CERT.as_bytes());
+    assert_eq!(
+        unhex(param(&p1, "clientcert")).unwrap(),
+        PUBLIC_CERT.as_bytes()
+    );
     assert_eq!(param(&p1, "uniqueid"), "1234");
 
     // Sunshine test setup: the server uses the same key and cert as the client.
@@ -140,15 +173,28 @@ fn phase_sequence_with_fixed_rng() {
     let server_secret = [0x5Au8; 16];
     let server_challenge = [0xAAu8; 16];
     let challenge = aes_ecb_decrypt(&key, &unhex(param(&p2, "clientchallenge")).unwrap()).unwrap();
-    let hash = Sha256::new().chain_update(&challenge).chain_update(cert_sig()).chain_update(server_secret).finalize();
+    let hash = Sha256::new()
+        .chain_update(&challenge)
+        .chain_update(cert_sig())
+        .chain_update(server_secret)
+        .finalize();
     let resp = aes_ecb_encrypt(&key, &[hash.as_slice(), &server_challenge].concat());
     let p3 = c.on_clientchallenge_resp(&hex(&resp)).unwrap();
     let secret = unhex("000102030405060708090A0B0C0D0EFF").unwrap();
-    let want = server_challenge_resp(&key, &server_challenge, &cert_sig(), &secret.clone().try_into().unwrap());
+    let want = server_challenge_resp(
+        &key,
+        &server_challenge,
+        &cert_sig(),
+        &secret.clone().try_into().unwrap(),
+    );
     assert_eq!(param(&p3, "serverchallengeresp"), hex(&want));
     // nvhttp.cpp clientpairingsecret() same_hash check, done server side.
     let clienthash = aes_ecb_decrypt(&key, &want).unwrap();
-    let expect = Sha256::new().chain_update(server_challenge).chain_update(cert_sig()).chain_update(&secret).finalize();
+    let expect = Sha256::new()
+        .chain_update(server_challenge)
+        .chain_update(cert_sig())
+        .chain_update(&secret)
+        .finalize();
     assert_eq!(clienthash, expect.as_slice());
 
     // As nvhttp.cpp serverchallengeresp(): serversecret || sign256(serversecret).
@@ -158,8 +204,17 @@ fn phase_sequence_with_fixed_rng() {
     assert_eq!(cps, CLIENT_PAIRING_SECRET);
     let cps = unhex(cps).unwrap();
     let cert = Certificate::from_pem(PUBLIC_CERT).unwrap();
-    let pk = RsaPublicKey::from_public_key_der(&cert.tbs_certificate.subject_public_key_info.to_der().unwrap()).unwrap();
-    VerifyingKey::<Sha256>::new(pk).verify(&cps[..16], &Signature::try_from(&cps[16..]).unwrap()).unwrap();
+    let pk = RsaPublicKey::from_public_key_der(
+        &cert
+            .tbs_certificate
+            .subject_public_key_info
+            .to_der()
+            .unwrap(),
+    )
+    .unwrap();
+    VerifyingKey::<Sha256>::new(pk)
+        .verify(&cps[..16], &Signature::try_from(&cps[16..]).unwrap())
+        .unwrap();
 
     let p5 = c.on_pairingsecret_resp("1").unwrap();
     assert_eq!(param(&p5, "phrase"), "pairchallenge");
@@ -173,8 +228,16 @@ fn at_phase3() -> PairingClient {
     c.getservercert(salt(), PIN);
     let p2 = c.on_servercert(&hex(PUBLIC_CERT.as_bytes())).unwrap();
     let challenge = aes_ecb_decrypt(&key, &unhex(param(&p2, "clientchallenge")).unwrap()).unwrap();
-    let hash = Sha256::new().chain_update(&challenge).chain_update(cert_sig()).chain_update([1u8; 16]).finalize();
-    c.on_clientchallenge_resp(&hex(&aes_ecb_encrypt(&key, &[hash.as_slice(), &[0u8; 16]].concat()))).unwrap();
+    let hash = Sha256::new()
+        .chain_update(&challenge)
+        .chain_update(cert_sig())
+        .chain_update([1u8; 16])
+        .finalize();
+    c.on_clientchallenge_resp(&hex(&aes_ecb_encrypt(
+        &key,
+        &[hash.as_slice(), &[0u8; 16]].concat(),
+    )))
+    .unwrap();
     c
 }
 
@@ -196,12 +259,18 @@ fn out_of_order_calls_error() {
     let mut c = client();
     assert_eq!(c.on_pairingsecret_resp("1"), Err(PairError::OutOfOrder));
     let mut c = client();
-    assert_eq!(c.on_servercert(&hex(PUBLIC_CERT.as_bytes())), Err(PairError::OutOfOrder));
+    assert_eq!(
+        c.on_servercert(&hex(PUBLIC_CERT.as_bytes())),
+        Err(PairError::OutOfOrder)
+    );
     // A failed phase poisons the session, like Sunshine's fail_pair.
     let mut c = client();
     c.getservercert(salt(), PIN);
     assert!(c.on_servercert("").is_err());
-    assert_eq!(c.on_servercert(&hex(PUBLIC_CERT.as_bytes())), Err(PairError::OutOfOrder));
+    assert_eq!(
+        c.on_servercert(&hex(PUBLIC_CERT.as_bytes())),
+        Err(PairError::OutOfOrder)
+    );
 }
 
 #[test]
@@ -214,16 +283,29 @@ fn empty_and_garbage_inputs_error_not_panic() {
         let mut c = client();
         c.getservercert(salt(), PIN);
         c.on_servercert(&hex(PUBLIC_CERT.as_bytes())).unwrap();
-        assert!(c.on_clientchallenge_resp(bad).is_err(), "challengeresponse {bad:?}");
+        assert!(
+            c.on_clientchallenge_resp(bad).is_err(),
+            "challengeresponse {bad:?}"
+        );
 
-        assert!(at_phase3().on_serverchallenge_resp(bad).is_err(), "pairingsecret {bad:?}");
+        assert!(
+            at_phase3().on_serverchallenge_resp(bad).is_err(),
+            "pairingsecret {bad:?}"
+        );
         let secret_only = format!("{}{bad}", "01".repeat(16));
-        assert!(at_phase3().on_serverchallenge_resp(&secret_only).is_err(), "no signature {bad:?}");
+        assert!(
+            at_phase3().on_serverchallenge_resp(&secret_only).is_err(),
+            "no signature {bad:?}"
+        );
     }
     let key = derive_aes_key(salt(), PIN).aes_key;
     assert!(aes_ecb_decrypt(&key, &[0u8; 15]).is_err());
     let mut c = client();
     c.getservercert(salt(), PIN);
-    assert!(c.on_servercert(&hex(b"-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n")).is_err());
+    assert!(c
+        .on_servercert(&hex(
+            b"-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
+        ))
+        .is_err());
     assert!(PairingClient::new("junk", PRIVATE_KEY, "1", Box::new(QueueRng(vec![]))).is_err());
 }

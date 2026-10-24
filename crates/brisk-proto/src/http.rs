@@ -15,7 +15,10 @@ pub enum HttpError {
     /// Missing or non-numeric required field.
     BadField(&'static str),
     /// Server answered with a non-200 `status_code`.
-    Status { code: u32, message: String },
+    Status {
+        code: u32,
+        message: String,
+    },
 }
 
 impl std::fmt::Display for HttpError {
@@ -40,13 +43,20 @@ struct Doc {
 
 impl Doc {
     fn get(&self, path: &str) -> Option<&str> {
-        self.texts.iter().find(|(p, _)| p == path).map(|(_, t)| t.as_str())
+        self.texts
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, t)| t.as_str())
     }
     fn field(&self, name: &'static str) -> Result<&str, HttpError> {
-        self.get(&format!("root/{name}")).ok_or(HttpError::BadField(name))
+        self.get(&format!("root/{name}"))
+            .ok_or(HttpError::BadField(name))
     }
     fn num<T: std::str::FromStr>(&self, name: &'static str) -> Result<T, HttpError> {
-        self.field(name)?.trim().parse().map_err(|_| HttpError::BadField(name))
+        self.field(name)?
+            .trim()
+            .parse()
+            .map_err(|_| HttpError::BadField(name))
     }
 }
 
@@ -63,9 +73,10 @@ fn parse(xml: &str) -> Result<Doc, HttpError> {
         let ev = r.read_event().map_err(|_| HttpError::BadXml)?;
         match ev {
             Event::Text(ref t) => buf.push_str(&t.xml10_content()),
-            Event::GeneralRef(ref g) => {
-                buf.push_str(&quick_xml::escape::unescape(&format!("&{};", &**g)).map_err(|_| HttpError::BadXml)?)
-            }
+            Event::GeneralRef(ref g) => buf.push_str(
+                &quick_xml::escape::unescape(&format!("&{};", &**g))
+                    .map_err(|_| HttpError::BadXml)?,
+            ),
             Event::Start(_) | Event::Empty(_) | Event::End(_) | Event::Eof => {
                 if !stack.is_empty() && !buf.trim().is_empty() {
                     texts.push((stack.join("/"), std::mem::take(&mut buf)));
@@ -81,7 +92,10 @@ fn parse(xml: &str) -> Result<Doc, HttpError> {
                             seen_root = true;
                             for a in e.attributes() {
                                 let a = a.map_err(|_| HttpError::BadXml)?;
-                                let v = a.normalized_value(quick_xml::XmlVersion::Implicit1_0).map_err(|_| HttpError::BadXml)?.into_owned();
+                                let v = a
+                                    .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                    .map_err(|_| HttpError::BadXml)?
+                                    .into_owned();
                                 match a.key.as_ref() {
                                     "status_code" => code = v.trim().parse::<u32>().ok(),
                                     "status_message" => message = v,
@@ -110,14 +124,21 @@ fn parse(xml: &str) -> Result<Doc, HttpError> {
     if !stack.is_empty() || !seen_root {
         return Err(HttpError::BadXml);
     }
-    Ok(Doc { code: code.ok_or(HttpError::BadField("status_code"))?, message, texts })
+    Ok(Doc {
+        code: code.ok_or(HttpError::BadField("status_code"))?,
+        message,
+        texts,
+    })
 }
 
 fn ok(d: Doc) -> Result<Doc, HttpError> {
     if d.code == 200 {
         Ok(d)
     } else {
-        Err(HttpError::Status { code: d.code, message: d.message })
+        Err(HttpError::Status {
+            code: d.code,
+            message: d.message,
+        })
     }
 }
 
@@ -175,14 +196,20 @@ pub fn parse_applist(xml: &str) -> Result<Vec<App>, HttpError> {
     let mut cur: Option<(Option<u32>, Option<String>)> = None;
     let mut finish = |c: Option<(Option<u32>, Option<String>)>| -> Result<(), HttpError> {
         if let Some((id, title)) = c {
-            apps.push(App { id: id.ok_or(HttpError::BadField("ID"))?, title: title.ok_or(HttpError::BadField("AppTitle"))? });
+            apps.push(App {
+                id: id.ok_or(HttpError::BadField("ID"))?,
+                title: title.ok_or(HttpError::BadField("AppTitle"))?,
+            });
         }
         Ok(())
     };
     for (p, t) in &d.texts {
         match p.as_str() {
             "root/App" => finish(cur.replace((None, None)))?,
-            "root/App/ID" => cur.as_mut().ok_or(HttpError::BadXml)?.0 = Some(t.trim().parse().map_err(|_| HttpError::BadField("ID"))?),
+            "root/App/ID" => {
+                cur.as_mut().ok_or(HttpError::BadXml)?.0 =
+                    Some(t.trim().parse().map_err(|_| HttpError::BadField("ID"))?)
+            }
             "root/App/AppTitle" => cur.as_mut().ok_or(HttpError::BadXml)?.1 = Some(t.clone()),
             _ => {}
         }
@@ -204,7 +231,10 @@ pub fn parse_launch(xml: &str) -> Result<LaunchReply, HttpError> {
     if !(session_url.starts_with("rtsp://") || session_url.starts_with("rtspenc://")) {
         return Err(HttpError::BadField("sessionUrl0"));
     }
-    Ok(LaunchReply { session_url, game_session: d.num("gamesession")? })
+    Ok(LaunchReply {
+        session_url,
+        game_session: d.num("gamesession")?,
+    })
 }
 
 /// Fixed launch options beyond mode/keys; `Default` is stereo, no HDR, guest audio muted on host.
@@ -223,7 +253,13 @@ pub struct LaunchOpts {
 
 impl Default for LaunchOpts {
     fn default() -> Self {
-        LaunchOpts { host_audio: false, surround_info: 196610, gcmap: 0, sops: false, hdr: false }
+        LaunchOpts {
+            host_audio: false,
+            surround_info: 196610,
+            gcmap: 0,
+            sops: false,
+            hdr: false,
+        }
     }
 }
 
@@ -234,7 +270,16 @@ fn hex_upper(b: &[u8]) -> String {
 /// Query for `GET /launch` (HTTPS). `corever=1` selects encrypted RTSP (`rtspenc://`, Gen7Enc),
 /// keyed by `rikey` with IV prefix `rikeyid`. Required by Sunshine: rikey, rikeyid, localAudioPlayMode, appid.
 #[allow(clippy::too_many_arguments)]
-pub fn launch_query(unique_id: &str, app_id: u32, w: u16, h: u16, fps: u16, rikey: [u8; 16], rikeyid: u32, opts: &LaunchOpts) -> Vec<(String, String)> {
+pub fn launch_query(
+    unique_id: &str,
+    app_id: u32,
+    w: u16,
+    h: u16,
+    fps: u16,
+    rikey: [u8; 16],
+    rikeyid: u32,
+    opts: &LaunchOpts,
+) -> Vec<(String, String)> {
     let b = |v: bool| (v as u8).to_string();
     [
         ("uniqueid", unique_id.to_string()),

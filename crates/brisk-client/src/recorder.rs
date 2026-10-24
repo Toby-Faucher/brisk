@@ -16,7 +16,12 @@ pub struct Recorder {
 
 impl Recorder {
     pub fn new(dir: &Path) -> Self {
-        Recorder { dir: dir.to_owned(), entries: vec![], secrets: vec![], pin: None }
+        Recorder {
+            dir: dir.to_owned(),
+            entries: vec![],
+            secrets: vec![],
+            pin: None,
+        }
     }
 
     /// Scrubbed raw and as upper/lower hex. Ignored if shorter than [`MIN_SECRET`].
@@ -52,7 +57,10 @@ impl Recorder {
         let mut paths = vec![];
         for (i, (label, tls, bytes)) in self.entries.iter().enumerate() {
             let name = format!("{:03}-{label}", i + 1);
-            let meta = format!("{{\"seq\":{},\"label\":\"{label}\",\"tls\":{tls},\"scrubbed\":true}}\n", i + 1);
+            let meta = format!(
+                "{{\"seq\":{},\"label\":\"{label}\",\"tls\":{tls},\"scrubbed\":true}}\n",
+                i + 1
+            );
             for (ext, data) in [("bin", bytes.as_slice()), ("meta.json", meta.as_bytes())] {
                 let p = self.dir.join(format!("{name}.{ext}"));
                 std::fs::write(&p, self.clean(data))?;

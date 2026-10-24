@@ -5,7 +5,10 @@
 // shortcut: O(n * secrets) scan, fine for fixture-sized buffers; a secret made only of 0x00 survives.
 pub fn scrub(bytes: &[u8], secrets: &[Vec<u8>]) -> Vec<u8> {
     let mut out = bytes.to_vec();
-    for s in secrets.iter().filter(|s| !s.is_empty() && s.len() <= bytes.len()) {
+    for s in secrets
+        .iter()
+        .filter(|s| !s.is_empty() && s.len() <= bytes.len())
+    {
         for (i, w) in bytes.windows(s.len()).enumerate() {
             if w == s.as_slice() {
                 out[i..i + s.len()].fill(0);

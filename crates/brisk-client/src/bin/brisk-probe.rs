@@ -40,10 +40,17 @@ fn parse_args() -> Result<Args, String> {
             return Err("--pin must be 4 digits".into());
         }
     }
-    let config = config.or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(|d| PathBuf::from(d).join("brisk")))
+    let config = config
+        .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(|d| PathBuf::from(d).join("brisk")))
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/brisk")))
         .ok_or("no --config, XDG_CONFIG_HOME or HOME")?;
-    Ok(Args { cmd: cmd.ok_or("missing command")?, host: host.ok_or("missing --host")?, pin, record, config })
+    Ok(Args {
+        cmd: cmd.ok_or("missing command")?,
+        host: host.ok_or("missing --host")?,
+        pin,
+        record,
+        config,
+    })
 }
 
 /// Uniform 4-digit PIN from the OS CSPRNG.
@@ -67,23 +74,35 @@ async fn run(a: Args) -> brisk_client::Result<()> {
         "pair" => {
             let ident = load_or_create_identity(&dir)?;
             println!("PIN {pin}: enter it in Sunshine's web UI (PIN tab). Waiting up to 5 min...");
-            s.pair(&dir, &ident, &pin, Box::new(SystemRng)).await.map(|_| println!("paired; server cert pinned in {}", dir.join("server.pem").display()))
+            s.pair(&dir, &ident, &pin, Box::new(SystemRng))
+                .await
+                .map(|_| {
+                    println!(
+                        "paired; server cert pinned in {}",
+                        dir.join("server.pem").display()
+                    )
+                })
         }
-        _ => async {
-            let server = ServerCert::load(&dir)?;
-            let ident = load_or_create_identity(&dir)?;
-            s.serverinfo(None).await?;
-            for app in s.applist(&ident, &server).await? {
-                println!("{}\t{}", app.id, app.title);
+        _ => {
+            async {
+                let server = ServerCert::load(&dir)?;
+                let ident = load_or_create_identity(&dir)?;
+                s.serverinfo(None).await?;
+                for app in s.applist(&ident, &server).await? {
+                    println!("{}\t{}", app.id, app.title);
+                }
+                Ok(())
             }
-            Ok(())
+            .await
         }
-        .await,
     };
     if let Some(mut rec) = s.recorder.take() {
         rec.set_pin(&pin);
         let n = rec.finish()?.len();
-        eprintln!("recorded {n} scrubbed files in {}", a.record.unwrap().display());
+        eprintln!(
+            "recorded {n} scrubbed files in {}",
+            a.record.unwrap().display()
+        );
     }
     r
 }

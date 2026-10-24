@@ -44,8 +44,13 @@ pub struct PairKeys {
 
 /// SHA-256(salt || pin)[..16], as Sunshine `crypto::gen_aes_key`.
 pub fn derive_aes_key(salt: [u8; 16], pin: &str) -> PairKeys {
-    let h = Sha256::new().chain_update(salt).chain_update(pin.as_bytes()).finalize();
-    PairKeys { aes_key: h[..16].try_into().unwrap() }
+    let h = Sha256::new()
+        .chain_update(salt)
+        .chain_update(pin.as_bytes())
+        .finalize();
+    PairKeys {
+        aes_key: h[..16].try_into().unwrap(),
+    }
 }
 
 /// AES-128-ECB, no padding. Panics if `data.len() % 16 != 0` (all callers pass whole blocks).
@@ -53,7 +58,8 @@ pub fn aes_ecb_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
     assert!(data.len() % 16 == 0, "aes_ecb_encrypt: partial block");
     let c = Aes128::new(key.into());
     let mut out = data.to_vec();
-    out.chunks_exact_mut(16).for_each(|b| c.encrypt_block(GenericArray::from_mut_slice(b)));
+    out.chunks_exact_mut(16)
+        .for_each(|b| c.encrypt_block(GenericArray::from_mut_slice(b)));
     out
 }
 
@@ -63,14 +69,24 @@ pub fn aes_ecb_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, PairError
     }
     let c = Aes128::new(key.into());
     let mut out = data.to_vec();
-    out.chunks_exact_mut(16).for_each(|b| c.decrypt_block(GenericArray::from_mut_slice(b)));
+    out.chunks_exact_mut(16)
+        .for_each(|b| c.decrypt_block(GenericArray::from_mut_slice(b)));
     Ok(out)
 }
 
 /// AES(SHA-256(server_challenge || client_cert_sig || client_secret)): the phase-3 param,
 /// checked by Sunshine `clientpairingsecret` against what it decrypted in `serverchallengeresp`.
-pub fn server_challenge_resp(key: &[u8; 16], server_challenge: &[u8], client_cert_sig: &[u8], client_secret: &[u8; 16]) -> Vec<u8> {
-    let h = Sha256::new().chain_update(server_challenge).chain_update(client_cert_sig).chain_update(client_secret).finalize();
+pub fn server_challenge_resp(
+    key: &[u8; 16],
+    server_challenge: &[u8],
+    client_cert_sig: &[u8],
+    client_secret: &[u8; 16],
+) -> Vec<u8> {
+    let h = Sha256::new()
+        .chain_update(server_challenge)
+        .chain_update(client_cert_sig)
+        .chain_update(client_secret)
+        .finalize();
     aes_ecb_encrypt(key, &h)
 }
 
@@ -97,7 +113,11 @@ pub trait Rng {
 /// Parsed cert: (raw signature bits, public key).
 fn parse_cert(pem: &str) -> Result<(Vec<u8>, RsaPublicKey), PairError> {
     let c = Certificate::from_pem(pem).map_err(|_| PairError::BadCert)?;
-    let spki = c.tbs_certificate.subject_public_key_info.to_der().map_err(|_| PairError::BadCert)?;
+    let spki = c
+        .tbs_certificate
+        .subject_public_key_info
+        .to_der()
+        .map_err(|_| PairError::BadCert)?;
     let pk = RsaPublicKey::from_public_key_der(&spki).map_err(|_| PairError::BadCert)?;
     Ok((c.signature.raw_bytes().to_vec(), pk))
 }
@@ -129,7 +149,12 @@ pub struct PairingClient {
 }
 
 impl PairingClient {
-    pub fn new(client_cert_pem: &str, client_key_pem: &str, unique_id: &str, rng: Box<dyn Rng>) -> Result<Self, PairError> {
+    pub fn new(
+        client_cert_pem: &str,
+        client_key_pem: &str,
+        unique_id: &str,
+        rng: Box<dyn Rng>,
+    ) -> Result<Self, PairError> {
         let (cert_sig, _) = parse_cert(client_cert_pem)?;
         let key = RsaPrivateKey::from_pkcs8_pem(client_key_pem)
             .or_else(|_| RsaPrivateKey::from_pkcs1_pem(client_key_pem))
@@ -169,11 +194,19 @@ impl PairingClient {
         self.aes_key = derive_aes_key(salt, pin).aes_key;
         self.phase = Phase::SentCert;
         let cert = hex(self.cert_pem.as_bytes());
-        self.params(&[("devicename", DEVICE_NAME), ("phrase", "getservercert"), ("salt", &hex(&salt)), ("clientcert", &cert)])
+        self.params(&[
+            ("devicename", DEVICE_NAME),
+            ("phrase", "getservercert"),
+            ("salt", &hex(&salt)),
+            ("clientcert", &cert),
+        ])
     }
 
     /// `plaincert` (hex PEM; empty means the server is already pairing) -> phase 2 `clientchallenge`.
-    pub fn on_servercert(&mut self, plaincert_hex: &str) -> Result<Vec<(String, String)>, PairError> {
+    pub fn on_servercert(
+        &mut self,
+        plaincert_hex: &str,
+    ) -> Result<Vec<(String, String)>, PairError> {
         self.enter(Phase::SentCert)?;
         let pem = String::from_utf8(unhex(plaincert_hex)?).map_err(|_| PairError::BadCert)?;
         let (sig, pk) = parse_cert(&pem)?;
@@ -186,7 +219,10 @@ impl PairingClient {
     }
 
     /// `challengeresponse` = AES(hash(32) || server_challenge(16)) -> phase 3 `serverchallengeresp`.
-    pub fn on_clientchallenge_resp(&mut self, hex_resp: &str) -> Result<Vec<(String, String)>, PairError> {
+    pub fn on_clientchallenge_resp(
+        &mut self,
+        hex_resp: &str,
+    ) -> Result<Vec<(String, String)>, PairError> {
         self.enter(Phase::SentChallenge)?;
         let dec = aes_ecb_decrypt(&self.aes_key, &unhex(hex_resp)?)?;
         if dec.len() != 48 {
@@ -203,21 +239,30 @@ impl PairingClient {
 
     /// `pairingsecret` = server_secret(16) || RSA-SHA256 sig -> phase 4 `clientpairingsecret`.
     /// Verifies the server knew the PIN (phase-2 hash) and holds the cert's key.
-    pub fn on_serverchallenge_resp(&mut self, hex_resp: &str) -> Result<Vec<(String, String)>, PairError> {
+    pub fn on_serverchallenge_resp(
+        &mut self,
+        hex_resp: &str,
+    ) -> Result<Vec<(String, String)>, PairError> {
         self.enter(Phase::SentResp)?;
         let ps = unhex(hex_resp)?;
         if ps.len() <= 16 {
             return Err(PairError::BadLength);
         }
         let (secret, sig) = ps.split_at(16);
-        let h = Sha256::new().chain_update(self.client_challenge).chain_update(&self.server_sig).chain_update(secret).finalize();
+        let h = Sha256::new()
+            .chain_update(self.client_challenge)
+            .chain_update(&self.server_sig)
+            .chain_update(secret)
+            .finalize();
         // Constant time: the hash commits to the PIN-derived exchange.
         if !bool::from(h.as_slice().ct_eq(self.server_hash.as_slice())) {
             return Err(PairError::HashMismatch);
         }
         let pk = self.server_pk.clone().ok_or(PairError::OutOfOrder)?;
         let sig = Signature::try_from(sig).map_err(|_| PairError::BadSignature)?;
-        VerifyingKey::<Sha256>::new(pk).verify(secret, &sig).map_err(|_| PairError::BadSignature)?;
+        VerifyingKey::<Sha256>::new(pk)
+            .verify(secret, &sig)
+            .map_err(|_| PairError::BadSignature)?;
         let mine = self.client_secret;
         let out = [&mine[..], &self.key.sign(&mine).to_vec()].concat();
         self.phase = Phase::SentSecret;
@@ -225,7 +270,10 @@ impl PairingClient {
     }
 
     /// Phase 4 reply carries only `paired`; "1" -> phase 5 params, sent over HTTPS with the client cert.
-    pub fn on_pairingsecret_resp(&mut self, paired: &str) -> Result<Vec<(String, String)>, PairError> {
+    pub fn on_pairingsecret_resp(
+        &mut self,
+        paired: &str,
+    ) -> Result<Vec<(String, String)>, PairError> {
         self.enter(Phase::SentSecret)?;
         if paired != "1" {
             return Err(PairError::NotPaired);
