@@ -30,11 +30,13 @@ pub const FEC_SHARDS: usize = 2;
 pub const PARITY: [u8; 8] = [0x77, 0x40, 0x38, 0x0e, 0xc7, 0xa7, 0x0d, 0x6c];
 /// FEC blocks tracked at once; older ones are given up on.
 const MAX_BLOCKS: usize = 4;
-/// Packets this far past the oldest tracked block are out of window.
 const MAX_LOOKAHEAD: u16 = 1024;
-/// Out-of-window packets in a row after which the stream is assumed to have jumped (host restart,
-/// outage longer than the window): the queue resyncs to the new position. A lone stray packet
-/// cannot trigger this, so it cannot reset the queue (8 packets is 40 ms at 5 ms packets).
+/// Packets more than `MAX_LOOKAHEAD` ahead of, or behind, the oldest open block are out of
+/// window; this many in a row (host restart, outage longer than the window, either direction in
+/// u16 space) make the queue resync to the new position. A lone stray cannot trigger it
+/// (8 packets is 40 ms at 5 ms packets). Packets at most `MAX_LOOKAHEAD` behind are plain late
+/// duplicates and neither count nor resync.
+// shortcut: an on-path injector can force a resync with 8 consecutive far packets; accepted on a LAN, add authentication of the stream position if that ever matters.
 const RESYNC_AFTER: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,6 +204,8 @@ pub struct AudioFec {
     floor: Option<u16>,
     /// Consecutive out-of-window packets seen.
     stray: u8,
+    /// Shard size of recent blocks.
+    std_len: Option<usize>,
     /// RTP timestamp step per packet (`x-nv-aqos.packetDuration`).
     duration: u32,
     stats: AudioFecStats,
@@ -217,6 +221,7 @@ impl AudioFec {
             blocks: Vec::new(),
             floor: None,
             stray: 0,
+            std_len: None,
             duration: packet_duration,
             stats: AudioFecStats::default(),
         }
@@ -262,8 +267,9 @@ impl AudioFec {
         };
 
         let floor = *self.floor.get_or_insert(base);
-        if is_before16(base, floor) {
-            return Ok(Vec::new()); // block already finished with
+        let behind = floor.wrapping_sub(base);
+        if behind != 0 && behind <= MAX_LOOKAHEAD {
+            return Ok(Vec::new()); // late packet of a block already finished with
         }
         if base.wrapping_sub(floor) > MAX_LOOKAHEAD {
             self.stray += 1;
@@ -296,7 +302,8 @@ impl AudioFec {
                 self.blocks.push(Block {
                     base,
                     base_ts,
-                    len: shard.len(),
+                    // A one-off odd-sized packet must not set the size for its block.
+                    len: self.std_len.unwrap_or(shard.len()),
                     shards: Default::default(),
                     emitted: [false; DATA_SHARDS],
                     done: false,
@@ -317,6 +324,7 @@ impl AudioFec {
             }
             return Err(AudioError::BlockSize);
         }
+        self.std_len = Some(b.len);
         if b.shards[slot].is_some() || (slot < DATA_SHARDS && b.emitted[slot]) {
             return Ok(Vec::new()); // duplicate
         }

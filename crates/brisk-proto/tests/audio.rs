@@ -207,9 +207,11 @@ fn wrong_key_errors() {
     bad[0] ^= 1;
     assert_eq!(
         parse_audio_packet(&b[0], &bad, KEY_ID),
-        Err(AudioError::BadPadding) // A wrong rikeyid only changes the IV: CBC garbles block 0 but the padding stays valid, so
+        Err(AudioError::BadPadding)
     );
-    // no error, just never the original frame (the stream is unauthenticated).
+
+    // A wrong rikeyid only changes the IV: CBC garbles block 0 but the padding stays valid, so
+    // there is no error, just never the original frame (the stream is unauthenticated).
     let wrong_id = parse_audio_packet(&b[0], &KEY, KEY_ID + 1).map(|f| f.data);
     assert_ne!(wrong_id, Ok(plain(0)));
 }
@@ -237,8 +239,9 @@ fn malformed_packets_error_without_panic() {
     let mut v = d.clone();
     let n = v.len();
     v[n - 20] ^= 0xff;
-    // Garbage into the FEC queue never panics.
     assert_ne!(ok(&v).ok().map(|f| f.data), Some(plain(0)));
+
+    // Garbage into the FEC queue never panics.
     let mut fec = AudioFec::new(DUR);
     let mut x = 0x1234_5678u32;
     for len in 0..200 {
@@ -358,14 +361,39 @@ fn far_jump_resyncs_and_output_resumes() {
 }
 
 #[test]
-fn lone_stray_and_behind_packets_do_not_reset() {
+fn lone_stray_and_near_behind_packets_do_not_reset() {
     let mut fec = AudioFec::new(DUR);
     run(&mut fec, &block(5000), &[0, 1, 2, 3]);
     assert_eq!(fec.push(&block(9000)[0]), Err(AudioError::OutOfWindow));
-    // Behind the floor (and the wrapped-around, far-behind view of the same): stale or stray, not a jump.
-    assert!(fec.push(&block(4000)[0]).unwrap().is_empty());
+    // Late packets up to 1024 behind the floor are stale drops and never count as strays.
+    for _ in 0..20 {
+        assert!(fec.push(&block(4000)[0]).unwrap().is_empty());
+    }
     let frames = run(&mut fec, &block(5004), &[0, 1, 2, 3]);
     check(&frames, 5004, &[0, 1, 2, 3]);
+    assert_eq!(fec.stats().lost, 0);
+}
+
+#[test]
+fn restart_behind_floor_resyncs() {
+    // Host restarts and its sequence numbers begin again at 0 while the floor sits at 5000.
+    let mut fec = AudioFec::new(DUR);
+    run(&mut fec, &block(5000), &[0, 1, 2, 3]);
+    let (mut errs, mut got) = (0, 0);
+    for k in 0..6u16 {
+        for p in &block(4 * k)[..4] {
+            match fec.push(p) {
+                Ok(v) => got += v.len(),
+                Err(e) => {
+                    assert_eq!(e, AudioError::OutOfWindow);
+                    errs += 1;
+                }
+            }
+        }
+    }
+    assert_eq!((errs, got), (7, 17));
+    let frames = run(&mut fec, &block(24), &[0, 3, 4, 5]);
+    check(&frames, 24, &[0, 1, 2, 3]);
 }
 
 #[test]
@@ -378,4 +406,17 @@ fn odd_sized_data_packet_still_passes_through() {
     assert_eq!(fec.push(&odd).unwrap().len(), 1);
     assert!(fec.push(&odd).is_err()); // a repeat of the odd one is not re-emitted
     assert_eq!(fec.push(&b[2]).unwrap().len(), 1);
+}
+
+#[test]
+fn odd_sized_first_packet_does_not_set_block_size() {
+    let mut fec = AudioFec::new(DUR);
+    run(&mut fec, &block(0), &[0, 1, 2, 3]);
+    let b = block(4);
+    let mut odd = b[0].clone();
+    odd.truncate(odd.len() - 16);
+    assert_eq!(fec.push(&odd).unwrap().len(), 1);
+    // The normal packets of the same block still take part in FEC recovery.
+    let frames = run(&mut fec, &b, &[1, 4, 5, 3]);
+    check(&frames, 4, &[1, 2, 3]);
 }
