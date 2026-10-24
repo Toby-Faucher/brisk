@@ -77,6 +77,8 @@ impl Session {
     }
 
     /// `GET /launch` (HTTPS). `cfg.rikey` is scrubbed from recordings: it keys the whole stream.
+    /// `cfg.rikey` MUST be freshly random per launch (GCM nonce reuse otherwise); never reuse a `StreamConfig`
+    /// across launches. `brisk-probe` draws it from `SystemRng` each run.
     pub async fn launch(
         &mut self,
         ident: &Identity,

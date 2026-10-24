@@ -771,3 +771,15 @@ async fn launch_recording_scrubs_rikey() {
         }
     }
 }
+
+/// Probe-style rikey draws must differ run to run (GCM key reuse otherwise).
+#[test]
+fn system_rng_rikeys_are_fresh() {
+    use brisk_client::SystemRng;
+    let draw = || {
+        let mut k = [0u8; 16];
+        SystemRng.fill(&mut k);
+        k
+    };
+    assert_ne!(draw(), draw());
+}

@@ -19,7 +19,7 @@ pub enum Codec {
     Hevc,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct StreamConfig {
     pub width: u16,
     pub height: u16,
@@ -31,11 +31,30 @@ pub struct StreamConfig {
     pub packet_size: u16,
     /// Not sent: Sunshine takes FEC percentage from its own config (`fec_percentage`), not the SDP.
     pub fec_percent: u8,
-    /// Launch key: keys encrypted RTSP, control, and A/V encryption.
+    /// Launch key: keys encrypted RTSP, control, and A/V encryption. MUST be fresh random for every
+    /// launch: it is the AES-GCM key and the IVs are counters, so reusing it breaks GCM.
     pub rikey: [u8; 16],
     pub rikeyid: u32,
     /// `SS_ENC_*` bits sent verbatim as `x-ss-general.encryptionEnabled`; see [`negotiate_encryption`].
     pub enc_flags: u32,
+}
+
+// Manual Debug: rikey keys the whole stream and must not reach logs.
+impl std::fmt::Debug for StreamConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamConfig")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("fps", &self.fps)
+            .field("bitrate_kbps", &self.bitrate_kbps)
+            .field("codec", &self.codec)
+            .field("packet_size", &self.packet_size)
+            .field("fec_percent", &self.fec_percent)
+            .field("rikey", &format_args!("<redacted>"))
+            .field("rikeyid", &self.rikeyid)
+            .field("enc_flags", &self.enc_flags)
+            .finish()
+    }
 }
 
 /// moonlight-common-c's rule: control V2 whenever supported; video/audio when supported and

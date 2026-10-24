@@ -133,3 +133,14 @@ fn sealed_announce_fits_sunshine_buffer() {
     let f = RtspCipher::client([0; 16]).seal(&req).unwrap();
     assert!(f.len() < SUNSHINE_MAX_REQUEST, "{}", f.len());
 }
+
+#[test]
+fn debug_redacts_rikey() {
+    let mut c = cfg();
+    c.rikey = [0xab; 16];
+    let d = format!("{c:?}");
+    assert!(d.contains("rikey: <redacted>"));
+    for bad in ["171", "0xab", "ab, ab", "abab", "AB"] {
+        assert!(!d.contains(bad), "{bad} leaked: {d}");
+    }
+}

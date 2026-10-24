@@ -130,6 +130,24 @@ fn host_frame_uses_sunshine_iv() {
 }
 
 #[test]
+fn client_frame_uses_sunshine_iv() {
+    // Frame: type|len(BE,4) seq(BE,4) tag(16) ciphertext; first sealed request has seq 1.
+    let pt = b"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n";
+    let f = RtspCipher::client(KEY).seal(pt).unwrap();
+    assert_eq!(f[4..8], 1u32.to_be_bytes());
+    let mut iv = [0u8; 12];
+    iv[..4].copy_from_slice(&1u32.to_le_bytes());
+    iv[10] = b'C';
+    iv[11] = b'R';
+    let mut ct = f[24..].to_vec();
+    ct.extend(&f[8..24]); // aes-gcm crate wants ciphertext || tag
+    let out = Aes128Gcm::new(&KEY.into())
+        .decrypt(Nonce::from_slice(&iv), Payload { msg: &ct, aad: b"" })
+        .unwrap();
+    assert_eq!(out, pt);
+}
+
+#[test]
 fn encrypted_rejects_tamper_wrong_key_truncation_oversize() {
     let f = RtspCipher::host(KEY).seal(&reply(1)).unwrap();
     for i in [0usize, 8, 23, 24, f.len() - 1] {
