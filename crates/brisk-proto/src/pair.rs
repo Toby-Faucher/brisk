@@ -11,6 +11,7 @@ use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
 
@@ -210,7 +211,8 @@ impl PairingClient {
         }
         let (secret, sig) = ps.split_at(16);
         let h = Sha256::new().chain_update(self.client_challenge).chain_update(&self.server_sig).chain_update(secret).finalize();
-        if h.as_slice() != self.server_hash.as_slice() {
+        // Constant time: the hash commits to the PIN-derived exchange.
+        if !bool::from(h.as_slice().ct_eq(self.server_hash.as_slice())) {
             return Err(PairError::HashMismatch);
         }
         let pk = self.server_pk.clone().ok_or(PairError::OutOfOrder)?;
