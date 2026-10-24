@@ -60,7 +60,7 @@ Anti-goals (things that would make this a failure)
 7. Chrome only now, Firefox later.
 8. Licensing: do not care.
 9. "If Moonlight has tests we must pass them." Result: it has none (section 7).
-10. Front end: Astro + Svelte + Base UI (decided 2026-10-24, after the draft). [U] Base UI (MUI's `@base-ui-components`) is a React library; I have not verified a Svelte port. Svelte equivalents are headless libraries such as Bits UI or Melt UI. Toby to confirm which he means; until then the UI task is not planned.
+10. Front end: Astro + Svelte + Bits UI (headless Svelte components; decided 2026-10-24 — Toby chose Bits UI after I flagged that Base UI is React-only [U, not verified here]).
 11. Visual direction: take design inspiration from Linear (decided 2026-10-24). My reading, [CALL] until Toby reacts: dark-first with a light theme, dense and calm, keyboard-first (a command palette for apps, settings and connect/disconnect), restrained accent color, fast and minimal motion, nothing that competes with the video. In-stream UI (latency/stats overlay, menu) stays out of the way and never touches the video path. Details are for the UI task; use the frontend-design skill then and show mockups before building.
 
 ## 5. Architecture sketch (my reading of the above; details are the builder's)
@@ -136,7 +136,7 @@ Gate: only start after M3, and only if M0 numbers show the corresponding term is
 3. [CALL] Sunshine patch lives as a small patch set on top of d0b4a88-ish upstream, kept minimal so rebasing is cheap.
 4. [CALL] Target H.264 and HEVC first, AV1 later; probe `VideoDecoder.isConfigSupported` at runtime. Hardware decode on Linux Chrome is a known weak spot [U].
 5. [CALL] Latency gates above are targets; they get replaced by real numbers after M0.
-6. SUPERSEDED by Toby's decision 4.10: the web UI is Astro + Svelte + Base UI, not plain TypeScript/HTML. The WebTransport/WebCodecs/WebHID code stays framework-free TypeScript modules (a Svelte component mounts them); the video path must not go through reactive state (frames go decoder -> canvas directly). [CALL]
+6. SUPERSEDED by Toby's decision 4.10: the web UI is Astro + Svelte + Bits UI, not plain TypeScript/HTML. The WebTransport/WebCodecs/WebHID code stays framework-free TypeScript modules (a Svelte component mounts them); the video path must not go through reactive state (frames go decoder -> canvas directly). [CALL]
 7. Unchecked: default RSA key size in Sunshine pairing, whether nanors rs16 variants are used, the unpair endpoint, Chrome Local Network Access prompt on 100.x addresses, Chrome `outgoingMaxAge` support, whether `tailscale cert` hostname exposure in CT logs matters to Toby.
 
 8. [CALL] Tap suppresses Sunshine's own video UDP send for the bridge session, so no CPU is wasted on packets nobody reads.
