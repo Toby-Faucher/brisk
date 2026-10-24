@@ -75,3 +75,14 @@ without an ACK), compression, checksum, bandwidth and throttle adaptation, unseq
 
 ## Live control run (2026-10-24, bawn, Sunshine v2026.914.233613)
 Command: `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 30`. Result: ENet handshake OK, encrypted control OK both ways (297/297 pings acked, 0 bad host messages), IDR at start and at 15 s, host message 0x010e once, no termination, clean cancel, Sunshine FREE after. A/V keepalive pings accepted: video 24437 pkts (34.4 MB) and audio 8991 pkts (3.0 MB) received in 30 s (about 9.2 Mbit/s video on a static Steam Big Picture screen; [U] the bitrate depends on content and Sunshine's configured bitrate). Not yet verified live: video/audio packet parsing and FEC, input packet bytes (no observable effect yet), rumble.
+
+## Stream receive (Task 12, offline part)
+
+`brisk-probe stream` feeds every datagram on the A/V ping sockets through brisk_proto
+(`ControlSession::run_until_with` hands them to `brisk_client::stream::StreamRx`). Facts read
+from the pinned sources, not yet live-verified:
+
+- Audio is encrypted only when `SS_ENC_AUDIO` is negotiated (`encode_audio(session->config.encryptionFlagsEnabled & SS_ENC_AUDIO, ...)`, stream.cpp:352-360, 1889; legacy nvFeatureFlags 0x20 also turns it on, rtsp.cpp:1163-1166). The live control run negotiated 0x1, so its audio was plain. `stream` asks for `SS_ENC_AUDIO` (Moonlight's default, [U] for moonlight-qt) so the audio path and the recorded samples are AES-CBC; Sunshine always advertises it as supported (rtsp.cpp:931).
+- Audio key: `rikey`; IV base `avRiKeyId` = the launch `rikeyid` (nvhttp.cpp:523 stores it big-endian, stream.cpp:2372 reads it back big-endian).
+- Video stays plain unless `SS_ENC_VIDEO` is negotiated (LAN encryption mode "never" by default: Sunshine does not even advertise it, rtsp.cpp:939-948). Both paths are handled.
+- Gate: parse errors (video decrypt/parse/assembler + audio FEC/decrypt) = 0, frames >= 0.95 x 60 x secs, and an IDR frame within 2 s of each IDR request (sent at secs/3 and 2 secs/3). A request in the last 2 s of the run with no IDR yet counts as unanswered.

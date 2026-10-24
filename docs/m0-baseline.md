@@ -14,6 +14,19 @@ Cells: `PENDING (Toby)` = needs Toby's client machine; `PENDING (Task 12)` = hos
 
 [U] Whether Moonlight Qt is installed on Toby's client machine (the overlay rows need it).
 
+## How to fill the Task 12 rows
+
+`brisk-probe stream --host 127.0.0.1 --app <id> --secs 60` ends with a fixed-label block
+(`=== brisk stream summary ===` ... `=== end summary ===`). Copy from it:
+
+| row / note | summary line |
+|---|---|
+| host capture+encode | `host_latency_ms min / median / p99` (Sunshine `frame_processing_latency`, 0.1 ms units, frames with 0 = no measurement are left out) |
+| arrival jitter (add as a note under the table) | `arrival_jitter_ms p50 / p99`: abs(inter-frame arrival delta - 16.67 ms) at the client socket |
+| loss (add as a note) | `video_loss` and `audio_loss`: missing RTP sequence numbers, before FEC; `fec_recovered`, `audio_recovered`, `audio_lost` after it |
+
+Run on bawn itself these are loopback numbers (host side only); the network part stays the row above.
+
 ## How to fill the network row
 
 From the client machine, in this repo: `scripts/m0-netpath.sh bawn` (Tailscale; prints direct/DERP verdict, per-reply path, min/median/p99) and `scripts/m0-netpath.sh <bawn LAN IP>` (plain `ping -c 100 -i 0.2`). Parser check without a live peer: `scripts/test-m0-netpath.sh`.
