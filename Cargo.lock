@@ -83,6 +83,7 @@ dependencies = [
  "rustls-rustcrypto",
  "rusty_enet",
  "sha2",
+ "socket2",
  "tempfile",
  "tokio",
  "tokio-rustls",

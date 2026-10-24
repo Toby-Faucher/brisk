@@ -1203,7 +1203,7 @@ async fn stream_records_replayable_samples() {
     assert_eq!(key, "52494b45592d30313233343536373839 01020304\n");
     assert!(std::fs::read_to_string(a.join("README.md"))
         .unwrap()
-        .contains("ONE finished streaming session"));
+        .contains("ONE streaming session"));
     let audio = bins("audio");
     assert_eq!(audio.len(), 100);
     let mut data = 0;

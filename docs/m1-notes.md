@@ -86,3 +86,7 @@ from the pinned sources, not yet live-verified:
 - Audio key: `rikey`; IV base `avRiKeyId` = the launch `rikeyid` (nvhttp.cpp:523 stores it big-endian, stream.cpp:2372 reads it back big-endian).
 - Video stays plain unless `SS_ENC_VIDEO` is negotiated (LAN encryption mode "never" by default: Sunshine does not even advertise it, rtsp.cpp:939-948). Both paths are handled.
 - Gate: parse errors (video decrypt/parse/assembler + audio FEC/decrypt) = 0, frames >= 0.95 x 60 x secs, and an IDR frame within 2 s of each IDR request (sent at secs/3 and 2 secs/3). A request in the last 2 s of the run with no IDR yet counts as unanswered.
+
+## Receive buffers
+
+`brisk-probe stream` asks for SO_RCVBUF of 2 MiB (video) and 256 KiB (audio); the summary prints the effective sizes as `rcvbuf video/audio`. Linux doubles the requested value and clamps it to `net.core.rmem_max`, so a small sysctl shows up as a smaller number there. We do not change the sysctl (no root).

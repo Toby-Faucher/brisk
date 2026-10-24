@@ -41,6 +41,16 @@ struct Args {
     config: PathBuf,
 }
 
+fn check_secs(stream: bool, secs: u64) -> Result<(), String> {
+    if !(1..=3600).contains(&secs) {
+        return Err("--secs must be 1..=3600".into());
+    }
+    if stream && secs < 10 {
+        return Err("--secs must be >= 10 for stream: the 2 IDR requests at secs/3 and 2secs/3 each need 2 s to be answered".into());
+    }
+    Ok(())
+}
+
 fn parse_args() -> Result<Args, String> {
     let (mut cmd, mut host, mut pin, mut app, mut record, mut config) =
         (None, None, None, None, None, None);
@@ -76,9 +86,7 @@ fn parse_args() -> Result<Args, String> {
     } else {
         10
     });
-    if !(1..=3600).contains(&secs) {
-        return Err("--secs must be 1..=3600".into());
-    }
+    check_secs(cmd.as_deref() == Some("stream"), secs)?;
     if let Some(p) = &pin {
         if p.len() != 4 || !p.bytes().all(|b| b.is_ascii_digit()) {
             return Err("--pin must be 4 digits".into());
@@ -345,5 +353,18 @@ async fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_secs;
+
+    #[test]
+    fn stream_needs_at_least_10_secs() {
+        assert!(check_secs(true, 9).unwrap_err().contains(">= 10"));
+        assert!(check_secs(true, 10).is_ok());
+        assert!(check_secs(false, 1).is_ok());
+        assert!(check_secs(false, 3601).is_err());
     }
 }

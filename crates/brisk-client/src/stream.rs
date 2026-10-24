@@ -22,8 +22,8 @@ const VIDEO_SAMPLES: u32 = 120;
 const VIDEO_SAMPLES_MAX: u32 = 999;
 const AUDIO_SAMPLES: u32 = 100;
 
-/// Nearest-rank percentiles (`ps` in 0..=100) of `v`; `None` when `v` is empty.
-pub fn percentiles(v: &[f64], ps: &[f64]) -> Option<Vec<f64>> {
+/// Nearest-rank percentiles (`ps` integer percents in 0..=100, exact) of `v`; `None` when `v` is empty.
+pub fn percentiles(v: &[f64], ps: &[u32]) -> Option<Vec<f64>> {
     if v.is_empty() {
         return None;
     }
@@ -31,7 +31,7 @@ pub fn percentiles(v: &[f64], ps: &[f64]) -> Option<Vec<f64>> {
     s.sort_by(f64::total_cmp);
     Some(
         ps.iter()
-            .map(|p| s[((p / 100.0 * s.len() as f64).ceil() as usize).clamp(1, s.len()) - 1])
+            .map(|p| s[((*p as usize * s.len()).div_ceil(100)).clamp(1, s.len()) - 1])
             .collect(),
     )
 }
@@ -70,9 +70,12 @@ struct Samples {
 }
 
 const AUDIO_README: &str = "# Audio samples: READ BEFORE COMMITTING\n\n\
-`rikey.hex` is `<rikey, 32 hex> <rikeyid, 8 hex>`: the AES key of ONE finished streaming \
-session. `brisk-probe stream` draws a fresh random rikey for every launch and the session was \
-cancelled right after recording, so the key protects nothing else (not a secret in practice). \
+`rikey.hex` is `<rikey, 32 hex> <rikeyid, 8 hex>`: the AES key of ONE streaming \
+session. The rikey is also that session's control/input AES-GCM key (and its video key if \
+SS_ENC_VIDEO). `brisk-probe stream` draws a fresh random rikey for every launch and the session \
+was cancelled right after recording, so the key is ephemeral and protects nothing else. If the \
+cancel failed this claim does not hold: check the printed `cancelled` line before committing. \
+Files here are written 0644 deliberately (they are meant to be committed). \
 It is written only with `--record-samples`. It must NEVER be a real long-lived key: never copy a \
 paired identity, a pairing secret or anything from ~/.config/brisk here.\n\n\
 NNN.bin are raw audio datagrams as received (data packets: AES-128-CBC ciphertext; FEC packets: \
@@ -129,6 +132,8 @@ pub struct Summary {
     /// Empty when the gate passes.
     pub failures: Vec<String>,
     pub control: Stats,
+    /// Effective SO_RCVBUF (video, audio) in bytes; 0 if unknown.
+    pub rcvbuf: (usize, usize),
 }
 
 impl Summary {
@@ -167,7 +172,7 @@ impl std::fmt::Display for Summary {
             .iter()
             .map(|r| r.map_or("none".into(), |ms| format!("{ms:.1}")))
             .collect();
-        let rows: [(&str, String); 18] = [
+        let rows: [(&str, String); 19] = [
             ("duration_s", format!("{:.1}", self.secs)),
             (
                 "frames_assembled",
@@ -229,6 +234,10 @@ impl std::fmt::Display for Summary {
                     "sent {} acked {}",
                     self.control.pings_sent, self.control.pings_acked
                 ),
+            ),
+            (
+                "rcvbuf video/audio",
+                format!("{} / {}", self.rcvbuf.0, self.rcvbuf.1),
             ),
             (
                 "gate",
@@ -432,14 +441,15 @@ impl StreamRx {
             audio_recovered: af.recovered,
             audio_lost: af.lost,
             bad_host_msgs: control.bad_msgs,
-            host_latency_ms: percentiles(&lat, &[0.0, 50.0, 99.0]),
-            jitter_ms: percentiles(&jitter, &[50.0, 99.0]),
+            host_latency_ms: percentiles(&lat, &[0, 50, 99]),
+            jitter_ms: percentiles(&jitter, &[50, 99]),
             video_mbps: (mbps(self.annexb_bytes), mbps(self.wire_bytes)),
             video_loss: (self.vloss.missing, self.vloss.received),
             audio_loss: (self.aloss.missing, self.aloss.received),
             idr_response_ms,
             failures: Vec::new(),
             control: control.clone(),
+            rcvbuf: (0, 0),
         };
         let errors = s.video_parse_errors + s.audio_parse_errors;
         if errors > 0 {
@@ -477,6 +487,7 @@ pub async fn stream(
     let mut rx = StreamRx::new(p.enc_flags, rikey, rikeyid, record)?;
     let start = Instant::now();
     let mut control = Stats::default();
+    let mut rcvbuf = (0, 0);
     let r = async {
         let cd = p
             .connect_data
@@ -490,6 +501,7 @@ pub async fn stream(
             .as_deref()
             .ok_or("SETUP(audio) reply had no X-SS-Ping-Payload")?;
         let av = AvPing::new(addr.ip(), p.video, p.audio, payload).await?;
+        rcvbuf = av.rcvbuf();
         println!(
             "stream\tvideo {} audio {} control {addr} encryption {:#x}",
             p.video, p.audio, p.enc_flags
@@ -497,8 +509,8 @@ pub async fn stream(
         let mut c = ControlSession::connect(addr, cd, rikey, connect_id, Some(av)).await?;
         let r = async {
             for k in 1..=3u32 {
-                c.run_until_with(start + secs * k / 3, &mut |i, d| {
-                    rx.on_datagram(i, d, Instant::now())
+                c.run_until_with(start + secs * k / 3, &mut |i, d, at| {
+                    rx.on_datagram(i, d, at)
                 })
                 .await?;
                 if k < 3 && c.is_open() {
@@ -520,7 +532,8 @@ pub async fn stream(
         Ok::<(), crate::Error>(())
     }
     .await;
-    let s = rx.summary(secs.as_secs_f64(), &control);
+    let mut s = rx.summary(secs.as_secs_f64(), &control);
+    s.rcvbuf = rcvbuf;
     println!("{s}");
     if let Err(e) = r {
         return Err(format!(
@@ -541,18 +554,26 @@ mod tests {
 
     #[test]
     fn percentiles_correct() {
-        assert_eq!(percentiles(&[], &[50.0]), None);
-        assert_eq!(percentiles(&[7.0], &[0.0, 50.0, 99.0]), Some(vec![7.0; 3]));
+        assert_eq!(percentiles(&[], &[50]), None);
+        assert_eq!(percentiles(&[7.0], &[0, 50, 99]), Some(vec![7.0; 3]));
         let v: Vec<f64> = (1..=100).rev().map(f64::from).collect();
         assert_eq!(
-            percentiles(&v, &[0.0, 50.0, 99.0, 100.0]),
+            percentiles(&v, &[0, 50, 99, 100]),
             Some(vec![1.0, 50.0, 99.0, 100.0])
         );
         // Nearest rank: p50 of 4 values is the 2nd, p99 the 4th.
         assert_eq!(
-            percentiles(&[4.0, 1.0, 3.0, 2.0], &[50.0, 99.0]),
+            percentiles(&[4.0, 1.0, 3.0, 2.0], &[50, 99]),
             Some(vec![2.0, 4.0])
         );
+    }
+
+    #[test]
+    fn percentiles_are_exact_where_float_ceil_is_off() {
+        // 0.07 * 100 = 7.000000000000001 in f64: float ceil picks rank 8, the exact rank is 7.
+        let v: Vec<f64> = (1..=100).map(f64::from).collect();
+        assert_eq!(percentiles(&v, &[7]), Some(vec![7.0]));
+        assert_eq!(percentiles(&v, &[29]), Some(vec![29.0]));
     }
 
     #[test]

@@ -31,7 +31,7 @@ const MEDIA_BUF: usize = 4096;
 const EARLY_MAX: usize = 4096;
 
 /// Receives every video (index 0) or audio (index 1) datagram as it arrives.
-pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8]);
+pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8], Instant);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
@@ -84,13 +84,22 @@ impl AvPing {
             "[::]:0".parse().unwrap()
         };
         Ok(AvPing {
-            socks: [UdpSocket::bind(local).await?, UdpSocket::bind(local).await?],
+            socks: [
+                bind_rcvbuf(local, VIDEO_RCVBUF)?,
+                bind_rcvbuf(local, AUDIO_RCVBUF)?,
+            ],
             targets: [SocketAddr::new(host, video), SocketAddr::new(host, audio)],
             payload,
             seq: 0,
             next: Instant::now(),
             bufs: [vec![0; MEDIA_BUF], vec![0; MEDIA_BUF]],
         })
+    }
+
+    /// Effective SO_RCVBUF of the (video, audio) sockets; the kernel doubles and may clamp it.
+    pub fn rcvbuf(&self) -> (usize, usize) {
+        let get = |s| socket2::SockRef::from(s).recv_buffer_size().unwrap_or(0);
+        (get(&self.socks[0]), get(&self.socks[1]))
     }
 
     /// `SS_PING { payload[16], sequenceNumber u32 BE }`, counted from 1 (Video.h:51-54).
@@ -112,6 +121,18 @@ impl AvPing {
         }
         self.next = Instant::now() + AV_PING_EVERY;
     }
+}
+
+/// Requested SO_RCVBUF for the video and audio sockets (net.core.rmem_max may clamp them).
+const VIDEO_RCVBUF: usize = 2 << 20;
+const AUDIO_RCVBUF: usize = 256 << 10;
+
+/// Bound UDP socket with a bigger receive buffer; a refused size is not an error.
+fn bind_rcvbuf(local: SocketAddr, rcvbuf: usize) -> std::io::Result<UdpSocket> {
+    let std_sock = std::net::UdpSocket::bind(local)?;
+    let _ = socket2::SockRef::from(&std_sock).set_recv_buffer_size(rcvbuf);
+    std_sock.set_nonblocking(true)?;
+    UdpSocket::from_std(std_sock)
 }
 
 async fn recv_opt(s: Option<(&UdpSocket, &mut Vec<u8>)>) -> std::io::Result<usize> {
@@ -138,7 +159,7 @@ pub struct ControlSession {
     closing: bool,
     buf: Vec<u8>,
     av: Option<AvPing>,
-    early: Vec<(usize, Vec<u8>)>,
+    early: Vec<(usize, Instant, Vec<u8>)>,
     pub stats: Stats,
 }
 
@@ -230,7 +251,7 @@ impl ControlSession {
 
     /// Ping, receive and retransmit until `until`, or until the host ends the session.
     pub async fn run_until(&mut self, until: Instant) -> crate::Result<()> {
-        self.run_until_with(until, &mut |_, _| {}).await
+        self.run_until_with(until, &mut |_, _, _| {}).await
     }
 
     /// [`Self::run_until`] that hands every media datagram to `sink`, starting with any that
@@ -240,8 +261,8 @@ impl ControlSession {
         until: Instant,
         sink: MediaSink<'_>,
     ) -> crate::Result<()> {
-        for (i, d) in std::mem::take(&mut self.early) {
-            sink(i, &d);
+        for (i, at, d) in std::mem::take(&mut self.early) {
+            sink(i, &d, at);
         }
         while self.is_open() && Instant::now() < until {
             if Instant::now() >= self.next_ping {
@@ -309,13 +330,14 @@ impl ControlSession {
             Got::Ctl(Err(e)) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
             Got::Ctl(Err(e)) => return Err(e.into()),
             Got::Media(i, Ok(n)) => {
+                let at = Instant::now();
                 self.stats.media_rx_packets[i] += 1;
                 self.stats.media_rx_bytes[i] += n as u64;
                 let d = &self.av.as_ref().unwrap().bufs[i][..n];
                 match sink {
-                    Some(f) => f(i, d),
+                    Some(f) => f(i, d, at),
                     None if !self.closing && self.early.len() < EARLY_MAX => {
-                        self.early.push((i, d.to_vec()))
+                        self.early.push((i, at, d.to_vec()))
                     }
                     None => {}
                 }
@@ -378,7 +400,7 @@ impl ControlSession {
         }
         let deadline = Instant::now() + LINGER;
         while self.peer.state() != PeerState::Disconnected && Instant::now() < deadline {
-            if self.step(deadline, Some(&mut |_, _| {})).await.is_err() {
+            if self.step(deadline, Some(&mut |_, _, _| {})).await.is_err() {
                 break;
             }
         }
@@ -392,5 +414,40 @@ impl ControlSession {
             }
         }
         Ok(self.stats)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Datagrams kept during the connect reach the sink with their own arrival time.
+    #[tokio::test]
+    async fn early_datagrams_keep_their_arrival_instant() {
+        let sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let (peer, _) = EnetPeer::connect(1, 1, 0);
+        let t0 = Instant::now();
+        let mut c = ControlSession {
+            sock,
+            peer,
+            ctl: Control::new([0; 16]),
+            epoch: t0,
+            pings: HashSet::new(),
+            next_ping: t0,
+            closing: false,
+            buf: Vec::new(),
+            av: None,
+            early: (0..3)
+                .map(|k| (0, t0 - Duration::from_millis(100 - 17 * k), vec![k as u8]))
+                .collect(),
+            stats: Stats::default(),
+        };
+        let mut got = Vec::new();
+        c.run_until_with(t0, &mut |i, d, at| got.push((i, d[0], at)))
+            .await
+            .unwrap();
+        assert_eq!(got.len(), 3);
+        assert_eq!((got[1].2 - got[0].2).as_millis(), 17);
+        assert_eq!((got[2].2 - got[1].2).as_millis(), 17);
     }
 }
