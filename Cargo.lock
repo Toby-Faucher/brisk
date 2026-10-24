@@ -74,6 +74,7 @@ dependencies = [
 name = "brisk-client"
 version = "0.0.0"
 dependencies = [
+ "aes",
  "aes-gcm",
  "brisk-proto",
  "rand_core",

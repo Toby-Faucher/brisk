@@ -6,7 +6,7 @@ use brisk_client::recorder::Recorder;
 use brisk_client::session::Session;
 use brisk_proto::pair::*;
 use brisk_proto::rtsp::{parse_request, RtspCipher};
-use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_CONTROL_V2};
+use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO, SS_ENC_CONTROL_V2};
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
@@ -24,6 +24,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
+
+mod common;
 
 const EMPTY_400: &str = "<<empty-400>>";
 const SERVER_SECRET: [u8; 16] = *b"FAKE-SRV-SECRET!";
@@ -83,6 +85,9 @@ struct RtspSt {
     seen: Vec<(String, String, Option<String>)>,
     announced: String,
     cancels: usize,
+    /// SETUP server ports [audio, video, control]; Sunshine's defaults when unset. Stream tests
+    /// point them at the fake media host so nothing reaches a real Sunshine on 127.0.0.1.
+    ports: Option<[u16; 3]>,
 }
 
 fn xml(body: &str) -> String {
@@ -310,10 +315,16 @@ async fn serve_rtsp(mut s: TcpStream, f: &Fake) {
                 .split('/')
                 .next()
                 .unwrap();
+            let p = f
+                .rtsp
+                .lock()
+                .unwrap()
+                .ports
+                .unwrap_or([48000, 47998, 47999]);
             let port = match ty {
-                "audio" => 48000,
-                "video" => 47998,
-                "control" => 47999,
+                "audio" => p[0],
+                "video" => p[1],
+                "control" => p[2],
                 _ => 0,
             };
             if port == 0 {
@@ -983,4 +994,227 @@ async fn launch_session_runs_during_before_cancel() {
         .unwrap_err();
     assert!(err.to_string().contains("control failed"));
     assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+}
+
+/// `brisk-probe stream` end to end against the fakes: launch, RTSP (ports pointing at the media
+/// fake), control + A/V receive, then `/cancel`. Returns the stream result, `/cancel`s that
+/// reached the fake, and the media fake's log.
+async fn stream_run(
+    media: common::fake_host::Media,
+    secs: std::time::Duration,
+    record: Option<&Path>,
+) -> (
+    brisk_client::Result<brisk_client::stream::Summary>,
+    usize,
+    Arc<Mutex<common::fake_host::Log>>,
+) {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let cfg = StreamConfig {
+        enc_flags: SS_ENC_AUDIO,
+        ..stream_cfg()
+    };
+    let (rikey, rikeyid) = (cfg.rikey, cfg.rikeyid);
+    let host = common::fake_host::fake_with(common::fake_host::Cfg {
+        key: rikey,
+        connect_data: 0x12345678,
+        ping_payload: "0123456789ABCDEF",
+        drop: 0,
+        media: Some(common::fake_host::Media {
+            audio_key: Some((rikey, rikeyid)),
+            ..media
+        }),
+    });
+    fake.rtsp.lock().unwrap().ports =
+        Some([host.audio.port(), host.video.port(), host.addr.port()]);
+    let f = fake.clone();
+    let r = s
+        .launch_session(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &cfg,
+            false,
+            |p| async move {
+                assert_eq!(f.rtsp.lock().unwrap().cancels, 0, "not cancelled yet");
+                // DESCRIBE: supported 5, requested 1; we want audio.
+                assert_eq!(p.enc_flags, SS_ENC_CONTROL_V2 | SS_ENC_AUDIO);
+                brisk_client::stream::stream("127.0.0.1", &p, rikey, rikeyid, 1, secs, record).await
+            },
+        )
+        .await;
+    let cancels = fake.rtsp.lock().unwrap().cancels;
+    (r, cancels, host.log)
+}
+
+fn secs(n: u64) -> std::time::Duration {
+    std::time::Duration::from_secs(n)
+}
+
+#[tokio::test]
+async fn stream_5s_passes_gate_then_cancels() {
+    let (r, cancels, log) = stream_run(Default::default(), secs(5), None).await;
+    let st = r.unwrap();
+    assert_eq!(cancels, 1);
+    assert!(st.passed() && st.frames >= 285, "{st}");
+    assert_eq!(st.video_parse_errors + st.audio_parse_errors, 0, "{st}");
+    // Opening IDR plus one per request, each answered in well under 2 s.
+    assert!(st.idr_frames >= 3, "{st}");
+    assert!(
+        st.idr_response_ms.len() == 2 && st.idr_response_ms.iter().all(|r| r.unwrap() < 500.0),
+        "{st}"
+    );
+    assert!(st.audio_ok >= 900 && st.audio_lost == 0, "{st}");
+    assert_eq!((st.fec_recovered, st.video_loss.0), (0, 0), "{st}");
+    let h = st.host_latency_ms.as_ref().unwrap();
+    assert!(h[0] >= 3.0 && h[2] <= 4.9, "fake sends 3.0-4.9 ms: {st}");
+    let l = log.lock().unwrap();
+    assert_eq!(l.disconnects, 1, "graceful ENet disconnect before /cancel");
+    assert!(st.frames <= l.frames as u64);
+}
+
+#[tokio::test]
+async fn stream_3pct_video_loss_is_recovered_by_fec() {
+    let media = common::fake_host::Media {
+        loss_pct: 3,
+        ..Default::default()
+    };
+    let (r, cancels, log) = stream_run(media, secs(3), None).await;
+    let st = r.unwrap();
+    assert_eq!(cancels, 1);
+    let dropped = log.lock().unwrap().video_dropped as u64;
+    assert!(dropped > 0);
+    assert!(st.passed() && st.frames >= 171, "{st}");
+    assert!(st.fec_recovered > 0 && st.frames_dropped == 0, "{st}");
+    // Every dropped datagram shows as a missing sequence number (ones dropped near the end of
+    // the run may not have been noticed yet).
+    assert!(st.video_loss.0 > 0 && st.video_loss.0 <= dropped, "{st}");
+}
+
+#[tokio::test]
+async fn stream_parse_error_fails_gate_but_still_cancels() {
+    let media = common::fake_host::Media {
+        corrupt_frame: Some(30),
+        ..Default::default()
+    };
+    let (r, cancels, _) = stream_run(media, secs(2), None).await;
+    let e = r.unwrap_err().to_string();
+    assert!(
+        e.contains("stream gate FAILED") && e.contains("parse_errors 1 > 0"),
+        "{e}"
+    );
+    assert_eq!(cancels, 1);
+}
+
+#[tokio::test]
+async fn stream_without_idr_answer_fails_gate_but_still_cancels() {
+    let media = common::fake_host::Media {
+        answer_idr: false,
+        ..Default::default()
+    };
+    let (r, cancels, log) = stream_run(media, secs(2), None).await;
+    let e = r.unwrap_err().to_string();
+    assert!(
+        e.contains("no IDR within 2s of request 1") && e.contains("request 2"),
+        "{e}"
+    );
+    assert!(
+        !e.contains("parse_errors") && !e.contains("frames_assembled"),
+        "{e}"
+    );
+    assert_eq!(cancels, 1);
+    assert_eq!(log.lock().unwrap().idr_frames, 1, "only the opening IDR");
+}
+
+#[tokio::test]
+async fn stream_refuses_busy_host_without_launch() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    fake.game.store(5, Ordering::SeqCst);
+    let ran = std::sync::atomic::AtomicBool::new(false);
+    let err = s
+        .launch_session(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &stream_cfg(),
+            false,
+            |p| {
+                ran.store(true, Ordering::SeqCst);
+                async move {
+                    brisk_client::stream::stream("127.0.0.1", &p, [0; 16], 0, 1, secs(1), None)
+                        .await
+                }
+            },
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("server busy") && err.contains("currentgame=5"),
+        "{err}"
+    );
+    assert!(!ran.load(Ordering::SeqCst));
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0);
+}
+
+fn meta_field(json: &str, k: &str) -> u64 {
+    let v = json.split(&format!("\"{k}\":")).nth(1).unwrap();
+    v.split([',', '}']).next().unwrap().parse().unwrap()
+}
+
+/// `--record-samples`: the files the brisk-proto replay tests read, replayed the same way.
+#[tokio::test]
+async fn stream_records_replayable_samples() {
+    use brisk_proto::audio::{parse_audio_packet, PT_FEC};
+    use brisk_proto::rtp::parse_video_packet;
+    let dir = tempfile::tempdir().unwrap();
+    let (r, cancels, _) = stream_run(Default::default(), secs(1), Some(dir.path())).await;
+    r.unwrap();
+    assert_eq!(cancels, 1);
+    let bins = |sub: &str| {
+        let mut v: Vec<_> = std::fs::read_dir(dir.path().join(sub))
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "bin"))
+            .collect();
+        v.sort();
+        v
+    };
+    let video = bins("video");
+    assert_eq!(video.len(), 120);
+    let mut frame1 = 0;
+    for f in &video {
+        let raw = std::fs::read(f).unwrap();
+        let p = parse_video_packet(&raw, 0).unwrap();
+        let meta = std::fs::read_to_string(f.with_extension("meta.json")).unwrap();
+        assert_eq!(meta_field(&meta, "frame_idx"), p.frame_idx as u64);
+        assert_eq!(meta_field(&meta, "shard_idx"), p.shard_idx as u64);
+        assert_eq!(meta_field(&meta, "data_shards"), p.data_shards as u64);
+        assert_eq!(meta_field(&meta, "parity_shards"), p.parity_shards as u64);
+        frame1 += u16::from(p.frame_idx == 1);
+    }
+    // The opening IDR (30008 bytes at 1376 per packet: 22 data + 5 parity) is in the samples whole.
+    assert_eq!(frame1, 27);
+    let a = dir.path().join("audio");
+    let key = std::fs::read_to_string(a.join("rikey.hex")).unwrap();
+    assert_eq!(key, "52494b45592d30313233343536373839 01020304\n");
+    assert!(std::fs::read_to_string(a.join("README.md"))
+        .unwrap()
+        .contains("ONE finished streaming session"));
+    let audio = bins("audio");
+    assert_eq!(audio.len(), 100);
+    let mut data = 0;
+    for f in audio {
+        let raw = std::fs::read(f).unwrap();
+        if raw[1] & 0x7f == PT_FEC {
+            continue;
+        }
+        let o = parse_audio_packet(&raw, b"RIKEY-0123456789", 0x01020304).unwrap();
+        assert_eq!(o.data.len(), 120);
+        data += 1;
+    }
+    assert!(data >= 64);
 }
