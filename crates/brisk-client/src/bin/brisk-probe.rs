@@ -130,10 +130,18 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     _ = tokio::signal::ctrl_c() => None,
                 };
                 let Some(r) = r else {
-                    if !s.started {
-                        return Err("interrupted before launch; nothing cancelled".into());
+                    if !s.launch_sent {
+                        return Err(if a.take_over {
+                            "interrupted before launch; take-over cancel may have been processed".into()
+                        } else {
+                            "interrupted before launch; nothing cancelled".into()
+                        });
                     }
-                    s.cancel_retry(&ident, &server).await?;
+                    if s.launch_confirmed {
+                        s.cancel_retry(&ident, &server).await?;
+                    } else {
+                        s.cancel_if_ours(&ident, &server, app).await?;
+                    }
                     return Err("interrupted; session cancelled".into());
                 };
                 let p = r?;
@@ -152,11 +160,15 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 let server = ServerCert::load(&dir)?;
                 let ident = load_identity(&dir)?;
                 s.serverinfo(None).await?;
-                s.cancel_retry(&ident, &server).await?;
-                println!("cancelled");
-                let i = s.serverinfo(Some((&ident, &server))).await?;
-                println!("state\t{}\ncurrentgame\t{}", i.server_state, i.current_game);
-                Ok(())
+                let c = s.cancel_retry(&ident, &server).await;
+                if c.is_ok() {
+                    println!("cancelled");
+                }
+                match s.serverinfo(Some((&ident, &server))).await {
+                    Ok(i) => println!("state\t{}\ncurrentgame\t{}", i.server_state, i.current_game),
+                    Err(e) => eprintln!("serverinfo after cancel failed: {e}"),
+                }
+                c
             }
             .await
         }

@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
+const EMPTY_400: &str = "<<empty-400>>";
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -63,7 +64,7 @@ struct Fake {
     tls_port: u16,
     omit_len: std::sync::atomic::AtomicBool,
     /// Pretend something else is running (`currentgame`/`state`); cleared by a `/cancel`.
-    busy: std::sync::atomic::AtomicBool,
+    game: std::sync::atomic::AtomicU32,
     launches: AtomicUsize,
     /// Every `/cancel` request received, and how many of them to swallow without a reply.
     cancel_reqs: AtomicUsize,
@@ -94,17 +95,27 @@ impl Fake {
         let mut st = self.st.lock().unwrap();
         let authed = peer.is_some() && peer == st.authorized;
         let key = st.key;
-        let busy = self.busy.load(Ordering::SeqCst);
+        let game = self.game.load(Ordering::SeqCst);
+        let busy = game != 0;
         match path {
             "/serverinfo" => xml(&format!(
                 "<hostname>fake</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>FAKE0123</uniqueid><HttpsPort>{}</HttpsPort><ServerCodecModeSupport>259</ServerCodecModeSupport><PairStatus>{}</PairStatus><currentgame>{}</currentgame><state>{}</state>",
-                self.tls_port, authed as u8, if busy {"5"} else {"0"}, if busy {"SUNSHINE_SERVER_BUSY"} else {"SUNSHINE_SERVER_FREE"}
+                self.tls_port, authed as u8, game, if busy {"SUNSHINE_SERVER_BUSY"} else {"SUNSHINE_SERVER_FREE"}
             )),
             "/launch" if authed => {
                 let mode = *self.mode.lock().unwrap();
                 self.launches.fetch_add(1, Ordering::SeqCst);
                 if mode == "launch-busy" {
                     return r#"<root status_code="400" status_message="An app is already running on this host"/>"#.into();
+                }
+                match mode {
+                    "launch-empty-400" => return EMPTY_400.into(),
+                    "launch-drop-ours" => self.game.store(q["appid"].parse().unwrap(), Ordering::SeqCst),
+                    "launch-drop-other" => self.game.store(77, Ordering::SeqCst),
+                    _ => {}
+                }
+                if mode.starts_with("launch-drop") {
+                    return String::new();
                 }
                 if mode == "launch-fail" {
                     return r#"<root status_code="503" status_message="fake launch failure"/>"#.into();
@@ -121,7 +132,7 @@ impl Fake {
                     self.cancel_drop.fetch_sub(1, Ordering::SeqCst);
                     return String::new(); // serve_conn closes without replying
                 }
-                self.busy.store(false, Ordering::SeqCst);
+                self.game.store(0, Ordering::SeqCst);
                 self.rtsp.lock().unwrap().cancels += 1;
                 xml("<cancel>1</cancel>")
             }
@@ -211,6 +222,12 @@ async fn serve_conn<S: AsyncRead + AsyncWrite + Unpin>(
     } else {
         format!("Content-Length: {}\r\n", body.len())
     };
+    if body == EMPTY_400 {
+        s.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        return;
+    }
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\n{len}Connection: close\r\n\r\n{body}"
     );
@@ -396,7 +413,7 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
         ident,
         tls_port: https.local_addr().unwrap().port(),
         omit_len: Default::default(),
-        busy: Default::default(),
+        game: Default::default(),
         launches: Default::default(),
         cancel_reqs: Default::default(),
         cancel_drop: Default::default(),
@@ -842,7 +859,7 @@ async fn rejected_launch_never_cancels() {
 #[tokio::test]
 async fn busy_host_refused_without_launch_unless_take_over() {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
-    fake.busy.store(true, Ordering::SeqCst);
+    fake.game.store(5, Ordering::SeqCst);
     let err = probe(&mut s, &ident, &server, false)
         .await
         .unwrap_err()
@@ -853,7 +870,7 @@ async fn busy_host_refused_without_launch_unless_take_over() {
     );
     assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0);
-    assert!(!s.started);
+    assert!(!s.launch_sent);
     probe(&mut s, &ident, &server, true).await.unwrap();
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 2); // take-over cancel, then our own
@@ -892,7 +909,7 @@ async fn cancel_failing_three_times_is_a_loud_error() {
 async fn cancel_subcommand_path_frees_host() {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
     fast(&mut s);
-    fake.busy.store(true, Ordering::SeqCst);
+    fake.game.store(5, Ordering::SeqCst);
     fake.cancel_drop.store(1, Ordering::SeqCst);
     s.cancel_retry(&ident, &server).await.unwrap();
     let i = s.serverinfo(Some((&ident, &server))).await.unwrap();
@@ -900,4 +917,22 @@ async fn cancel_subcommand_path_frees_host() {
         (i.current_game, i.server_state.as_str()),
         (0, "SUNSHINE_SERVER_FREE")
     );
+}
+
+#[tokio::test]
+async fn dropped_launch_cancels_only_if_host_runs_our_app() {
+    for (mode, cancels, needle) in [
+        ("launch-drop-ours", 1, "session cancelled"),
+        ("launch-drop-other", 0, "launch outcome unknown"),
+        ("launch-drop", 0, "nothing cancelled"),
+    ] {
+        let (mut s, fake, ident, server, _t) = paired(mode).await;
+        fast(&mut s);
+        let err = probe(&mut s, &ident, &server, false)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(needle), "{mode}: {err}");
+        assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), cancels, "{mode}");
+    }
 }

@@ -38,8 +38,10 @@ pub struct Session {
     /// Per-attempt timeout and base backoff for `cancel_retry` (fields so tests can shrink them).
     pub cancel_wait: Duration,
     pub cancel_backoff: Duration,
-    /// Set once `launch_probe` is about to send `/launch`: the only time a session is ours to cancel.
-    pub started: bool,
+    /// `launch_probe` is about to send (or has sent) `/launch`: a session may be ours.
+    pub launch_sent: bool,
+    /// `/launch` came back 200: a session is certainly ours.
+    pub launch_confirmed: bool,
 }
 
 const CANCEL_ATTEMPTS: u32 = 3;
@@ -55,7 +57,8 @@ impl Session {
             recorder: None,
             cancel_wait: Duration::from_secs(15),
             cancel_backoff: Duration::from_secs(1),
-            started: false,
+            launch_sent: false,
+            launch_confirmed: false,
         }
     }
 
@@ -146,6 +149,31 @@ impl Session {
         .into())
     }
 
+    /// After an ambiguous `/launch`: cancel only if the host now runs the app we asked for.
+    pub async fn cancel_if_ours(
+        &mut self,
+        ident: &Identity,
+        server: &ServerCert,
+        app_id: u32,
+    ) -> crate::Result<()> {
+        let unknown = format!(
+            "launch outcome unknown; run `brisk-probe cancel --host {}`",
+            self.host
+        );
+        match self.serverinfo(Some((ident, server))).await {
+            Ok(i) if i.current_game == app_id => self.cancel_retry(ident, server).await,
+            Ok(i) if i.current_game == 0 => {
+                Err("launch did not start anything; nothing cancelled".into())
+            }
+            Ok(i) => Err(format!(
+                "{unknown} (host runs app {}, not ours; not cancelling it)",
+                i.current_game
+            )
+            .into()),
+            Err(e) => Err(format!("{unknown} (serverinfo failed: {e})").into()),
+        }
+    }
+
     /// Refuse (or, with `take_over`, cancel) when the host already runs something, launch,
     /// RTSP handshake, then cancel. Only a session this call started is ever cancelled: a rejected
     /// launch (Sunshine answered with a status) and a busy pre-check never reach `/cancel`.
@@ -172,30 +200,33 @@ impl Session {
             eprintln!("WARNING: --take-over: {busy}; cancelling it NOW");
             self.cancel_retry(ident, server).await?;
         }
-        self.started = true;
+        self.launch_sent = true;
         let l = match self.launch(ident, server, app_id, cfg).await {
             Ok(l) => l,
             Err(e) => {
-                // A status reply means Sunshine refused: nothing of ours is running.
-                let refused = e
-                    .downcast_ref::<brisk_proto::http::HttpError>()
-                    .is_some_and(|h| matches!(h, brisk_proto::http::HttpError::Status { .. }));
-                if refused {
-                    let busy = e.to_string().contains("already running");
-                    return Err(if busy {
-                        format!("server busy: an app/session is already running (currentgame={}); not cancelling it ({e})", info.current_game)
-                    } else {
-                        format!("launch rejected: {e}; nothing to cancel")
+                use brisk_proto::http::HttpError::Status;
+                // A complete non-200 reply (HTTP or XML status) means Sunshine refused: never cancel.
+                match e.downcast_ref::<brisk_proto::http::HttpError>() {
+                    Some(Status { code: 400, .. }) => {
+                        let game = match self.serverinfo(Some((ident, server))).await {
+                            Ok(i) => i.current_game.to_string(),
+                            Err(_) => "unknown".into(),
+                        };
+                        return Err(format!("server busy: an app/session is already running (currentgame={game}); not cancelling it ({e})").into());
                     }
-                    .into());
+                    Some(Status { .. }) => {
+                        return Err(format!("launch rejected: {e}; nothing to cancel").into())
+                    }
+                    _ => {}
                 }
-                // Timeout or transport error: the app may have started, so clean up.
-                return Err(match self.cancel_retry(ident, server).await {
-                    Ok(()) => e,
+                // Timeout, reset or unparseable 200: the app may have started.
+                return Err(match self.cancel_if_ours(ident, server, app_id).await {
+                    Ok(()) => format!("{e}; session cancelled").into(),
                     Err(c) => format!("{e}; {c}").into(),
                 });
             }
         };
+        self.launch_confirmed = true;
         let r = handshake(
             &self.host,
             &l.session_url,
@@ -451,7 +482,11 @@ fn body(raw: &[u8], need_len: bool) -> crate::Result<String> {
     }
     let body = String::from_utf8(body.to_vec()).map_err(|_| "non-utf8 http body")?;
     if status != 200 && body.trim().is_empty() {
-        return Err(format!("http status {status}").into());
+        return Err(brisk_proto::http::HttpError::Status {
+            code: status.into(),
+            message: "empty body".into(),
+        }
+        .into());
     }
     Ok(body) // non-200 with XML: the parser reports Sunshine's status_message
 }
