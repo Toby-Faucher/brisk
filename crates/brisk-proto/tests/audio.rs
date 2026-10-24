@@ -457,3 +457,86 @@ fn resync_to_a_different_packet_size_keeps_fec_working() {
     }
     assert_eq!(fec.stats().recovered, 1);
 }
+
+/// Real Sunshine audio parity (its replacement matrix [`PARITY`]): erase one or two data packets
+/// of every complete recorded 4+2 block, recover them with [`AudioFec`], and check the recovered
+/// ciphertext payload and its decrypted Opus bytes equal the received ones. Only payloads are
+/// compared, not RTP headers.
+#[test]
+#[cfg_attr(
+    not(audio_fixture),
+    ignore = "SKIPPED: no fixtures/audio/*.bin yet; record with `brisk-probe stream --record-samples fixtures`"
+)]
+fn recorded_audio_fec_recovers_erased_packets() {
+    use std::collections::BTreeMap;
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio");
+    let meta = std::fs::read_to_string(dir.join("rikey.hex")).unwrap();
+    let (k, id) = meta.trim().split_once(' ').unwrap();
+    let key: [u8; 16] = (0..16)
+        .map(|i| u8::from_str_radix(&k[2 * i..2 * i + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let cipher = AudioCipher::new(&key, u32::from_str_radix(id, 16).unwrap());
+    // block base -> slot (0..4 data, 4..6 FEC) -> datagram
+    let mut blocks: BTreeMap<u16, BTreeMap<usize, Vec<u8>>> = BTreeMap::new();
+    for e in std::fs::read_dir(&dir).unwrap().flatten() {
+        if e.path().extension().is_none_or(|x| x != "bin") {
+            continue;
+        }
+        let raw = std::fs::read(e.path()).unwrap();
+        let seq = u16::from_be_bytes([raw[2], raw[3]]);
+        let (base, slot) = if raw[1] & 0x7f == PT_FEC {
+            let base = u16::from_be_bytes([raw[RTP_HEADER + 2], raw[RTP_HEADER + 3]]);
+            (base, DATA_SHARDS + raw[RTP_HEADER] as usize)
+        } else {
+            (seq - seq % 4, (seq % 4) as usize)
+        };
+        blocks.entry(base).or_default().insert(slot, raw);
+    }
+    let erasures: Vec<Vec<usize>> = (0..4)
+        .map(|a| vec![a])
+        .chain((0..4).flat_map(|a| (a + 1..4).map(move |b| vec![a, b])))
+        .collect();
+    let (mut checked, mut recovered) = (0, 0);
+    for (base, b) in &blocks {
+        if b.len() != DATA_SHARDS + FEC_SHARDS {
+            continue; // the recording starts or ends mid-block
+        }
+        for gone in &erasures {
+            let mut fec = AudioFec::new(DUR);
+            let mut got: Vec<AudioPayload> = b
+                .iter()
+                .filter(|(slot, _)| !gone.contains(slot))
+                .flat_map(|(_, d)| fec.push(d).unwrap())
+                .collect();
+            got.sort_by_key(|p| p.seq);
+            assert_eq!(
+                fec.stats().recovered,
+                gone.len() as u64,
+                "block {base} {gone:?}"
+            );
+            assert_eq!(got.len(), DATA_SHARDS, "block {base} {gone:?}");
+            for (i, p) in got.iter().enumerate() {
+                let orig = parse_audio_payload(&b[&i]).unwrap();
+                assert_eq!(p.seq, orig.seq);
+                assert!(
+                    p.payload == orig.payload,
+                    "block {base} packet {i} erased {gone:?}: recovered payload differs"
+                );
+                assert_eq!(
+                    cipher.open(p).unwrap().data,
+                    cipher.open(&orig).unwrap().data,
+                    "block {base} packet {i}: Opus bytes differ"
+                );
+            }
+            recovered += gone.len();
+        }
+        checked += 1;
+    }
+    eprintln!(
+        "audio FEC replay: {checked} recorded 4+2 blocks, {} erasure patterns each, {recovered} packets recovered, payloads and Opus bytes equal",
+        erasures.len()
+    );
+    assert!(checked >= 10, "{checked}");
+}

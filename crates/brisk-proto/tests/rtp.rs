@@ -551,3 +551,97 @@ fn hostile_hand_built_packets_do_not_panic() {
     assert_eq!(a.stats().parse_errors, 7);
     assert_eq!(feed(&mut a, &f).len(), 1);
 }
+
+/// Erasure patterns of `e` out of `n` data shards: every combination for small blocks, else
+/// every window of `e` consecutive shards (wrapping) plus an evenly spread one.
+fn erasures(n: usize, e: usize) -> Vec<Vec<usize>> {
+    if n <= 12 {
+        return (0u32..1 << n)
+            .filter(|m| m.count_ones() as usize == e)
+            .map(|m| (0..n).filter(|i| m & 1 << i != 0).collect())
+            .collect();
+    }
+    let mut v: Vec<Vec<usize>> = (0..n)
+        .map(|s| (0..e).map(|k| (s + k) % n).collect())
+        .collect();
+    v.push((0..e).map(|k| k * n / e).collect());
+    v
+}
+
+/// Real Sunshine parity: erase up to `parity` data shards of every complete recorded block and
+/// recover them. Only payload bytes are compared: Sunshine rewrites the RTP header, frameIndex,
+/// multiFecBlocks and fecInfo after encoding, so recovered header bytes are not the received ones.
+#[test]
+#[cfg_attr(
+    not(video_fixture),
+    ignore = "SKIPPED: no fixtures/video/*.bin yet; record with `brisk-probe stream --record-samples fixtures`"
+)]
+fn recorded_video_fec_recovers_erased_data_shards() {
+    use brisk_proto::fec::rs_decode;
+    use std::collections::BTreeMap;
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/video");
+    let raws: Vec<Vec<u8>> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "bin"))
+        .map(|p| std::fs::read(p).unwrap())
+        .collect();
+    // (frame, fec block) -> shard index -> packet
+    let mut blocks: BTreeMap<(u32, u8), BTreeMap<u16, &Vec<u8>>> = BTreeMap::new();
+    for r in &raws {
+        let p = parse_video_packet(r, 0).unwrap();
+        blocks
+            .entry((p.frame_idx, p.fec_block))
+            .or_default()
+            .insert(p.shard_idx, r);
+    }
+    let (mut checked, mut erased, mut patterns, mut idr_checked) = (0, 0, 0, false);
+    for ((frame, _), shards) in &blocks {
+        let p0 = parse_video_packet(shards.values().next().unwrap(), 0).unwrap();
+        let (d, m) = (p0.data_shards as usize, p0.parity_shards as usize);
+        if shards.len() != d + m || m == 0 || p0.last_fec_block != 0 {
+            continue; // incomplete (end of the recording) or multi-block: nothing to compare with
+        }
+        let full: Vec<&Vec<u8>> = shards.values().copied().collect();
+        let e = m.min(d);
+        let pats = erasures(d, e);
+        for (k, gone) in pats.iter().enumerate() {
+            let mut s: Vec<Option<Vec<u8>>> = full.iter().map(|r| Some(r.to_vec())).collect();
+            for &i in gone {
+                s[i] = None;
+            }
+            rs_decode(d, m, &mut s).unwrap();
+            for &i in gone {
+                assert!(
+                    s[i].as_ref().unwrap()[HEADER..] == full[i][HEADER..],
+                    "frame {frame} shard {i} erased {gone:?}: recovered payload differs"
+                );
+            }
+            if k == 0 {
+                // The assembler gives back the same frame from the survivors.
+                let whole = feed(
+                    &mut FrameAssembler::starting_at(*frame),
+                    full.iter().copied(),
+                );
+                let mut a = FrameAssembler::starting_at(*frame);
+                let got = feed(
+                    &mut a,
+                    (0..d + m).filter(|i| !gone.contains(i)).map(|i| full[i]),
+                );
+                assert_eq!(got.len(), 1, "frame {frame}");
+                assert_eq!(got, whole, "frame {frame}");
+                assert_eq!(a.stats().fec_recovered, 1);
+                idr_checked |= got[0].is_idr;
+            }
+        }
+        checked += 1;
+        erased += e;
+        patterns += pats.len();
+    }
+    eprintln!(
+        "video FEC replay: {checked} recorded blocks, {erased} data shards erased (max per block), {patterns} erasure patterns, payloads equal"
+    );
+    assert!(idr_checked, "the IDR block was not exercised");
+    assert!(checked >= 10, "{checked}");
+}
