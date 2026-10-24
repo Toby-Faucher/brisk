@@ -3,6 +3,7 @@
 pub mod audio;
 pub mod fec;
 pub mod http;
+pub mod input;
 pub mod pair;
 pub mod rtp;
 pub mod rtsp;
