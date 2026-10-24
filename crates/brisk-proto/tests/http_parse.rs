@@ -76,3 +76,13 @@ fn launch_query_has_required_params() {
     assert_eq!((g("rikeyid"), g("appid"), g("localAudioPlayMode"), g("uniqueid")), ("42", "7", "0", "UID"));
     assert_eq!((g("surroundAudioInfo"), g("corever")), ("196610", "1"));
 }
+
+#[test]
+fn pair_reply_fields() {
+    let x = r#"<?xml version="1.0" encoding="utf-8"?><root status_code="200"><paired>1</paired><plaincert>2D2D</plaincert></root>"#;
+    assert_eq!(parse_field(x, "plaincert").unwrap(), "2D2D");
+    assert_eq!(parse_field(x, "paired").unwrap(), "1");
+    assert_eq!(parse_field(x, "pairingsecret"), Err(HttpError::BadField("pairingsecret")));
+    let fail = r#"<root status_code="400" status_message="Pairing failed"><paired>0</paired></root>"#;
+    assert!(matches!(parse_field(fail, "paired"), Err(HttpError::Status { code: 400, .. })));
+}

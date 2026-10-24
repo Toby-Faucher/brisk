@@ -126,6 +126,12 @@ pub fn check_status(xml: &str) -> Result<(), HttpError> {
     ok(parse(xml)?).map(|_| ())
 }
 
+/// Text of `<root><name>` in a status-200 reply; pairing replies carry `paired`, `plaincert`,
+/// `challengeresponse` and `pairingsecret` this way.
+pub fn parse_field(xml: &str, name: &'static str) -> Result<String, HttpError> {
+    Ok(ok(parse(xml)?)?.field(name)?.to_string())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerInfo {
     pub app_version: String,

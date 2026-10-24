@@ -1,1 +1,14 @@
-//! Brisk client orchestration.
+//! Brisk client orchestration: identity, HTTP(S) session, fixture recorder.
+
+pub mod identity;
+
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// CSPRNG (OS `getrandom`) for pairing salt, challenge and secret.
+pub struct SystemRng;
+impl brisk_proto::pair::Rng for SystemRng {
+    fn fill(&mut self, buf: &mut [u8]) {
+        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, buf)
+    }
+}

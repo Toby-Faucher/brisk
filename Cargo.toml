@@ -5,3 +5,9 @@ members = ["crates/brisk-proto", "crates/brisk-client"]
 [workspace.package]
 edition = "2021"
 version = "0.0.0"
+
+# RSA-2048 keygen is very slow unoptimised; tests generate identities.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3
