@@ -346,3 +346,31 @@ async fn stream_input_demo_passes_gate() {
     assert!(s.to_string().contains("inputs_sent        6"), "{s}");
     assert_eq!(inputs(&f), input_demo_wire());
 }
+
+/// A scheduled IDR request also covers a loss still waiting on the rate limit: no extra request.
+#[tokio::test]
+async fn scheduled_idr_clears_pending_loss_request() {
+    let f = fake_with(Cfg {
+        media: Some(Media {
+            lose_frame: |i| i == 30,
+            ..Media::default()
+        }),
+        ..Cfg::default()
+    });
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 23, av(&f).await)
+        .await
+        .unwrap();
+    c.idr_min_interval = Duration::from_secs(60); // the loss request stays pending
+    let mut rx = brisk_client::stream::StreamRx::new(0, KEY, 0, None).unwrap();
+    let mut sink = |i: usize, d: &[u8], at: Instant| rx.on_datagram(i, d, at);
+    c.run_until_with(Instant::now() + Duration::from_millis(1200), &mut sink)
+        .await
+        .unwrap();
+    c.request_idr().await.unwrap();
+    c.idr_min_interval = Duration::ZERO;
+    c.run_until_with(Instant::now() + Duration::from_millis(300), &mut sink)
+        .await
+        .unwrap();
+    assert_eq!((c.stats.idr_on_loss, c.stats.idr_sent), (0, 2));
+    c.disconnect().await.unwrap();
+}

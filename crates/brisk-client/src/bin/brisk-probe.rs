@@ -198,10 +198,26 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                             "interrupted before launch; nothing cancelled".into()
                         });
                     }
-                    if s.launch_confirmed() {
-                        s.cancel_retry(&ident, &server).await?;
-                    } else {
-                        s.cancel_if_ours(&ident, &server, app).await?;
+                    // The handlers stay installed, so a second signal would be swallowed while the
+                    // cancel retries (45 s and more): let it exit at once instead.
+                    let second = interrupted()?;
+                    let confirmed = s.launch_confirmed();
+                    let cancel = async {
+                        if confirmed {
+                            s.cancel_retry(&ident, &server).await
+                        } else {
+                            s.cancel_if_ours(&ident, &server, app).await
+                        }
+                    };
+                    match unless_signalled(second, cancel).await {
+                        Some(c) => c?,
+                        None => {
+                            eprintln!(
+                                "second signal: exiting without waiting for cancel; run `brisk-probe cancel --host {}`",
+                                a.host
+                            );
+                            std::process::exit(130);
+                        }
                     }
                     return Err(format!("interrupted ({sig}); session cancelled").into());
                     }
@@ -350,6 +366,17 @@ fn interrupted() -> std::io::Result<impl std::future::Future<Output = &'static s
     })
 }
 
+/// `f`'s output, or `None` if `stop` fires first.
+async fn unless_signalled<T>(
+    stop: impl std::future::Future<Output = &'static str>,
+    f: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    tokio::select! {
+        v = f => Some(v),
+        _ = stop => None,
+    }
+}
+
 fn print_stats(st: &Stats) {
     println!("pings\tsent {} acked {}", st.pings_sent, st.pings_acked);
     println!(
@@ -394,7 +421,33 @@ async fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_secs, interrupted};
+    use super::{check_secs, interrupted, unless_signalled};
+
+    /// A signal during the (slow) cancel wins over it; without one the cancel's result comes back.
+    #[tokio::test]
+    async fn second_signal_cuts_the_cancel_short() {
+        let stop = interrupted().unwrap();
+        let pid = std::process::id().to_string();
+        let hung_cancel = std::future::pending::<()>();
+        let killer = async {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            std::process::Command::new("kill")
+                .args(["-TERM", &pid])
+                .status()
+                .unwrap();
+            std::future::pending::<()>().await
+        };
+        let got = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::select! {
+                r = unless_signalled(stop, hung_cancel) => r,
+                _ = killer => unreachable!(),
+            }
+        })
+        .await;
+        assert_eq!(got, Ok(None));
+        let quiet = interrupted().unwrap();
+        assert_eq!(unless_signalled(quiet, async { 7 }).await, Some(7));
+    }
 
     /// SIGTERM and SIGHUP stop the run like Ctrl-C (and no longer kill the process outright).
     #[tokio::test]

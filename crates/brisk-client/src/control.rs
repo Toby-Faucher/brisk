@@ -290,6 +290,7 @@ impl ControlSession {
         self.send(&ControlMsg::IdrRequest).await?;
         self.stats.idr_sent += 1;
         self.last_idr = Some(Instant::now());
+        self.want_idr = false; // this request also answers any loss reported so far
         Ok(())
     }
 
