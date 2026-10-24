@@ -5,6 +5,7 @@ version.workspace = true
 
 [dependencies]
 aes = "0.8.4"
+aes-gcm = "0.10.3"
 quick-xml = "0.42.0"
 rsa = { version = "0.9.10", features = ["sha2"] }
 sha2 = "0.10.9"
