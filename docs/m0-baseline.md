@@ -6,7 +6,7 @@ Cells: `PENDING (Toby)` = needs Toby's client machine; `PENDING (Task 12)` = hos
 
 | stage | stock Sunshine+Moonlight | source | direct | DERP |
 |---|---|---|---|---|
-| network RTT (real client path) | PENDING (Toby) | `scripts/m0-netpath.sh bawn` run on the client | PENDING (Toby) | PENDING (Toby) |
+| network RTT (real client path) | LAN ping (100 samples): 1.75 / 1.99 / 2.44 ms (min / median / p99), 0% loss. Tailscale ping (20 samples, wired laptop): 2 / 2 / 3 ms, whole-ms resolution. Measured 2026-10-24 | `scripts/m0-netpath.sh` run on the laptop | direct: Tailscale used LAN endpoint `10.0.0.x:41641`, same path as LAN [U: remote/off-LAN direct path not measured] | PENDING (DERP not exercised; needs an off-LAN client) |
 | host capture+encode | 3.2 / 5.1 / 7.2 ms (min / median / p99), measured 2026-10-24, static Steam Big Picture screen [U: content-dependent; also needs a moving-scene run] | Sunshine `frame_processing_latency` via `brisk-probe stream` | same (host side, path-independent) | same |
 | client decode | PENDING (Toby) | Moonlight Qt stats overlay | PENDING | PENDING |
 | client present queue | PENDING (Toby) | Moonlight Qt stats overlay | PENDING | PENDING |
