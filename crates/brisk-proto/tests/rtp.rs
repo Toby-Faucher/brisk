@@ -292,7 +292,7 @@ fn frame_idx_wrap_orders_correctly() {
     let (d1, d2) = (annexb(300, 1), annexb(300, 2));
     let older = h.frame(u32::MAX, 1, 1, &d1, 1).remove(0);
     let newer = h.frame(0, 1, 1, &d2, 1).remove(0);
-    let mut a = FrameAssembler::new();
+    let mut a = FrameAssembler::starting_at(u32::MAX);
     assert!(feed(&mut a, &older[..1]).is_empty());
     assert!(feed(&mut a, &newer[..2]).is_empty());
     assert_eq!(feed(&mut a, &older[1..])[0].idx, u32::MAX);
@@ -418,4 +418,77 @@ fn encrypted_video_round_trip() {
         c.open(&vec![0; MAX_VIDEO_PACKET + ENC_PREFIX + 1]),
         Err(RtpError::TooLarge)
     );
+}
+
+#[test]
+fn early_frame_2_packets_do_not_drop_first_idr() {
+    let mut h = Host::new(0);
+    let (d1, d2) = (annexb(300, 1), annexb(300, 2));
+    let f1 = h.frame(1, 2, 1, &d1, 1).remove(0);
+    let f2 = h.frame(2, 1, 1, &d2, 1).remove(0);
+    let mut a = FrameAssembler::new();
+    // The first packets seen belong to frame 2; frame 1 finishes afterwards.
+    assert!(feed(&mut a, &f2[..1]).is_empty());
+    assert!(feed(&mut a, &f1[..2]).is_empty());
+    let out = feed(&mut a, &f1[2..]);
+    assert_eq!((out[0].idx, out[0].is_idr, &out[0].annexb), (1, true, &d1));
+    assert_eq!(feed(&mut a, &f2[1..])[0].annexb, d2);
+    assert_eq!(a.stats().frames_dropped, 0);
+}
+
+#[test]
+fn far_future_frame_is_rejected() {
+    let mut h = Host::new(0);
+    let (d1, d2) = (annexb(300, 1), annexb(300, 2));
+    let far = h.frame(1 + (1 << 16) + 1, 1, 1, &d1, 1).remove(0);
+    let ok = h.frame(1, 2, 1, &d2, 1).remove(0);
+    let mut a = FrameAssembler::new();
+    assert!(feed(&mut a, &far).is_empty());
+    assert_eq!(a.stats().parse_errors, far.len() as u64);
+    assert_eq!(feed(&mut a, &ok)[0].annexb, d2);
+}
+
+#[test]
+fn hostile_hand_built_packets_do_not_panic() {
+    let mut h = Host::new(0);
+    let f = h.frame(1, 2, 1, &annexb(300, 1), 1).remove(0);
+    let good = parse_video_packet(&f[0], 0).unwrap();
+    let bad: Vec<VideoPacket> = vec![
+        VideoPacket {
+            fec_block: 200,
+            last_fec_block: 255,
+            ..good.clone()
+        },
+        VideoPacket {
+            last_fec_block: 9,
+            ..good.clone()
+        },
+        VideoPacket {
+            shard_idx: 60000,
+            ..good.clone()
+        },
+        VideoPacket {
+            data_shards: u16::MAX,
+            parity_shards: u16::MAX,
+            ..good.clone()
+        },
+        VideoPacket {
+            data_shards: 0,
+            ..good.clone()
+        },
+        VideoPacket {
+            raw: &f[0][..10],
+            ..good.clone()
+        },
+        VideoPacket {
+            is_parity: true,
+            ..good.clone()
+        },
+    ];
+    let mut a = FrameAssembler::new();
+    for p in bad {
+        assert!(a.push(p).is_empty());
+    }
+    assert_eq!(a.stats().parse_errors, 7);
+    assert_eq!(feed(&mut a, &f).len(), 1);
 }

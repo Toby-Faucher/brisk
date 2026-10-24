@@ -237,12 +237,39 @@ struct Frame {
 }
 
 /// Collects shards per frame index, runs FEC per block and yields complete frames in order.
-#[derive(Default)]
 pub struct FrameAssembler {
     pending: Vec<Frame>,
-    /// First frame index still wanted (initially the first packet's); older packets are stale.
-    next: Option<u32>,
+    /// First frame index still wanted; older packets are stale. Seeded to 1 like moonlight
+    /// (RtpVideoQueue.c / VideoDepacketizer.c) so early frame-2 packets cannot drop the first IDR.
+    next: u32,
     stats: AssemblerStats,
+}
+
+impl Default for FrameAssembler {
+    fn default() -> Self {
+        Self {
+            pending: Vec::new(),
+            next: 1,
+            stats: AssemblerStats::default(),
+        }
+    }
+}
+
+/// Packets further ahead of the wanted frame than this are bogus (a stray one would otherwise
+/// evict real frames and strand `next`).
+const MAX_FRAME_LOOKAHEAD: u32 = 1 << 16;
+
+/// `push` takes hand-built values too, so re-check everything it indexes with.
+fn consistent(p: &VideoPacket) -> bool {
+    let total = p.data_shards as usize + p.parity_shards as usize;
+    p.data_shards != 0
+        && (p.shard_idx as usize) < total
+        && (p.parity_shards == 0 || total <= MAX_SHARDS)
+        && p.is_parity == (p.shard_idx >= p.data_shards)
+        && (p.fec_block as usize) < MAX_FEC_BLOCKS
+        && p.fec_block <= p.last_fec_block
+        && (p.last_fec_block as usize) < MAX_FEC_BLOCKS
+        && p.raw.len() > HEADER
 }
 
 impl FrameAssembler {
@@ -250,13 +277,25 @@ impl FrameAssembler {
         Self::default()
     }
 
+    /// Assembler whose first wanted frame index is `next` (the default is 1).
+    pub fn starting_at(next: u32) -> Self {
+        Self {
+            next,
+            ..Self::default()
+        }
+    }
+
     pub fn stats(&self) -> AssemblerStats {
         self.stats
     }
 
     pub fn push(&mut self, p: VideoPacket) -> Vec<AssembledFrame> {
-        let next = *self.next.get_or_insert(p.frame_idx);
+        let next = self.next;
         if is_before32(p.frame_idx, next) {
+            return Vec::new();
+        }
+        if !consistent(&p) || p.frame_idx.wrapping_sub(next) > MAX_FRAME_LOOKAHEAD {
+            self.stats.parse_errors += 1;
             return Vec::new();
         }
         let fi = match self.pending.iter().position(|f| f.idx == p.frame_idx) {
@@ -288,7 +327,7 @@ impl FrameAssembler {
             parity: p.parity_shards,
             base_seq,
             len: p.raw.len(),
-            shards: vec![None; (p.data_shards + p.parity_shards) as usize],
+            shards: vec![None; p.data_shards as usize + p.parity_shards as usize],
             got: 0,
             got_data: 0,
             done: false,
@@ -337,7 +376,7 @@ impl FrameAssembler {
         let idx = frame.idx;
         self.stats.frames_dropped += idx.wrapping_sub(next) as u64;
         self.pending.retain(|f| is_before32(idx, f.idx));
-        self.next = Some(idx.wrapping_add(1));
+        self.next = idx.wrapping_add(1);
         match finish(frame) {
             Some((out, recovered)) => {
                 self.stats.frames_ok += 1;
