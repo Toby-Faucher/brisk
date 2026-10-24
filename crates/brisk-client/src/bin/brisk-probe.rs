@@ -184,11 +184,15 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     };
                     Ok((p, stats))
                 };
+                let stop = interrupted()?;
                 let r = tokio::select! {
-                    r = s.launch_session(&ident, &server, app, &info.app_version, &cfg, a.take_over, during) => Some(r),
-                    _ = tokio::signal::ctrl_c() => None,
+                    r = s.launch_session(&ident, &server, app, &info.app_version, &cfg, a.take_over, during) => Ok(r),
+                    sig = stop => Err(sig),
                 };
-                let Some(r) = r else {
+                let r = match r {
+                    Ok(r) => r,
+                    Err(sig) => {
+                    eprintln!("{sig}: stopping");
                     if !s.launch_sent {
                         return Err(if a.take_over {
                             "interrupted before launch; take-over cancel may have been processed".into()
@@ -201,7 +205,8 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     } else {
                         s.cancel_if_ours(&ident, &server, app).await?;
                     }
-                    return Err("interrupted; session cancelled".into());
+                    return Err(format!("interrupted ({sig}); session cancelled").into());
+                    }
                 };
                 let (p, stats) = r?;
                 if let Some(st) = stats {
@@ -331,6 +336,22 @@ async fn run_control(
     c.disconnect().await
 }
 
+/// Resolves on Ctrl-C, SIGTERM or SIGHUP with the signal's name. The handlers are installed
+/// before this returns, so a signal right after cannot kill the process before the cancel.
+fn interrupted() -> std::io::Result<impl std::future::Future<Output = &'static str>> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = signal(SignalKind::terminate())?;
+    let mut hup = signal(SignalKind::hangup())?;
+    let mut int = signal(SignalKind::interrupt())?;
+    Ok(async move {
+        tokio::select! {
+            _ = int.recv() => "SIGINT",
+            _ = term.recv() => "SIGTERM",
+            _ = hup.recv() => "SIGHUP",
+        }
+    })
+}
+
 fn print_stats(st: &Stats) {
     println!("pings\tsent {} acked {}", st.pings_sent, st.pings_acked);
     println!(
@@ -375,7 +396,23 @@ async fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::check_secs;
+    use super::{check_secs, interrupted};
+
+    /// SIGTERM and SIGHUP stop the run like Ctrl-C (and no longer kill the process outright).
+    #[tokio::test]
+    async fn sigterm_and_sighup_are_caught() {
+        for (flag, name) in [("-TERM", "SIGTERM"), ("-HUP", "SIGHUP")] {
+            let stop = interrupted().unwrap();
+            let pid = std::process::id().to_string();
+            assert!(std::process::Command::new("kill")
+                .args([flag, &pid])
+                .status()
+                .unwrap()
+                .success());
+            let got = tokio::time::timeout(std::time::Duration::from_secs(5), stop).await;
+            assert_eq!(got, Ok(name));
+        }
+    }
 
     #[test]
     fn stream_needs_at_least_10_secs() {

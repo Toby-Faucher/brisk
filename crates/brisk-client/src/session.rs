@@ -286,7 +286,10 @@ impl Session {
         )
         .await;
         let r = match r {
-            Ok(p) => during(p).await,
+            // A panic in `during` must not skip the cancel below.
+            Ok(p) => CatchUnwind(Box::pin(during(p)))
+                .await
+                .unwrap_or_else(|_| Err("panicked during the session".into())),
             Err(e) => Err(e),
         };
         let c = self.cancel_retry(ident, server).await;
@@ -462,6 +465,22 @@ fn identity_secrets(id: &Identity) -> Vec<Vec<u8>> {
         v.push(d.as_bytes().to_vec());
     }
     v
+}
+
+/// A future whose panic is returned as `Err` instead of unwinding.
+struct CatchUnwind<F>(std::pin::Pin<Box<F>>);
+impl<F: std::future::Future> std::future::Future for CatchUnwind<F> {
+    type Output = std::thread::Result<F::Output>;
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let f = &mut self.0;
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.as_mut().poll(cx))) {
+            Ok(p) => p.map(Ok),
+            Err(e) => std::task::Poll::Ready(Err(e)),
+        }
+    }
 }
 
 /// Copies every rng draw so the recorder can scrub it.

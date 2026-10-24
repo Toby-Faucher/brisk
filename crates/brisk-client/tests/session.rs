@@ -1025,6 +1025,28 @@ async fn launch_session_runs_during_before_cancel() {
         .unwrap_err();
     assert!(err.to_string().contains("control failed"));
     assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+
+    // A panic inside the launched section still cancels, and comes back as an error.
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let err = s
+        .launch_session(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &stream_cfg(),
+            false,
+            |_| async {
+                tokio::task::yield_now().await;
+                panic!("boom in during");
+                #[allow(unreachable_code)]
+                Ok(())
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("panicked"), "{err}");
+    assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
 }
 
 /// `brisk-probe stream` end to end against the fakes: launch, RTSP (ports pointing at the media
