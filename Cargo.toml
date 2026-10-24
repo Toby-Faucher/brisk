@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["crates/brisk-proto", "crates/brisk-client"]
+
+[workspace.package]
+edition = "2021"
+version = "0.0.0"

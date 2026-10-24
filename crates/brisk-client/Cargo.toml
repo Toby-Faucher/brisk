@@ -1,0 +1,7 @@
+[package]
+name = "brisk-client"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+brisk-proto = { path = "../brisk-proto" }

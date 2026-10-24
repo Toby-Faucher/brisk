@@ -1,0 +1,4 @@
+[package]
+name = "brisk-proto"
+edition.workspace = true
+version.workspace = true
