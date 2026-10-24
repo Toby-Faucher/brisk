@@ -1,7 +1,9 @@
 //! Sans-io Moonlight/GameStream protocol.
 
+pub mod fec;
 pub mod http;
 pub mod pair;
+pub mod rtp;
 pub mod rtsp;
 pub mod scrub;
 pub mod sdp;
