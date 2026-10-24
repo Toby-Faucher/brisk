@@ -3,7 +3,7 @@
 //!   brisk-probe [--record DIR] [--config DIR] apps --host HOST
 //!   brisk-probe [--record DIR] [--config DIR] launch --host HOST --app ID
 //!   brisk-probe [--record DIR] [--config DIR] control --host HOST --app ID [--secs N] [--input-demo]
-//!   brisk-probe [--record DIR] [--config DIR] stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo]
+//!   brisk-probe [--record DIR] [--config DIR] stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo] [--tap]
 //!   brisk-probe [--record DIR] [--config DIR] cancel --host HOST
 //!     cancel: explicit cleanup of a session left running; prints serverinfo state after.
 //!     launch refuses a busy host unless --take-over (which cancels what is running first).
@@ -13,23 +13,28 @@
 //!     stream: as control (default 60 s), receiving and assembling video and audio, IDR requests
 //!       at N/3 and 2N/3; prints the summary block; exits non-zero on a failed M1 gate (after the
 //!       cancel). --record-samples DIR writes the first video/audio datagrams for the replay tests.
+//!     --tap (stream): announce `a=x-brisk.tap:1` and listen on $BRISK_TAP_SOCK or
+//!       $XDG_RUNTIME_DIR/brisk/tap.sock; a brisk-patched Sunshine sends the video there (tap gate:
+//!       contiguous idx, IDR answered, 0 RTP video datagrams), otherwise RTP is used as without
+//!       --tap. With --record-samples DIR the first 60 tap messages go to DIR/tap/.
 //!     --input-demo (control, stream): at N/4 (control) or N/6 (stream) send a harmless input
 //!       sequence: mouse +5/-5 px, Shift down/up, gamepad 0 neutral attach/detach. No clicks.
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
-use brisk_client::control::{AvPing, ControlSession, Stats};
+use brisk_client::control::{ControlSession, Stats};
 use brisk_client::identity::{load_identity, load_or_create_identity, ServerCert};
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
-use brisk_client::stream::stream;
-use brisk_client::SystemRng;
+use brisk_client::stream::{media_setup, stream, stream_tap, Outcome};
+use brisk_client::tap::{tap_path, TapListener};
+use brisk_client::{Error, SystemRng};
 use brisk_proto::pair::Rng;
 use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--input-demo] [--take-over] | stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo] [--take-over] | cancel --host HOST)";
+const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--input-demo] [--take-over] | stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo] [--tap] [--take-over] | cancel --host HOST)";
 
 struct Args {
     cmd: String,
@@ -38,6 +43,7 @@ struct Args {
     app: Option<u32>,
     take_over: bool,
     input_demo: bool,
+    tap: bool,
     secs: u64,
     record: Option<PathBuf>,
     samples: Option<PathBuf>,
@@ -59,6 +65,7 @@ fn parse_args() -> Result<Args, String> {
         (None, None, None, None, None, None);
     let mut take_over = false;
     let mut input_demo = false;
+    let mut tap = false;
     let mut secs = None;
     let mut samples = None;
     let mut it = std::env::args().skip(1);
@@ -70,6 +77,7 @@ fn parse_args() -> Result<Args, String> {
             "--app" => app = Some(val()?.parse().map_err(|_| "--app must be a number")?),
             "--take-over" => take_over = true,
             "--input-demo" => input_demo = true,
+            "--tap" => tap = true,
             "--secs" => secs = Some(val()?.parse().map_err(|_| "--secs must be a number")?),
             "--record-samples" => samples = Some(PathBuf::from(val()?)),
             "--record" => record = Some(PathBuf::from(val()?)),
@@ -88,6 +96,12 @@ fn parse_args() -> Result<Args, String> {
     }
     if input_demo && !matches!(cmd.as_deref(), Some("control" | "stream")) {
         return Err("--input-demo is only for control and stream".into());
+    }
+    if tap && cmd.as_deref() != Some("stream") {
+        return Err("--tap is only for stream".into());
+    }
+    if tap && input_demo {
+        return Err("--tap and --input-demo do not combine (yet)".into());
     }
     let secs = secs.unwrap_or(if cmd.as_deref() == Some("stream") {
         60
@@ -111,6 +125,7 @@ fn parse_args() -> Result<Args, String> {
         app,
         take_over,
         input_demo,
+        tap,
         secs,
         record,
         samples,
@@ -164,7 +179,20 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     // stream asks for audio encryption, as Moonlight does by default, so the audio
                     // path (and the recorded samples) are the AES-CBC one.
                     enc_flags: if a.cmd == "stream" { SS_ENC_AUDIO } else { 0 },
+                    tap: a.tap,
                 };
+                // Bound before the launch: Sunshine connects right after the first video ping.
+                let listener = match a.tap {
+                    true => {
+                        let path = tap_path().ok_or(Error::Setup(
+                            "--tap: no BRISK_TAP_SOCK or XDG_RUNTIME_DIR".into(),
+                        ))?;
+                        println!("tap\tlistening on {}", path.display());
+                        Some(TapListener::bind(&path)?)
+                    }
+                    false => None,
+                };
+                let listener = listener.as_ref();
                 let app = a.app.unwrap();
                 let (host, secs, cmd, demo) = (a.host.clone(), a.secs, a.cmd.clone(), a.input_demo);
                 let samples = a.samples.clone();
@@ -175,8 +203,14 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                             let mut id = [0u8; 4];
                             SystemRng.fill(&mut id);
                             let secs = std::time::Duration::from_secs(secs);
-                            let s = stream(&host, &p, u32::from_le_bytes(id), secs, samples.as_deref(), demo);
-                            Some(s.await?.control)
+                            let id = u32::from_le_bytes(id);
+                            Some(match listener {
+                                Some(l) => match stream_tap(&host, &p, id, secs, samples.as_deref(), l).await? {
+                                    Outcome::Tap(s) => s.control,
+                                    Outcome::Rtp(s) => s.control,
+                                },
+                                None => stream(&host, &p, id, secs, samples.as_deref(), demo).await?.control,
+                            })
                         }
                         _ => None,
                     };
@@ -192,11 +226,11 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     Err(sig) => {
                     eprintln!("{sig}: stopping");
                     if !s.launch_sent() {
-                        return Err(if a.take_over {
+                        return Err(Error::Session(if a.take_over {
                             "interrupted before launch; take-over cancel may have been processed".into()
                         } else {
                             "interrupted before launch; nothing cancelled".into()
-                        });
+                        }));
                     }
                     // The handlers stay installed, so a second signal would be swallowed while the
                     // cancel retries (45 s and more): let it exit at once instead.
@@ -219,7 +253,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                             std::process::exit(130);
                         }
                     }
-                    return Err(format!("interrupted ({sig}); session cancelled").into());
+                    return Err(Error::Session(format!("interrupted ({sig}); session cancelled")));
                     }
                 };
                 let (p, stats) = r?;
@@ -279,8 +313,8 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 );
                 return r;
             }
-            (Err(f), Ok(())) => return Err(format!("recorder finish failed: {f}").into()),
-            (Err(f), Err(e)) => return Err(format!("{e}; also recorder finish failed: {f}").into()),
+            (Err(f), Ok(())) => return Err(f.context("recorder finish failed")),
+            (Err(f), Err(e)) => return Err(e.then(f.context("also recorder finish failed"))),
         }
     }
     r
@@ -294,20 +328,9 @@ async fn run_control(
     secs: u64,
     input_demo: bool,
 ) -> brisk_client::Result<Stats> {
-    let cd = p
-        .connect_data
-        .ok_or("SETUP(control) reply had no X-SS-Connect-Data")?;
-    let addr = tokio::net::lookup_host((host, p.control))
-        .await?
-        .next()
-        .ok_or("control: host did not resolve")?;
+    let (addr, cd, av) = media_setup(host, p).await?;
     let mut id = [0u8; 4];
     SystemRng.fill(&mut id);
-    let payload = p
-        .ping_payload
-        .as_deref()
-        .ok_or("SETUP(audio) reply had no X-SS-Ping-Payload")?;
-    let av = AvPing::new(addr.ip(), p.video, p.audio, payload).await?;
     println!(
         "control\tA/V pings to video {} audio {}; connecting {addr}",
         p.video, p.audio
@@ -341,11 +364,10 @@ async fn run_control(
     .await;
     if let Err(e) = r {
         print_stats(&c.stats);
-        return Err(format!(
-            "control phase failed after {:.1}s: {e}",
+        return Err(e.context(format!(
+            "control phase failed after {:.1}s",
             start.elapsed().as_secs_f32()
-        )
-        .into());
+        )));
     }
     c.disconnect().await
 }
@@ -401,8 +423,38 @@ fn print_stats(st: &Stats) {
     }
 }
 
+/// The library logs through `tracing`; this prints warnings and errors to stderr, nothing else.
+struct StderrLog;
+
+impl tracing::Subscriber for StderrLog {
+    fn enabled(&self, m: &tracing::Metadata<'_>) -> bool {
+        *m.level() <= tracing::Level::WARN
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1) // spans are not used
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, e: &tracing::Event<'_>) {
+        struct Msg(String);
+        impl tracing::field::Visit for Msg {
+            fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+                if f.name() == "message" {
+                    self.0 = format!("{v:?}");
+                }
+            }
+        }
+        let mut m = Msg(String::new());
+        e.record(&mut m);
+        eprintln!("{}: {}", e.metadata().level(), m.0);
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
+    let _ = tracing::subscriber::set_global_default(StderrLog);
     let a = match parse_args() {
         Ok(a) => a,
         Err(e) => {

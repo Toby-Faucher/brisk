@@ -68,15 +68,17 @@ pub fn parse_session_url(url: &str) -> crate::Result<(bool, String, u16)> {
     } else if let Some(r) = url.strip_prefix("rtsp://") {
         (false, r)
     } else {
-        return Err(format!("unsupported rtsp session url {url:?}").into());
+        return Err(crate::Error::Protocol(format!(
+            "unsupported rtsp session url {url:?}"
+        )));
     };
     let rest = rest.trim_end_matches('/');
     let (addr, port) = rest
         .rsplit_once(':')
-        .ok_or_else(|| format!("rtsp session url without port {url:?}"))?;
+        .ok_or_else(|| crate::Error::Protocol(format!("rtsp session url without port {url:?}")))?;
     let port = port
         .parse()
-        .map_err(|_| format!("bad port in rtsp session url {url:?}"))?;
+        .map_err(|_| crate::Error::Protocol(format!("bad port in rtsp session url {url:?}")))?;
     Ok((enc, addr.to_string(), port))
 }
 
@@ -127,7 +129,9 @@ pub async fn handshake(
         .await?;
     let session_id = a
         .session_id()
-        .ok_or("rtsp SETUP audio: missing Session")?
+        .ok_or(crate::Error::Protocol(
+            "rtsp SETUP audio: missing Session".into(),
+        ))?
         .to_string();
     let sess = ("Session", session_id.as_str());
     let v = c
@@ -149,8 +153,9 @@ pub async fn handshake(
         )
         .await?;
     let port = |r: &RtspReply, what: &str| {
-        r.server_port()
-            .ok_or_else(|| format!("rtsp SETUP {what}: no server_port in Transport"))
+        r.server_port().ok_or_else(|| {
+            crate::Error::Protocol(format!("rtsp SETUP {what}: no server_port in Transport"))
+        })
     };
 
     let mut announced = cfg.clone();
@@ -202,11 +207,10 @@ impl Conn<'_> {
             None => plain.clone(),
         };
         if wire.len() >= SUNSHINE_MAX_REQUEST {
-            return Err(format!(
+            return Err(crate::Error::Setup(format!(
                 "rtsp {method}: request of {} bytes exceeds Sunshine's buffer",
                 wire.len()
-            )
-            .into());
+            )));
         }
         let raw = tokio::time::timeout(WAIT, async {
             let mut s = TcpStream::connect((self.host.as_str(), self.port)).await?;
@@ -222,27 +226,31 @@ impl Conn<'_> {
         })
         .await
         .map_err(|_| {
-            format!(
+            crate::Error::Timeout(format!(
                 "rtsp {method}: no reply from {}:{} within {}s",
                 self.host,
                 self.port,
                 WAIT.as_secs()
-            )
+            ))
         })?
-        .map_err(|e| format!("rtsp {method} ({}:{}): {e}", self.host, self.port))?;
+        .map_err(|e| e.context(format!("rtsp {method} ({}:{})", self.host, self.port)))?;
         let reply = match &mut self.cipher {
             Some(c) => c.open(&raw),
             None => Ok(raw),
         }
-        .map_err(|e| format!("rtsp {method}: {e}"))?;
+        .map_err(|e| crate::Error::from(e).context(format!("rtsp {method}")))?;
         if let Some(rec) = &mut self.recorder {
             let enc = self.cipher.is_some();
             rec.push(&format!("rtsp-{label}-req"), enc, &plain);
             rec.push(&format!("rtsp-{label}-resp"), enc, &reply);
         }
-        let r = parse_response(&reply).map_err(|e| format!("rtsp {method}: {e}"))?;
+        let r = parse_response(&reply)
+            .map_err(|e| crate::Error::from(e).context(format!("rtsp {method}")))?;
         if r.status != 200 {
-            return Err(format!("rtsp {method} {target}: status {}", r.status).into());
+            return Err(crate::Error::Session(format!(
+                "rtsp {method} {target}: status {}",
+                r.status
+            )));
         }
         Ok(r)
     }

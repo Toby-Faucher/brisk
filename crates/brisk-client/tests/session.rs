@@ -703,6 +703,7 @@ fn stream_cfg() -> StreamConfig {
         codec: Codec::H264,
         packet_size: 1392,
         fec_percent: 20,
+        tap: false,
         enc_flags: 0,
     }
 }
@@ -877,16 +878,25 @@ async fn probe(
 
 #[tokio::test]
 async fn rejected_launch_never_cancels() {
-    for (mode, needle) in [
-        ("launch-busy", "server busy"),
-        ("launch-empty-400", "server busy"),
-        ("launch-fail", "fake launch failure"),
+    for (mode, needle, busy) in [
+        ("launch-busy", "server busy", true),
+        ("launch-empty-400", "server busy", true),
+        ("launch-fail", "fake launch failure", false),
     ] {
         let (mut s, fake, ident, server, _t) = paired(mode).await;
-        let err = probe(&mut s, &ident, &server, false)
-            .await
-            .unwrap_err()
-            .to_string();
+        let e = probe(&mut s, &ident, &server, false).await.unwrap_err();
+        // Typed: a busy host is `Busy`, another refusal is a `Session` error.
+        assert_eq!(
+            matches!(e, brisk_client::Error::Busy(_)),
+            busy,
+            "{mode}: {e:?}"
+        );
+        assert_eq!(
+            matches!(e, brisk_client::Error::Session(_)),
+            !busy,
+            "{mode}: {e:?}"
+        );
+        let err = e.to_string();
         assert!(err.contains(needle), "{mode}: {err}");
         assert!(!err.contains("outcome unknown"), "{mode}: {err}");
         assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0, "{mode}");
@@ -1008,7 +1018,7 @@ async fn launch_session_runs_during_before_cancel() {
             "7.1.431.-1",
             &stream_cfg(),
             false,
-            |_| async { Err::<(), _>("control failed".into()) },
+            |_| async { Err::<(), _>(brisk_client::Error::Session("control failed".into())) },
         )
         .await
         .unwrap_err();
@@ -1066,6 +1076,7 @@ async fn stream_run(
             audio_key: Some((rikey, rikeyid)),
             ..media
         }),
+        tap: None,
     });
     fake.rtsp.lock().unwrap().ports =
         Some([host.audio.port(), host.video.port(), host.addr.port()]);

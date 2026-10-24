@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
+use tokio::sync::mpsc;
 
 /// moonlight CONTROL_STREAM_TIMEOUT_SEC.
 pub const CONNECT_WAIT: Duration = Duration::from_secs(10);
@@ -35,6 +36,40 @@ const EARLY_MAX: usize = 4096;
 pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8], Instant) -> bool;
 /// Default [`ControlSession::idr_min_interval`].
 pub const IDR_MIN_INTERVAL: Duration = Duration::from_millis(500);
+/// [`ControlHandle::request_idr`] calls closer together than this are merged into one request.
+pub const IDR_CMD_INTERVAL: Duration = Duration::from_millis(100);
+/// Commands a [`ControlHandle`] can queue before `send` waits for the session.
+const CMD_QUEUE: usize = 64;
+
+enum Cmd {
+    Idr,
+    /// One input event, already encoded by the handle (so its error goes to the caller).
+    Input(Vec<ControlMsg>),
+}
+
+/// Cloneable sender into a running [`ControlSession`]; the session acts on commands while it is
+/// inside [`ControlSession::run_until_with`] (or `run_until`).
+#[derive(Clone)]
+pub struct ControlHandle(mpsc::Sender<Cmd>);
+
+impl ControlHandle {
+    async fn send(&self, c: Cmd) -> crate::Result<()> {
+        self.0
+            .send(c)
+            .await
+            .map_err(|_| crate::Error::Closed("control session"))
+    }
+
+    /// Asks for an IDR frame; requests within [`IDR_CMD_INTERVAL`] of the last IDR request are
+    /// merged and sent when the interval is up.
+    pub async fn request_idr(&self) -> crate::Result<()> {
+        self.send(Cmd::Idr).await
+    }
+
+    pub async fn send_input(&self, ev: InputEvent) -> crate::Result<()> {
+        self.send(Cmd::Input(ControlMsg::input(&ev)?)).await
+    }
+}
 
 /// `--input-demo`: a harmless sequence that ends where it started. Mouse +5 then -5 px, Shift
 /// down then up, gamepad 0 attached then detached with nothing pressed and sticks centred
@@ -116,10 +151,11 @@ impl AvPing {
         audio: u16,
         payload: &str,
     ) -> crate::Result<Self> {
-        let payload: [u8; 16] = payload
-            .as_bytes()
-            .try_into()
-            .map_err(|_| format!("X-SS-Ping-Payload must be 16 characters, got {payload:?}"))?;
+        let payload: [u8; 16] = payload.as_bytes().try_into().map_err(|_| {
+            crate::Error::Protocol(format!(
+                "X-SS-Ping-Payload must be 16 characters, got {payload:?}"
+            ))
+        })?;
         let local: SocketAddr = if host.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
         } else {
@@ -187,6 +223,7 @@ async fn recv_opt(s: Option<(&UdpSocket, &mut Vec<u8>)>) -> std::io::Result<usiz
 enum Got {
     Ctl(std::io::Result<usize>),
     Media(usize, std::io::Result<usize>),
+    Cmd(Cmd),
     Timer,
 }
 
@@ -204,6 +241,10 @@ pub struct ControlSession {
     early: Vec<(usize, Instant, Vec<u8>)>,
     /// The sink reported a lost frame; an IDR request is owed.
     want_idr: bool,
+    /// A [`ControlHandle`] asked for an IDR.
+    want_idr_cmd: bool,
+    cmd_tx: mpsc::Sender<Cmd>,
+    cmd_rx: mpsc::Receiver<Cmd>,
     last_idr: Option<Instant>,
     /// Loss-triggered IDR requests are at most one per this (a field so tests can shrink it).
     pub idr_min_interval: Duration,
@@ -229,6 +270,7 @@ impl ControlSession {
         sock.connect(addr).await?;
         let epoch = Instant::now();
         let (peer, hello) = EnetPeer::connect(connect_data, connect_id, 0);
+        let (cmd_tx, cmd_rx) = mpsc::channel(CMD_QUEUE);
         let mut s = ControlSession {
             sock,
             peer,
@@ -241,6 +283,9 @@ impl ControlSession {
             av,
             early: Vec::new(),
             want_idr: false,
+            want_idr_cmd: false,
+            cmd_tx,
+            cmd_rx,
             last_idr: None,
             idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),
@@ -249,12 +294,16 @@ impl ControlSession {
         let deadline = epoch + CONNECT_WAIT;
         while s.peer.state() == PeerState::Connecting {
             if Instant::now() >= deadline {
-                return Err(format!("control: no ENet connect from {addr} within 10s").into());
+                return Err(crate::Error::Timeout(format!(
+                    "control: no ENet connect from {addr} within 10s"
+                )));
             }
             s.step(deadline, None).await?;
         }
         if s.peer.state() != PeerState::Connected {
-            return Err(format!("control: {addr} refused the ENet connection").into());
+            return Err(crate::Error::Session(format!(
+                "control: {addr} refused the ENet connection"
+            )));
         }
         // Gen7Enc's index-0 slot ("Start A" on older hosts) is the IDR request, sent on the
         // generic channel (ControlStream.c:1869-1875); later IDR requests use URGENT.
@@ -268,6 +317,11 @@ impl ControlSession {
 
     fn now(&self) -> u32 {
         self.epoch.elapsed().as_millis() as u32
+    }
+
+    /// A sender for IDR requests and input from other tasks.
+    pub fn handle(&self) -> ControlHandle {
+        ControlHandle(self.cmd_tx.clone())
     }
 
     pub fn is_open(&self) -> bool {
@@ -291,11 +345,16 @@ impl ControlSession {
         self.stats.idr_sent += 1;
         self.last_idr = Some(Instant::now());
         self.want_idr = false; // this request also answers any loss reported so far
+        self.want_idr_cmd = false;
         Ok(())
     }
 
     pub async fn send_input(&mut self, ev: &InputEvent) -> crate::Result<()> {
-        for m in ControlMsg::input(ev).map_err(|e| format!("input: {e:?}"))? {
+        self.send_msgs(ControlMsg::input(ev)?).await
+    }
+
+    async fn send_msgs(&mut self, msgs: Vec<ControlMsg>) -> crate::Result<()> {
+        for m in msgs {
             self.send(&m).await?;
             self.stats.inputs_sent += 1;
         }
@@ -331,6 +390,10 @@ impl ControlSession {
             self.want_idr |= sink(i, &d, at);
         }
         while self.is_open() && Instant::now() < until {
+            let idr_due = self.last_idr.map(|t| t + IDR_CMD_INTERVAL);
+            if self.want_idr_cmd && idr_due.is_none_or(|t| Instant::now() >= t) {
+                self.request_idr().await?;
+            }
             if self.want_idr
                 && self
                     .last_idr
@@ -346,8 +409,11 @@ impl ControlSession {
                 self.stats.pings_sent += 1;
                 self.next_ping = Instant::now() + PING_EVERY;
             }
-            self.step(until.min(self.next_ping), Some(&mut *sink))
-                .await?;
+            let mut wake = until.min(self.next_ping);
+            if let (true, Some(t)) = (self.want_idr_cmd, idr_due) {
+                wake = wake.min(t);
+            }
+            self.step(wake, Some(&mut *sink)).await?;
         }
         Ok(())
     }
@@ -359,7 +425,9 @@ impl ControlSession {
             Ok(v) => v,
             Err(e) => {
                 self.stats.host_disconnected = true;
-                return Err(format!("control: {e} (no ACK from host for 10s)").into());
+                return Err(crate::Error::Timeout(format!(
+                    "control: {e} (no ACK from host for 10s)"
+                )));
             }
         };
         for d in out {
@@ -376,7 +444,13 @@ impl ControlSession {
             wake = wake.min(av.next);
         }
         let got = {
-            let ControlSession { sock, buf, av, .. } = self;
+            let ControlSession {
+                sock,
+                buf,
+                av,
+                cmd_rx,
+                ..
+            } = self;
             let (v, a) = match av {
                 Some(av) => {
                     let [vs, as_] = &av.socks;
@@ -389,6 +463,8 @@ impl ControlSession {
                 r = sock.recv(buf) => Got::Ctl(r),
                 r = recv_opt(v) => Got::Media(0, r),
                 r = recv_opt(a) => Got::Media(1, r),
+                // never None: the session holds a sender itself
+                Some(c) = cmd_rx.recv() => Got::Cmd(c),
                 _ = tokio::time::sleep_until(wake.into()) => Got::Timer,
             }
         };
@@ -417,6 +493,10 @@ impl ControlSession {
                     None => {}
                 }
             }
+            // Commands that arrive while closing are dropped.
+            Got::Cmd(_) if self.closing => {}
+            Got::Cmd(Cmd::Idr) => self.want_idr_cmd = true,
+            Got::Cmd(Cmd::Input(msgs)) => self.send_msgs(msgs).await?,
             Got::Media(..) | Got::Timer => {}
         }
         Ok(())
@@ -505,6 +585,7 @@ mod tests {
     async fn early_datagrams_keep_their_arrival_instant() {
         let sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let (peer, _) = EnetPeer::connect(1, 1, 0);
+        let (cmd_tx, cmd_rx) = mpsc::channel(1);
         let t0 = Instant::now();
         let mut c = ControlSession {
             sock,
@@ -520,6 +601,9 @@ mod tests {
                 .map(|k| (0, t0 - Duration::from_millis(100 - 17 * k), vec![k as u8]))
                 .collect(),
             want_idr: false,
+            want_idr_cmd: false,
+            cmd_tx,
+            cmd_rx,
             last_idr: None,
             idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),

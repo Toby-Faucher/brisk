@@ -10,6 +10,7 @@ fn cfg() -> StreamConfig {
         packet_size: 1392,
         fec_percent: 20,
         enc_flags: SS_ENC_CONTROL_V2,
+        tap: false,
     }
 }
 
@@ -86,6 +87,20 @@ fn sdp_hevc_audio_encryption_and_bitrate_cap() {
     assert_eq!(get("x-ml-video.configuredBitrateKbps"), "150000");
 }
 
+/// `tap`: one extra `a=x-brisk.tap:1` line (the patched Sunshine's switch), nothing else changes.
+#[test]
+fn sdp_tap_adds_only_the_brisk_tap_attribute() {
+    let plain = attrs(&build_sdp(&cfg(), "7.1.431.-1"));
+    let mut c = cfg();
+    c.tap = true;
+    let sdp = build_sdp(&c, "7.1.431.-1");
+    let mut tap = attrs(&sdp);
+    assert!(sdp.contains("a=x-brisk.tap:1 \r\n"), "{sdp}");
+    tap.retain(|(k, v)| !(k == "x-brisk.tap" && v == "1"));
+    assert_eq!(tap, plain);
+    assert!(sdp.ends_with("t=0 0\r\nm=video 47998  \r\n"));
+}
+
 #[test]
 fn encryption_negotiation_mirrors_moonlight() {
     // Sunshine default LAN mode: supported CONTROL_V2|AUDIO, requested CONTROL_V2.
@@ -114,6 +129,7 @@ fn sealed_announce_fits_sunshine_buffer() {
     c.width = 65535;
     c.height = 65535;
     c.bitrate_kbps = u32::MAX;
+    c.tap = true;
     let sdp = build_sdp(&c, "7.1.431.-1");
     let len = sdp.len().to_string();
     let req = request(

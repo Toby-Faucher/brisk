@@ -5,6 +5,7 @@
 
 use crate::control::{AvPing, ControlSession, Stats};
 use crate::rtsp::StreamPorts;
+use crate::tap::{monotonic_ns, TapConn, TapListener, TapRx, TapSummary};
 use brisk_proto::audio::{AudioCipher, AudioFec, PT_AUDIO};
 use brisk_proto::rtp::{parse_video_packet, AssembledFrame, FrameAssembler, VideoCipher};
 use brisk_proto::sdp::{SS_ENC_AUDIO, SS_ENC_VIDEO};
@@ -92,7 +93,9 @@ impl Samples {
             std::fs::write(a.join("README.md"), AUDIO_README)?;
             0
         } else {
-            eprintln!("record-samples: audio is not encrypted on this session; no audio samples");
+            tracing::warn!(
+                "record-samples: audio is not encrypted on this session; no audio samples"
+            );
             AUDIO_SAMPLES
         };
         Ok(Samples {
@@ -363,7 +366,7 @@ impl StreamRx {
                 if let Err(e) = std::fs::write(base.with_extension("bin"), d)
                     .and_then(|()| std::fs::write(base.with_extension("meta.json"), meta))
                 {
-                    eprintln!("record-samples: {e}");
+                    tracing::warn!("record-samples: {e}");
                     s.video = VIDEO_SAMPLES_MAX;
                 }
                 s.video += 1;
@@ -393,7 +396,7 @@ impl StreamRx {
             if s.audio < AUDIO_SAMPLES {
                 let p = s.dir.join(format!("audio/{:03}.bin", s.audio));
                 if let Err(e) = std::fs::write(p, d) {
-                    eprintln!("record-samples: {e}");
+                    tracing::warn!("record-samples: {e}");
                     s.audio = AUDIO_SAMPLES;
                 }
                 s.audio += 1;
@@ -482,6 +485,25 @@ impl StreamRx {
     }
 }
 
+/// Control address, `X-SS-Connect-Data` and the A/V pinger of a launched session.
+pub async fn media_setup(
+    host: &str,
+    p: &StreamPorts,
+) -> crate::Result<(std::net::SocketAddr, u32, AvPing)> {
+    let cd = p.connect_data.ok_or(crate::Error::Protocol(
+        "SETUP(control) reply had no X-SS-Connect-Data".into(),
+    ))?;
+    let addr = tokio::net::lookup_host((host, p.control))
+        .await?
+        .next()
+        .ok_or(crate::Error::Setup("control: host did not resolve".into()))?;
+    let payload = p.ping_payload.as_deref().ok_or(crate::Error::Protocol(
+        "SETUP(audio) reply had no X-SS-Ping-Payload".into(),
+    ))?;
+    let av = AvPing::new(addr.ip(), p.video, p.audio, payload).await?;
+    Ok((addr, cd, av))
+}
+
 /// The control session for `secs` with the media fed into a [`StreamRx`], IDR requests at 1/3
 /// and 2/3 (and [`ControlSession::input_demo`] at 1/6 with `input_demo`), then a graceful
 /// disconnect. Prints the summary block (also on error) and returns it;
@@ -495,24 +517,126 @@ pub async fn stream(
     record: Option<&Path>,
     input_demo: bool,
 ) -> crate::Result<Summary> {
+    match run(host, p, connect_id, secs, record, input_demo, None).await? {
+        Outcome::Rtp(s) => Ok(s),
+        Outcome::Tap(_) => unreachable!("tap mode without a tap listener"),
+    }
+}
+
+/// How a [`stream_tap`] session delivered its video.
+#[derive(Debug)]
+pub enum Outcome {
+    Rtp(Summary),
+    Tap(TapSummary),
+}
+
+/// Waits this long for the first tap connection or RTP video datagram.
+pub const TAP_WAIT: Duration = Duration::from_secs(10);
+/// `--record-samples`: tap messages written to `<dir>/tap/` (no RTP samples in tap mode).
+const TAP_SAMPLES: u32 = 60;
+
+/// [`stream`] for a session announced with `StreamConfig::tap`: whichever comes first after the
+/// video ping decides the mode, a tap connection on `tap` with our connect data (tap mode: frames
+/// from the tap, IDR requests through a [`crate::control::ControlHandle`], the [`TapSummary`]
+/// gate) or an RTP video datagram (stock Sunshine or a failed tap connect: the [`stream`] path).
+pub async fn stream_tap(
+    host: &str,
+    p: &StreamPorts,
+    connect_id: u32,
+    secs: Duration,
+    record: Option<&Path>,
+    tap: &TapListener,
+) -> crate::Result<Outcome> {
+    run(host, p, connect_id, secs, record, false, Some(tap)).await
+}
+
+/// `Some` when a tap connection arrived before any RTP video datagram.
+async fn race(
+    c: &mut ControlSession,
+    l: &TapListener,
+    cd: u32,
+    rx: &mut StreamRx,
+) -> crate::Result<Option<TapConn>> {
+    let accept = l.accept(cd);
+    tokio::pin!(accept);
+    let deadline = Instant::now() + TAP_WAIT;
+    loop {
+        let mut rtp = false;
+        let mut sink = |i: usize, d: &[u8], at: Instant| {
+            rtp |= i == 0;
+            rx.on_datagram(i, d, at)
+        };
+        tokio::select! {
+            conn = &mut accept => return conn.map(Some),
+            r = c.run_until_with(Instant::now() + Duration::from_millis(20), &mut sink) => r?,
+        }
+        if rtp {
+            return Ok(None);
+        }
+        if !c.is_open() {
+            return Err(crate::Error::Session(
+                "host ended the session before the first video frame".into(),
+            ));
+        }
+        if Instant::now() >= deadline {
+            return Err(crate::Error::Timeout(format!(
+                "no tap connection and no RTP video within {}s",
+                TAP_WAIT.as_secs()
+            )));
+        }
+    }
+}
+
+/// Tap frames into `t` until `start + secs`, the control session running alongside; IDR
+/// requests at 1/3 and 2/3 go through a handle, as the bridge will send them.
+async fn tap_loop(
+    c: &mut ControlSession,
+    conn: &mut TapConn,
+    t: &mut TapRx,
+    start: Instant,
+    secs: Duration,
+) -> crate::Result<()> {
+    let h = c.handle();
+    let mut idr_at = (1..3u32).map(|k| start + secs * k / 3).peekable();
+    // RTP datagrams are only counted (`Stats::media_rx_packets`): video must stay at 0.
+    let mut sink = |_: usize, _: &[u8], _: Instant| false;
+    let run = c.run_until_with(start + secs, &mut sink);
+    tokio::pin!(run);
+    loop {
+        tokio::select! {
+            r = &mut run => return r,
+            f = conn.recv() => {
+                t.on_frame(&f?, monotonic_ns());
+                if idr_at.next_if(|&at| Instant::now() >= at).is_some() {
+                    h.request_idr().await?;
+                    t.idr_requested(monotonic_ns());
+                }
+            }
+        }
+    }
+}
+
+async fn run(
+    host: &str,
+    p: &StreamPorts,
+    connect_id: u32,
+    secs: Duration,
+    record: Option<&Path>,
+    input_demo: bool,
+    tap: Option<&TapListener>,
+) -> crate::Result<Outcome> {
     let (rikey, rikeyid) = (p.key.rikey, p.key.rikeyid);
-    let mut rx = StreamRx::new(p.enc_flags, rikey, rikeyid, record)?;
+    // shortcut: tap mode records tap frames only, also after an RTP fallback (the RTP sample
+    // writer would replace fixtures/audio's key file).
+    let rtp_record = if tap.is_some() { None } else { record };
+    let mut rx = StreamRx::new(p.enc_flags, rikey, rikeyid, rtp_record)?;
+    let mut trx = TapRx::new();
+    let mut tap_mode = false;
     let start = Instant::now();
     let mut control = Stats::default();
     let mut rcvbuf = (0, 0);
     let r = async {
-        let cd = p
-            .connect_data
-            .ok_or("SETUP(control) reply had no X-SS-Connect-Data")?;
-        let addr = tokio::net::lookup_host((host, p.control))
-            .await?
-            .next()
-            .ok_or("control: host did not resolve")?;
-        let payload = p
-            .ping_payload
-            .as_deref()
-            .ok_or("SETUP(audio) reply had no X-SS-Ping-Payload")?;
-        let av = AvPing::new(addr.ip(), p.video, p.audio, payload).await?;
+        let (addr, cd, av) = media_setup(host, p).await?;
         rcvbuf = av.rcvbuf();
         println!(
             "stream\tvideo {} audio {} control {addr} encryption {:#x}",
@@ -520,33 +644,50 @@ pub async fn stream(
         );
         let mut c = ControlSession::connect(addr, cd, rikey, connect_id, Some(av)).await?;
         let r = async {
-            if input_demo {
-                c.run_until_with(start + secs / 6, &mut |i, d, at| rx.on_datagram(i, d, at))
-                    .await?;
-                if c.is_open() {
-                    let n = c
-                        .input_demo(&mut |i, d, at| rx.on_datagram(i, d, at))
-                        .await?;
-                    println!(
-                        "input_demo\tsent {n} packets at {:.1}s",
-                        start.elapsed().as_secs_f32()
-                    );
+            let conn = match tap {
+                Some(l) => race(&mut c, l, cd, &mut rx).await?,
+                None => None,
+            };
+            if let Some(mut conn) = conn {
+                tap_mode = true;
+                println!("tap\tconnected at {:.1}s", start.elapsed().as_secs_f32());
+                if let Some(d) = record {
+                    conn.record(&d.join("tap"), TAP_SAMPLES, vec![rikey.to_vec()])?;
                 }
-            }
-            for k in 1..=3u32 {
-                c.run_until_with(start + secs * k / 3, &mut |i, d, at| {
-                    rx.on_datagram(i, d, at)
-                })
-                .await?;
-                if k < 3 && c.is_open() {
-                    c.request_idr().await?;
-                    rx.idr_requested(Instant::now());
+                tap_loop(&mut c, &mut conn, &mut trx, start, secs).await?;
+            } else {
+                if tap.is_some() {
+                    println!("tap\tRTP video arrived first: falling back to RTP");
+                }
+                if input_demo {
+                    c.run_until_with(start + secs / 6, &mut |i, d, at| rx.on_datagram(i, d, at))
+                        .await?;
+                    if c.is_open() {
+                        let n = c
+                            .input_demo(&mut |i, d, at| rx.on_datagram(i, d, at))
+                            .await?;
+                        println!(
+                            "input_demo\tsent {n} packets at {:.1}s",
+                            start.elapsed().as_secs_f32()
+                        );
+                    }
+                }
+                for k in 1..=3u32 {
+                    c.run_until_with(start + secs * k / 3, &mut |i, d, at| {
+                        rx.on_datagram(i, d, at)
+                    })
+                    .await?;
+                    if k < 3 && c.is_open() {
+                        c.request_idr().await?;
+                        rx.idr_requested(Instant::now());
+                    }
                 }
             }
             if !c.is_open() {
-                return Err::<(), crate::Error>(
-                    format!("host ended the session: {:?}", c.stats.termination).into(),
-                );
+                return Err::<(), crate::Error>(crate::Error::Session(format!(
+                    "host ended the session: {:?}",
+                    c.stats.termination
+                )));
             }
             Ok(())
         }
@@ -557,20 +698,29 @@ pub async fn stream(
         Ok::<(), crate::Error>(())
     }
     .await;
+    let failed = |e: crate::Error| {
+        e.context(format!(
+            "stream failed after {:.1}s",
+            start.elapsed().as_secs_f32()
+        ))
+    };
+    if tap_mode {
+        let s = trx.summary(secs.as_secs_f64(), &control);
+        println!("{s}");
+        r.map_err(failed)?;
+        if !s.passed() {
+            return Err(crate::Error::Gate(s.failures));
+        }
+        return Ok(Outcome::Tap(s));
+    }
     let mut s = rx.summary(secs.as_secs_f64(), &control);
     s.rcvbuf = rcvbuf;
     println!("{s}");
-    if let Err(e) = r {
-        return Err(format!(
-            "stream failed after {:.1}s: {e}",
-            start.elapsed().as_secs_f32()
-        )
-        .into());
-    }
+    r.map_err(failed)?;
     if !s.passed() {
-        return Err(format!("stream gate FAILED: {}", s.failures.join("; ")).into());
+        return Err(crate::Error::Gate(s.failures));
     }
-    Ok(s)
+    Ok(Outcome::Rtp(s))
 }
 
 #[cfg(test)]

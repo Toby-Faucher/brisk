@@ -40,12 +40,12 @@ pub struct ServerCert {
 impl ServerCert {
     pub fn load(dir: &Path) -> crate::Result<ServerCert> {
         let pem = fs::read_to_string(dir.join(SERVER)).map_err(|e| {
-            format!(
+            crate::Error::Setup(format!(
                 "not paired ({}: {e}); run `brisk-probe pair`",
                 dir.join(SERVER).display()
-            )
+            ))
         })?;
-        Certificate::from_pem(&pem).map_err(|e| format!("{SERVER}: {e}"))?;
+        Certificate::from_pem(&pem).map_err(|e| crate::Error::Setup(format!("{SERVER}: {e}")))?;
         Ok(ServerCert { pem })
     }
     pub fn save(&self, dir: &Path) -> crate::Result<()> {
@@ -56,11 +56,10 @@ impl ServerCert {
 /// Loads the existing identity in `dir`; never creates or overwrites anything.
 pub fn load_identity(dir: &Path) -> crate::Result<Identity> {
     load(dir)?.ok_or_else(|| {
-        format!(
+        crate::Error::Setup(format!(
             "no valid identity in {}; run `brisk-probe pair`",
             dir.display()
-        )
-        .into()
+        ))
     })
 }
 
@@ -71,7 +70,7 @@ pub fn load_or_create_identity(dir: &Path) -> crate::Result<Identity> {
     if let Some(id) = load(dir)? {
         return Ok(id);
     }
-    let id = generate()?;
+    let id = generate().map_err(|e| crate::Error::Setup(format!("identity generation: {e}")))?;
     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
     write_secret(dir, KEY, &id.key_pem)?;
     write_secret(dir, CERT, &id.cert_pem)?;
@@ -84,7 +83,7 @@ fn load(dir: &Path) -> crate::Result<Option<Identity>> {
     let read = |n| match fs::read_to_string(dir.join(n)) {
         Ok(s) => Ok(Some(s)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("{}: {e}", dir.join(n).display())),
+        Err(e) => Err(crate::Error::Io(e).context(dir.join(n).display().to_string())),
     };
     let (Some(cert_pem), Some(key_pem), Some(unique_id)) =
         (read(CERT)?, read(KEY)?, read(UNIQUE_ID)?)
@@ -109,7 +108,7 @@ fn load(dir: &Path) -> crate::Result<Option<Identity>> {
     Ok(ok().unwrap_or(false).then_some(id))
 }
 
-fn generate() -> crate::Result<Identity> {
+fn generate() -> Result<Identity, Box<dyn std::error::Error + Send + Sync>> {
     let key = RsaPrivateKey::new(&mut OsRng, 2048)?;
     let signer = SigningKey::<Sha256>::new(key.clone());
     let spki =

@@ -35,6 +35,9 @@ pub struct StreamConfig {
     pub fec_percent: u8,
     /// `SS_ENC_*` bits sent verbatim as `x-ss-general.encryptionEnabled`; see [`negotiate_encryption`].
     pub enc_flags: u32,
+    /// Ask a brisk-patched Sunshine for the encoded video on its unix-socket tap instead of RTP
+    /// (`a=x-brisk.tap:1`; stock Sunshine ignores unknown attributes).
+    pub tap: bool,
 }
 
 /// moonlight-common-c's rule: control V2 whenever supported; video/audio when supported and
@@ -108,6 +111,9 @@ pub fn build_sdp(cfg: &StreamConfig, app_version: &str) -> String {
     );
     for (k, v) in attrs {
         s.push_str(&format!("a={k}:{v} \r\n"));
+    }
+    if cfg.tap {
+        s.push_str("a=x-brisk.tap:1 \r\n");
     }
     s.push_str("t=0 0\r\nm=video 47998  \r\n");
     s

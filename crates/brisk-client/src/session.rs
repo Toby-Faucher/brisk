@@ -172,11 +172,10 @@ impl Session {
                 tokio::time::sleep(self.cancel_backoff * n).await;
             }
         }
-        Err(format!(
+        Err(crate::Error::Session(format!(
             "cancel FAILED after {CANCEL_ATTEMPTS} attempts: session may still be running on host; run `brisk-probe cancel --host {}` ({last})",
             self.host
-        )
-        .into())
+        )))
     }
 
     /// After an ambiguous `/launch`: cancel only if the host now runs the app we asked for.
@@ -192,15 +191,16 @@ impl Session {
         );
         match self.serverinfo(Some((ident, server))).await {
             Ok(i) if i.current_game == app_id => self.cancel_retry(ident, server).await,
-            Ok(i) if i.current_game == 0 => {
-                Err("launch did not start anything; nothing cancelled".into())
-            }
-            Ok(i) => Err(format!(
+            Ok(i) if i.current_game == 0 => Err(crate::Error::Session(
+                "launch did not start anything; nothing cancelled".into(),
+            )),
+            Ok(i) => Err(crate::Error::Session(format!(
                 "{unknown} (host runs app {}, not ours; not cancelling it)",
                 i.current_game
-            )
-            .into()),
-            Err(e) => Err(format!("{unknown} (serverinfo failed: {e})").into()),
+            ))),
+            Err(e) => Err(crate::Error::Session(format!(
+                "{unknown} (serverinfo failed: {e})"
+            ))),
         }
     }
 
@@ -252,11 +252,11 @@ impl Session {
                 info.current_game, info.server_state
             );
             if !take_over {
-                return Err(
-                    format!("{busy}; not cancelling it (pass --take-over to replace it)").into(),
-                );
+                return Err(crate::Error::Busy(format!(
+                    "{busy}; not cancelling it (pass --take-over to replace it)"
+                )));
             }
-            eprintln!("WARNING: --take-over: {busy}; cancelling it NOW");
+            tracing::warn!("--take-over: {busy}; cancelling it NOW");
             self.cancel_retry(ident, server).await?;
         }
         self.launch_sent = true;
@@ -265,23 +265,25 @@ impl Session {
             Err(e) => {
                 use brisk_proto::http::HttpError::Status;
                 // A complete non-200 reply (HTTP or XML status) means Sunshine refused: never cancel.
-                match e.downcast_ref::<brisk_proto::http::HttpError>() {
-                    Some(Status { code: 400, .. }) => {
+                match e.root() {
+                    crate::Error::Http(Status { code: 400, .. }) => {
                         let game = match self.serverinfo(Some((ident, server))).await {
                             Ok(i) => i.current_game.to_string(),
                             Err(_) => "unknown".into(),
                         };
-                        return Err(format!("server busy: an app/session is already running (currentgame={game}); not cancelling it ({e})").into());
+                        return Err(crate::Error::Busy(format!("server busy: an app/session is already running (currentgame={game}); not cancelling it ({e})")));
                     }
-                    Some(Status { .. }) => {
-                        return Err(format!("launch rejected: {e}; nothing to cancel").into())
+                    crate::Error::Http(Status { .. }) => {
+                        return Err(crate::Error::Session(format!(
+                            "launch rejected: {e}; nothing to cancel"
+                        )))
                     }
                     _ => {}
                 }
                 // Timeout, reset or unparseable 200: the app may have started.
                 return Err(match self.cancel_if_ours(ident, server, app_id).await {
-                    Ok(()) => format!("{e}; session cancelled").into(),
-                    Err(c) => format!("{e}; {c}").into(),
+                    Ok(()) => e.then(crate::Error::Session("session cancelled".into())),
+                    Err(c) => e.then(c),
                 });
             }
         };
@@ -297,9 +299,9 @@ impl Session {
         .await;
         let r = match r {
             // A panic in `during` must not skip the cancel below.
-            Ok(p) => CatchUnwind(Box::pin(during(p)))
-                .await
-                .unwrap_or_else(|_| Err("panicked during the session".into())),
+            Ok(p) => CatchUnwind(Box::pin(during(p))).await.unwrap_or_else(|_| {
+                Err(crate::Error::Session("panicked during the session".into()))
+            }),
             Err(e) => Err(e),
         };
         let c = self.cancel_retry(ident, server).await;
@@ -307,7 +309,7 @@ impl Session {
             (Ok(p), Ok(())) => Ok(p),
             (Ok(_), Err(c)) => Err(c),
             (Err(e), Ok(())) => Err(e),
-            (Err(e), Err(c)) => Err(format!("{e}; {c}").into()),
+            (Err(e), Err(c)) => Err(e.then(c)),
         }
     }
 
@@ -369,17 +371,19 @@ impl Session {
             rec.add_secret(&b[..b.len().min(16)]); // server secret travels in clear hex
         }
         let q = pc.on_serverchallenge_resp(&ps).map_err(|e| match e {
-            PairError::HashMismatch => {
+            PairError::HashMismatch => crate::Error::Session(
                 "pairing failed: wrong PIN (server secret does not match the PIN-derived hash)"
-                    .into()
-            }
+                    .into(),
+            ),
             e => crate::Error::from(e),
         })?;
 
         let r = self.get(None, "/pair", &q, WAIT).await?;
         let q = pc
             .on_pairingsecret_resp(&parse_field(&r, "paired")?)
-            .map_err(|_| "pairing failed: server rejected our pairing secret")?;
+            .map_err(|_| {
+                crate::Error::Session("pairing failed: server rejected our pairing secret".into())
+            })?;
 
         let r = self.get(Some((ident, &server)), "/pair", &q, WAIT).await?;
         paired_field(&r, "paired")?;
@@ -414,8 +418,11 @@ impl Session {
             match tls {
                 None => exchange(tcp, &req).await,
                 Some((id, srv)) => {
-                    let name = ServerName::try_from(host.clone())?;
-                    let s = tokio_rustls::TlsConnector::from(Arc::new(tls_config(id, srv)?))
+                    let name = ServerName::try_from(host.clone())
+                        .map_err(|e| crate::Error::Setup(format!("host name: {e}")))?;
+                    let cfg = tls_config(id, srv)
+                        .map_err(|e| crate::Error::Setup(format!("tls config: {e}")))?;
+                    let s = tokio_rustls::TlsConnector::from(Arc::new(cfg))
                         .connect(name, tcp)
                         .await?;
                     exchange(s, &req).await
@@ -424,13 +431,13 @@ impl Session {
         })
         .await
         .map_err(|_| {
-            format!(
+            crate::Error::Timeout(format!(
                 "{path}: no reply from {}:{port} within {}s",
                 self.host,
                 wait.as_secs()
-            )
+            ))
         })?
-        .map_err(|e| format!("{path} ({}:{port}): {e}", self.host))?;
+        .map_err(|e| e.context(format!("{path} ({}:{port})", self.host)))?;
         let label = path.trim_start_matches('/');
         if let Some(rec) = &mut self.recorder {
             if let Some((id, srv)) = tls {
@@ -445,12 +452,9 @@ impl Session {
             rec.push(&format!("{label}-resp"), tls.is_some(), &raw);
         }
         // Keep a typed `HttpError` (a refusal) intact: callers decide on it, e.g. never cancel.
-        body(&raw, tls.is_some()).map_err(|e| {
-            if e.is::<brisk_proto::http::HttpError>() {
-                e
-            } else {
-                format!("{path}: {e}").into()
-            }
+        body(&raw, tls.is_some()).map_err(|e| match e {
+            crate::Error::Http(_) => e,
+            e => e.context(path),
         })
     }
 }
@@ -458,7 +462,9 @@ impl Session {
 /// Requires `paired == 1` (Sunshine's failure replies carry 0 plus a status message), then returns `name`.
 fn paired_field(xml: &str, name: &'static str) -> crate::Result<String> {
     if parse_field(xml, "paired")? != "1" {
-        return Err("pairing failed: server answered paired=0".into());
+        return Err(crate::Error::Session(
+            "pairing failed: server answered paired=0".into(),
+        ));
     }
     Ok(parse_field(xml, name)?)
 }
@@ -531,7 +537,7 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
             Err(e) => return Err(e.into()),
         }
         if buf.len() > limit {
-            return Err("http response too large".into());
+            return Err(crate::Error::Protocol("http response too large".into()));
         }
     }
     Ok(buf)
@@ -543,24 +549,24 @@ fn body(raw: &[u8], need_len: bool) -> crate::Result<String> {
     let end = raw
         .windows(4)
         .position(|w| w == b"\r\n\r\n")
-        .ok_or("truncated http response (no header end)")?;
-    let head = std::str::from_utf8(&raw[..end]).map_err(|_| "non-utf8 http header")?;
+        .ok_or(proto("truncated http response (no header end)"))?;
+    let head = std::str::from_utf8(&raw[..end]).map_err(|_| proto("non-utf8 http header"))?;
     let mut lines = head.split("\r\n");
     let status: u16 = lines
         .next()
         .and_then(|l| l.split(' ').nth(1))
         .and_then(|c| c.parse().ok())
-        .ok_or("bad http status line")?;
+        .ok_or(proto("bad http status line"))?;
     let mut body = &raw[end + 4..];
     let mut has_len = false;
     for (k, v) in lines.filter_map(|l| l.split_once(':')) {
         match k.trim().to_ascii_lowercase().as_str() {
-            "transfer-encoding" => return Err("chunked http response not supported".into()),
+            "transfer-encoding" => return Err(proto("chunked http response not supported")),
             "content-length" => {
                 has_len = true;
-                let n: usize = v.trim().parse().map_err(|_| "bad content-length")?;
+                let n: usize = v.trim().parse().map_err(|_| proto("bad content-length"))?;
                 if body.len() < n {
-                    return Err("truncated http response body".into());
+                    return Err(proto("truncated http response body"));
                 }
                 body = &body[..n];
             }
@@ -568,9 +574,9 @@ fn body(raw: &[u8], need_len: bool) -> crate::Result<String> {
         }
     }
     if need_len && !has_len {
-        return Err("https response without content-length".into());
+        return Err(proto("https response without content-length"));
     }
-    let body = String::from_utf8(body.to_vec()).map_err(|_| "non-utf8 http body")?;
+    let body = String::from_utf8(body.to_vec()).map_err(|_| proto("non-utf8 http body"))?;
     if status != 200 && body.trim().is_empty() {
         return Err(brisk_proto::http::HttpError::Status {
             code: status.into(),
@@ -585,9 +591,15 @@ fn provider() -> Arc<CryptoProvider> {
     Arc::new(rustls_rustcrypto::provider())
 }
 
-fn tls_config(id: &Identity, srv: &ServerCert) -> crate::Result<rustls::ClientConfig> {
+fn proto(s: &str) -> crate::Error {
+    crate::Error::Protocol(s.into())
+}
+
+type BoxResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+fn tls_config(id: &Identity, srv: &ServerCert) -> BoxResult<rustls::ClientConfig> {
     let p = provider();
-    let pem_der = |pem: &str| -> crate::Result<CertificateDer<'static>> {
+    let pem_der = |pem: &str| -> BoxResult<CertificateDer<'static>> {
         Ok(x509_cert::Certificate::from_pem(pem)?.to_der()?.into())
     };
     let key =

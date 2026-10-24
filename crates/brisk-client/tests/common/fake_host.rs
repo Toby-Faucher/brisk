@@ -108,6 +108,10 @@ pub struct Cfg {
     /// UDP datagrams to drop on the control socket first (forces retransmission).
     pub drop: usize,
     pub media: Option<Media>,
+    /// As the brisk-patched Sunshine with `a=x-brisk.tap:1`: on the first video ping connect a
+    /// SEQPACKET socket here and send the frames on it (BTAP v1) instead of RTP; if the connect
+    /// fails, RTP as usual.
+    pub tap: Option<std::path::PathBuf>,
 }
 
 impl Default for Cfg {
@@ -118,6 +122,7 @@ impl Default for Cfg {
             ping_payload: PING_PAYLOAD,
             drop: 0,
             media: None,
+            tap: None,
         }
     }
 }
@@ -338,7 +343,9 @@ pub fn fake_with(cfg: Cfg) -> Fake {
             ping_payload,
             drop,
             media,
+            tap,
         } = cfg;
+        let mut tap_sock: Option<socket2::Socket> = None;
         // net::host_create: 128 peers, channel limit 0 (= max), no bandwidth limits.
         let settings = enet::HostSettings {
             peer_limit: 128,
@@ -379,6 +386,17 @@ pub fn fake_with(cfg: Cfg) -> Fake {
                         ping_peer[i] = Some(from);
                         media_start[i] = Some(Instant::now());
                         log.first_ping[i] = Some(d.to_vec());
+                        if let (0, Some(path)) = (i, &tap) {
+                            let t = socket2::Socket::new(
+                                socket2::Domain::UNIX,
+                                socket2::Type::SEQPACKET,
+                                None,
+                            )
+                            .unwrap();
+                            if t.connect(&socket2::SockAddr::unix(path).unwrap()).is_ok() {
+                                tap_sock = Some(t);
+                            }
+                        }
                         if media.is_none() {
                             // Media-like junk so the counters have something to count.
                             for k in 0..3 - i {
@@ -402,6 +420,26 @@ pub fn fake_with(cfg: Cfg) -> Fake {
                             2_000 + (idx as usize * 397) % 2_500
                         };
                         let annexb: Vec<u8> = (0..size).map(|b| (b as u32 ^ idx) as u8).collect();
+                        if let Some(t) = &tap_sock {
+                            // brisk_tap_send: header + Annex B, one message, never blocking.
+                            let now = brisk_client::tap::monotonic_ns();
+                            let mut msg = b"BTAP".to_vec();
+                            msg.extend([1, idr as u8]);
+                            msg.extend(44u16.to_le_bytes());
+                            msg.extend(connect_data.to_le_bytes());
+                            msg.extend(0u32.to_le_bytes());
+                            msg.extend((idx as u64).to_le_bytes());
+                            msg.extend((now - 2_000_000).to_le_bytes()); // captured 2 ms ago
+                            msg.extend(now.to_le_bytes());
+                            msg.extend(0u32.to_le_bytes());
+                            msg.extend(&annexb);
+                            if t.send_with_flags(&msg, libc::MSG_DONTWAIT).is_ok() {
+                                let mut log = l.lock().unwrap();
+                                log.frames += 1;
+                                log.idr_frames += u32::from(idr);
+                            }
+                            continue;
+                        }
                         let (pkts, parity) = vh.frame(
                             idx,
                             if idr { 2 } else { 1 },

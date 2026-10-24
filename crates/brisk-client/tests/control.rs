@@ -374,3 +374,156 @@ async fn scheduled_idr_clears_pending_loss_request() {
     assert_eq!((c.stats.idr_on_loss, c.stats.idr_sent), (0, 2));
     c.disconnect().await.unwrap();
 }
+
+/// A [`ControlHandle`] used from another task drives the running session: the input and the
+/// IDR request reach the host; once the session is gone the handle says so.
+#[tokio::test]
+async fn control_handle_sends_input_and_idr_from_another_task() {
+    let f = fake(0);
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 31, av(&f).await)
+        .await
+        .unwrap();
+    let h = c.handle();
+    let key = InputEvent::Key {
+        vk: 0x41,
+        down: true,
+        modifiers: 0,
+    };
+    let driver = async {
+        h.clone().send_input(key.clone()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        h.request_idr().await.unwrap();
+    };
+    let (r, ()) = tokio::join!(
+        c.run_until(Instant::now() + Duration::from_millis(500)),
+        driver
+    );
+    r.unwrap();
+    assert_eq!(
+        inputs(&f),
+        vec![(2, encode_input(&key).unwrap()[0].clone())]
+    );
+    let idr: Vec<u8> = types(&f)
+        .iter()
+        .filter(|m| m.1 == 0x0302)
+        .map(|m| m.0)
+        .collect();
+    assert_eq!(idr, [0, 1], "opening IDR, then the handle's on URGENT");
+    assert_eq!((c.stats.idr_sent, c.stats.inputs_sent), (2, 1));
+    c.disconnect().await.unwrap();
+    assert!(matches!(
+        h.request_idr().await,
+        Err(brisk_client::Error::Closed(_))
+    ));
+}
+
+/// Handle IDR requests every 10 ms for 500 ms are merged into at most one per 100 ms, and the
+/// last one is still sent (merged, not dropped).
+#[tokio::test]
+async fn control_handle_idr_is_rate_limited_to_one_per_100ms() {
+    let f = fake(0);
+    let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 33, av(&f).await)
+        .await
+        .unwrap();
+    let h = c.handle();
+    let driver = async {
+        for _ in 0..50 {
+            h.request_idr().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    let (r, ()) = tokio::join!(
+        c.run_until(Instant::now() + Duration::from_millis(800)),
+        driver
+    );
+    r.unwrap();
+    let sent = c.stats.idr_sent - 1; // minus the opening request
+    assert!((4..=7).contains(&sent), "{sent}");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        types(&f).iter().filter(|m| m.1 == 0x0302).count(),
+        1 + sent as usize
+    );
+    c.disconnect().await.unwrap();
+}
+
+/// Tap mode end to end against the fake: the fake connects to our listener on its first video
+/// ping (as the patched Sunshine does), frames come over the tap, the IDR requests made through
+/// the control handle are answered, no RTP video arrives, and the tap gate passes.
+#[tokio::test]
+async fn stream_tap_receives_frames_from_the_tap() {
+    use brisk_client::stream::{stream_tap, Outcome};
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("tap.sock");
+    let l = brisk_client::tap::TapListener::bind(&path).unwrap();
+    let f = fake_with(Cfg {
+        media: Some(Media::default()),
+        tap: Some(path),
+        ..Cfg::default()
+    });
+    let rec = t.path().join("rec");
+    let o = stream_tap(
+        "127.0.0.1",
+        &ports(&f, 0),
+        41,
+        Duration::from_secs(3),
+        Some(&rec),
+        &l,
+    )
+    .await
+    .unwrap();
+    let Outcome::Tap(s) = o else {
+        panic!("fell back to RTP: {o:?}")
+    };
+    assert!(s.passed(), "{s}");
+    assert!(s.frames >= 171 && s.idr_frames >= 3, "{s}");
+    assert_eq!(
+        (s.rtp_video_datagrams, s.idx_gaps, s.dropped),
+        (0, 0, 0),
+        "{s}"
+    );
+    assert_eq!(s.idr_response_ms.len(), 2, "{s}");
+    let fp = s.host_ms.as_ref().unwrap();
+    assert!((fp[0] - 2.0).abs() < 0.01, "{s}");
+    assert_eq!(
+        f.log.lock().unwrap().video_sent,
+        0,
+        "no RTP video from the fake"
+    );
+    // --record-samples writes the first 60 tap messages, as received.
+    let n = std::fs::read_dir(rec.join("tap")).unwrap().count();
+    assert_eq!(n, 60);
+    let m = std::fs::read(rec.join("tap/000.bin")).unwrap();
+    assert_eq!(
+        brisk_proto::tap::parse_tap(&m).unwrap().0.connect_data,
+        CONNECT_DATA
+    );
+}
+
+/// The tap connect fails (nobody listens where the fake connects): RTP video wins the race and
+/// the session runs the normal RTP path and gate.
+#[tokio::test]
+async fn stream_tap_falls_back_to_rtp() {
+    use brisk_client::stream::{stream_tap, Outcome};
+    let t = tempfile::tempdir().unwrap();
+    let l = brisk_client::tap::TapListener::bind(&t.path().join("tap.sock")).unwrap();
+    let f = fake_with(Cfg {
+        media: Some(Media::default()),
+        tap: Some(t.path().join("elsewhere.sock")),
+        ..Cfg::default()
+    });
+    let o = stream_tap(
+        "127.0.0.1",
+        &ports(&f, 0),
+        43,
+        Duration::from_secs(2),
+        None,
+        &l,
+    )
+    .await
+    .unwrap();
+    let Outcome::Rtp(s) = o else {
+        panic!("tap mode without a tap: {o:?}")
+    };
+    assert!(s.passed() && s.frames >= 114, "{s}");
+}
