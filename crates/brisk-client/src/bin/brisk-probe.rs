@@ -141,14 +141,12 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             let ident = load_or_create_identity(&dir)?;
             let pin = pin.as_deref().unwrap();
             println!("PIN {pin}: enter it in Sunshine's web UI (PIN tab). Waiting up to 5 min...");
-            s.pair(&dir, &ident, pin, Box::new(SystemRng))
-                .await
-                .map(|_| {
-                    println!(
-                        "paired; server cert pinned in {}",
-                        dir.join("server.pem").display()
-                    )
-                })
+            s.pair(&dir, &ident, pin).await.map(|_| {
+                println!(
+                    "paired; server cert pinned in {}",
+                    dir.join("server.pem").display()
+                )
+            })
         }
         "launch" | "control" | "stream" => {
             async {
@@ -193,14 +191,14 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     Ok(r) => r,
                     Err(sig) => {
                     eprintln!("{sig}: stopping");
-                    if !s.launch_sent {
+                    if !s.launch_sent() {
                         return Err(if a.take_over {
                             "interrupted before launch; take-over cancel may have been processed".into()
                         } else {
                             "interrupted before launch; nothing cancelled".into()
                         });
                     }
-                    if s.launch_confirmed {
+                    if s.launch_confirmed() {
                         s.cancel_retry(&ident, &server).await?;
                     } else {
                         s.cancel_if_ours(&ident, &server, app).await?;

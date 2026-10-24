@@ -240,6 +240,7 @@ impl Control {
         Self::with_dirs(rikey, b'C', b'H')
     }
     /// Host side, for test fakes.
+    #[doc(hidden)]
     pub fn host(rikey: [u8; 16]) -> Self {
         Self::with_dirs(rikey, b'H', b'C')
     }

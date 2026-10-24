@@ -36,12 +36,12 @@ pub struct Session {
     pub https_port: u16,
     pub recorder: Option<Recorder>,
     /// Per-attempt timeout and base backoff for `cancel_retry` (fields so tests can shrink them).
+    #[doc(hidden)]
     pub cancel_wait: Duration,
+    #[doc(hidden)]
     pub cancel_backoff: Duration,
-    /// `launch_probe` is about to send (or has sent) `/launch`: a session may be ours.
-    pub launch_sent: bool,
-    /// `/launch` came back 200: a session is certainly ours.
-    pub launch_confirmed: bool,
+    launch_sent: bool,
+    launch_confirmed: bool,
     /// Draws every launch key.
     rng: Arc<Mutex<dyn Rng + Send>>,
 }
@@ -65,7 +65,17 @@ impl Session {
         }
     }
 
-    /// Replaces the CSPRNG (tests only: a predictable rng makes predictable keys).
+    /// `launch_session` is about to send (or has sent) `/launch`: a session may be ours.
+    pub fn launch_sent(&self) -> bool {
+        self.launch_sent
+    }
+
+    /// `/launch` came back 200: a session is certainly ours.
+    pub fn launch_confirmed(&self) -> bool {
+        self.launch_confirmed
+    }
+
+    /// Replaces the CSPRNG (tests only: a predictable rng makes predictable keys and pairing draws).
     #[doc(hidden)]
     pub fn set_rng(&mut self, rng: impl Rng + Send + 'static) {
         self.rng = Arc::new(Mutex::new(rng));
@@ -302,13 +312,13 @@ impl Session {
     }
 
     /// Phases 1-4 over HTTP, phase 5 (`pairchallenge`) over HTTPS pinned to the phase-1 cert.
-    /// Writes `dir/server.pem` only after phase 5 succeeds. `rng` draws salt, challenge and secret.
+    /// Writes `dir/server.pem` only after phase 5 succeeds. Salt, challenge and secret come from
+    /// the session's CSPRNG.
     pub async fn pair(
         &mut self,
         dir: &Path,
         ident: &Identity,
         pin: &str,
-        rng: Box<dyn Rng>,
     ) -> crate::Result<ServerCert> {
         if let Some(rec) = &mut self.recorder {
             identity_secrets(ident)
@@ -317,7 +327,7 @@ impl Session {
         }
         let drawn = Arc::new(Mutex::new(vec![]));
         let r = self
-            .pair_inner(ident, pin, Box::new(Tap(rng, drawn.clone())))
+            .pair_inner(ident, pin, Box::new(Tap(self.rng.clone(), drawn.clone())))
             .await;
         if let Some(rec) = &mut self.recorder {
             drawn.lock().unwrap().iter().for_each(|s| rec.add_secret(s));
@@ -483,11 +493,11 @@ impl<F: std::future::Future> std::future::Future for CatchUnwind<F> {
     }
 }
 
-/// Copies every rng draw so the recorder can scrub it.
-struct Tap(Box<dyn Rng>, Arc<Mutex<Vec<Vec<u8>>>>);
+/// Draws from the session rng and copies every draw so the recorder can scrub it.
+struct Tap(Arc<Mutex<dyn Rng + Send>>, Arc<Mutex<Vec<Vec<u8>>>>);
 impl Rng for Tap {
     fn fill(&mut self, buf: &mut [u8]) {
-        self.0.fill(buf);
+        self.0.lock().unwrap().fill(buf);
         self.1.lock().unwrap().push(buf.to_vec());
     }
 }

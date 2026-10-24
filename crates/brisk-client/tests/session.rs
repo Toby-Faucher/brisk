@@ -27,6 +27,17 @@ use x509_cert::Certificate;
 
 mod common;
 
+/// AES-128-ECB of whole blocks, as Sunshine's server side encrypts (own copy, not brisk_proto's).
+fn ecb(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
+    use aes::cipher::{BlockEncrypt, KeyInit};
+    let c = aes::Aes128::new(key.into());
+    let mut out = data.to_vec();
+    for b in out.chunks_mut(16) {
+        c.encrypt_block(b.into());
+    }
+    out
+}
+
 const EMPTY_400: &str = "<<empty-400>>";
 const SERVER_SECRET: [u8; 16] = *b"FAKE-SRV-SECRET!";
 const SERVER_CHALLENGE: [u8; 16] = *b"FAKE-SRV-CHALNGE";
@@ -161,7 +172,7 @@ impl Fake {
             "/pair" if q.contains_key("clientchallenge") => {
                 let challenge = aes_ecb_decrypt(&key, &unhex(&q["clientchallenge"]).unwrap()).unwrap();
                 let h = Sha256::new().chain_update(&challenge).chain_update(cert_sig(&self.ident.cert_pem)).chain_update(SERVER_SECRET).finalize();
-                let resp = aes_ecb_encrypt(&key, &[h.as_slice(), &SERVER_CHALLENGE].concat());
+                let resp = ecb(&key, &[h.as_slice(), &SERVER_CHALLENGE].concat());
                 xml(&format!("<paired>1</paired><challengeresponse>{}</challengeresponse>", hex(&resp)))
             }
             "/pair" if q.contains_key("serverchallengeresp") => {
@@ -495,10 +506,7 @@ async fn pair_then_applist_over_pinned_https() {
     let t = tempfile::tempdir().unwrap();
     let ident = load_or_create_identity(t.path()).unwrap();
     let (mut s, fake) = start("4821", 0).await;
-    let server = s
-        .pair(t.path(), &ident, "4821", Box::new(brisk_client::SystemRng))
-        .await
-        .unwrap();
+    let server = s.pair(t.path(), &ident, "4821").await.unwrap();
     assert_eq!(server.pem, fake.ident.cert_pem);
     assert_eq!(ServerCert::load(t.path()).unwrap(), server);
     assert_eq!(
@@ -524,10 +532,7 @@ async fn https_response_without_content_length_is_an_error() {
     let t = tempfile::tempdir().unwrap();
     let ident = load_or_create_identity(t.path()).unwrap();
     let (mut s, fake) = start("4821", 0).await;
-    let server = s
-        .pair(t.path(), &ident, "4821", Box::new(brisk_client::SystemRng))
-        .await
-        .unwrap();
+    let server = s.pair(t.path(), &ident, "4821").await.unwrap();
     s.serverinfo(None).await.unwrap();
     fake.omit_len
         .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -579,10 +584,7 @@ async fn wrong_pin_fails_and_writes_nothing() {
     let ident = load_or_create_identity(t.path()).unwrap();
     let before = names(t.path());
     let (mut s, fake) = start("1111", 0).await;
-    let err = s
-        .pair(t.path(), &ident, "2222", Box::new(brisk_client::SystemRng))
-        .await
-        .unwrap_err();
+    let err = s.pair(t.path(), &ident, "2222").await.unwrap_err();
     assert!(err.to_string().contains("wrong PIN"), "{err}");
     assert_eq!(names(t.path()), before, "no server.pem, no temp files");
     assert!(fake.st.lock().unwrap().authorized.is_none());
@@ -593,10 +595,7 @@ async fn pinned_cert_rejects_a_different_server() {
     let t = tempfile::tempdir().unwrap();
     let ident = load_or_create_identity(t.path()).unwrap();
     let (mut a, _) = start("4821", 0).await;
-    let pinned_a = a
-        .pair(t.path(), &ident, "4821", Box::new(brisk_client::SystemRng))
-        .await
-        .unwrap();
+    let pinned_a = a.pair(t.path(), &ident, "4821").await.unwrap();
     // Server B presents its own cert; even an otherwise valid TLS handshake must fail.
     let (mut b, fb) = start("4821", 1).await;
     b.https_port = fb.tls_port;
@@ -640,15 +639,8 @@ async fn recorder_output_has_no_planted_secret() {
     let (mut s, fake) = start(pin, 0).await;
     s.recorder = Some(Recorder::new(&rec_dir));
     let drawn = Arc::new(Mutex::new(Vec::new()));
-    let server = s
-        .pair(
-            &t.path().join("id"),
-            &ident,
-            pin,
-            Box::new(Planted(drawn.clone())),
-        )
-        .await
-        .unwrap();
+    s.set_rng(Planted(drawn.clone()));
+    let server = s.pair(&t.path().join("id"), &ident, pin).await.unwrap();
     s.applist(&ident, &server).await.unwrap();
     let mut rec = s.recorder.take().unwrap();
     rec.set_pin(pin);
@@ -722,10 +714,7 @@ async fn paired(
     let t = tempfile::tempdir().unwrap();
     let ident = load_or_create_identity(t.path()).unwrap();
     let (mut s, fake) = start("4821", 0).await;
-    let server = s
-        .pair(t.path(), &ident, "4821", Box::new(brisk_client::SystemRng))
-        .await
-        .unwrap();
+    let server = s.pair(t.path(), &ident, "4821").await.unwrap();
     *fake.mode.lock().unwrap() = mode;
     (s, fake, ident, server, t)
 }
@@ -918,7 +907,7 @@ async fn busy_host_refused_without_launch_unless_take_over() {
     );
     assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0);
-    assert!(!s.launch_sent);
+    assert!(!s.launch_sent());
     probe(&mut s, &ident, &server, true).await.unwrap();
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 2); // take-over cancel, then our own

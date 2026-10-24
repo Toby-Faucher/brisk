@@ -54,7 +54,7 @@ pub fn derive_aes_key(salt: [u8; 16], pin: &str) -> PairKeys {
 }
 
 /// AES-128-ECB, no padding. Panics if `data.len() % 16 != 0` (all callers pass whole blocks).
-pub fn aes_ecb_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
+pub(crate) fn aes_ecb_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
     assert!(
         data.len().is_multiple_of(16),
         "aes_ecb_encrypt: partial block"

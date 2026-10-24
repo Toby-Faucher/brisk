@@ -9,6 +9,17 @@ use sha2::{Digest, Sha256};
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
 
+/// AES-128-ECB of whole blocks (own copy: brisk_proto's is crate-private).
+fn ecb(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
+    use aes::cipher::{BlockEncrypt, KeyInit};
+    let c = aes::Aes128::new(key.into());
+    let mut out = data.to_vec();
+    for b in out.chunks_mut(16) {
+        c.encrypt_block(b.into());
+    }
+    out
+}
+
 // PUBLIC upstream Sunshine test fixtures (test_http_pairing.cpp:50), not Brisk secrets.
 const PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDLePNlWN06FLlM
@@ -115,10 +126,7 @@ fn sign(data: &[u8]) -> Vec<u8> {
 #[test]
 fn aes_key_from_salt_and_pin() {
     let k = derive_aes_key(salt(), PIN);
-    assert_eq!(
-        hex(&aes_ecb_encrypt(&k.aes_key, b"CLIENT CHALLENGE")),
-        CLIENT_CHALLENGE
-    );
+    assert_eq!(hex(&ecb(&k.aes_key, b"CLIENT CHALLENGE")), CLIENT_CHALLENGE);
     assert_eq!(
         aes_ecb_decrypt(&k.aes_key, &unhex(CLIENT_CHALLENGE).unwrap()).unwrap(),
         b"CLIENT CHALLENGE"
@@ -128,10 +136,7 @@ fn aes_key_from_salt_and_pin() {
 #[test]
 fn wrong_pin_changes_ciphertext() {
     let k = derive_aes_key(salt(), "0000");
-    assert_ne!(
-        hex(&aes_ecb_encrypt(&k.aes_key, b"CLIENT CHALLENGE")),
-        CLIENT_CHALLENGE
-    );
+    assert_ne!(hex(&ecb(&k.aes_key, b"CLIENT CHALLENGE")), CLIENT_CHALLENGE);
 }
 
 #[test]
@@ -179,7 +184,7 @@ fn phase_sequence_with_fixed_rng() {
         .chain_update(cert_sig())
         .chain_update(server_secret)
         .finalize();
-    let resp = aes_ecb_encrypt(&key, &[hash.as_slice(), &server_challenge].concat());
+    let resp = ecb(&key, &[hash.as_slice(), &server_challenge].concat());
     let p3 = c.on_clientchallenge_resp(&hex(&resp)).unwrap();
     let secret = unhex("000102030405060708090A0B0C0D0EFF").unwrap();
     let want = server_challenge_resp(
@@ -234,11 +239,8 @@ fn at_phase3() -> PairingClient {
         .chain_update(cert_sig())
         .chain_update([1u8; 16])
         .finalize();
-    c.on_clientchallenge_resp(&hex(&aes_ecb_encrypt(
-        &key,
-        &[hash.as_slice(), &[0u8; 16]].concat(),
-    )))
-    .unwrap();
+    c.on_clientchallenge_resp(&hex(&ecb(&key, &[hash.as_slice(), &[0u8; 16]].concat())))
+        .unwrap();
     c
 }
 
