@@ -44,8 +44,17 @@ without an ACK), compression, checksum, bandwidth and throttle adaptation, unseq
   frame stats 0x0204, input 0x0206, rumble 0x010b, termination 0x0109, periodic ping 0x0200,
   IDR 0x0302, encrypted 0x0001, HDR 0x010e, Sunshine extensions 0x5500-0x5504.
 - **moonlight's Gen7Enc table puts the IDR request (0x0302) in the Start A slot**
-  (ControlStream.c:203-217, 287-290). At stream start it sends 0x0302 `{0,0}` on channel 1 and then
-  0x0307 `{0}` on channel 0, both reliable (ControlStream.c:1869-1935). It never sends 0x0305.
+  (ControlStream.c:203-217, 287-290). At stream start it sends 0x0302 `{0,0}` and then 0x0307
+  `{0}`, both reliable on channel 0 (CTRL_CHANNEL_GENERIC, ControlStream.c:1869-1912). Later
+  on-demand IDR requests go on channel 1 (URGENT, ControlStream.c:1524-1527). It never sends 0x0305.
+- Video/audio keepalive: Sunshine's video and audio threads start at PLAY (stream.cpp:2289-2293) and
+  wait `ping_timeout` (10 s) for a UDP datagram containing `X-SS-Ping-Payload` on each media port.
+  Without one, `session::stop` runs and the ENet peer is disconnect_now'd (stream.cpp:2092-2163,
+  1336-1349). The datagram's source port becomes the media peer. moonlight sends
+  `SS_PING { payload[16] ASCII, seq u32 BE from 1 }` (20 bytes) every 500 ms to the video and audio
+  ports from its media sockets (Video.h:51-54, VideoStream.c:55-82, AudioStream.c:38-64). The
+  payload is the 16-character `X-SS-Ping-Payload` string from the audio/video SETUP reply. Brisk
+  sends these from `AvPing`, starting before the ENet connect.
 - Periodic ping: 0x0200 every 100 ms, reliable, channel 0. The 8-byte payload starts
   `04 00 00 00 00 00`; moonlight leaves the last 2 bytes uninitialised and we send zeros
   (ControlStream.c:1388-1440). Sunshine ends the session after 10 s with no ENet event

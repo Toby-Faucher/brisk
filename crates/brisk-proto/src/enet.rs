@@ -520,6 +520,9 @@ impl EnetPeer {
                 let ch = channel as usize;
                 let useq = be16(c, 4);
                 let d = useq.wrapping_sub(self.in_unrel[ch]);
+                // shortcut: a sequenced-unreliable command whose reliable seq is ahead of ours is
+                // dropped, not queued as ENet does; Sunshine never sends unreliable. Upgrade if a
+                // host starts using unreliable sends.
                 if seq == self.in_rel[ch] && (1..0x8000).contains(&d) {
                     self.in_unrel[ch] = useq;
                     ev.push(EnetEvent::Receive {
