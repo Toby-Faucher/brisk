@@ -1,0 +1,159 @@
+diff --git a/src/rtsp.cpp b/src/rtsp.cpp
+index c7135dd..e9e6134 100644
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -1159,6 +1159,7 @@ namespace rtsp_stream {
+       config.audioQosType = (int) util::from_view(args.at("x-nv-aqos.qosTrafficType"sv));
+       config.videoQosType = (int) util::from_view(args.at("x-nv-vqos[0].qosTrafficType"sv));
+       config.encryptionFlagsEnabled = (uint32_t) util::from_view(args.at("x-ss-general.encryptionEnabled"sv));
++      config.brisk_tap = args.contains("x-brisk.tap"sv);
+ 
+       // Legacy clients use nvFeatureFlags to indicate support for audio encryption
+       if (util::from_view(args.at("x-nv-general.featureFlags"sv)) & 0x20) {
+diff --git a/src/stream.cpp b/src/stream.cpp
+index 1291c9c..095131c 100644
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -11,6 +11,10 @@
+ #include <queue>
+ #include <utility>
+ 
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
+ // lib includes
+ #include <boost/endian/arithmetic.hpp>
+ #include <openssl/err.h>
+@@ -515,6 +519,10 @@ namespace stream {
+       safe::mail_raw_t::event_t<std::pair<int64_t, int64_t>> invalidate_ref_frames_events;  ///< Event carrying the reference-frame range to invalidate.
+ 
+       std::unique_ptr<platf::deinit_t> qos;  ///< Lifetime guard for video-socket QoS configuration.
++
++      int tap_fd = -1;  ///< Brisk tap SEQPACKET socket, or -1 for normal RTP.
++      bool tap_need_idr = false;  ///< Skip non-IDR frames until the next IDR (set after a drop).
++      uint32_t tap_dropped = 0;  ///< Frames dropped by the tap.
+     } video;  ///< Video worker thread state for the active stream.
+ 
+     struct {
+@@ -1515,6 +1523,73 @@ namespace stream {
+     }
+   }
+ 
++  /**
++   * @brief Connect the Brisk tap socket; on failure leave tap_fd at -1 so the session uses RTP.
++   */
++  static void brisk_tap_connect(session_t *session) {
++    const char *env = getenv("BRISK_TAP_SOCK"), *xdg = getenv("XDG_RUNTIME_DIR");
++    std::string path = env ? env : (xdg ? std::string {xdg} + "/brisk/tap.sock" : "");
++    sockaddr_un addr {};
++    addr.sun_family = AF_UNIX;
++    int fd = path.empty() || path.size() >= sizeof(addr.sun_path) ? -1 : socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++    int sndbuf = 4 << 20;
++    if (fd >= 0) {
++      path.copy(addr.sun_path, sizeof(addr.sun_path) - 1);
++      setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
++    }
++    if (fd < 0 || connect(fd, (sockaddr *) &addr, sizeof(addr)) < 0) {
++      BOOST_LOG(warning) << "Brisk tap unavailable ("sv << path << "), falling back to RTP"sv;
++      if (fd >= 0) {
++        close(fd);
++      }
++      return;
++    }
++    session->video.tap_fd = fd;
++  }
++
++  /**
++   * @brief Send one frame to the Brisk tap: 44-byte LE header + Annex B payload, never blocking.
++   */
++  static void brisk_tap_send(session_t *session, video::packet_raw_t &packet, std::string_view payload) {
++    auto &v = session->video;
++    if (v.tap_need_idr && !packet.is_idr()) {
++      v.tap_dropped++;
++      return;
++    }
++    uint8_t h[44] = {'B', 'T', 'A', 'P', 1};
++    auto put = [&](int off, uint64_t val, int n) {
++      for (int i = 0; i < n; i++) {
++        h[off + i] = (uint8_t) (val >> (8 * i));
++      }
++    };
++    auto ns = [](std::chrono::steady_clock::time_point t) {
++      return (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
++    };
++    put(5, packet.is_idr() | packet.after_ref_frame_invalidation << 1 | !packet.frame_timestamp << 2 | v.tap_need_idr << 3, 1);
++    put(6, 44, 2);
++    put(8, session->control.connect_data, 4);
++    put(12, session->config.monitor.videoFormat, 4);
++    put(16, (uint64_t) packet.frame_index(), 8);
++    put(24, packet.frame_timestamp ? ns(*packet.frame_timestamp) : 0, 8);
++    put(32, ns(std::chrono::steady_clock::now()), 8);
++    put(40, v.tap_dropped, 4);
++
++    iovec iov[2] = {{h, sizeof(h)}, {(void *) payload.data(), payload.size()}};
++    msghdr msg {};
++    msg.msg_iov = iov;
++    msg.msg_iovlen = 2;
++    if (sendmsg(v.tap_fd, &msg, MSG_DONTWAIT | MSG_NOSIGNAL) >= 0) {
++      v.tap_need_idr = false;
++    } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
++      v.tap_need_idr = true;
++      v.tap_dropped++;
++      v.idr_events->raise(true);
++    } else {
++      BOOST_LOG(error) << "Brisk tap send failed, stopping session: "sv << strerror(errno);
++      session::stop(*session);
++    }
++  }
++
+   /**
+    * @brief Run the broadcast video sender thread.
+    *
+@@ -1595,6 +1670,11 @@ namespace stream {
+         frame_header.frame_processing_latency = 0;
+       }
+ 
++      if (session->video.tap_fd >= 0) {
++        brisk_tap_send(session, *packet, payload);
++        continue;
++      }
++
+       auto fecPercentage = config::stream.fec_percentage;
+ 
+       // Insert space for packet headers
+@@ -2146,6 +2226,10 @@ namespace stream {
+     auto address = session->video.peer.address();
+     session->video.qos = platf::enable_socket_qos(ref->video_sock.native_handle(), address, session->video.peer.port(), platf::qos_data_type_e::video, session->config.videoQosType != 0);
+ 
++    if (session->config.brisk_tap) {
++      brisk_tap_connect(session);
++    }
++
+     BOOST_LOG(debug) << "Start capturing Video"sv;
+     video::capture(session->mail, session->config.monitor, session);
+   }
+@@ -2228,6 +2312,10 @@ namespace stream {
+ 
+       BOOST_LOG(debug) << "Waiting for video to end..."sv;
+       session.videoThread.join();
++      if (session.video.tap_fd >= 0) {
++        close(session.video.tap_fd);  // bridge sees EOF
++        session.video.tap_fd = -1;
++      }
+       BOOST_LOG(debug) << "Waiting for audio to end..."sv;
+       session.audioThread.join();
+       BOOST_LOG(debug) << "Waiting for control to end..."sv;
+diff --git a/src/stream.h b/src/stream.h
+index c0b0f96..c230ba1 100644
+--- a/src/stream.h
++++ b/src/stream.h
+@@ -39,6 +39,8 @@ namespace stream {
+     uint32_t encryptionFlagsEnabled;  ///< Bitmask of GameStream encryption features enabled for the session.
+ 
+     std::optional<int> gcmap;  ///< Optional game-controller mapping override from the launch request.
++
++    bool brisk_tap = false;  ///< Client asked (a=x-brisk.tap:1) for encoded video on a unix socket instead of RTP.
+   };
+ 
+   namespace session {
