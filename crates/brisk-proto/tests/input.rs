@@ -77,15 +77,20 @@ fn mouse_move_clamps_to_i16() {
     assert!(encode_input(&InputEvent::MouseMoveRel { dx: 0, dy: 0 })
         .unwrap()
         .is_empty());
-    assert_eq!(
-        encode_input(&InputEvent::MouseMoveRel {
-            dx: i32::MIN,
-            dy: i32::MAX
-        })
-        .unwrap()
-        .len(),
-        65539 // ceil((2^31-1)/32767) for dy dominates
-    );
+    // Untrusted huge deltas are clamped to +-8 * 32767: at most 8 packets, never a queue flood.
+    let v = encode_input(&InputEvent::MouseMoveRel {
+        dx: i32::MIN,
+        dy: i32::MAX,
+    })
+    .unwrap();
+    assert_eq!(v.len(), 8);
+    let sum = |axis: usize| {
+        v.iter()
+            .map(|p| d(p))
+            .map(|t| [t.0, t.1][axis] as i32)
+            .sum::<i32>()
+    };
+    assert_eq!((sum(0), sum(1)), (-MAX_MOUSE_DELTA, MAX_MOUSE_DELTA));
 }
 
 #[test]
@@ -155,6 +160,15 @@ fn key_down_up() {
             modifiers: 0x20
         }),
         Err(InputError::BadModifiers(0x20))
+    );
+    // Limelight.h defines 4 modifier bits; 0x10 is not one of them.
+    assert_eq!(
+        encode_input(&InputEvent::Key {
+            vk: 0x41,
+            down: true,
+            modifiers: 0x10
+        }),
+        Err(InputError::BadModifiers(0x10))
     );
 }
 

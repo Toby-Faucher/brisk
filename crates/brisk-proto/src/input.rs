@@ -18,12 +18,17 @@
 pub const WHEEL_DELTA: i16 = 120;
 /// Sunshine tracks 16 gamepads (`platf::MAX_GAMEPADS`, width of `activeGamepadMask`).
 pub const MAX_GAMEPADS: u8 = 16;
-const MODIFIER_MASK: u8 = 0x1F; // SHIFT|CTRL|ALT|META|EXTENDED(Sunshine)
+/// SHIFT|CTRL|ALT|META: the 4 bits Limelight.h:699-702 defines.
+const MODIFIER_MASK: u8 = 0x0F;
+/// Largest |delta| one MouseMoveRel event may carry; more is clamped, so one (untrusted) event is
+/// at most 8 packets and cannot fill the ENet send queue (`MAX_IN_FLIGHT`).
+pub const MAX_MOUSE_DELTA: i32 = i16::MAX as i32 * 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputEvent {
     /// Relative motion. Deltas beyond i16 are split over several packets like
-    /// moonlight's input thread (each axis saturates per packet, remainder follows).
+    /// moonlight's input thread (each axis saturates per packet, remainder follows); each axis is
+    /// first clamped to +-[`MAX_MOUSE_DELTA`].
     MouseMoveRel { dx: i32, dy: i32 },
     /// `button` 1..=5; `down` = press.
     MouseButton { button: u8, down: bool },
@@ -68,7 +73,8 @@ fn packet(magic: u32, body: &[u8]) -> Vec<u8> {
 /// Encode one event into zero or more plaintext input packets (one per control message).
 pub fn encode_input(ev: &InputEvent) -> Result<Vec<Vec<u8>>, InputError> {
     Ok(match *ev {
-        InputEvent::MouseMoveRel { mut dx, mut dy } => {
+        InputEvent::MouseMoveRel { dx, dy } => {
+            let [mut dx, mut dy] = [dx, dy].map(|d| d.clamp(-MAX_MOUSE_DELTA, MAX_MOUSE_DELTA));
             let mut out = Vec::new();
             while dx != 0 || dy != 0 {
                 let (cx, cy) = (
