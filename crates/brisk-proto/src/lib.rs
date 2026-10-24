@@ -1,5 +1,6 @@
 //! Sans-io Moonlight/GameStream protocol.
 
+pub mod http;
 pub mod pair;
 
 pub mod version {
