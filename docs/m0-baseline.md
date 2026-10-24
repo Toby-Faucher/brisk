@@ -60,3 +60,21 @@ M1 gate: PASS. Sunshine v2026.914.233613, 1080p60 H.264 [U: codec/res from the p
 | control | 594 pings sent, 594 acked, 0 bad host messages |
 
 Not measured: any network path (this is bawn talking to itself), client decode/present, a moving scene, input-to-photon.
+
+## bawn -> bawn over real interfaces (2026-10-24, 60 s each, static Steam Big Picture)
+
+Same `brisk-probe stream --secs 60` but addressed to bawn's own LAN IP (bond0) and Tailscale IP (tailscale0) instead of 127.0.0.1. Traffic to a local address still loops through the kernel, so this exercises the address/port handling and socket buffers but NOT a real wire or Tailscale's tunnel; do not read it as a network measurement.
+
+| metric | 127.0.0.1 | LAN IP | Tailscale IP |
+|---|---|---|---|
+| gate | PASS | PASS | PASS |
+| frames assembled (gate >= 3420) | 3490 | 3476 | 3484 |
+| drops / FEC recovered / parse errors | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
+| host latency min / median / p99 (ms) | 3.20 / 5.10 / 7.20 | 3.20 / 5.90 / 7.00 | 3.20 / 5.90 / 7.20 |
+| arrival jitter p50 / p99 (ms) | 0.23 / 4.71 | 0.24 / 4.83 | 0.21 / 4.77 |
+| IDR response (ms) | 13.0, 18.8 | 9.5, 16.4 | 19.5, 17.3 |
+| video effective / wire (Mbit/s) | 7.17 / 9.57 | 6.83 / 9.15 | 7.22 / 9.64 |
+| video loss | 0 of 50963 | 0 of 48733 | 0 of 51320 |
+| effective SO_RCVBUF video / audio | n/a (before 12b) | 4 MiB / 512 KiB | 4 MiB / 512 KiB |
+
+The arrival-jitter p99 of about 4.8 ms is identical across all three, so it comes from the host's frame pacing and not the network. [U] likely the timer-paced KMS capture noted in the design doc; not yet tested (capture=kms, encoder=vaapi on this box).
