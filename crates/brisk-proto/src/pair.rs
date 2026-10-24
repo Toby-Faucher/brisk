@@ -55,21 +55,28 @@ pub fn derive_aes_key(salt: [u8; 16], pin: &str) -> PairKeys {
 
 /// AES-128-ECB, no padding. Panics if `data.len() % 16 != 0` (all callers pass whole blocks).
 pub fn aes_ecb_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
-    assert!(data.len() % 16 == 0, "aes_ecb_encrypt: partial block");
+    assert!(
+        data.len().is_multiple_of(16),
+        "aes_ecb_encrypt: partial block"
+    );
     let c = Aes128::new(key.into());
     let mut out = data.to_vec();
-    out.chunks_exact_mut(16)
+    out.as_chunks_mut::<16>()
+        .0
+        .iter_mut()
         .for_each(|b| c.encrypt_block(GenericArray::from_mut_slice(b)));
     out
 }
 
 pub fn aes_ecb_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, PairError> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(PairError::BadLength);
     }
     let c = Aes128::new(key.into());
     let mut out = data.to_vec();
-    out.chunks_exact_mut(16)
+    out.as_chunks_mut::<16>()
+        .0
+        .iter_mut()
         .for_each(|b| c.decrypt_block(GenericArray::from_mut_slice(b)));
     Ok(out)
 }
@@ -97,7 +104,7 @@ pub fn hex(data: &[u8]) -> String {
 
 pub fn unhex(s: &str) -> Result<Vec<u8>, PairError> {
     // from_str_radix alone would accept "+F"
-    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !s.len().is_multiple_of(2) || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(PairError::BadHex);
     }
     (0..s.len())
