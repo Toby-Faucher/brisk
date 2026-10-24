@@ -4,7 +4,7 @@
 
 | milestone | status |
 |---|---|
-| M1 (receive + control) | complete: live gate PASS (60 s `brisk-probe stream`, loopback, LAN IP and Tailscale IP of bawn itself; docs/m0-baseline.md); live input smoke PASS for relative mouse move, keyboard down/up, gamepad 0 attach/detach (see Live input smoke) |
+| M1 (receive + control) | complete: live gate PASS (60 s `brisk-probe stream`, loopback, LAN IP and Tailscale IP of bawn itself; docs/m0-baseline.md); live input smoke PASS for relative mouse move, keyboard down/up, gamepad 0 attach (the detach packet is sent, but the detach was not observed in the log) (see Live input smoke) |
 | M0 (latency baseline) | partial: host side done (capture+encode, jitter, IDR response); network RTT, client decode and present rows PENDING (Toby) |
 
 Verified live: control stream, encrypted RTSP, video packet parsing and frame assembly, audio
@@ -18,7 +18,7 @@ Not verified live: gamepad button/stick bytes (Sunshine logs controller packets 
 retransmit, any real network path.
 
 Side effect: `--input-demo`'s gamepad attach makes Sunshine create a virtual Xbox pad on the host
-for a moment (Steam may show "controller connected"); the demo detaches it again.
+(Steam may show "controller connected" [U, unobserved]); the demo sends a detach packet afterwards, which was not observed in Sunshine's log.
 
 Purity: `scripts/check-pure-rust.sh` fails if ring, aws-lc-sys, openssl-sys or cc is reachable
 through normal/build dependencies on any target (2026-10-24: passes).
@@ -119,6 +119,6 @@ from the pinned sources; the audio-encryption ones are confirmed by the live str
 Sunshine's debug log (min_log_level = debug) decoded what brisk sent, at 5.3 s into the run:
 - relative mouse move: `deltaX [5] deltaY [0]`, then `deltaX [-5] deltaY [0]` (exact).
 - keyboard: `keyAction [3]` then `[4]` (down, up), `keyCode [8010]` (VK_SHIFT 0x10 with moonlight's 0x8000 flag), modifiers 00, flags 00.
-- gamepad 0 (neutral attach/detach): Sunshine allocated "Gamepad 0 ... X-Box Series Controller" (so the active_mask path works).
+- gamepad 0 (neutral attach, then a detach packet): Sunshine allocated "Gamepad 0 ... X-Box Series Controller" (so the active_mask attach path works; the detach was not visible in the log).
 - 6 packets sent, `inputs_sent 6`, 0 bad host messages, no termination, clean cancel; the IDR request at 10 s was answered.
 Not verified live: gamepad button/stick bytes (Sunshine logs controller packets only at `verbose`; log level is `debug`), mouse buttons, scroll, rumble back-channel, more than one pad. Those need either `min_log_level = verbose` or a game that reads the pad.
