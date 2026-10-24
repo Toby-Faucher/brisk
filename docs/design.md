@@ -117,6 +117,8 @@ Details and caveats in `/home/toby/Projects/brisk/research/novelty-loop.md`. Sea
 2. Fugu-style per-frame delivery-latency PMF driving a joint bitrate/FEC/playout MPC (C8). Partially done in the literature (Fugu, Nebula, Vidaptive, etc.); the delta is narrow. Needs logged data from Toby's own path first.
 Gate: only start after M3, and only if M0 numbers show the corresponding term is large.
 
+C17 offline test result (2026-10-24, see research/c17-offline/RESULTS.md): FAIL vs the threshold (RMS <= 0.5 deg and p95 <= 1 deg at 80 ms, >= 70% better than no warp). Software-rendered scene only (no real game), best case 1.22 deg RMS / 1.94 deg p95 on decoded frames. The input->rotation map is learnable (0.02-0.46 deg given ground-truth rotations); the bottleneck is measuring rotation from decoded frames (parallax, ADS+aim assist, idle jitter, stick input worse than repeat-last-rotation). Simulated improvement ratios are inflated (user model too fast); do not quote them. Status: C17 parked, not planned.
+
 ## 10. Milestone ladder (gates are measurable; numbers are targets, [CALL] until M0 gives a baseline)
 
 | # | Milestone | Gate |
