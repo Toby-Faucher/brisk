@@ -2,6 +2,7 @@
 
 pub mod http;
 pub mod pair;
+pub mod scrub;
 
 pub mod version {
     pub const SUNSHINE_APPVERSION: &str = "7.1.431.-1";
