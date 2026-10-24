@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Length: 88
+
+<?xml version="1.0" encoding="utf-8"?>
+<root status_code="200"><paired>1</paired></root>

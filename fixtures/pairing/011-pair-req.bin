@@ -1,0 +1,4 @@
+GET /pair?uniqueid=94FCD05568BDC75A&phrase=pairchallenge HTTP/1.1
+Host: 127.0.0.1:47984
+Connection: close
+

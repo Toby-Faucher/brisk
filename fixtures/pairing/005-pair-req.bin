@@ -1,0 +1,4 @@
+GET /pair?uniqueid=94FCD05568BDC75A&clientchallenge=33A210B6C850D5866CF6ACE40C15AC3F HTTP/1.1
+Host: 127.0.0.1:47989
+Connection: close
+

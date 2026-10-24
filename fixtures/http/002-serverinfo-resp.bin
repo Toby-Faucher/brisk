@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Length: 537
+
+<?xml version="1.0" encoding="utf-8"?>
+<root status_code="200"><hostname>bawn</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>7969887A-3BBF-0408-859C-0CAAF47DB931</uniqueid><HttpsPort>47984</HttpsPort><ExternalPort>47989</ExternalPort><MaxLumaPixelsHEVC>1869449984</MaxLumaPixelsHEVC><mac>00:00:00:00:00:00</mac><LocalIP>127.0.0.1</LocalIP><ServerCodecModeSupport>769</ServerCodecModeSupport><PairStatus>0</PairStatus><currentgame>870779643</currentgame><state>SUNSHINE_SERVER_BUSY</state></root>

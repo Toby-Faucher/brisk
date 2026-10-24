@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Length: 223
+
+<?xml version="1.0" encoding="utf-8"?>
+<root status_code="200"><paired>1</paired><challengeresponse>019DB7E571BE8E8A8886024D057395EC1495354C02C24462ED6D76087F1B666B0FE36F7A453EBBC3CAD2E9D211A334A0</challengeresponse></root>

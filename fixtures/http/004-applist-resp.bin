@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Length: 171
+
+<?xml version="1.0" encoding="utf-8"?>
+<root status_code="200"><App><IsHdrSupported>1</IsHdrSupported><AppTitle>Steam Big Picture</AppTitle><ID>870779643</ID></App></root>
