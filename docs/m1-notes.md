@@ -72,3 +72,6 @@ without an ACK), compression, checksum, bandwidth and throttle adaptation, unseq
   two int64 values (Video.h:80-86, stream.cpp:1199-1210).
 - ENet details moonlight sets: MTU 900, peer timeout `(2, 10000, 10000)` (ControlStream.c:1837),
   graceful disconnect = `disconnect_later` + 2 s linger (Misc.c:45-80).
+
+## Live control run (2026-10-24, bawn, Sunshine v2026.914.233613)
+Command: `brisk-probe control --host 127.0.0.1 --app 870779643 --secs 30`. Result: ENet handshake OK, encrypted control OK both ways (297/297 pings acked, 0 bad host messages), IDR at start and at 15 s, host message 0x010e once, no termination, clean cancel, Sunshine FREE after. A/V keepalive pings accepted: video 24437 pkts (34.4 MB) and audio 8991 pkts (3.0 MB) received in 30 s (about 9.2 Mbit/s video on a static Steam Big Picture screen; [U] the bitrate depends on content and Sunshine's configured bitrate). Not yet verified live: video/audio packet parsing and FEC, input packet bytes (no observable effect yet), rumble.
