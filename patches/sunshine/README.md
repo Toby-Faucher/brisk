@@ -6,7 +6,7 @@ Design: `research/m2-tap-design.md` sections 1 and 2.
 
 - Base tag: `v2026.914.233613`
 - Base commit: `63d35f702ee9e362e43263742981836ec0710384`
-- Touches: `src/stream.h`, `src/stream.cpp`, `src/rtsp.cpp` (91 added lines)
+- Touches: `src/stream.h`, `src/stream.cpp`, `src/rtsp.cpp` (98 added lines)
 
 ## Apply
 
@@ -24,7 +24,8 @@ Design: `research/m2-tap-design.md` sections 1 and 2.
 - Header flags: b0 idr, b1 after_rfi, b2 no_capture_ts, b3 gap (this is the recovery IDR after drops).
 - Send is `MSG_DONTWAIT|MSG_NOSIGNAL`. `EAGAIN`: drop frame, set `tap_need_idr`, raise `idr_events`,
   count it; non-IDR frames are skipped until an IDR passes. Any other error (EPIPE): `session::stop`.
-- Socket is closed in `session::join` after the video thread exits (bridge sees EOF).
+- `session::join` calls `shutdown(SHUT_RDWR)` on the socket (bridge sees EOF); the fd is closed in `~session_t`, so the shared broadcast thread never sees a closed or reused fd.
+- Linux-only (AF_UNIX SOCK_SEQPACKET, MSG_NOSIGNAL).
 
 ## [U] list (from the design note, still unverified)
 

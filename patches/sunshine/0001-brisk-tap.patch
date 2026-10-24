@@ -11,7 +11,7 @@ index c7135dd..e9e6134 100644
        // Legacy clients use nvFeatureFlags to indicate support for audio encryption
        if (util::from_view(args.at("x-nv-general.featureFlags"sv)) & 0x20) {
 diff --git a/src/stream.cpp b/src/stream.cpp
-index 1291c9c..095131c 100644
+index 1291c9c..28f8145 100644
 --- a/src/stream.cpp
 +++ b/src/stream.cpp
 @@ -11,6 +11,10 @@
@@ -25,7 +25,20 @@ index 1291c9c..095131c 100644
  // lib includes
  #include <boost/endian/arithmetic.hpp>
  #include <openssl/err.h>
-@@ -515,6 +519,10 @@ namespace stream {
+@@ -487,6 +491,12 @@ namespace stream {
+    * @brief Runtime state for one audio/video streaming session.
+    */
+   struct session_t {
++    ~session_t() {
++      if (video.tap_fd >= 0) {
++        close(video.tap_fd);  // only here: the broadcast thread may use tap_fd until the session is destroyed
++      }
++    }
++
+     config_t config;  ///< Stream or encoder configuration captured for the worker.
+ 
+     safe::mail_t mail;  ///< Mailbox used to distribute packets and lifecycle events.
+@@ -515,6 +525,10 @@ namespace stream {
        safe::mail_raw_t::event_t<std::pair<int64_t, int64_t>> invalidate_ref_frames_events;  ///< Event carrying the reference-frame range to invalidate.
  
        std::unique_ptr<platf::deinit_t> qos;  ///< Lifetime guard for video-socket QoS configuration.
@@ -36,7 +49,7 @@ index 1291c9c..095131c 100644
      } video;  ///< Video worker thread state for the active stream.
  
      struct {
-@@ -1515,6 +1523,73 @@ namespace stream {
+@@ -1515,6 +1529,75 @@ namespace stream {
      }
    }
  
@@ -52,7 +65,9 @@ index 1291c9c..095131c 100644
 +    int sndbuf = 4 << 20;
 +    if (fd >= 0) {
 +      path.copy(addr.sun_path, sizeof(addr.sun_path) - 1);
-+      setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
++      if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf)) < 0) {
++        BOOST_LOG(warning) << "Brisk tap: SO_SNDBUF failed: "sv << strerror(errno);
++      }
 +    }
 +    if (fd < 0 || connect(fd, (sockaddr *) &addr, sizeof(addr)) < 0) {
 +      BOOST_LOG(warning) << "Brisk tap unavailable ("sv << path << "), falling back to RTP"sv;
@@ -110,7 +125,7 @@ index 1291c9c..095131c 100644
    /**
     * @brief Run the broadcast video sender thread.
     *
-@@ -1595,6 +1670,11 @@ namespace stream {
+@@ -1595,6 +1678,11 @@ namespace stream {
          frame_header.frame_processing_latency = 0;
        }
  
@@ -122,7 +137,7 @@ index 1291c9c..095131c 100644
        auto fecPercentage = config::stream.fec_percentage;
  
        // Insert space for packet headers
-@@ -2146,6 +2226,10 @@ namespace stream {
+@@ -2146,6 +2234,10 @@ namespace stream {
      auto address = session->video.peer.address();
      session->video.qos = platf::enable_socket_qos(ref->video_sock.native_handle(), address, session->video.peer.port(), platf::qos_data_type_e::video, session->config.videoQosType != 0);
  
@@ -133,13 +148,12 @@ index 1291c9c..095131c 100644
      BOOST_LOG(debug) << "Start capturing Video"sv;
      video::capture(session->mail, session->config.monitor, session);
    }
-@@ -2228,6 +2312,10 @@ namespace stream {
+@@ -2228,6 +2320,9 @@ namespace stream {
  
        BOOST_LOG(debug) << "Waiting for video to end..."sv;
        session.videoThread.join();
 +      if (session.video.tap_fd >= 0) {
-+        close(session.video.tap_fd);  // bridge sees EOF
-+        session.video.tap_fd = -1;
++        shutdown(session.video.tap_fd, SHUT_RDWR);  // bridge sees EOF; fd stays reserved, closed in ~session_t
 +      }
        BOOST_LOG(debug) << "Waiting for audio to end..."sv;
        session.audioThread.join();
