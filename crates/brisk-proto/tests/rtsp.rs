@@ -195,3 +195,45 @@ fn encrypted_sequence_must_increase() {
     assert!(c.open(&bad).is_err());
     c.open(&f1).unwrap();
 }
+
+/// Parses every recorded Sunshine DESCRIBE reply in `fixtures/rtsp/` (decrypted, scrubbed).
+#[test]
+#[cfg_attr(
+    not(rtsp_fixture),
+    ignore = "SKIPPED: no fixtures/rtsp/*describe-resp.bin yet; recorded by live step 5"
+)]
+fn replays_recorded_rtsp_describe() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rtsp");
+    let files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.to_string_lossy().ends_with("describe-resp.bin"))
+        .collect();
+    assert!(
+        !files.is_empty(),
+        "no describe-resp.bin in {}",
+        dir.display()
+    );
+    for f in files {
+        let r = parse_response(&std::fs::read(&f).unwrap()).unwrap();
+        assert_eq!(r.status, 200, "{}", f.display());
+        let body = String::from_utf8_lossy(&r.body);
+        for k in [
+            "x-ss-general.featureFlags",
+            "x-ss-general.encryptionSupported",
+            "x-ss-general.encryptionRequested",
+        ] {
+            assert!(
+                brisk_proto::sdp::sdp_attr(&body, k).is_some(),
+                "{}: no {k}",
+                f.display()
+            );
+        }
+        assert!(
+            body.contains("a=fmtp:97 surround-params="),
+            "{}",
+            f.display()
+        );
+    }
+}

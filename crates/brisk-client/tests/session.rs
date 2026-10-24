@@ -5,6 +5,8 @@ use brisk_client::identity::{load_or_create_identity, Identity, ServerCert};
 use brisk_client::recorder::Recorder;
 use brisk_client::session::Session;
 use brisk_proto::pair::*;
+use brisk_proto::rtsp::{parse_request, RtspCipher};
+use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_CONTROL_V2};
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
@@ -18,7 +20,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
 
@@ -60,6 +62,19 @@ struct Fake {
     tls_port: u16,
     omit_len: std::sync::atomic::AtomicBool,
     st: Mutex<St>,
+    rtsp_port: u16,
+    /// "ok", "plain" (rtsp:// URL), "launch-fail", "fail-ANNOUNCE", "tamper-DESCRIBE".
+    mode: Mutex<&'static str>,
+    rtsp: Mutex<RtspSt>,
+}
+
+#[derive(Default)]
+struct RtspSt {
+    cipher: Option<RtspCipher>,
+    /// (method, target, Session header) per request, as the fake decoded it.
+    seen: Vec<(String, String, Option<String>)>,
+    announced: String,
+    cancels: usize,
 }
 
 fn xml(body: &str) -> String {
@@ -77,6 +92,21 @@ impl Fake {
                 "<hostname>fake</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>FAKE0123</uniqueid><HttpsPort>{}</HttpsPort><ServerCodecModeSupport>259</ServerCodecModeSupport><PairStatus>{}</PairStatus><currentgame>0</currentgame><state>SUNSHINE_SERVER_FREE</state>",
                 self.tls_port, authed as u8
             )),
+            "/launch" if authed => {
+                let mode = *self.mode.lock().unwrap();
+                if mode == "launch-fail" {
+                    return r#"<root status_code="503" status_message="fake launch failure"/>"#.into();
+                }
+                let key: [u8; 16] = unhex(&q["rikey"]).unwrap().try_into().unwrap();
+                let enc = q["corever"] == "1" && mode != "plain";
+                self.rtsp.lock().unwrap().cipher = enc.then(|| RtspCipher::host(key));
+                let scheme = if enc { "rtspenc" } else { "rtsp" };
+                xml(&format!("<sessionUrl0>{scheme}://127.0.0.1:{}</sessionUrl0><gamesession>1</gamesession>", self.rtsp_port))
+            }
+            "/cancel" if authed => {
+                self.rtsp.lock().unwrap().cancels += 1;
+                xml("<cancel>1</cancel>")
+            }
             "/applist" if authed => xml("<App><AppTitle>Desktop</AppTitle><ID>1</ID></App><App><AppTitle>Steam Big Picture</AppTitle><ID>2</ID></App>"),
             "/pair" if q.get("phrase").map(String::as_str) == Some("getservercert") => {
                 let salt: [u8; 16] = unhex(&q["salt"]).unwrap().try_into().unwrap();
@@ -168,6 +198,133 @@ async fn serve_conn<S: AsyncRead + AsyncWrite + Unpin>(
     // Dropped without close_notify on TLS, to exercise the client's Content-Length check.
 }
 
+/// Keys `cmd_announce` (rtsp.cpp) reads with `args.at` and no default: missing ones answer 400.
+const SUNSHINE_REQUIRED: [&str; 10] = [
+    "x-nv-audio.surround.numChannels",
+    "x-nv-audio.surround.channelMask",
+    "x-nv-audio.surround.AudioQuality",
+    "x-nv-video[0].packetSize",
+    "x-nv-video[0].clientViewportHt",
+    "x-nv-video[0].clientViewportWd",
+    "x-nv-video[0].maxFPS",
+    "x-nv-vqos[0].bw.maximumBitrateKbps",
+    "x-nv-video[0].videoEncoderSlicesPerFrame",
+    "x-nv-video[0].maxNumReferenceFrames",
+];
+
+/// One RTSP request per connection, as rtsp.cpp: encrypted = 24-byte header then payload, bounded by
+/// the 2048-byte buffer; plain = header to CRLFCRLF plus `Content-length`. Reply, then close.
+async fn serve_rtsp(mut s: TcpStream, f: &Fake) {
+    let enc = f.rtsp.lock().unwrap().cipher.is_some();
+    let plain = if enc {
+        let mut h = [0u8; 24];
+        s.read_exact(&mut h).await.unwrap();
+        let tl = u32::from_be_bytes(h[..4].try_into().unwrap());
+        assert!(tl & 0x8000_0000 != 0, "Rejecting unencrypted RTSP message");
+        let len = (tl & 0x7fff_ffff) as usize;
+        assert!(24 + len < 2048, "Exceeded maximum rtsp packet size");
+        let mut frame = h.to_vec();
+        frame.resize(24 + len, 0);
+        s.read_exact(&mut frame[24..]).await.unwrap();
+        let mut st = f.rtsp.lock().unwrap();
+        st.cipher
+            .as_mut()
+            .unwrap()
+            .open(&frame)
+            .expect("client frame")
+    } else {
+        let mut buf = vec![];
+        loop {
+            let mut c = [0u8; 2048];
+            let n = s.read(&mut c).await.unwrap();
+            assert!(n > 0, "client closed early");
+            buf.extend_from_slice(&c[..n]);
+            if let Ok(r) = parse_request(&buf) {
+                let want: usize = r.header("Content-length").map_or(0, |v| v.parse().unwrap());
+                if r.body.len() >= want {
+                    break;
+                }
+            }
+        }
+        buf
+    };
+    let req = parse_request(&plain).unwrap();
+    let mode = *f.mode.lock().unwrap();
+    let mut extra = String::new();
+    let mut body = String::new();
+    let status = match req.method.as_str() {
+        _ if mode == format!("fail-{}", req.method) => "400 BAD REQUEST",
+        "OPTIONS" | "PLAY" => "200 OK",
+        "DESCRIBE" => {
+            body = "a=x-ss-general.featureFlags:0\na=x-ss-general.encryptionSupported:5\na=x-ss-general.encryptionRequested:1\na=fmtp:97 surround-params=21101\n".into();
+            "200 OK"
+        }
+        "SETUP" => {
+            let ty = req
+                .target
+                .split('=')
+                .nth(1)
+                .unwrap_or("")
+                .split('/')
+                .next()
+                .unwrap();
+            let port = match ty {
+                "audio" => 48000,
+                "video" => 47998,
+                "control" => 47999,
+                _ => 0,
+            };
+            if port == 0 {
+                "404 NOT FOUND"
+            } else {
+                let id = if ty == "control" {
+                    "X-SS-Connect-Data: 305419896".to_string()
+                } else {
+                    "X-SS-Ping-Payload: 0123456789ABCDEF".to_string()
+                };
+                extra = format!("Session: DEADBEEFCAFE;timeout = 90\r\nTransport: server_port={port}\r\n{id}\r\n");
+                "200 OK"
+            }
+        }
+        "ANNOUNCE" => {
+            let sdp = String::from_utf8(req.body.clone()).unwrap();
+            let keys: Vec<&str> = sdp
+                .split(['\r', '\n'])
+                .filter_map(|l| l.strip_prefix("a="))
+                .map(|l| l.split(':').next().unwrap())
+                .collect();
+            f.rtsp.lock().unwrap().announced = sdp.clone();
+            if SUNSHINE_REQUIRED.iter().all(|k| keys.contains(k)) {
+                "200 OK"
+            } else {
+                "400 BAD REQUEST"
+            }
+        }
+        _ => "404 NOT FOUND",
+    };
+    let resp = format!(
+        "RTSP/1.0 {status}\r\nCSeq: {}\r\n{extra}\r\n{body}",
+        req.header("CSeq").unwrap()
+    );
+    let mut wire = {
+        let mut st = f.rtsp.lock().unwrap();
+        st.seen.push((
+            req.method.clone(),
+            req.target.clone(),
+            req.header("Session").map(str::to_string),
+        ));
+        match &mut st.cipher {
+            Some(c) => c.seal(resp.as_bytes()).unwrap(),
+            None => resp.into_bytes(),
+        }
+    };
+    if mode == format!("tamper-{}", req.method) {
+        *wire.last_mut().unwrap() ^= 1;
+    }
+    s.write_all(&wire).await.unwrap();
+    s.shutdown().await.unwrap();
+}
+
 #[derive(Debug)]
 struct AnyClient(WebPkiSupportedAlgorithms);
 impl ClientCertVerifier for AnyClient {
@@ -209,7 +366,11 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
     let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let https = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http_port = http.local_addr().unwrap().port();
+    let rtsp = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let fake = Arc::new(Fake {
+        rtsp_port: rtsp.local_addr().unwrap().port(),
+        mode: Mutex::new("ok"),
+        rtsp: Mutex::default(),
         pin: pin.into(),
         ident,
         tls_port: https.local_addr().unwrap().port(),
@@ -246,6 +407,13 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
             };
             let peer = tls.get_ref().1.peer_certificates().map(|c| c[0].to_vec());
             serve_conn(tls, &f, peer).await;
+        }
+    });
+    let f = fake.clone();
+    tokio::spawn(async move {
+        loop {
+            let (s, _) = rtsp.accept().await.unwrap();
+            serve_rtsp(s, &f).await;
         }
     });
     let mut s = Session::new("127.0.0.1");
@@ -472,4 +640,134 @@ async fn recorder_output_has_no_planted_secret() {
         String::from_utf8_lossy(&std::fs::read(rec_dir.join(applist)).unwrap())
             .contains("Steam Big Picture")
     );
+}
+
+fn stream_cfg() -> StreamConfig {
+    StreamConfig {
+        width: 1920,
+        height: 1080,
+        fps: 60,
+        bitrate_kbps: 20000,
+        codec: Codec::H264,
+        packet_size: 1392,
+        fec_percent: 20,
+        rikey: *b"RIKEY-0123456789",
+        rikeyid: 0x01020304,
+        enc_flags: 0,
+    }
+}
+
+/// Paired session against a fake in `mode`; returns what `launch_probe` needs.
+async fn paired(
+    mode: &'static str,
+) -> (Session, Arc<Fake>, Identity, ServerCert, tempfile::TempDir) {
+    let t = tempfile::tempdir().unwrap();
+    let ident = load_or_create_identity(t.path()).unwrap();
+    let (mut s, fake) = start("4821", 0).await;
+    let server = s
+        .pair(t.path(), &ident, "4821", Box::new(brisk_client::SystemRng))
+        .await
+        .unwrap();
+    *fake.mode.lock().unwrap() = mode;
+    (s, fake, ident, server, t)
+}
+
+const RTSP_SEQUENCE: [(&str, &str); 7] = [
+    ("OPTIONS", "URL"),
+    ("DESCRIBE", "URL"),
+    ("SETUP", "streamid=audio/0/0"),
+    ("SETUP", "streamid=video/0/0"),
+    ("SETUP", "streamid=control/13/0"),
+    ("ANNOUNCE", "streamid=control/13/0"),
+    ("PLAY", "/"),
+];
+
+async fn launch_ok(mode: &'static str, scheme: &str) {
+    let (mut s, fake, ident, server, _t) = paired(mode).await;
+    let ports = s
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg())
+        .await
+        .unwrap();
+    assert_eq!(
+        (ports.audio, ports.video, ports.control),
+        (48000, 47998, 47999)
+    );
+    assert_eq!(ports.session_id, "DEADBEEFCAFE");
+    assert_eq!(ports.ping_payload.as_deref(), Some("0123456789ABCDEF"));
+    assert_eq!(ports.connect_data, Some(0x12345678));
+    assert_eq!(ports.enc_flags, SS_ENC_CONTROL_V2); // supported 5, requested 1, wanted none
+    let st = fake.rtsp.lock().unwrap();
+    assert_eq!(st.cancels, 1);
+    let url = format!("{scheme}://127.0.0.1:{}", fake.rtsp_port);
+    let got: Vec<_> = st
+        .seen
+        .iter()
+        .map(|(m, t, _)| (m.as_str(), t.as_str()))
+        .collect();
+    let want: Vec<_> = RTSP_SEQUENCE
+        .iter()
+        .map(|&(m, t)| (m, if t == "URL" { url.as_str() } else { t }))
+        .collect();
+    assert_eq!(got, want);
+    // Session from the audio SETUP is echoed on every later request.
+    assert!(st.seen[3..]
+        .iter()
+        .all(|(_, _, s)| s.as_deref() == Some("DEADBEEFCAFE")));
+    assert!(st
+        .announced
+        .contains("a=x-ss-general.encryptionEnabled:1 \r\n"));
+}
+
+/// Fake decrypts every request with the rikey from the launch query; all 7 requests got through.
+#[tokio::test]
+async fn launch_encrypted_rtsp_handshake_then_cancel() {
+    launch_ok("ok", "rtspenc").await;
+}
+
+#[tokio::test]
+async fn launch_plain_rtsp_handshake_then_cancel() {
+    launch_ok("plain", "rtsp").await;
+}
+
+#[tokio::test]
+async fn failures_still_cancel() {
+    for (mode, needle) in [
+        ("launch-fail", "fake launch failure"),
+        ("fail-ANNOUNCE", "ANNOUNCE"),
+        ("tamper-DESCRIBE", "authentication"),
+    ] {
+        let (mut s, fake, ident, server, _t) = paired(mode).await;
+        let err = s
+            .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains(needle), "{mode}: {err}");
+        assert_eq!(fake.rtsp.lock().unwrap().cancels, 1, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn launch_recording_scrubs_rikey() {
+    let (mut s, _fake, ident, server, t) = paired("ok").await;
+    let dir = t.path().join("rec");
+    s.recorder = Some(Recorder::new(&dir));
+    let cfg = stream_cfg();
+    s.launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg)
+        .await
+        .unwrap();
+    s.recorder.take().unwrap().finish().unwrap();
+    let files = names(&dir);
+    assert!(
+        files.iter().any(|f| f.ends_with("rtsp-describe-resp.bin")),
+        "{files:?}"
+    );
+    for f in &files {
+        let d = std::fs::read(dir.join(f)).unwrap();
+        for n in [cfg.rikey.to_vec(), hex(&cfg.rikey).into_bytes()] {
+            assert!(
+                !d.windows(n.len()).any(|w| w == n.as_slice()),
+                "{f} leaks rikey"
+            );
+        }
+    }
 }

@@ -3,8 +3,13 @@
 
 use crate::identity::{Identity, ServerCert};
 use crate::recorder::Recorder;
-use brisk_proto::http::{parse_applist, parse_field, parse_serverinfo, App, ServerInfo, MAX_BODY};
+use crate::rtsp::{handshake, StreamPorts};
+use brisk_proto::http::{
+    cancel_query, check_status, launch_query, parse_applist, parse_field, parse_launch,
+    parse_serverinfo, App, LaunchOpts, LaunchReply, ServerInfo, MAX_BODY,
+};
 use brisk_proto::pair::{unhex, PairError, PairingClient, Rng};
+use brisk_proto::sdp::StreamConfig;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
@@ -21,6 +26,8 @@ pub const HTTPS_PORT: u16 = 47984;
 /// Sunshine holds `getservercert` open until the PIN is entered, and expires the session after 5 min.
 const PIN_WAIT: Duration = Duration::from_secs(320);
 const WAIT: Duration = Duration::from_secs(10);
+/// `/launch` returns only after Sunshine has started the app.
+const LAUNCH_WAIT: Duration = Duration::from_secs(120);
 
 pub struct Session {
     pub host: String,
@@ -67,6 +74,71 @@ impl Session {
                 .get(Some((ident, server)), "/applist", &q, WAIT)
                 .await?,
         )?)
+    }
+
+    /// `GET /launch` (HTTPS). `cfg.rikey` is scrubbed from recordings: it keys the whole stream.
+    pub async fn launch(
+        &mut self,
+        ident: &Identity,
+        server: &ServerCert,
+        app_id: u32,
+        cfg: &StreamConfig,
+    ) -> crate::Result<LaunchReply> {
+        if let Some(rec) = &mut self.recorder {
+            rec.add_secret(&cfg.rikey);
+        }
+        let q = launch_query(
+            &ident.unique_id,
+            app_id,
+            cfg.width,
+            cfg.height,
+            cfg.fps,
+            cfg.rikey,
+            cfg.rikeyid,
+            &LaunchOpts::default(),
+        );
+        let r = self
+            .get(Some((ident, server)), "/launch", &q, LAUNCH_WAIT)
+            .await?;
+        Ok(parse_launch(&r)?)
+    }
+
+    /// `GET /cancel` (HTTPS): Sunshine stops the stream and the app.
+    pub async fn cancel(&mut self, ident: &Identity, server: &ServerCert) -> crate::Result<()> {
+        let q = cancel_query(&ident.unique_id);
+        check_status(&self.get(Some((ident, server)), "/cancel", &q, WAIT).await?)?;
+        Ok(())
+    }
+
+    /// Launch, RTSP handshake, then `cancel` whatever happened (a failed launch may still have
+    /// started the app). Returns the negotiated stream ports.
+    pub async fn launch_probe(
+        &mut self,
+        ident: &Identity,
+        server: &ServerCert,
+        app_id: u32,
+        app_version: &str,
+        cfg: &StreamConfig,
+    ) -> crate::Result<StreamPorts> {
+        let r = async {
+            let l = self.launch(ident, server, app_id, cfg).await?;
+            handshake(
+                &self.host,
+                &l.session_url,
+                app_version,
+                cfg,
+                self.recorder.as_mut(),
+            )
+            .await
+        }
+        .await;
+        let c = self.cancel(ident, server).await;
+        match (r, c) {
+            (Ok(p), Ok(())) => Ok(p),
+            (Ok(_), Err(c)) => Err(format!("stream ran but cancel failed: {c}").into()),
+            (Err(e), Ok(())) => Err(e),
+            (Err(e), Err(c)) => Err(format!("{e}; also cancel failed: {c}").into()),
+        }
     }
 
     /// Phases 1-4 over HTTP, phase 5 (`pairchallenge`) over HTTPS pinned to the phase-1 cert.

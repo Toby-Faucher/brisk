@@ -1,6 +1,8 @@
 //! brisk-probe: drive Sunshine by hand.
 //!   brisk-probe [--record DIR] [--config DIR] pair --host HOST [--pin NNNN]
 //!   brisk-probe [--record DIR] [--config DIR] apps --host HOST
+//!   brisk-probe [--record DIR] [--config DIR] launch --host HOST --app ID
+//!     launch: 1080p60 H.264, RTSP handshake, prints server ports, then cancels (also on Ctrl-C).
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
 use brisk_client::identity::{load_identity, load_or_create_identity, ServerCert};
@@ -8,32 +10,39 @@ use brisk_client::recorder::Recorder;
 use brisk_client::session::Session;
 use brisk_client::SystemRng;
 use brisk_proto::pair::Rng;
+use brisk_proto::sdp::{Codec, StreamConfig};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST)";
+const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID)";
 
 struct Args {
     cmd: String,
     host: String,
     pin: Option<String>,
+    app: Option<u32>,
     record: Option<PathBuf>,
     config: PathBuf,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let (mut cmd, mut host, mut pin, mut record, mut config) = (None, None, None, None, None);
+    let (mut cmd, mut host, mut pin, mut app, mut record, mut config) =
+        (None, None, None, None, None, None);
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
             "--host" => host = Some(val()?),
             "--pin" => pin = Some(val()?),
+            "--app" => app = Some(val()?.parse().map_err(|_| "--app must be a number")?),
             "--record" => record = Some(PathBuf::from(val()?)),
             "--config" => config = Some(PathBuf::from(val()?)),
-            "pair" | "apps" if cmd.is_none() => cmd = Some(a),
+            "pair" | "apps" | "launch" if cmd.is_none() => cmd = Some(a),
             _ => return Err(format!("unexpected argument {a:?}")),
         }
+    }
+    if cmd.as_deref() == Some("launch") && app.is_none() {
+        return Err("launch needs --app ID (see `apps`)".into());
     }
     if let Some(p) = &pin {
         if p.len() != 4 || !p.bytes().all(|b| b.is_ascii_digit()) {
@@ -48,6 +57,7 @@ fn parse_args() -> Result<Args, String> {
         cmd: cmd.ok_or("missing command")?,
         host: host.ok_or("missing --host")?,
         pin,
+        app,
         record,
         config,
     })
@@ -84,6 +94,48 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                         dir.join("server.pem").display()
                     )
                 })
+        }
+        "launch" => {
+            async {
+                let server = ServerCert::load(&dir)?;
+                let ident = load_identity(&dir)?;
+                let info = s.serverinfo(None).await?;
+                let mut rikey = [0u8; 16];
+                SystemRng.fill(&mut rikey);
+                let mut id = [0u8; 4];
+                SystemRng.fill(&mut id);
+                let cfg = StreamConfig {
+                    width: 1920,
+                    height: 1080,
+                    fps: 60,
+                    bitrate_kbps: 20000,
+                    codec: Codec::H264,
+                    packet_size: 1392,
+                    fec_percent: 20,
+                    rikey,
+                    // Sunshine parses rikeyid as a signed int; stay positive.
+                    rikeyid: u32::from_le_bytes(id) & 0x7fff_ffff,
+                    enc_flags: 0,
+                };
+                let app = a.app.unwrap();
+                let r = tokio::select! {
+                    r = s.launch_probe(&ident, &server, app, &info.app_version, &cfg) => Some(r),
+                    _ = tokio::signal::ctrl_c() => None,
+                };
+                let Some(r) = r else {
+                    s.cancel(&ident, &server).await?;
+                    return Err("interrupted; session cancelled".into());
+                };
+                let p = r?;
+                println!(
+                    "audio\t{}\nvideo\t{}\ncontrol\t{}",
+                    p.audio, p.video, p.control
+                );
+                println!("session\t{}\nencryption\t{:#x}", p.session_id, p.enc_flags);
+                println!("cancelled");
+                Ok(())
+            }
+            .await
         }
         _ => {
             async {
