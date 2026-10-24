@@ -61,6 +61,7 @@ Anti-goals (things that would make this a failure)
 8. Licensing: do not care.
 9. "If Moonlight has tests we must pass them." Result: it has none (section 7).
 10. Front end: Astro + Svelte + Base UI (decided 2026-10-24, after the draft). [U] Base UI (MUI's `@base-ui-components`) is a React library; I have not verified a Svelte port. Svelte equivalents are headless libraries such as Bits UI or Melt UI. Toby to confirm which he means; until then the UI task is not planned.
+11. Visual direction: take design inspiration from Linear (decided 2026-10-24). My reading, [CALL] until Toby reacts: dark-first with a light theme, dense and calm, keyboard-first (a command palette for apps, settings and connect/disconnect), restrained accent color, fast and minimal motion, nothing that competes with the video. In-stream UI (latency/stats overlay, menu) stays out of the way and never touches the video path. Details are for the UI task; use the frontend-design skill then and show mockups before building.
 
 ## 5. Architecture sketch (my reading of the above; details are the builder's)
 
