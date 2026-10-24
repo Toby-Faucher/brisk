@@ -82,9 +82,12 @@ fn no_secret_substring_survives() {
         let mut rnd = |n: usize| -> Vec<u8> { (0..n).map(|_| (next() % 255 + 1) as u8).collect() };
         let secrets: Vec<Vec<u8>> = (0..3).map(|_| rnd(4 + 12)).collect();
         let mut buf = rnd(200);
-        for sec in &secrets {
-            let at = (buf.len() - sec.len()) / 2 + sec.len() % 7;
+        for (i, sec) in secrets.iter().enumerate() {
+            let at = i * 60 + (next() % 40) as usize; // distinct, non-colliding slots
             buf[at..at + sec.len()].copy_from_slice(sec);
+        }
+        for sec in &secrets {
+            assert!(contains(&buf, sec), "secret not planted");
         }
         let out = scrub(&buf, &secrets);
         assert_eq!(out.len(), buf.len());
@@ -92,4 +95,13 @@ fn no_secret_substring_survives() {
             assert!(!contains(&out, sec));
         }
     }
+}
+
+#[test]
+fn suffix_prefix_overlap_fully_scrubbed() {
+    let secrets = vec![b"AAAABBBB".to_vec(), b"BBBBCCCC".to_vec()];
+    let buf = b"..AAAABBBBCCCC..".to_vec();
+    assert!(contains(&buf, &secrets[0]) && contains(&buf, &secrets[1]));
+    let out = scrub(&buf, &secrets);
+    assert_eq!(out, b"..\0\0\0\0\0\0\0\0\0\0\0\0..");
 }
