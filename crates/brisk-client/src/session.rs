@@ -186,6 +186,35 @@ impl Session {
         cfg: &StreamConfig,
         take_over: bool,
     ) -> crate::Result<StreamPorts> {
+        self.launch_session(
+            ident,
+            server,
+            app_id,
+            app_version,
+            cfg,
+            take_over,
+            |p| async { Ok(p) },
+        )
+        .await
+    }
+
+    /// [`Self::launch_probe`] that runs `during` on the stream ports after PLAY and before the
+    /// cancel (e.g. the control stream). The cancel rules are the same.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn launch_session<T, F, Fut>(
+        &mut self,
+        ident: &Identity,
+        server: &ServerCert,
+        app_id: u32,
+        app_version: &str,
+        cfg: &StreamConfig,
+        take_over: bool,
+        during: F,
+    ) -> crate::Result<T>
+    where
+        F: FnOnce(StreamPorts) -> Fut,
+        Fut: std::future::Future<Output = crate::Result<T>>,
+    {
         let info = self.serverinfo(Some((ident, server))).await?;
         if info.current_game != 0 || info.server_state != "SUNSHINE_SERVER_FREE" {
             let busy = format!(
@@ -235,6 +264,10 @@ impl Session {
             self.recorder.as_mut(),
         )
         .await;
+        let r = match r {
+            Ok(p) => during(p).await,
+            Err(e) => Err(e),
+        };
         let c = self.cancel_retry(ident, server).await;
         match (r, c) {
             (Ok(p), Ok(())) => Ok(p),

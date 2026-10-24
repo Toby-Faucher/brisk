@@ -127,6 +127,11 @@ impl ControlMsg {
         }
     }
 
+    /// Packet type on the wire (inside the encrypted envelope).
+    pub fn kind(&self) -> u16 {
+        self.plain().0
+    }
+
     fn plain(&self) -> (u16, Vec<u8>) {
         use ptype::*;
         match self {

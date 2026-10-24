@@ -2,14 +2,19 @@
 //!   brisk-probe [--record DIR] [--config DIR] pair --host HOST [--pin NNNN]
 //!   brisk-probe [--record DIR] [--config DIR] apps --host HOST
 //!   brisk-probe [--record DIR] [--config DIR] launch --host HOST --app ID
+//!   brisk-probe [--record DIR] [--config DIR] control --host HOST --app ID [--secs N]
 //!   brisk-probe [--record DIR] [--config DIR] cancel --host HOST
 //!     cancel: explicit cleanup of a session left running; prints serverinfo state after.
 //!     launch refuses a busy host unless --take-over (which cancels what is running first).
 //!     launch: 1080p60 H.264, RTSP handshake, prints server ports, then cancels (also on Ctrl-C).
+//!     control: as launch, then the ENet control stream for N s (default 10) with an IDR request
+//!       at N/2; prints counters, disconnects, then cancels. Same refuse/cancel rules as launch.
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
+use brisk_client::control::{ControlSession, Stats};
 use brisk_client::identity::{load_identity, load_or_create_identity, ServerCert};
 use brisk_client::recorder::Recorder;
+use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
 use brisk_client::SystemRng;
 use brisk_proto::pair::Rng;
@@ -17,7 +22,7 @@ use brisk_proto::sdp::{Codec, StreamConfig};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | cancel --host HOST)";
+const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--take-over] | cancel --host HOST)";
 
 struct Args {
     cmd: String,
@@ -25,6 +30,7 @@ struct Args {
     pin: Option<String>,
     app: Option<u32>,
     take_over: bool,
+    secs: u64,
     record: Option<PathBuf>,
     config: PathBuf,
 }
@@ -33,6 +39,7 @@ fn parse_args() -> Result<Args, String> {
     let (mut cmd, mut host, mut pin, mut app, mut record, mut config) =
         (None, None, None, None, None, None);
     let mut take_over = false;
+    let mut secs = 10;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
@@ -41,14 +48,18 @@ fn parse_args() -> Result<Args, String> {
             "--pin" => pin = Some(val()?),
             "--app" => app = Some(val()?.parse().map_err(|_| "--app must be a number")?),
             "--take-over" => take_over = true,
+            "--secs" => secs = val()?.parse().map_err(|_| "--secs must be a number")?,
             "--record" => record = Some(PathBuf::from(val()?)),
             "--config" => config = Some(PathBuf::from(val()?)),
-            "pair" | "apps" | "launch" | "cancel" if cmd.is_none() => cmd = Some(a),
+            "pair" | "apps" | "launch" | "control" | "cancel" if cmd.is_none() => cmd = Some(a),
             _ => return Err(format!("unexpected argument {a:?}")),
         }
     }
-    if cmd.as_deref() == Some("launch") && app.is_none() {
-        return Err("launch needs --app ID (see `apps`)".into());
+    if matches!(cmd.as_deref(), Some("launch" | "control")) && app.is_none() {
+        return Err("launch/control need --app ID (see `apps`)".into());
+    }
+    if !(1..=3600).contains(&secs) {
+        return Err("--secs must be 1..=3600".into());
     }
     if let Some(p) = &pin {
         if p.len() != 4 || !p.bytes().all(|b| b.is_ascii_digit()) {
@@ -65,6 +76,7 @@ fn parse_args() -> Result<Args, String> {
         pin,
         app,
         take_over,
+        secs,
         record,
         config,
     })
@@ -102,7 +114,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     )
                 })
         }
-        "launch" => {
+        "launch" | "control" => {
             async {
                 let server = ServerCert::load(&dir)?;
                 let ident = load_identity(&dir)?;
@@ -125,8 +137,17 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     enc_flags: 0,
                 };
                 let app = a.app.unwrap();
+                let (host, secs, control) = (a.host.clone(), a.secs, a.cmd == "control");
+                let during = |p: StreamPorts| async move {
+                    let stats = if control {
+                        Some(run_control(&host, &p, rikey, secs).await?)
+                    } else {
+                        None
+                    };
+                    Ok((p, stats))
+                };
                 let r = tokio::select! {
-                    r = s.launch_probe(&ident, &server, app, &info.app_version, &cfg, a.take_over) => Some(r),
+                    r = s.launch_session(&ident, &server, app, &info.app_version, &cfg, a.take_over, during) => Some(r),
                     _ = tokio::signal::ctrl_c() => None,
                 };
                 let Some(r) = r else {
@@ -144,7 +165,10 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     }
                     return Err("interrupted; session cancelled".into());
                 };
-                let p = r?;
+                let (p, stats) = r?;
+                if let Some(st) = stats {
+                    print_stats(&st);
+                }
                 println!(
                     "audio\t{}\nvideo\t{}\ncontrol\t{}",
                     p.audio, p.video, p.control
@@ -203,6 +227,53 @@ async fn run(a: Args) -> brisk_client::Result<()> {
         }
     }
     r
+}
+
+/// ENet control stream for `secs`, IDR request at the midpoint, graceful disconnect.
+async fn run_control(
+    host: &str,
+    p: &StreamPorts,
+    rikey: [u8; 16],
+    secs: u64,
+) -> brisk_client::Result<Stats> {
+    let cd = p
+        .connect_data
+        .ok_or("SETUP(control) reply had no X-SS-Connect-Data")?;
+    let addr = tokio::net::lookup_host((host, p.control))
+        .await?
+        .next()
+        .ok_or("control: host did not resolve")?;
+    let mut id = [0u8; 4];
+    SystemRng.fill(&mut id);
+    println!("control\tconnecting {addr}");
+    let mut c = ControlSession::connect(addr, cd, rikey, u32::from_le_bytes(id)).await?;
+    println!("control\tconnected; IDR request + Start B sent");
+    let start = std::time::Instant::now();
+    let total = std::time::Duration::from_secs(secs);
+    c.run_until(start + total / 2).await?;
+    if c.is_open() {
+        c.request_idr().await?;
+        println!(
+            "control\tIDR request at {:.1}s",
+            start.elapsed().as_secs_f32()
+        );
+    }
+    c.run_until(start + total).await?;
+    c.disconnect().await
+}
+
+fn print_stats(st: &Stats) {
+    println!("pings\tsent {} acked {}", st.pings_sent, st.pings_acked);
+    println!("idr_requests\t{}", st.idr_sent);
+    for (t, n) in &st.host_msgs {
+        println!("host_msg\t{t:#06x}\t{n}");
+    }
+    println!("bad_host_msgs\t{}", st.bad_msgs);
+    match st.termination {
+        Some(ec) => println!("termination\t{ec:#010x}"),
+        None => println!("termination\tnone"),
+    }
+    println!("host_disconnected\t{}", st.host_disconnected);
 }
 
 #[tokio::main(flavor = "current_thread")]

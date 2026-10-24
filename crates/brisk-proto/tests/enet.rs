@@ -285,3 +285,15 @@ fn enet_rejects_wrong_session_and_garbage_without_panic() {
         let _ = p.poll_timeout(len as u32);
     }
 }
+
+#[test]
+fn enet_disconnect_now_is_unsequenced() {
+    let mut p = connected(0);
+    p.poll_timeout(0).unwrap();
+    assert_eq!(
+        p.disconnect_now(9).unwrap(),
+        vec![0x20, 0x07, 0x44, 0xFF, 0, 2, 0, 0, 0, 0]
+    );
+    assert_eq!(p.state(), PeerState::Disconnected);
+    assert!(p.disconnect_now(9).is_none());
+}

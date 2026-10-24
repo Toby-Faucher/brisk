@@ -291,22 +291,33 @@ impl EnetPeer {
     }
 
     /// `enet_peer_disconnect_later`: DISCONNECT once in-flight reliables are acked; returns it
-    /// now if nothing is in flight. When not connected, sends an unsequenced DISCONNECT and resets.
+    /// now if nothing is in flight. Otherwise behaves as [`Self::disconnect_now`].
     pub fn disconnect(&mut self, now: u32) -> Vec<Vec<u8>> {
         match self.state {
             PeerState::Connected | PeerState::DisconnectLater => {
                 self.state = PeerState::DisconnectLater;
                 self.poll_timeout(now).map(|(d, _)| d).unwrap_or_default()
             }
-            PeerState::Connecting => {
-                let mut c = self.system_header(DISCONNECT | F_UNSEQ);
-                c.extend_from_slice(&0u32.to_be_bytes());
-                self.state = PeerState::Disconnected;
-                self.sent.clear();
-                vec![self.datagram(now, &[&c], false)]
-            }
-            _ => vec![],
+            _ => self.disconnect_now(now).into_iter().collect(),
         }
+    }
+
+    /// `enet_peer_disconnect_now`: unsequenced DISCONNECT, no ACK awaited, peer reset. What
+    /// moonlight does after a termination message (the host no longer ACKs).
+    pub fn disconnect_now(&mut self, now: u32) -> Option<Vec<u8>> {
+        if self.state == PeerState::Disconnected {
+            return None;
+        }
+        let mut c = self.system_header(DISCONNECT | F_UNSEQ);
+        c.extend_from_slice(&0u32.to_be_bytes());
+        self.state = PeerState::Disconnected;
+        self.sent.clear();
+        Some(self.datagram(now, &[&c], false))
+    }
+
+    /// Sequence number of the last reliable command sent on `channel` (0 before any).
+    pub fn outgoing_seq(&self, channel: u8) -> u16 {
+        self.out_rel.get(channel as usize).copied().unwrap_or(0)
     }
 
     /// Retransmissions, pings, pending ACKs and a deferred DISCONNECT due at `now`, plus the

@@ -942,3 +942,45 @@ async fn dropped_launch_cancels_only_if_host_runs_our_app() {
         assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), cancels, "{mode}");
     }
 }
+
+/// The control stream runs inside `launch_session`: after PLAY, before `/cancel`; its failure still cancels.
+#[tokio::test]
+async fn launch_session_runs_during_before_cancel() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let f = fake.clone();
+    let got = s
+        .launch_session(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &stream_cfg(),
+            false,
+            |p| async move {
+                let st = f.rtsp.lock().unwrap();
+                assert_eq!(st.cancels, 0, "not cancelled yet");
+                assert_eq!(st.seen.last().unwrap().0, "PLAY");
+                Ok(p.connect_data)
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(got, Some(0x12345678));
+    assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let err = s
+        .launch_session(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &stream_cfg(),
+            false,
+            |_| async { Err::<(), _>("control failed".into()) },
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("control failed"));
+    assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+}

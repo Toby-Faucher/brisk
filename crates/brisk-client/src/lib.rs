@@ -1,5 +1,7 @@
-//! Brisk client orchestration: identity, HTTP(S) session, RTSP handshake, fixture recorder.
+//! Brisk client orchestration: identity, HTTP(S) session, RTSP handshake, control stream,
+//! fixture recorder.
 
+pub mod control;
 pub mod identity;
 pub mod recorder;
 pub mod rtsp;
