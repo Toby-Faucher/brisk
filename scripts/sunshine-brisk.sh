@@ -16,25 +16,46 @@ die() { echo "sunshine-brisk: $*" >&2; exit 1; }
 
 serverinfo() { curl -s --max-time 5 "$URL" || true; }
 
-# Never restart over a live session; an unanswered server (already broken) is fine to restart.
+running_brisk() { systemctl --user show -p ExecStart "$UNIT" 2>/dev/null | grep -qF "path=$BIN"; }
+
+# Never restart over a live session. No answer = busy-unknown: refuse unless FORCE=1
+# (rollback passes ALLOW_DEAD=1: a dead server has no session to lose).
 require_idle() {
   local s; s=$(serverinfo)
-  [ -z "$s" ] && { echo "serverinfo: no answer (restart allowed)"; return; }
+  if [ -z "$s" ]; then
+    [ "${FORCE:-}" = 1 ] || [ "${ALLOW_DEAD:-}" = 1 ] || die "serverinfo gives no answer (busy unknown); set FORCE=1 to restart anyway"
+    echo "serverinfo: no answer (restart allowed)"; return
+  fi
   case $s in *SUNSHINE_SERVER_FREE*"<currentgame>0</currentgame>"*|*"<currentgame>0</currentgame>"*SUNSHINE_SERVER_FREE*) ;;
     *) die "Sunshine is busy (not FREE / currentgame != 0); refusing to restart" ;; esac
 }
 
-restart() { require_idle; systemctl --user daemon-reload; systemctl --user restart "$UNIT"; }
+# reset-failed first so a crashed brisk unit cannot block the restart with the start-rate limit
+restart() {
+  require_idle
+  systemctl --user reset-failed "$UNIT" 2>/dev/null || true
+  systemctl --user daemon-reload
+  systemctl --user restart "$UNIT"
+}
 
 # Resource cap: an OOM kills the build, not the box. Never raise JOBS above 6 (bawn hung at unbounded -j).
-JOBS=${SB_JOBS:-6}
-[ "$JOBS" -ge 1 ] && [ "$JOBS" -le 6 ] || die "SB_JOBS must be 1..6"
+JOBS=${SB_JOBS:-3}
 capped() {
   systemd-run --user --scope -q -p MemoryHigh=7G -p MemoryMax=9G -p MemorySwapMax=0 -p CPUWeight=20 \
     nice -n 19 ionice -c3 "$@"
 }
 
+# Refuse to build unless the kernel really enforces MemoryMax inside the scope (9G = 9663676416).
+cap_check() {
+  local v; v=$(capped sh -c 'cat /sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max') || die "capped scope failed; refusing to build uncapped"
+  [ "$v" = 9663676416 ] || die "memory cap not enforced (memory.max='$v'); refusing to build"
+}
+
 cmd_build() {
+  case $JOBS in ''|*[!0-9]*) die "SB_JOBS must be 1..6" ;; esac
+  { [ "$JOBS" -ge 1 ] && [ "$JOBS" -le 6 ]; } || die "SB_JOBS must be 1..6"
+  running_brisk && die "unit runs the brisk binary; run rollback before rebuilding (text file busy)"
+  cap_check
   if [ ! -d "$SRC/.git" ]; then
     git clone --branch "$TAG" --recursive --depth 1 https://github.com/LizardByte/Sunshine "$SRC"
   fi
@@ -58,8 +79,15 @@ cmd_install() {
   echo "wrote $DROPIN_DIR/brisk.conf"
 }
 
-cmd_enable() { [ -f "$DROPIN_DIR/brisk.conf" ] || die "no brisk.conf; run install first"; restart; }
-cmd_rollback() { rm -f "$DROPIN_DIR/brisk.conf"; restart; }
+cmd_enable() {
+  [ -f "$DROPIN_DIR/brisk.conf" ] || die "no brisk.conf; run install first"
+  if running_brisk; then echo "already running brisk binary; nothing to do"; return; fi
+  restart
+}
+cmd_rollback() {
+  [ -f "$DROPIN_DIR/brisk.conf" ] || { echo "no brisk.conf; nothing to roll back"; return; }
+  rm -f "$DROPIN_DIR/brisk.conf"; ALLOW_DEAD=1 restart
+}
 
 cmd_status() {
   systemctl --user show -p ExecStart "$UNIT"
