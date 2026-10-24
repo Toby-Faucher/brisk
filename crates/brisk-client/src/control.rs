@@ -26,6 +26,12 @@ pub const PING_EVERY: Duration = Duration::from_millis(100);
 /// moonlight's video/audio ping interval.
 pub const AV_PING_EVERY: Duration = Duration::from_millis(500);
 const MEDIA_BUF: usize = 4096;
+/// Media datagrams that arrive during the ENet connect are kept for the first
+/// [`ControlSession::run_until_with`] (the opening IDR can land there).
+const EARLY_MAX: usize = 4096;
+
+/// Receives every video (index 0) or audio (index 1) datagram as it arrives.
+pub type MediaSink<'a> = &'a mut dyn FnMut(usize, &[u8]);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
@@ -132,6 +138,7 @@ pub struct ControlSession {
     closing: bool,
     buf: Vec<u8>,
     av: Option<AvPing>,
+    early: Vec<(usize, Vec<u8>)>,
     pub stats: Stats,
 }
 
@@ -164,6 +171,7 @@ impl ControlSession {
             closing: false,
             buf: vec![0u8; MAX_DATAGRAM + 1],
             av,
+            early: Vec::new(),
             stats: Stats::default(),
         };
         s.sock.send(&hello).await?;
@@ -172,7 +180,7 @@ impl ControlSession {
             if Instant::now() >= deadline {
                 return Err(format!("control: no ENet connect from {addr} within 10s").into());
             }
-            s.step(deadline).await?;
+            s.step(deadline, None).await?;
         }
         if s.peer.state() != PeerState::Connected {
             return Err(format!("control: {addr} refused the ENet connection").into());
@@ -222,6 +230,19 @@ impl ControlSession {
 
     /// Ping, receive and retransmit until `until`, or until the host ends the session.
     pub async fn run_until(&mut self, until: Instant) -> crate::Result<()> {
+        self.run_until_with(until, &mut |_, _| {}).await
+    }
+
+    /// [`Self::run_until`] that hands every media datagram to `sink`, starting with any that
+    /// arrived during the connect.
+    pub async fn run_until_with(
+        &mut self,
+        until: Instant,
+        sink: MediaSink<'_>,
+    ) -> crate::Result<()> {
+        for (i, d) in std::mem::take(&mut self.early) {
+            sink(i, &d);
+        }
         while self.is_open() && Instant::now() < until {
             if Instant::now() >= self.next_ping {
                 self.send(&ControlMsg::Ping).await?;
@@ -229,13 +250,15 @@ impl ControlSession {
                 self.stats.pings_sent += 1;
                 self.next_ping = Instant::now() + PING_EVERY;
             }
-            self.step(until.min(self.next_ping)).await?;
+            self.step(until.min(self.next_ping), Some(&mut *sink))
+                .await?;
         }
         Ok(())
     }
 
-    /// One wait: a datagram, an ENet timer, or `until`.
-    async fn step(&mut self, until: Instant) -> crate::Result<()> {
+    /// One wait: a datagram, an ENet timer, or `until`. Media goes to `sink`, or is kept for
+    /// later while connecting (`None`).
+    async fn step(&mut self, until: Instant, sink: Option<MediaSink<'_>>) -> crate::Result<()> {
         let (out, next) = match self.peer.poll_timeout(self.now()) {
             Ok(v) => v,
             Err(e) => {
@@ -288,6 +311,14 @@ impl ControlSession {
             Got::Media(i, Ok(n)) => {
                 self.stats.media_rx_packets[i] += 1;
                 self.stats.media_rx_bytes[i] += n as u64;
+                let d = &self.av.as_ref().unwrap().bufs[i][..n];
+                match sink {
+                    Some(f) => f(i, d),
+                    None if !self.closing && self.early.len() < EARLY_MAX => {
+                        self.early.push((i, d.to_vec()))
+                    }
+                    None => {}
+                }
             }
             Got::Media(..) | Got::Timer => {}
         }
@@ -347,7 +378,7 @@ impl ControlSession {
         }
         let deadline = Instant::now() + LINGER;
         while self.peer.state() != PeerState::Disconnected && Instant::now() < deadline {
-            if self.step(deadline).await.is_err() {
+            if self.step(deadline, Some(&mut |_, _| {})).await.is_err() {
                 break;
             }
         }

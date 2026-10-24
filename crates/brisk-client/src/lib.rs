@@ -1,11 +1,12 @@
 //! Brisk client orchestration: identity, HTTP(S) session, RTSP handshake, control stream,
-//! fixture recorder.
+//! A/V stream receive, fixture recorder.
 
 pub mod control;
 pub mod identity;
 pub mod recorder;
 pub mod rtsp;
 pub mod session;
+pub mod stream;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;

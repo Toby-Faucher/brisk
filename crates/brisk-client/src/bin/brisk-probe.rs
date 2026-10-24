@@ -3,12 +3,16 @@
 //!   brisk-probe [--record DIR] [--config DIR] apps --host HOST
 //!   brisk-probe [--record DIR] [--config DIR] launch --host HOST --app ID
 //!   brisk-probe [--record DIR] [--config DIR] control --host HOST --app ID [--secs N]
+//!   brisk-probe [--record DIR] [--config DIR] stream --host HOST --app ID [--secs N] [--record-samples DIR]
 //!   brisk-probe [--record DIR] [--config DIR] cancel --host HOST
 //!     cancel: explicit cleanup of a session left running; prints serverinfo state after.
 //!     launch refuses a busy host unless --take-over (which cancels what is running first).
 //!     launch: 1080p60 H.264, RTSP handshake, prints server ports, then cancels (also on Ctrl-C).
 //!     control: as launch, then the ENet control stream for N s (default 10) with an IDR request
 //!       at N/2; prints counters, disconnects, then cancels. Same refuse/cancel rules as launch.
+//!     stream: as control (default 60 s), receiving and assembling video and audio, IDR requests
+//!       at N/3 and 2N/3; prints the summary block; exits non-zero on a failed M1 gate (after the
+//!       cancel). --record-samples DIR writes the first video/audio datagrams for the replay tests.
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
 use brisk_client::control::{AvPing, ControlSession, Stats};
@@ -16,13 +20,14 @@ use brisk_client::identity::{load_identity, load_or_create_identity, ServerCert}
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
+use brisk_client::stream::stream;
 use brisk_client::SystemRng;
 use brisk_proto::pair::Rng;
-use brisk_proto::sdp::{Codec, StreamConfig};
+use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--take-over] | cancel --host HOST)";
+const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--take-over] | stream --host HOST --app ID [--secs N] [--record-samples DIR] [--take-over] | cancel --host HOST)";
 
 struct Args {
     cmd: String,
@@ -32,6 +37,7 @@ struct Args {
     take_over: bool,
     secs: u64,
     record: Option<PathBuf>,
+    samples: Option<PathBuf>,
     config: PathBuf,
 }
 
@@ -39,7 +45,8 @@ fn parse_args() -> Result<Args, String> {
     let (mut cmd, mut host, mut pin, mut app, mut record, mut config) =
         (None, None, None, None, None, None);
     let mut take_over = false;
-    let mut secs = 10;
+    let mut secs = None;
+    let mut samples = None;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
@@ -48,16 +55,27 @@ fn parse_args() -> Result<Args, String> {
             "--pin" => pin = Some(val()?),
             "--app" => app = Some(val()?.parse().map_err(|_| "--app must be a number")?),
             "--take-over" => take_over = true,
-            "--secs" => secs = val()?.parse().map_err(|_| "--secs must be a number")?,
+            "--secs" => secs = Some(val()?.parse().map_err(|_| "--secs must be a number")?),
+            "--record-samples" => samples = Some(PathBuf::from(val()?)),
             "--record" => record = Some(PathBuf::from(val()?)),
             "--config" => config = Some(PathBuf::from(val()?)),
-            "pair" | "apps" | "launch" | "control" | "cancel" if cmd.is_none() => cmd = Some(a),
+            "pair" | "apps" | "launch" | "control" | "stream" | "cancel" if cmd.is_none() => {
+                cmd = Some(a)
+            }
             _ => return Err(format!("unexpected argument {a:?}")),
         }
     }
-    if matches!(cmd.as_deref(), Some("launch" | "control")) && app.is_none() {
-        return Err("launch/control need --app ID (see `apps`)".into());
+    if matches!(cmd.as_deref(), Some("launch" | "control" | "stream")) && app.is_none() {
+        return Err("launch/control/stream need --app ID (see `apps`)".into());
     }
+    if samples.is_some() && cmd.as_deref() != Some("stream") {
+        return Err("--record-samples is only for stream".into());
+    }
+    let secs = secs.unwrap_or(if cmd.as_deref() == Some("stream") {
+        60
+    } else {
+        10
+    });
     if !(1..=3600).contains(&secs) {
         return Err("--secs must be 1..=3600".into());
     }
@@ -78,6 +96,7 @@ fn parse_args() -> Result<Args, String> {
         take_over,
         secs,
         record,
+        samples,
         config,
     })
 }
@@ -114,7 +133,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     )
                 })
         }
-        "launch" | "control" => {
+        "launch" | "control" | "stream" => {
             async {
                 let server = ServerCert::load(&dir)?;
                 let ident = load_identity(&dir)?;
@@ -134,15 +153,25 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     rikey,
                     // Sunshine parses rikeyid as a signed int; stay positive.
                     rikeyid: u32::from_le_bytes(id) & 0x7fff_ffff,
-                    enc_flags: 0,
+                    // stream asks for audio encryption, as Moonlight does by default, so the audio
+                    // path (and the recorded samples) are the AES-CBC one.
+                    enc_flags: if a.cmd == "stream" { SS_ENC_AUDIO } else { 0 },
                 };
+                let rikeyid = cfg.rikeyid;
                 let app = a.app.unwrap();
-                let (host, secs, control) = (a.host.clone(), a.secs, a.cmd == "control");
+                let (host, secs, cmd) = (a.host.clone(), a.secs, a.cmd.clone());
+                let samples = a.samples.clone();
                 let during = |p: StreamPorts| async move {
-                    let stats = if control {
-                        Some(run_control(&host, &p, rikey, secs).await?)
-                    } else {
-                        None
+                    let stats = match cmd.as_str() {
+                        "control" => Some(run_control(&host, &p, rikey, secs).await?),
+                        "stream" => {
+                            let mut id = [0u8; 4];
+                            SystemRng.fill(&mut id);
+                            let secs = std::time::Duration::from_secs(secs);
+                            let s = stream(&host, &p, rikey, rikeyid, u32::from_le_bytes(id), secs, samples.as_deref());
+                            Some(s.await?.control)
+                        }
+                        _ => None,
                     };
                     Ok((p, stats))
                 };
