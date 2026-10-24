@@ -100,21 +100,31 @@ fn feed<'a>(
 #[test]
 #[cfg_attr(
     not(video_fixture),
-    ignore = "SKIPPED: no fixtures/video/*.bin yet; recorded by the live video step"
+    ignore = "SKIPPED: no fixtures/video/*.bin yet; record with `brisk-probe stream --record-samples fixtures`"
 )]
 fn parses_recorded_video_packet() {
+    // `brisk-probe stream --record-samples fixtures` writes NNN.bin (one plain, decrypted
+    // datagram) and NNN.meta.json (the fields it parsed live) from the stream start through the
+    // first IDR frame.
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/video");
-    let files: Vec<_> = std::fs::read_dir(&dir)
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|e| e == "bin"))
         .collect();
+    files.sort();
     assert!(!files.is_empty(), "no *.bin in {}", dir.display());
-    for f in files {
-        // Fixtures are plain (decrypted) packets.
-        let raw = std::fs::read(&f).unwrap();
-        let p = parse_video_packet(&raw, 0).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+    let field = |json: &str, k: &str| -> u64 {
+        let v = json
+            .split(&format!("\"{k}\":"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("{k}"));
+        v.split([',', '}']).next().unwrap().trim().parse().unwrap()
+    };
+    let raws: Vec<Vec<u8>> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
+    for (f, raw) in files.iter().zip(&raws) {
+        let p = parse_video_packet(raw, 0).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
         assert!(
             p.data_shards >= 1
                 && (p.shard_idx as usize) < (p.data_shards + p.parity_shards) as usize
@@ -123,7 +133,45 @@ fn parses_recorded_video_packet() {
         if !p.is_parity {
             assert_eq!(p.flags & !(FLAG_SOF | FLAG_EOF | FLAG_CONTAINS_PIC_DATA), 0);
         }
+        let meta = std::fs::read_to_string(f.with_extension("meta.json"))
+            .unwrap_or_else(|e| panic!("{}: sidecar meta: {e}", f.display()));
+        let got = [
+            p.seq as u64,
+            p.frame_idx as u64,
+            p.shard_idx as u64,
+            p.data_shards as u64,
+            p.parity_shards as u64,
+            p.fec_block as u64,
+            p.last_fec_block as u64,
+        ];
+        let want = [
+            "seq",
+            "frame_idx",
+            "shard_idx",
+            "data_shards",
+            "parity_shards",
+            "fec_block",
+            "last_fec_block",
+        ]
+        .map(|k| field(&meta, k));
+        assert_eq!(got, want, "{}", f.display());
     }
+    // The samples hold the first IDR frame whole: it reassembles.
+    let first = raws
+        .iter()
+        .map(|r| parse_video_packet(r, 0).unwrap().frame_idx)
+        .min()
+        .unwrap();
+    let mut a = FrameAssembler::starting_at(first);
+    let frames: Vec<_> = raws
+        .iter()
+        .flat_map(|r| a.push(parse_video_packet(r, 0).unwrap()))
+        .collect();
+    assert!(
+        frames.iter().any(|f| f.is_idr),
+        "no complete IDR frame in the samples"
+    );
+    assert_eq!(a.stats().parse_errors, 0);
 }
 
 #[test]

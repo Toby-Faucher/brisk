@@ -108,12 +108,13 @@ fn check(frames: &[OpusFrame], base: u16, want: &[u16]) {
 #[test]
 #[cfg_attr(
     not(audio_fixture),
-    ignore = "SKIPPED: no fixtures/audio/*.bin yet; recorded by the live audio step"
+    ignore = "SKIPPED: no fixtures/audio/*.bin yet; record with `brisk-probe stream --record-samples fixtures`"
 )]
 fn decrypts_recorded_audio_packet() {
-    // Each NAME.bin is one datagram; NAME.key holds "<32 hex rikey> <hex rikeyid u32>". The key
-    // file is per-launch session material and is git-ignored: never commit it. FEC datagrams
-    // (payload type 127) are skipped; only data packets (type 97) are decrypted.
+    // `brisk-probe stream --record-samples fixtures` writes NNN.bin (one raw datagram each) and
+    // rikey.hex ("<32 hex rikey> <8 hex rikeyid>"): the ephemeral key of that one finished
+    // session (see the README written next to it). FEC datagrams (payload type 127) are
+    // skipped; data packets (type 97) are decrypted.
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio");
     let files: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
@@ -122,23 +123,26 @@ fn decrypts_recorded_audio_packet() {
         .filter(|p| p.extension().is_some_and(|e| e == "bin"))
         .collect();
     assert!(!files.is_empty(), "no *.bin in {}", dir.display());
+    let meta = std::fs::read_to_string(dir.join("rikey.hex")).expect("rikey.hex next to the .bin");
+    let (k, id) = meta.trim().split_once(' ').unwrap();
+    let key: [u8; 16] = (0..16)
+        .map(|i| u8::from_str_radix(&k[2 * i..2 * i + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let id = u32::from_str_radix(id, 16).unwrap();
+    let mut data = 0;
     for f in files {
         let raw = std::fs::read(&f).unwrap();
         if raw.get(1).is_some_and(|b| b & 0x7f == PT_FEC) {
             continue;
         }
-        let meta = std::fs::read_to_string(f.with_extension("key")).unwrap();
-        let (k, id) = meta.trim().split_once(' ').unwrap();
-        let key: [u8; 16] = (0..16)
-            .map(|i| u8::from_str_radix(&k[2 * i..2 * i + 2], 16).unwrap())
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        let id = u32::from_str_radix(id, 16).unwrap();
         let o =
             parse_audio_packet(&raw, &key, id).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
         assert!(!o.data.is_empty() && o.data.len() <= MAX_PAYLOAD);
+        data += 1;
     }
+    assert!(data > 0, "no data packets");
 }
 
 #[test]
