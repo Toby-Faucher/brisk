@@ -1,11 +1,13 @@
 #!/bin/bash
 # Stubbed test for sunshine-brisk.sh; touches nothing real (systemctl/sudoq/systemd-run/cmake/curl are stubs).
 set -u
-s=$(cd "$(dirname "$0")" && pwd)/sunshine-brisk.sh
+s=${SB_SCRIPT:-$(cd "$(dirname "$0")" && pwd)/sunshine-brisk.sh} # SB_SCRIPT: run against another copy
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 mkdir -p "$t/bin" "$t/p/bin" "$t/src/.git"; : > "$t/p/bin/sunshine"; chmod +x "$t/p/bin/sunshine"
 printf '#!/bin/sh\necho "cmake $*" >> "%s/log"\ntouch "%s/cmake.marker"\n' "$t" "$t" > "$t/bin/cmake"
-for c in sudoq getcap git ionice nice; do printf '#!/bin/sh\necho "%s $*" >> "%s/log"\n' "$c" "$t" > "$t/bin/$c"; done
+for c in sudoq getcap ionice nice; do printf '#!/bin/sh\necho "%s $*" >> "%s/log"\n' "$c" "$t" > "$t/bin/$c"; done
+# git: logs; `describe` reports the checkout's tag ($GIT_TAG, default the pinned one)
+printf '#!/bin/sh\necho "git $*" >> "%s/log"\ncase "$*" in *describe*) echo "${GIT_TAG:-v2026.914.233613}" ;; esac\nexit 0\n' "$t" > "$t/bin/git"
 # systemctl: `show` reports $EXEC (a path) as the running ExecStart
 printf '#!/bin/sh\necho "systemctl $*" >> "%s/log"\n[ "$2" = is-active ] && [ -n "${INACTIVE:-}" ] && exit 1\n[ "$2" = show ] && echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }"\nexit 0\n' "$t" > "$t/bin/systemctl"
 # systemd-run: fails if SR_FAIL, else reports the enforced memory.max
@@ -58,6 +60,12 @@ SB_JOBS=6 $s build >/dev/null 2>&1 || fail "-j6 should be allowed"
 [ ! -e $t/cmake.marker ] && ! grep -q '^cmake' $L || fail "cmake ran despite unenforced cap"
 SB_JOBS=20 $s build >/dev/null 2>&1 && fail "-j20 accepted"
 EXEC=$B $s build >/dev/null 2>&1 && fail "build must refuse while brisk binary runs"
+# a checkout at another tag, or the read-only reference tree: refuse before patching or cmake
+: > $L; rm -f $t/cmake.marker; GIT_TAG=v2025.1.1 $s build >/dev/null 2>&1 && fail "build must refuse a checkout at another tag"
+no "apply" $L; [ ! -e $t/cmake.marker ] || fail "cmake ran on the wrong base"
+: > $L; mkdir -p "$t/h/recon-pinned/Sunshine/.git"
+HOME=$t/h SB_SRC=$t/h/recon-pinned/Sunshine $s build >/dev/null 2>&1 && fail "build must refuse ~/recon-pinned"
+no "apply" $L; no "^cmake" $L
 # bad SB_JOBS must not break rollback/status
 SB_JOBS=zz $s status >/dev/null || fail "status broke on bad SB_JOBS"
 echo "all passed"

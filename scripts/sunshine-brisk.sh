@@ -39,27 +39,24 @@ restart() {
   systemctl --user restart "$UNIT"
 }
 
-# Resource cap: an OOM kills the build, not the box. Never raise JOBS above 6 (bawn hung at unbounded -j).
+# Never raise JOBS above 6 (bawn hung at unbounded -j).
 JOBS=${SB_JOBS:-3}
-capped() {
-  systemd-run --user --scope -q -p MemoryHigh=7G -p MemoryMax=9G -p MemorySwapMax=0 -p CPUWeight=20 \
-    nice -n 19 ionice -c3 "$@"
-}
-
-# Refuse to build unless the kernel really enforces MemoryMax inside the scope (9G = 9663676416).
-cap_check() {
-  local v; v=$(capped sh -c 'cat /sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max') || die "capped scope failed; refusing to build uncapped"
-  [ "$v" = 9663676416 ] || die "memory cap not enforced (memory.max='$v'); refusing to build"
-}
+# shellcheck source=scripts/capped.sh
+. "$here/scripts/capped.sh"
 
 cmd_build() {
   case $JOBS in ''|*[!0-9]*) die "SB_JOBS must be 1..6" ;; esac
   { [ "$JOBS" -ge 1 ] && [ "$JOBS" -le 6 ]; } || die "SB_JOBS must be 1..6"
   running_brisk && die "unit runs the brisk binary; run rollback before rebuilding (text file busy)"
-  cap_check
+  case $(realpath -m "$SRC")/ in "$(realpath -m "$HOME/recon-pinned")"/*)
+    die "$SRC is under ~/recon-pinned (read-only reference); build from a fresh clone" ;; esac
+  cap_check || die "no enforced resource cap"
   if [ ! -d "$SRC/.git" ]; then
     git clone --branch "$TAG" --recursive --depth 1 https://github.com/LizardByte/Sunshine "$SRC"
   fi
+  # A stale checkout at another tag would patch the wrong base.
+  local at; at=$(git -C "$SRC" describe --tags --exact-match 2>/dev/null || true)
+  [ "$at" = "$TAG" ] || die "$SRC is at '${at:-no exact tag}', not $TAG; remove it or point SB_SRC at a fresh clone"
   # apply the patch once; skip if already applied
   if git -C "$SRC" apply --reverse --check "$PATCH" 2>/dev/null; then echo "patch already applied"
   else git -C "$SRC" apply "$PATCH"; fi

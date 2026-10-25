@@ -1,4 +1,6 @@
 # Shared by brisk-up.sh and brisk-down.sh (sourced; needs $RUN).
+# sunshine-brisk.sh's drop-in (same SB_DROPIN_DIR override).
+BRISK_DROPIN=${SB_DROPIN_DIR:-$HOME/.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service.d}/brisk.conf
 serverinfo_free() {
   curl -s --max-time 5 http://127.0.0.1:47989/serverinfo | grep -q '<state>SUNSHINE_SERVER_FREE</state>'
 }

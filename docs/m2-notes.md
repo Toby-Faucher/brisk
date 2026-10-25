@@ -275,13 +275,17 @@ moves are all +-5).
 
 ## Running it
 
-- Up: `scripts/brisk-up.sh [--secs N]`. Builds (capped, `nice`), makes or renews the certificate,
-  switches Sunshine to the patched build if it is FREE (`sunshine-brisk.sh install` + `enable`,
-  restarts kept 100 s apart), serves the page on 127.0.0.1:8443, and runs the bridge in the
+- Up: `scripts/brisk-up.sh [--secs N]`. Checks the listen address first (IPv4:PORT, not 0.0.0.0),
+  builds inside the same memory-capped scope as the Sunshine build (`scripts/capped.sh`; it refuses
+  to build if the cap is not enforced), makes or renews the certificate, switches Sunshine to the
+  patched build only if it is FREE (checked before `sunshine-brisk.sh install` writes the drop-in,
+  then `enable`; restarts kept 100 s apart), serves the page on 127.0.0.1:8443, and runs the bridge in the
   foreground. It prints the `ssh -L` line and the page URL.
-- Down: Ctrl-C (the bridge cancels its own Sunshine session), then `scripts/brisk-down.sh`: stops the
-  bridge and page server if still running, then `sunshine-brisk.sh rollback` (stock Sunshine,
-  refuses while busy).
+- Down: Ctrl-C in brisk-up's terminal (brisk-up sends the bridge SIGTERM, which it handles like
+  SIGINT, and cancels its own Sunshine session), then `scripts/brisk-down.sh`: SIGTERM to the bridge
+  and the page server if still running, then `sunshine-brisk.sh rollback` (stock Sunshine, refuses
+  while busy) whenever the brisk build runs *or* its drop-in exists. Stub tests:
+  `scripts/test-brisk-up-down.sh`, `scripts/test-brisk-up-exit.sh`, `scripts/test-sunshine-brisk.sh`.
 - Headless check on bawn: `cd web && node scripts/headless.mjs '<page URL>' --secs 20 [--stall 3000] [--input 30]`
   (`--input`: safe key and motion rounds, see Input).
   It clicks Connect itself (a trusted click, so the AudioContext runs).
@@ -422,6 +426,16 @@ Resolved means measured or exercised on bawn; "laptop" items stay open until Tob
 
 Not covered here: the build-section [U]s (§5, Task 2), SEQPACKET limits (§7 risk 2, Task 3).
 
+## Known follow-ups (after Toby's laptop run)
+
+- Wheel scale on Linux Chrome: about 53 px per notch; if one notch does nothing on bawn, snap the
+  sum to whole notches.
+- `AvPing` media sockets bind 0.0.0.0 (M1 code); bind them to the local address that matches
+  `--host`.
+- Timing-dependent tests that may flake in CI: `control_handle_idr_is_rate_limited_to_one_per_100ms`,
+  `stream_tap_receives_frames_from_the_tap`, `stream_tap_falls_back_to_rtp`,
+  `full_send_buffer_drops_oldest`, `a_send_that_just_fits_evicts_nothing`.
+
 ## Toby to run (laptop Chrome): video, audio and input in one sitting, then Moonlight
 
 About 30 minutes. Bawn shows Steam Big Picture; nothing here clicks anything risky on it.
@@ -438,6 +452,8 @@ Video (first minute)
    prefer-hardware` (or `no-preference` if Chrome has no hardware H.264 decode on the laptop),
    `1920x1080`, `received` and `decoded` climbing about 60 per second, `decode errors 0`,
    `decodeQueueSize` 0-2, `bridge_write-capture p50` about 5-7 ms, and the bawn desktop visible.
+   `key requests` climbing while `streams reset` stays 0 means network reordering of per-frame
+   streams, not a bug; note the count.
 
 Input (about 5 minutes; do it early so the long soak below runs with input used)
 5. The `input` line says `click the video to capture`. **Click the video once.** Chrome hides the cursor and shows
@@ -490,6 +506,7 @@ Soak (10 minutes, the M2 gate on the real path)
     `delay over best`, `dropped`/`key requests`, the audio line (`lost`, `underruns [.. ms]`,
     `drift -x/+y`, `buffer`, `output`) and the input line.
 15. Close the tab (that releases everything on bawn), then press **Ctrl-C** in the brisk-up terminal
+    (brisk-up passes it on to the bridge as SIGTERM)
     (closing the tab alone does not stop the bridge: it waits for a new viewer until `--secs` runs
     out). brisk-up then prints the bridge report: copy the `bridge_write-capture`, `frame_processing(tap-capture)`, `gate(...)`,
     `audio` and `input` lines (`input bad` should be 0; `released` counts keys the bridge let go
