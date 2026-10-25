@@ -123,9 +123,11 @@ async fn stream_start(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> R
                 .find(|g| g.appid == id)
                 .map(|g| g.name.clone())
         });
-        s.stream
-            .start(req, name)
+        // Own task: a client that hangs up must not abort a start halfway through a stop.
+        let s2 = s.clone();
+        tokio::spawn(async move { s2.stream.start(req, name).await })
             .await
+            .unwrap_or_else(|e| Err(e.to_string()))
             .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e))
     };
     match run.await {
@@ -135,7 +137,10 @@ async fn stream_start(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> R
 }
 
 async fn stream_stop(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(s.stream.stop().await).into_response()
+    match tokio::spawn(async move { s.stream.stop().await }).await {
+        Ok(i) => axum::Json(i).into_response(),
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "stop failed"),
+    }
 }
 
 #[derive(Deserialize)]
@@ -143,7 +148,8 @@ struct AppId {
     appid: u32,
 }
 
-/// `steam steam://<verb>/<appid>` for a known game: 204, 400, or 500 if steam failed.
+/// `steam steam://<verb>/<appid>` for a known game, detached: 204 once it runs, 400, or 500 if it
+/// could not start.
 async fn steam_cmd(s: Arc<AppState>, b: &[u8], verb: &'static str) -> Response {
     let id = match parse::<AppId>(b) {
         Ok(a) => a.appid,

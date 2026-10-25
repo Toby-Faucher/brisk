@@ -6,8 +6,10 @@ use crate::config::Config;
 use crate::host::Runner;
 use crate::sessions::{now_ms, SessionRec, Sessions};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{oneshot, watch};
@@ -220,21 +222,30 @@ impl Supervisor {
         tokio::spawn(async move {
             let mut lines = BufReader::new(out).lines();
             let mut page_tx = Some(page_tx);
-            while let Ok(Some(l)) = lines.next_line().await {
-                println!("bridge\t{l}");
-                if let Some(p) = l.strip_prefix("page\t") {
-                    if let (Some(tx), Some(wh)) = (page_tx.take(), parse_page(p)) {
-                        let _ = tx.send(wh);
-                    }
-                } else if l.starts_with("tap\tconnected") {
-                    if let Some(id) = launch.take() {
-                        let r = runner.clone();
-                        tokio::task::spawn_blocking(move || steam(&*r, "rungameid", id));
-                    }
+            let mut eof = false;
+            // Ends on the child's exit, not on stdout EOF: a grandchild may hold the pipe open.
+            loop {
+                tokio::select! {
+                    l = lines.next_line(), if !eof => match l {
+                        Ok(Some(l)) => {
+                            if let Some(p) = l.strip_prefix("page\t") {
+                                if let (Some(tx), Some(wh)) = (page_tx.take(), parse_page(p)) {
+                                    let _ = tx.send(wh);
+                                }
+                            } else if l.starts_with("tap\tconnected") {
+                                if let Some(id) = launch.take() {
+                                    let r = runner.clone();
+                                    tokio::task::spawn_blocking(move || steam(&*r, "rungameid", id));
+                                }
+                            }
+                            forward(l);
+                        }
+                        _ => eof = true,
+                    },
+                    _ = child.wait() => break,
                 }
             }
             drop(page_tx);
-            let _ = child.wait().await;
             let rec = {
                 let mut s = shared.lock().unwrap();
                 if s.gen != gen {
@@ -244,10 +255,17 @@ impl Supervisor {
                     s.rec.take()
                 }
             };
+            let _ = done_tx.send(true);
             if let Some(r) = rec {
                 sessions.close(r);
             }
-            let _ = done_tx.send(true);
+            // The exit report may still be in the pipe.
+            let rest = async {
+                while let Ok(Some(l)) = lines.next_line().await {
+                    forward(l);
+                }
+            };
+            let _ = tokio::time::timeout(Duration::from_secs(1), rest).await;
         });
         *slot = Some(Running { pid, done: done_rx });
         let (wt, hash) = match tokio::time::timeout(self.page_wait, page_rx).await {
@@ -355,19 +373,37 @@ fn hostname() -> String {
         .map_or_else(|_| "bawn".into(), |s| s.trim().to_string())
 }
 
-/// `appid` is a u32 validated by the caller, so the URL cannot carry anything else.
+/// `appid` is a u32 validated by the caller, so the URL cannot carry anything else. Detached:
+/// true once steam is running (it hands the URL to the running client and exits).
 fn steam(runner: &dyn Runner, verb: &str, id: u32) -> bool {
-    let mut args = graphical_env();
-    args.push("steam".into());
-    args.push(format!("steam://{verb}/{id}"));
-    let a: Vec<&str> = args.iter().map(String::as_str).collect();
-    runner.run("env", &a).is_some()
+    runner.spawn(
+        "steam",
+        &[&format!("steam://{verb}/{id}")],
+        &graphical_env(),
+    )
+}
+
+/// Bridge stdout goes to ours through a bounded queue and a thread, so a closed or full stdout
+/// never panics (println! does on EPIPE) or blocks the runtime; lines are dropped instead.
+fn forwarder<W: Write + Send + 'static>(mut w: W) -> SyncSender<String> {
+    let (tx, rx) = sync_channel::<String>(256);
+    std::thread::spawn(move || {
+        for l in rx {
+            let _ = writeln!(w, "bridge\t{l}");
+        }
+    });
+    tx
+}
+
+fn forward(l: String) {
+    static TX: OnceLock<SyncSender<String>> = OnceLock::new();
+    let _ = TX.get_or_init(|| forwarder(std::io::stdout())).try_send(l);
 }
 
 /// `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`/`DISPLAY` of the desktop session, read from one of our own
 /// `sway` or `steam` processes. [U] On bawn sway's environ is not readable (non-dumpable), so the
 /// running steam client is what answers; with neither found hostd's own env is used.
-fn graphical_env() -> Vec<String> {
+fn graphical_env() -> Vec<(String, String)> {
     let Ok(dir) = std::fs::read_dir("/proc") else {
         return vec![];
     };
@@ -380,17 +416,13 @@ fn graphical_env() -> Vec<String> {
         let Ok(env) = std::fs::read(p.join("environ")) else {
             continue;
         };
-        let vars: Vec<String> = env
+        let vars: Vec<(String, String)> = env
             .split(|b| *b == 0)
-            .filter_map(|v| std::str::from_utf8(v).ok())
-            .filter(|v| {
-                ["WAYLAND_DISPLAY=", "XDG_RUNTIME_DIR=", "DISPLAY="]
-                    .iter()
-                    .any(|k| v.starts_with(k))
-            })
-            .map(String::from)
+            .filter_map(|v| std::str::from_utf8(v).ok()?.split_once('='))
+            .filter(|(k, _)| ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY"].contains(k))
+            .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        if vars.iter().any(|v| v.starts_with("WAYLAND_DISPLAY=")) {
+        if vars.iter().any(|(k, _)| k == "WAYLAND_DISPLAY") {
             return vars;
         }
     }
@@ -409,5 +441,42 @@ mod tests {
         );
         assert_eq!(parse_page("http://localhost:8443/"), None);
         assert_eq!(parse_page("http://x/?wt=&hash="), None);
+    }
+
+    /// A broken or stuck stdout must neither panic the forwarder nor block the sender.
+    #[test]
+    fn forwarder_survives_broken_and_stuck_stdout() {
+        use std::sync::mpsc::TrySendError;
+        struct Broken;
+        impl Write for Broken {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        struct Stuck;
+        impl Write for Stuck {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                std::thread::sleep(Duration::from_secs(3600));
+                Ok(0)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let t = std::time::Instant::now();
+        let (b, st) = (forwarder(Broken), forwarder(Stuck));
+        for i in 0..1000 {
+            let _ = b.try_send(i.to_string());
+            let _ = st.try_send(i.to_string());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!matches!(
+            b.try_send("x".into()),
+            Err(TrySendError::Disconnected(_))
+        ));
+        assert!(t.elapsed() < Duration::from_secs(2));
     }
 }

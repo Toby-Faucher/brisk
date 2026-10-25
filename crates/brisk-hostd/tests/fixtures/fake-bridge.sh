@@ -1,10 +1,11 @@
 #!/bin/sh
 # Stand-in for brisk-bridge in tests. Logs "start <pid> <argv>" and "term <pid>" to $FAKE_BRIDGE_LOG.
-# FAKE_BRIDGE_MODE: early_exit (dies before the page line), quit (exits 0.3 s after tap), else runs
-# until SIGTERM.
+# FAKE_BRIDGE_MODE: early_exit (dies before the page line), quit (exits 0.3 s after tap),
+# slow_term (takes 1 s to exit after SIGTERM, logging "term" when it does), else runs until SIGTERM.
 log=${FAKE_BRIDGE_LOG:?}
 echo "start $$ $*" >> "$log"
 trap 'echo "term $$" >> "$log"; exit 0' TERM
+[ "$FAKE_BRIDGE_MODE" = slow_term ] && trap 'sleep 1; echo "term $$" >> "$log"; exit 0' TERM
 if [ "$FAKE_BRIDGE_MODE" = early_exit ]; then
   echo "error: bind: address in use" >&2
   exit 1

@@ -35,10 +35,35 @@ pub struct HostInfo {
 /// Runs a command and returns its stdout on success. Blocking; call from `spawn_blocking`.
 pub trait Runner: Send + Sync {
     fn run(&self, prog: &str, args: &[&str]) -> Option<String>;
+    /// Starts a command detached and returns once it is running (false if it could not start).
+    /// The default only suits fakes; `RealRunner` never waits.
+    fn spawn(&self, prog: &str, args: &[&str], _env: &[(String, String)]) -> bool {
+        self.run(prog, args).is_some()
+    }
 }
 
 pub struct RealRunner;
 impl Runner for RealRunner {
+    /// Own process group and null stdio, so it outlives hostd's terminal and signals; a thread reaps it.
+    fn spawn(&self, prog: &str, args: &[&str], env: &[(String, String)]) -> bool {
+        use std::os::unix::process::CommandExt;
+        let c = std::process::Command::new(prog)
+            .args(args)
+            .envs(env.iter().map(|(k, v)| (k, v)))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .process_group(0)
+            .spawn();
+        match c {
+            Ok(mut c) => {
+                std::thread::spawn(move || c.wait());
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     fn run(&self, prog: &str, args: &[&str]) -> Option<String> {
         use std::io::Read;
         let mut c = std::process::Command::new(prog)
@@ -440,6 +465,14 @@ mod tests {
         std::fs::write(p.join("name"), "k10temp").unwrap();
         std::fs::write(p.join("temp1_input"), "48000").unwrap();
         assert_eq!(read_temps(d.path()).0, Some(48.0));
+    }
+
+    #[test]
+    fn real_runner_spawn_does_not_wait() {
+        let t = std::time::Instant::now();
+        assert!(RealRunner.spawn("sleep", &["5"], &[]));
+        assert!(t.elapsed() < Duration::from_secs(1));
+        assert!(!RealRunner.spawn("/nonexistent/brisk-steam", &[], &[]));
     }
 
     #[test]

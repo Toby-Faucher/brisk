@@ -478,11 +478,23 @@ async fn sunshine_restart_204_then_429_and_host_is_json() {
 
 const FAKE_BRIDGE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-bridge.sh");
 
+/// `run` is slow on purpose: steam commands must use the detached `spawn`, never wait.
 struct Calls(std::sync::Mutex<Vec<String>>);
 impl brisk_hostd::host::Runner for Calls {
     fn run(&self, p: &str, a: &[&str]) -> Option<String> {
-        self.0.lock().unwrap().push(format!("{p} {}", a.join(" ")));
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("run {p} {}", a.join(" ")));
         Some(String::new())
+    }
+    fn spawn(&self, p: &str, a: &[&str], _env: &[(String, String)]) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("spawn {p} {}", a.join(" ")));
+        true
     }
 }
 struct Clock0;
@@ -819,6 +831,7 @@ async fn non_numeric_appid_is_400() {
 #[tokio::test]
 async fn launch_and_install_run_steam() {
     let r = rig("");
+    let t = std::time::Instant::now();
     assert_eq!(
         r.call("POST", "/api/launch", r#"{"appid":10}"#).await.0,
         StatusCode::NO_CONTENT
@@ -828,12 +841,17 @@ async fn launch_and_install_run_steam() {
         StatusCode::NO_CONTENT
     );
     let c = r.steam_calls();
-    assert_eq!(c.len(), 2);
     assert!(
-        c[0].starts_with("env ") && c[0].ends_with(" steam steam://rungameid/10"),
-        "{c:?}"
+        t.elapsed() < std::time::Duration::from_secs(1),
+        "waited for steam"
     );
-    assert!(c[1].ends_with(" steam steam://install/10"), "{c:?}");
+    assert_eq!(
+        c,
+        [
+            "spawn steam steam://rungameid/10",
+            "spawn steam steam://install/10"
+        ]
+    );
     assert!(r.log().is_empty(), "launch alone does not start a bridge");
 }
 
@@ -910,4 +928,39 @@ async fn sessions_returns_latest_first() {
     assert_eq!(s[0]["ended"], 25009);
     assert_eq!(s[1]["started"], 24000);
     assert_eq!(s[19]["started"], 6000);
+}
+
+#[tokio::test]
+async fn dropped_request_mid_stop_still_leaves_one_bridge() {
+    let r = rig("slow_term");
+    let (st, _) = r.call("POST", "/api/stream", r#"{"preset":"fast"}"#).await;
+    assert_eq!(st, StatusCode::OK);
+    // The client goes away while hostd waits for the first bridge to exit.
+    let quit = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        r.call("POST", "/api/stream", r#"{"preset":"crisp"}"#),
+    )
+    .await;
+    assert!(
+        quit.is_err(),
+        "expected the request to still be stopping the first bridge"
+    );
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    r.call("DELETE", "/api/stream", "").await;
+    let log = r.log();
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("start")).count(),
+        3,
+        "{log:?}"
+    );
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("term")).count(),
+        3,
+        "{log:?}"
+    );
+    assert_one_at_a_time(&log);
+    assert_eq!(r.call("GET", "/api/stream", "").await.1["state"], "idle");
 }
