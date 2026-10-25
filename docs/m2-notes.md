@@ -156,6 +156,109 @@ autoplay policy); the page now waits for that click before it connects.
 - The decoder is re-created after an error at most 5 times in a row without a decoded packet;
   then audio stops and `last error` says so.
 
+## Input (Task 6)
+
+Wire format (page to bridge): the page opens **one WebTransport bidirectional stream** (one stream
+keeps a key-down ahead of its key-up; separate uni streams would not be ordered) and writes
+frames `len u8` + `len` bytes of body. The body is `kind u8` + fields, little-endian:
+
+| kind | body | meaning |
+|---|---|---|
+| `0x10` key | `vk u8, down u8 (0/1), modifiers u8` | Windows virtual-key code; modifiers 1 shift, 2 ctrl, 4 alt, 8 meta |
+| `0x11` move | `dx i16, dy i16` | relative motion |
+| `0x12` button | `button u8 (1 L, 2 M, 3 R, 4 X1, 5 X2), down u8` | mouse button |
+| `0x13` scroll | `amount i16` | vertical wheel, 120 = one notch, positive = up |
+
+The stream header is Chrome's (`0x41`, session id). The bridge never writes on the stream. The
+one-byte "need a key frame" uni streams (above) are unchanged.
+
+Page (`web/src/lib/input.ts`):
+- A click on the video focuses the canvas and asks for Pointer Lock. The click itself is never sent
+  (it happens before the lock). Keys are sent while the canvas has focus. Motion, buttons and
+  wheel are sent only while locked.
+- Keys go by `KeyboardEvent.code` (the physical key, so AZERTY's `q` key is still `KeyA` = 0x41 and
+  the host's layout decides the character): letters, digits, F1-F24, arrows, editing keys, left
+  and right modifiers as VK_LSHIFT 0xA0 / VK_RSHIFT 0xA1 / VK_LCONTROL 0xA2 / ... / VK_LWIN 0x5B
+  (like moonlight-qt), numpad (NumpadEnter = VK_RETURN, as Moonlight sends it), punctuation by
+  US position (VK_OEM_*). Mapped keys get `preventDefault` (Chrome ignores it for its reserved
+  shortcuts such as Ctrl+W, which is fine). Repeats are not sent: Sunshine repeats held keys itself
+  (`key_repeat_delay`, input.cpp).
+- **Escape is never sent.** While locked, Chrome leaves Pointer Lock on Escape itself; the page
+  then also drops keyboard focus and releases everything. Without the lock (keyboard-only focus),
+  Escape drops focus. So Escape always gets you out. Limit: no Escape reaches the host in M2 (Big
+  Picture "back" is Backspace or B on a controller). [CALL] for Toby: a different release combo
+  if a game needs Escape.
+- Motion is summed and sent at most every 8 ms (`FLUSH_MS`): a 1 kHz mouse is 125 messages a
+  second. Motion is also flushed before any key or button so order holds. If the stream's
+  writer is backed up (`desiredSize <= 0`), motion and wheel are dropped (`dropped`), keys and
+  buttons never.
+- The first non-zero motion after a lock request is dropped: it is the cursor jumping into the
+  lock, not the user (headless Chromium: -640,-360 on its 1280x720 page, sent *before*
+  `pointerlockchange`, which is why the flag is set on the click).
+- Everything held is released (key-ups and button-ups) on window `blur`, `visibilitychange` to
+  hidden, `pagehide`, Pointer Lock loss, and transport close.
+
+Bridge (`crates/brisk-bridge/src/input.rs`):
+- Each viewer gets a task that accepts its bidi streams (`wt::Session::accept_bi`, header
+  checked by `wt::is_webtransport_bi`); each stream gets its own reader task. Readers push into one
+  bridge-wide `InputQueue`; one `send_loop` (beside `forward` in `main.rs`) hands events to
+  `ControlHandle::send_input`. Video and audio never wait on input.
+- Unknown kind, wrong length, vk 0 or 0xFF, unknown modifier bits, button outside 1..5, `down`
+  not 0/1: dropped and counted `bad`; the stream and session go on. A frame cut off by the stream's
+  end is ignored.
+- The queue knows what is held. A press of a held key and a release of a key that is not held are
+  dropped (repeats, or the release of a press that was dropped). Motion and scroll merge into a
+  queued motion/scroll right before them (`coalesced`), never across a key or button.
+- At most 32 droppable events (motion, scroll, presses) are queued; when full the oldest motion or
+  scroll is evicted, or, with only presses queued, the new press or motion is dropped
+  (`dropped`). Releases are never dropped and never count against the 32 (each needs an earlier
+  press, so they stay bounded too).
+- `send_input` errors: `Closed` = the control session is over, the bridge stops. Anything else
+  (`Timeout`: not drained for 1 s) is not fatal: that event is dropped (`timeouts`), except a
+  release, which goes back to the front of the queue and is retried.
+- A stream that ends (tab closed, reload, connection lost or idle-timed-out) releases every held
+  key (in vk order) and button (`released`). When the bridge stops (Ctrl-C, `--secs`, host
+  ended), it sends every release still owed straight on the control session before the ENet
+  disconnect. Sunshine also resets its input state when a session ends (`input::reset`,
+  input.cpp), so a key could stay down only while a live session's control path is stuck.
+- shortcut: an event already handed to `ControlHandle` but not yet sent by the control loop when
+  the bridge stops is lost (at most one release, in a window of microseconds); Sunshine's own
+  session-end reset covers it. Upgrade if input ever moves off the control session.
+- The report prints `input received sent bad coalesced dropped timeouts released`.
+
+Headless (chromium_headless_shell-1248 on bawn): **Pointer Lock works** on a CDP click (a trusted
+gesture); `document.pointerLockElement` is the canvas. But under the lock each CDP
+`Input.dispatchMouseEvent` move becomes a jump from the parked cursor and back (`+640,+360` then
+`-640,-360`), so CDP cannot drive `movementX/Y` there. `headless.mjs --input` therefore sends keys
+with CDP key events (trusted, through `keydown`/`keyup` and the `code` table) and motion with page
+`MouseEvent`s carrying `movementX/Y` (same handler, not trusted). Proven headless: lock request on
+click, the click not forwarded, keys by code with modifiers, motion coalescing and framing, the
+bridge mapping, Sunshine decoding them. Not proven headless: real mouse `movementX` values under
+Pointer Lock on the laptop, mouse buttons and wheel live (not sent: the host shows Steam Big
+Picture), and what the host does with the keys (Sunshine's log shows the decode, not the effect).
+
+### Input, live on bawn (2026-10-24, patched Sunshine, Steam Big Picture on screen)
+
+Safe input only: Shift, `a`, `b`, and +-5 px moves that end where they started; no clicks, no
+other keys. Sunshine's `min_log_level = verbose` log was only grepped for its packet lines and
+counted (it holds session keys and cookies); no raw lines are kept.
+
+| run | page sent | bridge received / sent / bad | Sunshine decoded |
+|---|---|---|---|
+| 3 short runs (first harness, before the lock-jump fix) | 30 keys, 7 moves | 37 / 37 / 0 | 30 keyboard packets, 7 relative moves, 0 buttons, 0 scroll |
+| M2 gate run (10 min, 20 rounds every 30 s) | 120 keys, 80 moves | 200 / 200 / 0 | 120 keyboard, 80 relative moves (20 each of dx +5, -5, dy +5, -5), 0 buttons, 0 scroll |
+
+Keyboard packets decode like Moonlight's (docs/moonlight-compare.md: keyAction 3, keyCode 8041 for
+`a`): keyAction `00000003` / `00000004` for down / up, keyCode `8041` (`a`), `8042` (`b`), `80A0`
+(left Shift), every down with its up (25 each over all runs). Relative moves decode with the
+deltas sent.
+
+Deviation: before the lock-jump fix, the first three runs each sent one `-640,-360` relative move
+(headless Chromium's cursor jumping into the lock, see above), so bawn's pointer moved toward the
+top-left corner three times. No click or other key went with it. The gate run sent none (the 80
+moves are all +-5).
+
+
 ## Running it
 
 - Up: `scripts/brisk-up.sh [--secs N]`. Builds (capped, `nice`), makes or renews the certificate,
@@ -165,7 +268,8 @@ autoplay policy); the page now waits for that click before it connects.
 - Down: Ctrl-C (the bridge cancels its own Sunshine session), then `scripts/brisk-down.sh`: stops the
   bridge and page server if still running, then `sunshine-brisk.sh rollback` (stock Sunshine,
   refuses while busy).
-- Headless check on bawn: `cd web && node scripts/headless.mjs '<page URL>' --secs 20 [--stall 3000]`.
+- Headless check on bawn: `cd web && node scripts/headless.mjs '<page URL>' --secs 20 [--stall 3000] [--input 30]`
+  (`--input`: safe key and motion rounds, see Input).
   It clicks Connect itself (a trusted click, so the AudioContext runs).
 
 ## What the headless Chromium run proves, and what it cannot
@@ -248,35 +352,142 @@ audio decoded. Cannot prove: that it is audible (headless Chromium has no real o
 null sink still clocks the worklet), laptop Chrome's audio device clock and latency, the Tailscale
 path. That is Toby's listening check below.
 
-## Toby to run (laptop Chrome)
+### M2 gate run: video + audio + input (2026-10-24, Task 6)
 
-1. On bawn (needs Sunshine idle): `cd ~/Projects/brisk && scripts/brisk-up.sh --secs 660`
+`scripts/brisk-up.sh --secs 650` (bridge on bawn's Tailscale IP, patched Sunshine, app 870779643,
+1080p60 H.264, static Big Picture screen), then `headless.mjs --secs 600 --stall 3000 --input 30`
+(headless Chromium on bawn, software decode). Both latency stamps are CLOCK_MONOTONIC on bawn.
+
+| quantity | value |
+|---|---|
+| tap frames / sent to the page / decoded by the page | 37666 / 34821 / 34610 |
+| decode errors | 0 |
+| `bridge_write - capture` (bridge report, n 30054) | p50 5.9, p99 8.1 ms |
+| `frame_processing_latency` = `tap - capture` (n 32442) | p50 5.9, p99 8.0 ms |
+| `bridge_write - tap` (n 34821) | p50 0.1, p99 0.2 ms |
+| M2 latency gate (p50 5.9 <= 5.9 + 2) | PASS |
+| page `bridge_write - capture` (last 600 frames) | p50 5.7, p99 6.1 ms |
+| headless software decode / present (last 600 frames) | decode p50 1.1, p99 8.7 ms; present p50 13.0, p99 20.3 ms |
+| page drops / key requests / streams reset | 168 (start-up IDR wait and after the 3 s stall) / 2 / 0 |
+| bridge browser_leg reset / dropped / IDR requests | 40 / 549 / 12 (the 10 s after the headless browser closed: dead tab until the idle timeout, as in Task 4) |
+| audio, bridge | packets 129991, recovered 0, lost 3, errors 0, reordered 1, skipped 3, late 0, sent 122048, evicted 1918 (dead-tab window), too_large 0, queue_full 0 |
+| audio, page | datagrams 120044 / decoded 120044 / decode errors 0, lost 0, late 0, underruns 9 (1-7 ms each), pauses 0, overflows 1, buffer 22.9 ms, drift -669/+0, non-silent 0 (host silent) |
+| input, page | 120 keys, 80 moves, 0 buttons, 0 scrolls, 0 dropped, Pointer Lock granted |
+| input, bridge | received 200, sent 200, bad 0, coalesced 0, dropped 0, timeouts 0, released 0 |
+| input, Sunshine log | 120 keyboard packets, 80 relative moves |
+| bridge CPU / RSS | about 2.4 % / 6.6 MB |
+
+The bridge's 3 audio `lost` (FEC could not rebuild them; this run went over the Tailscale IP, Task
+5's over loopback) were not seen by the page (page `lost` 0 counts every seq gap it sees), so they
+fell outside the page's 600 s: before it connected or after it closed.
+
+## [U] items resolved during M2
+
+From `research/m2-tap-design.md` (section numbers), `docs/design.md` and `docs/m0-baseline.md`.
+Resolved means measured or exercised on bawn; "laptop" items stay open until Toby's run.
+
+| [U] | status | evidence |
+|---|---|---|
+| §1 `steady_clock` is `CLOCK_MONOTONIC` | resolved | `bridge_write - capture` (bridge clock) p50 6.0 ms vs `frame_processing` p50 5.9 ms (Sunshine's stamp): the two clocks agree to 0.1 ms; another clock would give nonsense |
+| §2 extra kernel copy costs tens of µs | resolved | Task 3: tap `recv` p50 13-41 µs, p99 159-204 µs; `bridge_write - tap` p50 0.1, p99 0.2 ms over 10 min |
+| §2 a 1080p IDR is 100-500 KB | partly: static screen only | `fixtures/tap/`: IDR 24.3 KB, P-frames median 7.8 KB, max 31 KB (static screen; 20 Mbit/s asked, about 15 Mbit/s granted). A moving scene is not measured |
+| §4.1 200 audio datagrams/s are fine for QUIC | resolved | Task 5: 120045 datagrams in 10 min, 0 lost on loopback; this gate run below over the Tailscale IP |
+| §4.2 WebCodecs Opus stereo needs no description | resolved | Task 5: 120045 decoded, 0 errors with `{codec:"opus", sampleRate:48000, numberOfChannels:2}` |
+| §4.3 Opus PLC is not exposed by WebCodecs | confirmed | no PLC option in `AudioDecoder`; the page conceals (Audio section) |
+| §4.5 AudioContext needs a user gesture | resolved | the Connect click; headless (a CDP click is a trusted gesture) reports `running` |
+| §6 Chrome WebTransport + `serverCertificateHashes` shipping behaviour | resolved for Chromium 1248 (headless) | WebTransport stack section; laptop Chrome still open (Toby) |
+| §6 server-side stream priority API | resolved | quinn `SendStream::set_priority` (`wt::Session::open_uni`) |
+| §6 RFC 6381 `avc1` byte order | resolved | `codecFromSps` gives `avc1.640c2a` from Sunshine's SPS; `isConfigSupported` accepts it and frames decode |
+| §6 Linux Chrome hardware decode | open (laptop) | headless: `prefer-hardware` false, `no-preference` true (software) |
+| §7 wtransport or web-transport-quinn | resolved: neither | WebTransport stack section (both need ring/aws-lc) |
+| design.md §8.3 `num_reorder_frames=0` in the SPS VUI | resolved | Task 3: VUI present, `max_num_reorder_frames=0`, `max_dec_frame_buffering=1` (whether VAAPI or Sunshine wrote it is still open) |
+| m0-baseline: is Moonlight Qt on Toby's client | resolved | moonlight-qt 6.1.0 on the laptop (docs/moonlight-compare.md) |
+| Task 6: Pointer Lock in headless Chromium | resolved | granted on a CDP click; CDP motion under lock is unusable (Input section) |
+| Task 6: Sunshine decodes the page's keys like Moonlight's | resolved | keyAction 3/4, keyCode 0x8041 for `a` (Moonlight's own run: keyAction 3, 8041); live counts below |
+| Task 6: Sunshine's Linux keymap knows VK_LSHIFT 0xA0 etc. | open | Sunshine decodes keyCode 0x80A0; the VK to evdev table is in its inputtino submodule, empty in the pinned tree. Toby's step 9 (Shift+letter) checks the effect |
+
+Not covered here: the build-section [U]s (§5, Task 2), SEQPACKET limits (§7 risk 2, Task 3).
+
+## Toby to run (laptop Chrome): video, audio and input in one sitting, then Moonlight
+
+About 30 minutes. Bawn shows Steam Big Picture; nothing here clicks anything risky on it.
+
+Setup
+1. On bawn (needs Sunshine idle; brisk-up refuses otherwise): `cd ~/Projects/brisk && scripts/brisk-up.sh --secs 1800` (30 min; Ctrl-C when done)
 2. On the laptop: `ssh -N -L 8443:127.0.0.1:8443 bawn` (leave it open).
 3. In Chrome on the laptop, open the `page` URL that brisk-up printed
    (`http://localhost:8443/?wt=https://100.80.84.102:4433/<token>&hash=<sha256>`).
-   Click **Connect** (it starts audio; Chrome only allows sound after a click).
+   Click **Connect** (it also starts audio; Chrome only allows sound after a click).
+
+Video (first minute)
 4. The stats box should show within a few seconds: `codec avc1.640c2a supported true hw
    prefer-hardware` (or `no-preference` if Chrome has no hardware H.264 decode on the laptop),
    `1920x1080`, `received` and `decoded` climbing about 60 per second, `decode errors 0`,
    `decodeQueueSize` 0-2, `bridge_write-capture p50` about 5-7 ms, and the bawn desktop visible.
-5. Leave the tab in front for 10 minutes. Pass: `decode errors 0` at the end and the desktop moving
-   when something changes on bawn. Note `decode p50/p99` and `present p50/p99` (they go into
-   docs/m0-baseline.md "client decode" and "client present queue"), and `dropped`/`key requests`.
-6. When `--secs` runs out (or Ctrl-C) brisk-up prints the bridge report: copy the
-   `bridge_write-capture`, `frame_processing(tap-capture)` and `gate(...)` lines.
-7. `scripts/brisk-down.sh` (back to stock Sunshine).
 
-Audio, in the same run (play something on bawn: music in a browser on bawn's desktop, or
-`pw-play --target sink-sunshine-stereo <file.wav>` over ssh):
-- The `audio` lines should show `running`, `packets` and `decoded` climbing about 200 per second,
-  `decode errors 0`, `buffer` between about 15 and 30 ms, `non-silent` climbing while sound plays.
-- Listen for 10 minutes. Pass: no audible clicks or dropouts, and `lost` and `underruns` stay at
-  or near 0 (note their final values and `drift -x/+y`).
+Input (about 5 minutes; do it early so the long soak below runs with input used)
+5. The `input` line says `click the video to capture`. **Click the video once.** Chrome hides the cursor and shows
+   "Press Esc to show your cursor"; the input line says `captured (Esc releases)`. That click is not sent to bawn.
+6. **Getting out: press Esc once.** Chrome leaves Pointer Lock, the page drops keyboard capture and
+   releases every key and button on bawn; the line says `click the video to capture`. Escape itself
+   is never sent to bawn (so Big Picture "back" is Backspace here). Switching tab, Alt-Tab or
+   minimising also releases everything.
+7. Mouse: move it slowly, then quickly in circles. The bawn cursor should follow with no jump when
+   the lock starts, and `moves` climbs (at most about 125 a second however fast the mouse is).
+   Left click on a harmless spot of Big Picture, right click, scroll the wheel a few notches (a
+   list scrolls one item per notch or so), the side buttons if the mouse has them: `buttons` and
+   `scrolls` climb. Watch for: a stuck button (dragging without holding), scroll running the wrong
+   way or several notches per click.
+8. Keyboard: arrows and Backspace in Big Picture's menus; type in a text field (Big Picture's search,
+   or a terminal on bawn's desktop if one is open): letters, digits, Shift+letters, punctuation
+   `-=[];',./\` and the numpad. Characters follow bawn's keyboard layout, not the laptop's. Hold
+   a letter for 2 s: it repeats on bawn (Sunshine repeats held keys) and stops the moment you let
+   go. Watch for: a key that keeps repeating after release (stuck), or wrong characters.
+9. Stuck-key test: hold Shift, then press Esc while still holding it; release Shift. Type a letter:
+   it must be lowercase. Same with holding a mouse button and Alt-Tab away: back on the page,
+   nothing on bawn is still pressed.
+10. Do not use Ctrl+Alt+Shift+<key> on the page: that is Sunshine's own shortcut prefix (it would
+    act on bawn's Sunshine, e.g. switch displays). Chrome keeps its own shortcuts (Ctrl+W, Ctrl+T,
+    Ctrl+Tab) even while captured.
+11. Note `keys`, `buttons`, `moves`, `scrolls`, `dropped` (should be 0) and `release-all`.
+
+Audio (in the same run; play something on bawn: music in a browser on bawn's desktop, or
+`pw-play --target sink-sunshine-stereo <file.wav>` over ssh)
+12. The `audio` lines should show `running`, `packets` and `decoded` climbing about 200 per second,
+    `decode errors 0`, `buffer` between about 15 and 30 ms, `non-silent` climbing while sound plays.
 - Glitch or silence? A glitch you hear should line up with `lost` or `underruns` going up. A quiet
   host shows as `non-silent` stopping, or `pauses` going up if Sunshine stops sending; neither is a
   glitch. If you hear a glitch and no counter moved, note the time: it is the laptop's audio device
   or Chrome, not the stream.
 - Note `output` (ms the laptop's audio device adds after the ring) for the A/V budget.
-- At the end, copy the bridge's `audio` line (`lost`, `skipped`, `late`, `evicted`, `queue_full`
-  should be 0 or small; `recovered` and `reordered` show FEC repairs played in place), and the
-  page's `underruns [.. ms]` list.
+
+Soak (10 minutes, the M2 gate on the real path)
+13. Leave the tab in front, sound playing, for 10 minutes; move the mouse and type now and then.
+    Pass: `decode errors 0` at the end, the desktop moving when something changes on bawn, no audible
+    clicks or dropouts (`lost` and `underruns` at or near 0), no stuck input.
+14. Write down from the stats box: `decode p50/p99` and `present p50/p99` (they go into
+    docs/m0-baseline.md "client decode" and "client present queue", laptop column), `arrival jitter`,
+    `delay over best`, `dropped`/`key requests`, the audio line (`lost`, `underruns [.. ms]`,
+    `drift -x/+y`, `buffer`, `output`) and the input line.
+15. Close the tab (that releases everything on bawn), or let `--secs` run out. brisk-up prints the
+    bridge report: copy the `bridge_write-capture`, `frame_processing(tap-capture)`, `gate(...)`,
+    `audio` and `input` lines (`input bad` should be 0; `released` counts keys the bridge let go
+    of for you).
+16. `scripts/brisk-down.sh` (stock Sunshine back; it refuses while a session is busy).
+
+Moonlight head-to-head (same laptop, same network path, stock Sunshine, about 5 minutes)
+17. After brisk-down, start moonlight-qt on the laptop and stream bawn's same app at 1920x1080 60 fps,
+    H.264, 20 Mbit/s (the Brisk settings), same decoder choice you want to compare (Settings ->
+    Video decoder: hardware first; note which one Moonlight actually used).
+18. Press **Ctrl+Alt+Shift+S** in the stream to show Moonlight's performance overlay. Do the same
+    things as above for 2-3 minutes (mouse, keys, sound). Write down: `Incoming frame rate from
+    network`, `Decoding frame rate`, `Rendering frame rate`, `Frames dropped by your network
+    connection`, `Frames dropped due to network jitter`, `Host processing latency` (Sunshine's
+    `frame_processing_latency`, compare with the bridge's `frame_processing` line), `Average network latency`, `Average
+    decoding time`, `Average frame queue delay`, `Average rendering time`. Take a screenshot of the
+    overlay. These are the Moonlight column in docs/m0-baseline.md (client decode = average decoding
+    time, present queue = frame queue delay + rendering time).
+19. Feel test, both ways: which one's mouse feels faster, any stutter. A note is enough.
+20. Quit with **Ctrl+Alt+Shift+Q** (ends the stream and quits the app on bawn), check
+    `curl -s http://127.0.0.1:47989/serverinfo | grep -o '<state>[^<]*'` on bawn says
+    `SUNSHINE_SERVER_FREE`.

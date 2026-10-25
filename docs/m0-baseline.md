@@ -12,7 +12,7 @@ Cells: `PENDING (Toby)` = needs Toby's client machine; `PENDING (Task 12)` = hos
 | client present queue | PENDING (Toby) | Moonlight Qt stats overlay | PENDING | PENDING |
 | total host-to-client | PENDING | sum of the above | PENDING | PENDING |
 
-[U] Whether Moonlight Qt is installed on Toby's client machine (the overlay rows need it).
+Resolved: moonlight-qt 6.1.0 is on Toby's laptop (docs/moonlight-compare.md); the overlay rows need his run.
 
 ## How to fill the Task 12 rows
 
@@ -90,4 +90,25 @@ the output callback (the newest frame wins; older ones are closed unpainted).
 | client decode | p50 4.1, p99 11.4 ms (10 min, 34619 frames, 0 errors) | PENDING (Toby, docs/m2-notes.md "Toby to run") |
 | client present queue | p50 9.9, p99 19.4 ms (headless rAF) | PENDING (Toby) |
 | `bridge_write - capture` (bawn clock) | p50 6.0, p99 8.0 ms vs `frame_processing_latency` p50 5.9, p99 7.9 ms: M2 gate PASS | same host side |
+
+### M2 gate run with video + audio + input (2026-10-24, Task 6)
+
+Measured on bawn with headless Chromium (software decode, no GPU, the bridge on bawn's Tailscale
+IP, page on bawn): NOT the laptop and NOT the real network path. Details: docs/m2-notes.md
+"M2 gate run: video + audio + input".
+
+| quantity | bawn, headless Chromium (measured) | laptop Chrome over Tailscale |
+|---|---|---|
+| duration, resolution | 10 min, 1920x1080 at 60 fps, H.264 | PENDING (Toby, docs/m2-notes.md "Toby to run") |
+| decode errors | 0 (34610 frames decoded) | PENDING (Toby) |
+| `bridge_write - capture` (bridge report) | p50 5.9, p99 8.1 ms | same host side (Toby's run reprints it) |
+| `frame_processing_latency` (tap - capture) | p50 5.9, p99 8.0 ms | same host side |
+| M2 gate: bridge p50 <= fpl p50 + 2 ms | PASS (5.9 <= 7.9) | PENDING (Toby's run) |
+| `bridge_write - tap` | p50 0.1, p99 0.2 ms | same host side |
+| client decode | p50 1.1, p99 8.7 ms (software) | PENDING (Toby) |
+| client present queue | p50 13.0, p99 20.3 ms (headless rAF) | PENDING (Toby) |
+| network path | none (same box) | PENDING (Toby) |
+| audio | 120044 decoded, 0 decode errors, page lost 0, underruns 9, bridge lost 3 | PENDING (Toby: listening check) |
+| input | 200 messages (120 keys, 80 moves) page = bridge = Sunshine decoded, 0 bad, 0 dropped | PENDING (Toby: real mouse, buttons, wheel, typing) |
+| Moonlight overlay, same path (head-to-head) | n/a | PENDING (Toby, "Toby to run" steps 17-20) |
 
