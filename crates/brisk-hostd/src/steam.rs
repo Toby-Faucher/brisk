@@ -271,17 +271,23 @@ async fn fetch_owned(cfg: &Config) -> Option<Vec<Owned>> {
     serde_json::from_value(v.get("response")?.get("games")?.clone()).ok()
 }
 
-/// Steam account id: the one with the newest `loginusers.vdf` entry marked MostRecent.
+/// Steam account id: the entry marked MostRecent, else (newer clients drop that field) the one
+/// with the newest `timestamp`.
 fn steam_id(steam_dir: &Path) -> Option<String> {
     let text = std::fs::read_to_string(steam_dir.join("config/loginusers.vdf")).ok()?;
     let top = parse_vdf(&text)?;
     let V::M(users) = get(&top, "users")? else {
         return None;
     };
-    users.iter().find_map(|(id, u)| match u {
-        V::M(u) if get_s(u, "MostRecent") == Some("1") => Some(id.clone()),
-        _ => None,
-    })
+    let ts = |u: &[(String, V)]| get_s(u, "timestamp").and_then(|t| t.parse::<u64>().ok());
+    users
+        .iter()
+        .filter_map(|(id, u)| match u {
+            V::M(u) => Some((get_s(u, "MostRecent") == Some("1"), ts(u), id)),
+            _ => None,
+        })
+        .max_by_key(|(recent, t, _)| (*recent, *t))
+        .map(|(_, _, id)| id.clone())
 }
 
 async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
@@ -365,5 +371,21 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     GamesResult {
         games,
         owned_available,
+    }
+}
+
+#[cfg(test)]
+mod steam_id_tests {
+    use super::steam_id;
+
+    #[test]
+    fn newest_timestamp_when_no_mostrecent() {
+        let d = std::env::temp_dir().join(format!("brisk-sid-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("config")).unwrap();
+        let u = |id: &str, t: u32| format!("\t\"{id}\"\n\t{{\n\t\t\"timestamp\"\t\"{t}\"\n\t}}\n");
+        let vdf = format!("\"users\"\n{{\n{}{}}}\n", u("111", 5), u("222", 9));
+        std::fs::write(d.join("config/loginusers.vdf"), vdf).unwrap();
+        assert_eq!(steam_id(&d).as_deref(), Some("222"));
+        std::fs::remove_dir_all(&d).ok();
     }
 }
