@@ -20,7 +20,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(cfg: Config) -> Self {
-        Self::with_host(cfg, Arc::new(RealRunner), Arc::new(SystemClock))
+        Self::with_host(cfg, Arc::new(RealRunner), Arc::new(SystemClock::default()))
     }
 
     /// Tests inject a fake runner and clock so nothing real is restarted.

@@ -40,22 +40,45 @@ pub trait Runner: Send + Sync {
 pub struct RealRunner;
 impl Runner for RealRunner {
     fn run(&self, prog: &str, args: &[&str]) -> Option<String> {
-        let o = std::process::Command::new(prog).args(args).output().ok()?;
-        o.status
-            .success()
-            .then(|| String::from_utf8_lossy(&o.stdout).into_owned())
+        use std::io::Read;
+        let mut c = std::process::Command::new(prog)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok()?;
+        // shortcut: stdout is read after exit, so output over the pipe buffer (64 KiB) would hit the kill; fine for these commands.
+        let end = std::time::Instant::now() + Duration::from_secs(30);
+        let status = loop {
+            if let Some(st) = c.try_wait().ok()? {
+                break st;
+            }
+            if std::time::Instant::now() > end {
+                let _ = c.kill();
+                let _ = c.wait();
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let mut out = String::new();
+        c.stdout.take()?.read_to_string(&mut out).ok()?;
+        status.success().then_some(out)
     }
 }
 
 pub trait Clock: Send + Sync {
     fn now_s(&self) -> u64;
 }
-pub struct SystemClock;
+pub struct SystemClock(std::time::Instant);
+impl Default for SystemClock {
+    fn default() -> Self {
+        SystemClock(std::time::Instant::now())
+    }
+}
 impl Clock for SystemClock {
     fn now_s(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs())
+        self.0.elapsed().as_secs()
     }
 }
 
@@ -64,6 +87,7 @@ pub struct Sources {
     pub hwmon: PathBuf,
     pub uptime: PathBuf,
     pub sunshine_addr: String,
+    pub tailscale_timeout: Duration,
 }
 
 impl Default for Sources {
@@ -72,6 +96,7 @@ impl Default for Sources {
             hwmon: "/sys/class/hwmon".into(),
             uptime: "/proc/uptime".into(),
             sunshine_addr: SUNSHINE_ADDR.into(),
+            tailscale_timeout: Duration::from_secs(3),
         }
     }
 }
@@ -82,9 +107,11 @@ pub async fn host_info(cfg: &Config) -> HostInfo {
 }
 
 pub async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
-    let ts = tokio::task::spawn_blocking(move || runner.run("tailscale", &["status", "--json"]))
+    let job = tokio::task::spawn_blocking(move || runner.run("tailscale", &["status", "--json"]));
+    let ts = tokio::time::timeout(src.tailscale_timeout, job)
         .await
         .ok()
+        .and_then(Result::ok)
         .flatten();
     let (path, relay) = ts.as_deref().map_or((None, None), parse_tailscale);
     let (cpu, gpu) = read_temps(&src.hwmon);
@@ -138,13 +165,11 @@ fn read_temps(root: &Path) -> (Option<f64>, Option<f64>) {
         };
         match name.trim() {
             "coretemp" | "k10temp" if cpu.is_none() => {
-                for i in 1..=32 {
-                    let label = std::fs::read_to_string(d.join(format!("temp{i}_label")));
-                    if label.is_ok_and(|l| l.starts_with("Package") || l.trim() == "Tctl") {
-                        cpu = read(&format!("temp{i}_input"));
-                        break;
-                    }
-                }
+                let labelled = (1..=32).find(|i| {
+                    std::fs::read_to_string(d.join(format!("temp{i}_label")))
+                        .is_ok_and(|l| l.starts_with("Package") || l.trim() == "Tctl")
+                });
+                cpu = read(&format!("temp{}_input", labelled.unwrap_or(1)));
             }
             "amdgpu" | "i915" if gpu.is_none() => gpu = read("temp1_input"),
             _ => {}
@@ -184,6 +209,7 @@ pub struct Restarter {
     runner: Arc<dyn Runner>,
     clock: Arc<dyn Clock>,
     last: Mutex<Option<u64>>,
+    pub timeout: Duration,
 }
 
 #[derive(Debug, PartialEq)]
@@ -198,6 +224,7 @@ impl Restarter {
             runner,
             clock,
             last: Mutex::new(None),
+            timeout: Duration::from_secs(30),
         }
     }
 
@@ -211,7 +238,7 @@ impl Restarter {
             last.replace(now) // claimed before running, so a double click cannot slip through
         };
         let r = self.runner.clone();
-        let ok = tokio::task::spawn_blocking(move || {
+        let job = tokio::task::spawn_blocking(move || {
             r.run(
                 "systemctl",
                 &[
@@ -220,11 +247,13 @@ impl Restarter {
                     "app-dev.lizardbyte.app.Sunshine.service",
                 ],
             )
-        })
-        .await
-        .ok()
-        .flatten()
-        .is_some();
+        });
+        let ok = tokio::time::timeout(self.timeout, job)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .flatten()
+            .is_some();
         if ok {
             Ok(())
         } else {
@@ -278,6 +307,7 @@ mod tests {
             hwmon: d.path().join("none"),
             uptime: d.path().join("none"),
             sunshine_addr: "127.0.0.1:1".into(),
+            tailscale_timeout: Duration::from_secs(3),
         };
         let cfg = Config::from_env(d.path().into());
         let i = host_info_with(&cfg, &src, Fake::new(None)).await;
@@ -348,5 +378,63 @@ mod tests {
             *f.calls.lock().unwrap(),
             ["systemctl --user restart app-dev.lizardbyte.app.Sunshine.service"]
         );
+    }
+
+    struct Hang;
+    impl Runner for Hang {
+        fn run(&self, _: &str, _: &[&str]) -> Option<String> {
+            std::thread::sleep(Duration::from_millis(500));
+            Some(RELAY.into())
+        }
+    }
+
+    #[tokio::test]
+    async fn hung_tailscale_degrades_to_none() {
+        let d = tempfile::tempdir().unwrap();
+        let src = Sources {
+            hwmon: d.path().join("none"),
+            uptime: d.path().join("none"),
+            sunshine_addr: "127.0.0.1:1".into(),
+            tailscale_timeout: Duration::from_millis(50),
+        };
+        let cfg = Config::from_env(d.path().into());
+        let i = host_info_with(&cfg, &src, Arc::new(Hang)).await;
+        assert_eq!((i.path, i.relay), (None, None));
+    }
+
+    #[tokio::test]
+    async fn hung_restart_is_failed_and_slot_restored() {
+        let mut r = Restarter::new(Arc::new(Hang), Arc::new(FakeClock(AtomicU64::new(5))));
+        r.timeout = Duration::from_millis(50);
+        assert_eq!(r.restart().await, Err(RestartError::Failed));
+        assert_eq!(*r.last.lock().unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn failed_restart_restores_slot() {
+        let f = Fake::new(None);
+        let r = Restarter::new(f.clone(), Arc::new(FakeClock(AtomicU64::new(5))));
+        assert_eq!(r.restart().await, Err(RestartError::Failed));
+        assert_eq!(r.restart().await, Err(RestartError::Failed)); // not TooSoon
+        assert_eq!(f.calls.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn concurrent_restarts_run_once() {
+        let f = Fake::new(Some(""));
+        let r = Restarter::new(f.clone(), Arc::new(FakeClock(AtomicU64::new(5))));
+        let (a, b) = tokio::join!(r.restart(), r.restart());
+        assert_eq!([a, b].iter().filter(|x| **x == Ok(())).count(), 1);
+        assert_eq!(f.calls.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cpu_temp_falls_back_to_temp1() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("hwmon0");
+        std::fs::create_dir(&p).unwrap();
+        std::fs::write(p.join("name"), "k10temp").unwrap();
+        std::fs::write(p.join("temp1_input"), "48000").unwrap();
+        assert_eq!(read_temps(d.path()).0, Some(48.0));
     }
 }
