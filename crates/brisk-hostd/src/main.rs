@@ -21,7 +21,7 @@ async fn main() -> std::process::ExitCode {
         }
     };
     println!("page\thttp://localhost:8443/?s={}", cfg.secret);
-    let app = router(Arc::new(AppState { cfg }));
+    let app = router(Arc::new(AppState::new(cfg)));
     let stop = async {
         let _ = tokio::signal::ctrl_c().await;
     };

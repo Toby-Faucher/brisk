@@ -1,0 +1,14 @@
+"AppState"
+{
+	"appid"		"730"
+	"Universe"		"1"
+	"name"		"Counter-Strike 2"
+	"StateFlags"		"1026"
+	"installdir"		"x"
+	"LastPlayed"		"0"
+	"SizeOnDisk"		"500"
+	"UserConfig"
+	{
+		"language"		"english"
+	}
+}

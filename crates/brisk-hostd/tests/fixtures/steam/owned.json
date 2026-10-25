@@ -1,0 +1,7 @@
+{"response":{"game_count":6,"games":[
+{"appid":620,"name":"Portal 2","playtime_forever":600,"rtime_last_played":1700000500},
+{"appid":730,"name":"Counter-Strike 2","playtime_forever":9000,"rtime_last_played":1690000000},
+{"appid":1091500,"name":"Pokémon \"Quoted\" Legends","playtime_forever":30,"rtime_last_played":0},
+{"appid":220,"name":"Half-Life 2","playtime_forever":0},
+{"appid":400,"name":"Portal","playtime_forever":120,"rtime_last_played":1500000000},
+{"appid":570,"name":"Dota 2","playtime_forever":5,"rtime_last_played":1400000000}]}}

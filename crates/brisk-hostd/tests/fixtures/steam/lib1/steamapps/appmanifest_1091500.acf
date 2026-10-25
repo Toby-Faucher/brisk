@@ -1,0 +1,14 @@
+"AppState"
+{
+	"appid"		"1091500"
+	"Universe"		"1"
+	"name"		"Pokémon \"Quoted\" Legends"
+	"StateFlags"		"4"
+	"installdir"		"x"
+	"LastPlayed"		"1710000000"
+	"SizeOnDisk"		"3000000000"
+	"UserConfig"
+	{
+		"language"		"english"
+	}
+}

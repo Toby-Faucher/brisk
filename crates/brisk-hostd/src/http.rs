@@ -1,20 +1,66 @@
 use crate::config::Config;
+use crate::steam::{self, GamesResult};
 use axum::extract::{Request, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
+use axum::routing::get;
 use axum::Router;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-/// Later tasks add fields (Steam cache, supervisor) next to `cfg`.
+/// Later tasks add fields (supervisor) next to `cfg`.
 pub struct AppState {
     pub cfg: Config,
+    /// Last `/api/games` result, for `is_known_appid`.
+    pub games: Mutex<Option<GamesResult>>,
+}
+
+impl AppState {
+    pub fn new(cfg: Config) -> Self {
+        AppState {
+            cfg,
+            games: Mutex::new(None),
+        }
+    }
+
+    /// Whether `id` is an owned or installed game; loads the library if nothing is cached yet.
+    pub async fn is_known_appid(&self, id: u32) -> bool {
+        let cached = self
+            .games
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|g| g.is_known_appid(id));
+        match cached {
+            Some(k) => k,
+            None => {
+                let g = steam::load_games(&self.cfg).await;
+                let k = g.is_known_appid(id);
+                *self.games.lock().unwrap() = Some(g);
+                k
+            }
+        }
+    }
+}
+
+async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    let g = steam::load_games_with(&s.cfg, refresh).await;
+    *s.games.lock().unwrap() = Some(g.clone());
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        serde_json::to_vec(&g).unwrap_or_default(),
+    )
+        .into_response()
 }
 
 /// Mount API routes on `api` below; everything else falls through to `dist/`. The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
-    let api = Router::new();
+    let api = Router::new().route("/games", get(games));
     Router::new()
         .nest("/api", api.fallback(|| async { StatusCode::NOT_FOUND }))
         .fallback(static_file)
