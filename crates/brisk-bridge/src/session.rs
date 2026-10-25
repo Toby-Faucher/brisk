@@ -6,6 +6,12 @@
 //! stream's send priority is the frame index, so under congestion quinn sends newer frames first
 //! (research/m2-tap-design.md section 6). A stream counts as in flight until the browser has
 //! acknowledged all of it.
+//!
+//! Audio keeps Sunshine's RTP path: [`AudioRx`] runs the M1 RS 4+2 recovery and AES-CBC
+//! decryption, and each Opus packet goes out unchanged as one WebTransport datagram
+//! ([`audio_datagram`]). Datagrams are never retransmitted; when quinn's bounded send buffer
+//! ([`wt::AUDIO_SEND_BUFFER`]) is full the oldest are evicted and counted. Audio never asks for
+//! an IDR.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -14,6 +20,8 @@ use std::time::Duration;
 use brisk_client::control::ControlHandle;
 use brisk_client::tap::{monotonic_ns, TapConn, TapFrame};
 use brisk_client::Error;
+use brisk_proto::audio::{AudioCipher, AudioFec, OpusFrame};
+use brisk_proto::sdp::SS_ENC_AUDIO;
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 
@@ -204,6 +212,118 @@ pub fn frame_header(idx: u64, flags: u8, capture_ns: u64, bridge_ns: u64) -> [u8
     h
 }
 
+/// Audio datagram header: `seq u16, ts_48k u32`, little-endian, then the Opus packet.
+pub const AUDIO_HEADER_LEN: usize = 6;
+/// Sunshine's RTP audio timestamp counts milliseconds (`timestamp += packetDuration`,
+/// stream.cpp:1901); the page gets 48 kHz samples.
+const TS_48K_PER_RTP: u32 = 48;
+
+pub fn audio_datagram(f: &OpusFrame) -> Vec<u8> {
+    let mut d = Vec::with_capacity(AUDIO_HEADER_LEN + f.data.len());
+    d.extend_from_slice(&f.seq.to_le_bytes());
+    d.extend_from_slice(&f.ts.wrapping_mul(TS_48K_PER_RTP).to_le_bytes());
+    d.extend_from_slice(&f.data);
+    d
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AudioStats {
+    /// Opus packets out of FEC and decryption.
+    pub packets: u64,
+    /// Of those, rebuilt from parity.
+    pub recovered: u64,
+    /// Data packets neither received nor recovered.
+    pub lost: u64,
+    /// Datagrams AudioFec rejects or payloads that fail decryption.
+    pub errors: u64,
+    /// Queued as datagrams to a viewer.
+    pub sent: u64,
+    /// Sends into a full datagram buffer, each evicting the oldest queued datagram (exactly one
+    /// for Sunshine's CBR packets, which are all the same size).
+    pub evicted: u64,
+    /// Larger than the connection's datagram limit: skipped.
+    pub too_large: u64,
+    /// Dropped before the forward loop because its queue was full.
+    pub queue_full: u64,
+}
+
+impl std::fmt::Display for AudioStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "audio\tpackets {} recovered {} lost {} errors {} sent {} evicted {} too_large {} queue_full {}",
+            self.packets,
+            self.recovered,
+            self.lost,
+            self.errors,
+            self.sent,
+            self.evicted,
+            self.too_large,
+            self.queue_full
+        )
+    }
+}
+
+/// Sunshine audio datagrams in, Opus packets out (sans-io).
+pub struct AudioRx {
+    fec: AudioFec,
+    cipher: Option<AudioCipher>,
+    pub stats: AudioStats,
+}
+
+impl AudioRx {
+    /// `enc_flags` as negotiated; the cipher is used only with `SS_ENC_AUDIO`.
+    pub fn new(enc_flags: u32, rikey: [u8; 16], rikeyid: u32) -> Self {
+        Self {
+            fec: AudioFec::new(brisk_client::stream::AUDIO_PACKET_MS),
+            cipher: (enc_flags & SS_ENC_AUDIO != 0).then(|| AudioCipher::new(&rikey, rikeyid)),
+            stats: AudioStats::default(),
+        }
+    }
+
+    /// One audio datagram (data or parity); returns the Opus packets that became available.
+    pub fn push(&mut self, d: &[u8]) -> Vec<OpusFrame> {
+        let ps = match self.fec.push(d) {
+            Ok(ps) => ps,
+            Err(_) => {
+                self.stats.errors += 1;
+                Vec::new()
+            }
+        };
+        let fs = self.fec.stats();
+        (self.stats.recovered, self.stats.lost) = (fs.recovered, fs.lost);
+        let mut out = Vec::with_capacity(ps.len());
+        for p in ps {
+            match &self.cipher {
+                Some(c) => match c.open(&p) {
+                    Ok(f) => out.push(f),
+                    Err(_) => self.stats.errors += 1,
+                },
+                None => out.push(OpusFrame {
+                    seq: p.seq,
+                    ts: p.ts,
+                    data: p.payload,
+                }),
+            }
+        }
+        self.stats.packets += out.len() as u64;
+        out
+    }
+}
+
+/// One Opus packet to the viewer as a datagram; never waits, never fails the session.
+pub fn send_audio(s: &wt::Session, f: &OpusFrame, st: &mut AudioStats) {
+    match s.send_datagram(&audio_datagram(f)) {
+        Ok(evicted) => {
+            st.sent += 1;
+            st.evicted += evicted as u64;
+        }
+        Err(quinn::SendDatagramError::TooLarge) => st.too_large += 1,
+        // Gone or no datagram support: the viewer's close is handled by the forward loop.
+        Err(_) => {}
+    }
+}
+
 /// Counters over the whole run (all viewers).
 #[derive(Default)]
 pub struct Report {
@@ -219,6 +339,7 @@ pub struct Report {
     pub tap_capture: Hist,
     /// `bridge_ns - tap_ns` of every frame written: what the tap socket and the bridge add.
     pub bridge_tap: Hist,
+    pub audio: AudioStats,
 }
 
 impl Report {
@@ -254,6 +375,7 @@ impl std::fmt::Display for Report {
                 h.count()
             )?;
         }
+        writeln!(f, "{}", self.audio)?;
         let gate = match self.gate() {
             Some(true) => "PASS",
             Some(false) => "FAIL",
@@ -296,15 +418,19 @@ enum Ev {
     Done(Done),
     Msg(Bytes),
     Gone(quinn::ConnectionError),
+    Audio(Bytes),
 }
 
-/// Forwards tap frames to the newest viewer until the tap or the control session fails; never
-/// returns `Ok`. A new viewer replaces the old one (a reloaded tab).
+/// Forwards tap frames and the audio datagrams from `audio` (raw, from the RTP socket) to the
+/// newest viewer until the tap or the control session fails; never returns `Ok`. A new viewer
+/// replaces the old one (a reloaded tab).
 pub async fn forward(
     tap: &mut TapConn,
     ep: &quinn::Endpoint,
     token: &str,
     ctl: &ControlHandle,
+    audio: &mut mpsc::Receiver<Bytes>,
+    arx: &mut AudioRx,
     r: &mut Report,
 ) -> brisk_client::Result<()> {
     let acceptor = wt::Acceptor::new(token, HANDSHAKE_WAIT);
@@ -318,6 +444,7 @@ pub async fn forward(
             Some((s, inbox)) = viewer_rx.recv() => Ev::Viewer(s, inbox),
             f = tap.recv() => Ev::Frame(f),
             Some(d) = done_rx.recv() => Ev::Done(d),
+            Some(a) = audio.recv() => Ev::Audio(a),
             e = viewer_event(&mut viewer) => e,
         };
         if let Some(v) = &viewer {
@@ -393,6 +520,14 @@ pub async fn forward(
                 if m[..] == [MSG_WANT_KEY] && v.pacer.want_key(monotonic_ns()) {
                     request_idr(ctl).await?;
                 }
+            }
+            Ev::Audio(d) => {
+                for f in arx.push(&d) {
+                    if let Some(v) = &viewer {
+                        send_audio(&v.s, &f, &mut arx.stats);
+                    }
+                }
+                r.audio = arx.stats; // queue_full is the caller's
             }
             Ev::Gone(e) => {
                 let v = viewer.take().expect("a close comes from a viewer");

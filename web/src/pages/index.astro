@@ -10,16 +10,33 @@
       body { margin: 0; background: #000; color: #ccc; font: 12px ui-monospace, monospace; }
       canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
       #stats { position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px; background: #000b; white-space: pre; }
+      #connect { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 12px 28px; font: 16px ui-monospace, monospace; }
     </style>
   </head>
   <body>
     <canvas id="video"></canvas>
-    <pre id="stats">connecting…</pre>
+    <pre id="stats">press Connect (it also starts audio: browsers only allow sound after a click)</pre>
+    <button id="connect">Connect</button>
     <script>
       import { startVideo, type Video } from '../lib/video';
+      import { startAudio, type Audio } from '../lib/audio';
+      import workletUrl from '../lib/audio-worklet.ts?worker&url';
 
       const out = document.getElementById('stats')!;
       const ms = (v: number | null) => (v === null ? '-' : v.toFixed(1));
+
+      let audio: Audio | null = null;
+      let audioError: string | null = null;
+
+      function audioLine() {
+        if (audioError) return `audio error: ${audioError}`;
+        if (!audio) return 'audio starting…';
+        const a = audio.stats;
+        return [
+          `audio ${a.contextState}  packets ${a.packets}  decoded ${a.decoded}  non-silent ${a.nonSilent}  decode errors ${a.decodeErrors}`,
+          `audio lost ${a.lost}  underruns ${a.underruns}  late ${a.late}  pauses ${a.pauses}  overflows ${a.overflows}  buffer ${a.bufferMs.toFixed(1)} ms  output ${a.outputMs.toFixed(1)} ms  drift -${a.dropped}/+${a.repeated}${a.lastError ? `  last error: ${a.lastError}` : ''}`,
+        ].join('\n');
+      }
 
       function show(v: Video, t0: number) {
         const s = v.stats;
@@ -31,6 +48,7 @@
           `bridge_write-capture p50 ${ms(s.bridgeCaptureMs.pct(50))} p99 ${ms(s.bridgeCaptureMs.pct(99))} ms (bawn clock)`,
           `decode p50 ${ms(s.decodeMs.pct(50))} p99 ${ms(s.decodeMs.pct(99))} ms   present p50 ${ms(s.presentMs.pct(50))} p99 ${ms(s.presentMs.pct(99))} ms`,
           `arrival jitter p50 ${ms(s.jitterMs.pct(50))} p99 ${ms(s.jitterMs.pct(99))} ms   delay over best p50 ${ms(queueOverMin(v, 50))} p99 ${ms(queueOverMin(v, 99))} ms`,
+          audioLine(),
           `up ${((performance.now() - t0) / 1000).toFixed(0)} s${s.lastError ? `   last error: ${s.lastError}` : ''}`,
         ].join('\n');
       }
@@ -45,7 +63,7 @@
         return Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
       }
 
-      async function main() {
+      async function main(ctx: AudioContext) {
         const q = new URLSearchParams(location.search);
         const url = q.get('wt');
         const hash = q.get('hash');
@@ -59,6 +77,12 @@
         await t.ready;
         const v = startVideo(t, document.getElementById('video') as HTMLCanvasElement);
         (window as any).brisk = v;
+        if (!('AudioDecoder' in window)) audioError = 'this browser has no WebCodecs AudioDecoder';
+        else
+          startAudio(t, ctx, workletUrl).then(
+            (a) => ((window as any).briskAudio = audio = a),
+            (e) => (audioError = String(e)),
+          );
         const t0 = performance.now();
         const timer = setInterval(() => show(v, t0), 500);
         t.closed
@@ -71,10 +95,17 @@
           });
       }
 
-      main().catch((e) => {
-        out.textContent = `error: ${e}`;
-        (window as any).briskEnded = String(e);
-      });
+      // The AudioContext is made in the click itself: Chrome's autoplay policy needs a user gesture.
+      const button = document.getElementById('connect') as HTMLButtonElement;
+      button.addEventListener('click', () => {
+        button.remove();
+        out.textContent = 'connecting…';
+        const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+        main(ctx).catch((e) => {
+          out.textContent = `error: ${e}`;
+          (window as any).briskEnded = String(e);
+        });
+      }, { once: true });
     </script>
   </body>
 </html>

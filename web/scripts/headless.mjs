@@ -1,7 +1,9 @@
 // Headless Chromium against a running brisk-bridge: proves WebTransport connect, per-frame
 // stream framing, the SPS -> codec string, isConfigSupported, software H.264 decode, and that a
-// stalled reader (--stall) does not break decoding. It cannot prove laptop Chrome: hardware
-// decode, its present timing, the real network path.
+// stalled reader (--stall) does not break decoding; and for audio: the connect click starts an
+// AudioContext, Opus datagrams decode in WebCodecs and feed the worklet ring (counters: lost,
+// underruns, bufferMs). It cannot prove laptop Chrome: hardware decode, its present timing, the
+// real network path, or that the audio is audible (headless has no real output device).
 //
 //   node scripts/headless.mjs '<page URL printed by brisk-bridge>' [--secs N] [--stall MS]
 //
@@ -30,6 +32,7 @@ try {
   const page = await browser.newPage();
   page.on('console', (m) => console.log('page:', m.text()));
   await page.goto(url);
+  await page.click('#connect'); // a user gesture: the page makes its AudioContext in it
   await page.waitForFunction(() => window.brisk || window.briskEnded, null, { timeout: 15000 });
   const ended = await page.evaluate(() => window.briskEnded);
   if (ended) throw new Error(`page: ${ended}`);
@@ -58,7 +61,8 @@ try {
     plain.ended = window.briskEnded ?? null;
     return plain;
   });
-  console.log(JSON.stringify({ isConfigSupported: support, elapsed, stats: s }, null, 1));
+  const a = await page.evaluate(() => (window.briskAudio ? { ...window.briskAudio.stats } : null));
+  console.log(JSON.stringify({ isConfigSupported: support, elapsed, stats: s, audio: a }, null, 1));
   // Frames are counted from the page's start, so the window is a bit longer than `elapsed`.
   const want = 0.9 * 60 * (elapsed - stall / 1000);
   const checks = {
@@ -70,6 +74,11 @@ try {
     // so the bridge sees no back-pressure for a few seconds (docs/m2-notes.md).
     'decode errors 0': s.decodeErrors === 0,
   };
+  // Sunshine sent audio continuously in every bawn run so far (200 packets/s, silence included).
+  const wantAudio = 0.9 * 200 * elapsed;
+  checks[`audio decoded >= ${wantAudio.toFixed(0)}`] = !!a && a.decoded >= wantAudio;
+  checks['audio decode errors 0'] = !!a && a.decodeErrors === 0;
+  checks['AudioContext running'] = !!a && a.contextState === 'running';
   // After a stall the burst backs the decoder up (queue > 2), so it waits for an IDR by design.
   if (s.supported && !stall) checks['decoded >= 95% of received'] = s.framesDecoded >= 0.95 * s.framesReceived;
   for (const [k, v] of Object.entries(checks)) console.log(`${v ? 'ok  ' : 'FAIL'} ${k}`);

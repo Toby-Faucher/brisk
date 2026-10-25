@@ -25,6 +25,10 @@ pub const ALPN: &[u8] = b"h3";
 pub const MAX_MSG: usize = 64;
 /// Messages queued from the browser before new ones are dropped.
 const INBOX: usize = 16;
+/// Outgoing datagram (audio) bytes quinn may queue per connection, counting its 32 bytes of
+/// overhead per datagram: about 11 packets of Sunshine's 512 kbit/s stereo (55 ms). A send into
+/// a full buffer evicts the oldest queued datagrams (quinn's `send_datagram`).
+pub const AUDIO_SEND_BUFFER: usize = 4096;
 
 #[derive(Debug)]
 pub enum Error {
@@ -72,6 +76,7 @@ pub fn endpoint(
     let crypto = ServerCrypto::new(certs, key, &[ALPN]).map_err(std::io::Error::other)?;
     let mut t = quinn::TransportConfig::default();
     t.keep_alive_interval(Some(Duration::from_secs(1)));
+    t.datagram_send_buffer_size(AUDIO_SEND_BUFFER);
     t.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(Duration::from_secs(10)).expect("10 s fits"),
     ));
@@ -156,6 +161,8 @@ pub struct Session {
     conn: quinn::Connection,
     /// `0x54, session id`: written first on every uni stream we open.
     uni_header: Bytes,
+    /// Quarter stream id (session id / 4, RFC 9297): first in every datagram.
+    datagram_header: Vec<u8>,
     // Closing either of these ends the session or the HTTP/3 connection.
     _control: quinn::SendStream,
     _connect: (quinn::SendStream, quinn::RecvStream),
@@ -201,9 +208,14 @@ async fn handshake(
     let mut h = Vec::new();
     StreamUni::WEBTRANSPORT.encode(&mut h);
     session_id.encode(&mut h);
+    let mut dh = Vec::new();
+    VarInt::try_from(session_id.into_inner() / 4)
+        .expect("smaller than a varint")
+        .encode(&mut dh);
     let s = Session {
         conn: conn.clone(),
         uni_header: h.into(),
+        datagram_header: dh,
         _control: control,
         _connect: (send, recv),
     };
@@ -248,6 +260,25 @@ impl Session {
         let _ = s.set_priority(priority);
         s.write_all(&self.uni_header).await?;
         Ok(s)
+    }
+
+    /// Queues one WebTransport datagram. `Ok(true)`: the send buffer was full, so quinn evicted the
+    /// oldest queued datagram(s) to make room.
+    pub fn send_datagram(&self, payload: &[u8]) -> Result<bool, quinn::SendDatagramError> {
+        let mut d = Vec::with_capacity(self.datagram_header.len() + payload.len());
+        d.extend_from_slice(&self.datagram_header);
+        d.extend_from_slice(payload);
+        // Same rule as quinn's make_space_for: payload + 32 bytes of overhead must fit.
+        let evict = self.conn.datagram_send_buffer_space() < d.len();
+        self.conn.send_datagram(d.into())?;
+        Ok(evict)
+    }
+
+    /// Largest datagram payload the connection takes now (path MTU and the browser's limit).
+    pub fn max_datagram_payload(&self) -> Option<usize> {
+        self.conn
+            .max_datagram_size()
+            .map(|m| m.saturating_sub(self.datagram_header.len()))
     }
 
     /// Resolves when the browser closes the session or the connection dies.

@@ -17,7 +17,7 @@ pub const FPS: f64 = 60.0;
 /// An IDR must arrive this soon after each request.
 pub const IDR_DEADLINE: Duration = Duration::from_secs(2);
 /// `x-nv-aqos.packetDuration` we announce (sdp.rs).
-const AUDIO_PACKET_MS: u32 = 5;
+pub const AUDIO_PACKET_MS: u32 = 5;
 /// Recorded samples: at least this many video datagrams and the whole first IDR frame.
 const VIDEO_SAMPLES: u32 = 120;
 const VIDEO_SAMPLES_MAX: u32 = 999;

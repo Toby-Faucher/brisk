@@ -103,6 +103,44 @@ streams = behind: reset them all, drop until the next IDR, request an IDR (at mo
 backing off to 2 s while nothing is acked). The bridge holds at most 4 frames per viewer. A new
 viewer replaces the old one (reload) and starts by waiting for an IDR.
 
+## Audio (Task 5)
+
+Audio keeps Sunshine's normal Moonlight path (RTP on UDP 48000, AES-CBC with `SS_ENC_AUDIO`,
+RS 4+2 FEC, Opus 5 ms stereo CBR). The bridge runs M1's `AudioFec` + `AudioCipher`
+(`session.rs::AudioRx`) and sends each Opus packet **unchanged** as one WebTransport datagram:
+quarter stream id (1 byte, session 0), then `{seq u16, ts_48k u32}` little-endian, then the Opus
+bytes. Sunshine's RTP audio timestamp counts ms (`timestamp += packetDuration`, stream.cpp:1901),
+so `ts_48k = rtp_ts * 48`. Sunshine's stereo packets are about 320 bytes (512 kbit/s); with the
+header that is far below the 1200-byte QUIC minimum MTU (`tests/audio_fwd.rs::datagram_fits_mtu`).
+A packet over the connection's limit (Sunshine allows up to 1400) is counted `too_large` and skipped.
+
+Back-pressure: datagrams are never retransmitted or acked. quinn's datagram send buffer is capped
+at `wt::AUDIO_SEND_BUFFER` = 4 KiB (about 11 packets, 55 ms); a send into a full buffer evicts the
+oldest queued datagram, counted as `evicted` (exactly one per send for CBR packets). Between the
+RTP socket and the forward loop a 64-packet channel drops new packets when full (`queue_full`).
+Audio never requests an IDR. The bridge report prints one `audio` line.
+
+Page (`web/src/lib/audio.ts`, `audio-worklet.ts`): WebCodecs `AudioDecoder` `{codec:"opus",
+sampleRate:48000, numberOfChannels:2}` (no description), planar PCM posted to an AudioWorklet
+ring (`Playout`). The AudioContext is created inside the **Connect** button's click (Chrome's
+autoplay policy); the page now waits for that click before it connects.
+- Ring: starts (and restarts) at 20 ms buffered, never holds more than 40 ms (a burst drops the
+  oldest audio: `overflows`).
+- A seq gap counts `lost` and is filled with the last packet repeated once, fading to zero, then
+  silence (at most 40 ms), and the next packet fades in over 2 ms. Opus PLC is not exposed by
+  WebCodecs.
+- A packet older than expected counts `late` and is dropped.
+- Starvation (ring runs dry): classified when audio resumes. Ended by a seq gap, or shorter than
+  200 ms: `underruns` (a glitch). At least 200 ms with no gap: `pauses` (the host went quiet;
+  Sunshine may stop sending while silent): not a glitch.
+- Drift: when the ring's average fill (about 1.4 s time constant) is more than 5 ms off the
+  20 ms target, one frame per 128-frame quantum is dropped or repeated (`drift -dropped/+repeated`).
+  Limit: no interpolation, at most 0.8 %; fine for crystal drift (tens of ppm, measured about
+  30 ppm below), audible only if clocks were far apart.
+- AudioData timestamps are rewritten by Chrome's decoder (contiguous), so seqs go through a FIFO
+  next to the decoder (Opus gives one output per chunk, in order).
+- `non-silent` counts decoded packets with any sample above -60 dBFS: real audio, not zeros.
+
 ## Running it
 
 - Up: `scripts/brisk-up.sh [--secs N]`. Builds (capped, `nice`), makes or renews the certificate,
@@ -113,6 +151,7 @@ viewer replaces the old one (reload) and starts by waiting for an IDR.
   bridge and page server if still running, then `sunshine-brisk.sh rollback` (stock Sunshine,
   refuses while busy).
 - Headless check on bawn: `cd web && node scripts/headless.mjs '<page URL>' --secs 20 [--stall 3000]`.
+  It clicks Connect itself (a trusted click, so the AudioContext runs).
 
 ## What the headless Chromium run proves, and what it cannot
 
@@ -162,12 +201,39 @@ and the gate use only the frames with `capture_ns != 0`; `bridge_write - tap` co
 (The 60 recorded fixtures in `fixtures/tap/` happen to contain none: flags 0 or 1 only.) Static screen only; a moving scene is not
 measured. Not measured: laptop Chrome (decode, present, network), see below.
 
+### Audio, measured on bawn (2026-10-24, loopback, headless Chromium, 10 min)
+
+`BRISK_LISTEN=127.0.0.1:4433 scripts/brisk-up.sh --secs 700`, then `headless.mjs --secs 600`; a
+10 s 440 Hz tone was played into `sink-sunshine-stereo` at about 300 s (`pw-play --target`).
+
+| quantity | value |
+|---|---|
+| page: datagrams / decoded / decode errors | 120045 / 120045 / 0 (200 per second) |
+| page: non-silent packets | 2001 (= the 10 s tone; the desktop is silent otherwise) |
+| page: lost / late / pauses / overflows | 0 / 0 / 0 / 2 (the 2 overflows: start-up burst) |
+| page: underruns | 7 in 10 min (headless main thread also software-decodes 1080p60 video) |
+| page: bufferMs (end) / AudioContext output latency | 18.9 ms / 42.7 ms (null sink's reported latency) |
+| page: drift | 908 frames dropped, 0 repeated (start-up included; about 30 ppm) |
+| bridge: packets / FEC recovered / lost / errors | 139969 / 1 / 0 / 0 |
+| bridge: sent / evicted / too_large / queue_full | 127066 / 3862 / 0 / 0 |
+
+Sunshine sent audio continuously (200 packets/s) while the host was silent. The evictions all fall
+in the two 10 s windows after a headless browser was closed (dead tab until the idle timeout):
+sent minus what the two pages received is 4004.
+
+Proves: datagram framing end to end, Opus decode of Sunshine's real stream in WebCodecs, the
+worklet ring running on a running AudioContext started by a click, the counters, real (non-zero)
+audio decoded. Cannot prove: that it is audible (headless Chromium has no real output device, its
+null sink still clocks the worklet), laptop Chrome's audio device clock and latency, the Tailscale
+path. That is Toby's listening check below.
+
 ## Toby to run (laptop Chrome)
 
 1. On bawn (needs Sunshine idle): `cd ~/Projects/brisk && scripts/brisk-up.sh --secs 660`
 2. On the laptop: `ssh -N -L 8443:127.0.0.1:8443 bawn` (leave it open).
 3. In Chrome on the laptop, open the `page` URL that brisk-up printed
    (`http://localhost:8443/?wt=https://100.80.84.102:4433/<token>&hash=<sha256>`).
+   Click **Connect** (it starts audio; Chrome only allows sound after a click).
 4. The stats box should show within a few seconds: `codec avc1.640c2a supported true hw
    prefer-hardware` (or `no-preference` if Chrome has no hardware H.264 decode on the laptop),
    `1920x1080`, `received` and `decoded` climbing about 60 per second, `decode errors 0`,
@@ -178,3 +244,16 @@ measured. Not measured: laptop Chrome (decode, present, network), see below.
 6. When `--secs` runs out (or Ctrl-C) brisk-up prints the bridge report: copy the
    `bridge_write-capture`, `frame_processing(tap-capture)` and `gate(...)` lines.
 7. `scripts/brisk-down.sh` (back to stock Sunshine).
+
+Audio, in the same run (play something on bawn: music in a browser on bawn's desktop, or
+`pw-play --target sink-sunshine-stereo <file.wav>` over ssh):
+- The `audio` lines should show `running`, `packets` and `decoded` climbing about 200 per second,
+  `decode errors 0`, `buffer` between about 15 and 30 ms, `non-silent` climbing while sound plays.
+- Listen for 10 minutes. Pass: no audible clicks or dropouts, and `lost` and `underruns` stay at
+  or near 0 (note their final values and `drift -x/+y`).
+- Glitch or silence? A glitch you hear should line up with `lost` or `underruns` going up. A quiet
+  host shows as `non-silent` stopping, or `pauses` going up if Sunshine stops sending; neither is a
+  glitch. If you hear a glitch and no counter moved, note the time: it is the laptop's audio device
+  or Chrome, not the stream.
+- Note `output` (ms the laptop's audio device adds after the ring) for the A/V budget.
+- At the end, copy the bridge's `audio` line (`lost`, `evicted`, `queue_full` should be 0 or small).

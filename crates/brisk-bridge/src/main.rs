@@ -10,7 +10,7 @@
 //! certificate hash. --secs stops after N seconds (default: until SIGINT/SIGTERM/SIGHUP or the
 //! host ends the session). At exit it prints the latency report and the M2 gate.
 
-use brisk_bridge::session::{forward, Report};
+use brisk_bridge::session::{forward, AudioRx, Report};
 use brisk_bridge::wt;
 use brisk_client::control::ControlSession;
 use brisk_client::identity::{load_identity, ServerCert};
@@ -28,6 +28,9 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
+
+/// Audio datagrams waiting for the forward loop (64 = 160 ms of packets plus parity).
+const AUDIO_QUEUE: usize = 64;
 
 const USAGE: &str = "usage: brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM [--config DIR] [--secs N] [--page URL] [--take-over]";
 
@@ -166,17 +169,27 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             };
             println!("tap\tconnected at {:.1}s", start.elapsed().as_secs_f32());
             let h = c.handle();
-            // RTP video must stay at 0 in tap mode; audio RTP is ignored until Task 5.
-            let mut sink = |_: usize, _: &[u8], _: Instant| false;
+            // Audio stays on Sunshine's RTP path; RTP video must stay at 0 in tap mode.
+            let (atx, mut arx_q) = tokio::sync::mpsc::channel(AUDIO_QUEUE);
+            let mut queue_full = 0;
+            let mut sink = |i: usize, d: &[u8], _: Instant| {
+                if i == 1 && atx.try_send(bytes::Bytes::copy_from_slice(d)).is_err() {
+                    queue_full += 1;
+                }
+                false
+            };
             let run = c.run_until_with(deadline, &mut sink);
-            tokio::select! {
+            let mut arx = AudioRx::new(p.enc_flags, p.key.rikey, p.key.rikeyid);
+            let r = tokio::select! {
                 r = run => r,
-                r = forward(&mut tap, ep, token, &h, rep) => r,
+                r = forward(&mut tap, ep, token, &h, &mut arx_q, &mut arx, rep) => r,
                 sig = stop => {
                     println!("{sig}: stopping");
                     Ok(())
                 }
-            }
+            };
+            rep.audio.queue_full = queue_full;
+            r
         }
         .await;
         let r = r.and_then(|()| match c.is_open() {
