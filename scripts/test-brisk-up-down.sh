@@ -27,7 +27,7 @@ no_sb "busy host"
 # 4. ... and its build went through the capped scope (the busy check comes after the build).
 grep -q '^systemd-run --user --scope -q -p MemoryHigh=7G -p MemoryMax=9G -p MemorySwapMax=0 -p CPUWeight=20 nice -n 19 ionice -c3 cargo build --release' "$L" \
   || fail "cargo build not capped"
-grep -q '^cargo build' "$L" || fail "cargo build did not run"
+grep -q '^cargo build.* -p brisk-bridge -p brisk-hostd' "$L" || fail "cargo build did not cover bridge and hostd"
 
 # 4. No enforceable cap: refuse to build at all.
 : > "$L"; SR_FAIL=1 "$s/brisk-up.sh" >/dev/null 2>&1 && fail "brisk-up built without a cap"

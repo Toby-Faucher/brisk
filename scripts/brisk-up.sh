@@ -1,16 +1,17 @@
 #!/bin/bash
 # Start Brisk for a browser on the tailnet: patched Sunshine, a fresh short-lived certificate,
-# the page on http://127.0.0.1:8443 (reach it from the laptop over `ssh -L`), then the bridge in
-# the foreground. Ctrl-C stops the bridge (brisk-up passes it on as SIGTERM; the bridge cancels
-# its Sunshine session); then run scripts/brisk-down.sh to put stock Sunshine back.
-# Usage: scripts/brisk-up.sh [bridge args, e.g. --secs 600]
-# Env: BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (default <tailscale ip>:4433),
-#      BRISK_PAGE_PORT (default 8443)
+# then brisk-hostd in the foreground. hostd serves the page and API on http://127.0.0.1:8443 (reach
+# it from the laptop over `ssh -L`) and starts/stops the bridge itself. Ctrl-C is passed on to hostd
+# as SIGTERM; hostd stops its bridge first (the bridge cancels its Sunshine session); then run
+# scripts/brisk-down.sh to put stock Sunshine back. ($RUN/bridge.pid holds hostd's pid.)
+# Usage: scripts/brisk-up.sh
+# Env: BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (default <tailscale ip>:4433; the
+#      bridge's address), plus hostd's own BRISK_* (data dir, steam dir ...).
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 APP=${BRISK_APP:-870779643}
 LISTEN=${BRISK_LISTEN:-$(tailscale ip -4 2>/dev/null | head -1 || true):4433}
-PORT=${BRISK_PAGE_PORT:-8443}
+PORT=8443 # hostd binds 127.0.0.1:8443
 TLS=$HOME/.config/brisk/tls
 RUN=${XDG_RUNTIME_DIR:?}/brisk
 SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
@@ -27,11 +28,11 @@ mkdir -p -m 700 "$RUN" "$TLS"
 # shellcheck source=scripts/capped.sh
 . "$here/scripts/capped.sh"
 
-[ -f "$RUN/bridge.pid" ] && kill -0 "$(cat "$RUN/bridge.pid")" 2>/dev/null && die "a bridge is already running (pid $(cat "$RUN/bridge.pid"))"
+[ -f "$RUN/bridge.pid" ] && kill -0 "$(cat "$RUN/bridge.pid")" 2>/dev/null && die "hostd is already running (pid $(cat "$RUN/bridge.pid"))"
 
 # 1. Build (no-op when up to date) inside the same memory-capped scope as the Sunshine build.
 cap_check || die "no enforced resource cap; not building"
-( cd "$here" && PATH=$HOME/.cargo/bin:$PATH CARGO_BUILD_JOBS=4 capped cargo build --release -q -p brisk-bridge )
+( cd "$here" && PATH=$HOME/.cargo/bin:$PATH CARGO_BUILD_JOBS=4 capped cargo build --release -q -p brisk-bridge -p brisk-hostd )
 if [ ! -f "$here/web/dist/index.html" ]; then
   ( cd "$here/web" && capped npm ci --no-audit --no-fund && capped npm run build )
 fi
@@ -54,20 +55,16 @@ if ! brisk_running; then
 fi
 serverinfo_free || die "Sunshine is not FREE (busy or not answering); not launching"
 
-# 4. Page on loopback only.
-python3 -m http.server --bind 127.0.0.1 "$PORT" -d "$here/web/dist" >/dev/null 2>&1 &
-echo $! > "$RUN/page.pid"
+# 4. hostd (page + API on loopback; the page line with the secret comes from hostd itself).
 trap bridge_exit_cleanup EXIT
-
 cat <<MSG
 On the laptop:   ssh -N -L $PORT:127.0.0.1:$PORT $(hostname)
 Then open the "page" URL below in Chrome. Stop: Ctrl-C here (sent on as SIGTERM), then scripts/brisk-down.sh.
 MSG
-"$here/target/release/brisk-bridge" --host 127.0.0.1 --app "$APP" --listen "$LISTEN" \
-  --cert "$TLS/bridge.pem" --key "$TLS/bridge.key.pem" --page "http://localhost:$PORT/" "$@" &
+BRISK_APP=$APP BRISK_LISTEN=$LISTEN BRISK_BRIDGE_BIN=$here/target/release/brisk-bridge \
+  "$here/target/release/brisk-hostd" "$here/web/dist" &
 echo $! > "$RUN/bridge.pid"
-# Background jobs of a script start with SIGINT ignored, so pass Ctrl-C (and TERM/HUP) on as
-# SIGTERM, which the bridge handles like SIGINT; the EXIT trap then waits for it.
+# Background jobs of a script start with SIGINT ignored, so pass Ctrl-C (and TERM/HUP) on as SIGTERM.
 trap 'kill -TERM "$(cat "$RUN/bridge.pid")" 2>/dev/null' INT TERM HUP
 wait "$(cat "$RUN/bridge.pid")" || true
 wait "$(cat "$RUN/bridge.pid")" 2>/dev/null || true
