@@ -112,3 +112,19 @@ export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, acce
     },
   };
 }
+
+/** A card's smoke: on() mounts it, off() unmounts it after `ms` (once the fade-out is done), so only the hovered card holds a context. */
+export function hoverRelease(set: (mounted: boolean) => void, ms = 600) {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return {
+    on() {
+      clearTimeout(t);
+      set(true);
+    },
+    off() {
+      clearTimeout(t);
+      t = setTimeout(() => set(false), ms);
+    },
+    stop: () => clearTimeout(t),
+  };
+}

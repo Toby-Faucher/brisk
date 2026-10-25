@@ -15,7 +15,16 @@
     const gl = smokeGL<WebGL2RenderingContext>(cv);
     run = gl && runSmoke(cv, gl, () => accent, interactive);
     if (!run) (gl?.getExtension('WEBGL_lose_context') as WEBGL_lose_context | null)?.loseContext();
-    return () => run?.destroy();
+    // safety net: Chrome evicts the oldest context past its limit; show the gradient, not a dead canvas
+    const lost = () => {
+      run?.destroy();
+      run = null;
+    };
+    cv.addEventListener('webglcontextlost', lost);
+    return () => {
+      cv!.removeEventListener('webglcontextlost', lost); // our own loseContext() below must not touch state
+      run?.destroy();
+    };
   });
   $effect(() => run?.setActive(active));
 </script>
