@@ -561,7 +561,10 @@ impl Rig {
         let r = self.app.clone().oneshot(r).await.unwrap();
         let st = r.status();
         let b = body(r).await;
-        (st, serde_json::from_str(&b).unwrap_or(serde_json::Value::Null))
+        (
+            st,
+            serde_json::from_str(&b).unwrap_or(serde_json::Value::Null),
+        )
     }
     fn log(&self) -> Vec<String> {
         std::fs::read_to_string(&self.log)
@@ -614,7 +617,9 @@ fn assert_one_at_a_time(log: &[String]) {
 #[tokio::test]
 async fn start_returns_wt_and_hash() {
     let r = rig("");
-    let (st, v) = r.call("POST", "/api/stream", r#"{"preset":"balanced"}"#).await;
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
     assert_eq!(st, StatusCode::OK, "{v}");
     assert_eq!(v["state"], "live");
     assert_eq!(v["preset"], "balanced");
@@ -637,9 +642,18 @@ async fn start_returns_wt_and_hash() {
 async fn preset_maps_to_flags() {
     let r = rig("");
     for (req, flags) in [
-        (r#"{"preset":"fast"}"#, "--width 1920 --height 1080 --fps 60 --bitrate-kbps 10000"),
-        (r#"{"preset":"balanced"}"#, "--width 1920 --height 1080 --fps 60 --bitrate-kbps 20000"),
-        (r#"{"preset":"crisp"}"#, "--width 1920 --height 1080 --fps 60 --bitrate-kbps 40000"),
+        (
+            r#"{"preset":"fast"}"#,
+            "--width 1920 --height 1080 --fps 60 --bitrate-kbps 10000",
+        ),
+        (
+            r#"{"preset":"balanced"}"#,
+            "--width 1920 --height 1080 --fps 60 --bitrate-kbps 20000",
+        ),
+        (
+            r#"{"preset":"crisp"}"#,
+            "--width 1920 --height 1080 --fps 60 --bitrate-kbps 40000",
+        ),
         (
             r#"{"preset":"custom","width":1280,"height":720,"fps":120,"bitrateKbps":15000}"#,
             "--width 1280 --height 720 --fps 120 --bitrate-kbps 15000",
@@ -658,7 +672,11 @@ async fn preset_maps_to_flags() {
         r#"{"preset":"turbo"}"#,
         "not json",
     ] {
-        assert_eq!(r.call("POST", "/api/stream", bad).await.0, StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(
+            r.call("POST", "/api/stream", bad).await.0,
+            StatusCode::BAD_REQUEST,
+            "{bad}"
+        );
     }
     assert_eq!(r.log().len(), n, "a bad request must not touch the bridge");
     r.call("DELETE", "/api/stream", "").await;
@@ -667,7 +685,9 @@ async fn preset_maps_to_flags() {
 #[tokio::test]
 async fn second_start_stops_first() {
     let r = rig("");
-    let (_, a) = r.call("POST", "/api/stream", r#"{"preset":"balanced"}"#).await;
+    let (_, a) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
     let (st, b) = r.call("POST", "/api/stream", r#"{"preset":"crisp"}"#).await;
     assert_eq!(st, StatusCode::OK);
     assert_ne!(a["wt"], b["wt"]);
@@ -697,14 +717,22 @@ async fn concurrent_starts_are_serialized() {
     // The bridge that is still running is the one GET reports.
     let live = r.call("GET", "/api/stream", "").await.1;
     let last_pid = log.last().unwrap().split(' ').nth(1).unwrap().to_string();
-    assert!(live["wt"].as_str().unwrap().ends_with(&format!("tok{last_pid}")), "{live} {log:?}");
+    assert!(
+        live["wt"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("tok{last_pid}")),
+        "{live} {log:?}"
+    );
     r.call("DELETE", "/api/stream", "").await;
 }
 
 #[tokio::test]
 async fn bridge_exit_before_page_line_is_an_error_and_idle() {
     let r = rig("early_exit");
-    let (st, v) = r.call("POST", "/api/stream", r#"{"preset":"balanced"}"#).await;
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
     assert!(st.is_server_error(), "{st}");
     assert!(v["error"].as_str().is_some_and(|e| !e.is_empty()), "{v}");
     assert_eq!(r.call("GET", "/api/stream", "").await.1["state"], "idle");
@@ -732,7 +760,11 @@ async fn appid_launches_steam_after_tap_only_on_fresh_start() {
     assert_eq!(r.steam_calls().len(), 1);
     r.call("DELETE", "/api/stream", "").await;
     let s = r.call("GET", "/api/sessions", "").await.1;
-    assert_eq!(s["sessions"].as_array().unwrap().len(), 1, "quality change is one session: {s}");
+    assert_eq!(
+        s["sessions"].as_array().unwrap().len(),
+        1,
+        "quality change is one session: {s}"
+    );
 }
 
 #[tokio::test]
@@ -754,17 +786,32 @@ async fn unknown_appid_is_400() {
 #[tokio::test]
 async fn non_numeric_appid_is_400() {
     let r = rig("");
-    for id in [r#""10""#, r#""10; rm -rf /""#, "-1", "1.5", "null", "{}", "4294967296"] {
+    for id in [
+        r#""10""#,
+        r#""10; rm -rf /""#,
+        "-1",
+        "1.5",
+        "null",
+        "{}",
+        "4294967296",
+    ] {
         for uri in ["/api/launch", "/api/install"] {
             let (st, _) = r.call("POST", uri, &format!(r#"{{"appid":{id}}}"#)).await;
             assert_eq!(st, StatusCode::BAD_REQUEST, "{uri} {id}");
         }
         if id != "null" {
             let b = format!(r#"{{"preset":"balanced","appid":{id}}}"#);
-            assert_eq!(r.call("POST", "/api/stream", &b).await.0, StatusCode::BAD_REQUEST, "{id}");
+            assert_eq!(
+                r.call("POST", "/api/stream", &b).await.0,
+                StatusCode::BAD_REQUEST,
+                "{id}"
+            );
         }
     }
-    assert_eq!(r.call("POST", "/api/launch", "").await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        r.call("POST", "/api/launch", "").await.0,
+        StatusCode::BAD_REQUEST
+    );
     assert!(r.log().is_empty());
     assert!(r.runner.0.lock().unwrap().is_empty());
 }
@@ -772,11 +819,20 @@ async fn non_numeric_appid_is_400() {
 #[tokio::test]
 async fn launch_and_install_run_steam() {
     let r = rig("");
-    assert_eq!(r.call("POST", "/api/launch", r#"{"appid":10}"#).await.0, StatusCode::NO_CONTENT);
-    assert_eq!(r.call("POST", "/api/install", r#"{"appid":10}"#).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        r.call("POST", "/api/launch", r#"{"appid":10}"#).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        r.call("POST", "/api/install", r#"{"appid":10}"#).await.0,
+        StatusCode::NO_CONTENT
+    );
     let c = r.steam_calls();
     assert_eq!(c.len(), 2);
-    assert!(c[0].starts_with("env ") && c[0].ends_with(" steam steam://rungameid/10"), "{c:?}");
+    assert!(
+        c[0].starts_with("env ") && c[0].ends_with(" steam steam://rungameid/10"),
+        "{c:?}"
+    );
     assert!(c[1].ends_with(" steam steam://install/10"), "{c:?}");
     assert!(r.log().is_empty(), "launch alone does not start a bridge");
 }
@@ -784,7 +840,8 @@ async fn launch_and_install_run_steam() {
 #[tokio::test]
 async fn delete_stops_and_records_session() {
     let r = rig("");
-    r.call("POST", "/api/stream", r#"{"preset":"crisp","appid":10}"#).await;
+    r.call("POST", "/api/stream", r#"{"preset":"crisp","appid":10}"#)
+        .await;
     let (st, v) = r.call("DELETE", "/api/stream", "").await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(v["state"], "idle");
@@ -805,7 +862,9 @@ async fn delete_stops_and_records_session() {
 #[tokio::test]
 async fn bridge_exiting_by_itself_goes_idle_and_closes_session() {
     let r = rig("quit");
-    let (st, _) = r.call("POST", "/api/stream", r#"{"preset":"balanced"}"#).await;
+    let (st, _) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
     assert_eq!(st, StatusCode::OK);
     let mut idle = false;
     for _ in 0..100 {
@@ -827,7 +886,11 @@ async fn sessions_returns_latest_first() {
     std::fs::create_dir_all(&r.data).unwrap();
     let mut lines = String::new();
     for i in 1..=25u64 {
-        let ended = if i == 25 { "null".to_string() } else { (i * 1000 + 5).to_string() };
+        let ended = if i == 25 {
+            "null".to_string()
+        } else {
+            (i * 1000 + 5).to_string()
+        };
         lines += &format!(
             r#"{{"appid":{i},"name":"g{i}","started":{},"ended":{ended},"host":"bawn","preset":"fast"}}"#,
             i * 1000
@@ -836,7 +899,8 @@ async fn sessions_returns_latest_first() {
     }
     lines += "garbage line\n";
     // the open record of 25 is closed by a later line with the same start
-    lines += r#"{"appid":25,"name":"g25","started":25000,"ended":25009,"host":"bawn","preset":"fast"}"#;
+    lines +=
+        r#"{"appid":25,"name":"g25","started":25000,"ended":25009,"host":"bawn","preset":"fast"}"#;
     lines += "\n";
     std::fs::write(r.data.join("sessions.jsonl"), lines).unwrap();
     let s = r.call("GET", "/api/sessions", "").await.1;

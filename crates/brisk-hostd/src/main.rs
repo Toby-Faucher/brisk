@@ -21,9 +21,17 @@ async fn main() -> std::process::ExitCode {
         }
     };
     println!("page\thttp://localhost:8443/?s={}", cfg.secret);
-    let app = router(Arc::new(AppState::new(cfg)));
-    let stop = async {
-        let _ = tokio::signal::ctrl_c().await;
+    let state = Arc::new(AppState::new(cfg));
+    let app = router(state.clone());
+    let stop = async move {
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+        // Bridge first, so it cancels its Sunshine session before we go.
+        state.stream.stop().await;
     };
     match axum::serve(l, app).with_graceful_shutdown(stop).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
