@@ -1,10 +1,11 @@
 use crate::config::Config;
+use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::steam::{self, GamesResult};
 use axum::extract::{Request, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -14,13 +15,20 @@ pub struct AppState {
     pub cfg: Config,
     /// Last `/api/games` result, for `is_known_appid`.
     pub games: Mutex<Option<GamesResult>>,
+    pub restarter: Restarter,
 }
 
 impl AppState {
     pub fn new(cfg: Config) -> Self {
+        Self::with_host(cfg, Arc::new(RealRunner), Arc::new(SystemClock))
+    }
+
+    /// Tests inject a fake runner and clock so nothing real is restarted.
+    pub fn with_host(cfg: Config, runner: Arc<dyn Runner>, clock: Arc<dyn Clock>) -> Self {
         AppState {
             cfg,
             games: Mutex::new(None),
+            restarter: Restarter::new(runner, clock),
         }
     }
 
@@ -58,9 +66,28 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
         .into_response()
 }
 
+async fn host_status(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(host::host_info(&s.cfg).await).into_response()
+}
+
+async fn sunshine_restart(State(s): State<Arc<AppState>>) -> Response {
+    let (code, msg) = match s.restarter.restart().await {
+        Ok(()) => return StatusCode::NO_CONTENT.into_response(),
+        Err(RestartError::TooSoon) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "Sunshine was restarted a moment ago",
+        ),
+        Err(RestartError::Failed) => (StatusCode::INTERNAL_SERVER_ERROR, "restart failed"),
+    };
+    (code, axum::Json(serde_json::json!({ "error": msg }))).into_response()
+}
+
 /// Mount API routes on `api` below; everything else falls through to `dist/`. The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
-    let api = Router::new().route("/games", get(games));
+    let api = Router::new()
+        .route("/games", get(games))
+        .route("/host", get(host_status))
+        .route("/sunshine/restart", post(sunshine_restart));
     Router::new()
         .nest("/api", api.fallback(|| async { StatusCode::NOT_FOUND }))
         .fallback(static_file)

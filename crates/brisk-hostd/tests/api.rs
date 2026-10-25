@@ -416,3 +416,60 @@ async fn key_never_in_response_or_logs() {
     );
     assert!(!logs.contains("0123456789abcdef"));
 }
+
+#[tokio::test]
+async fn sunshine_restart_204_then_429_and_host_is_json() {
+    use brisk_hostd::host::{Clock, Runner};
+    struct R(std::sync::Mutex<u32>);
+    impl Runner for R {
+        fn run(&self, _: &str, _: &[&str]) -> Option<String> {
+            *self.0.lock().unwrap() += 1;
+            Some(String::new())
+        }
+    }
+    struct C;
+    impl Clock for C {
+        fn now_s(&self) -> u64 {
+            1000
+        }
+    }
+    let d = dist();
+    let mut cfg = Config::from_env(d.path().to_path_buf());
+    cfg.secret = SECRET.into();
+    let runner = Arc::new(R(Default::default()));
+    let app = router(Arc::new(AppState::with_host(
+        cfg,
+        runner.clone(),
+        Arc::new(C),
+    )));
+    let post = || {
+        Request::builder()
+            .method("POST")
+            .uri("/api/sunshine/restart")
+            .header("host", H)
+            .header("x-brisk-secret", SECRET)
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        app.clone().oneshot(post()).await.unwrap().status(),
+        StatusCode::NO_CONTENT
+    );
+    let r = app.clone().oneshot(post()).await.unwrap();
+    assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(body(r).await.contains("error"));
+    assert_eq!(*runner.0.lock().unwrap(), 1);
+    let r = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/host")
+                .header("host", H)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body(r).await).unwrap();
+    assert!(v["sunshine"].is_string() && v.get("uptimeS").is_some());
+}
