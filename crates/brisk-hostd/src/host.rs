@@ -48,21 +48,25 @@ impl Runner for RealRunner {
             .stderr(std::process::Stdio::null())
             .spawn()
             .ok()?;
-        // shortcut: stdout is read after exit, so output over the pipe buffer (64 KiB) would hit the kill; fine for these commands.
+        // Drain stdout on its own thread so a big output cannot fill the pipe and stall the child.
+        let mut so = c.stdout.take()?;
+        let reader = std::thread::spawn(move || {
+            let mut out = String::new();
+            so.read_to_string(&mut out).ok().map(|_| out)
+        });
         let end = std::time::Instant::now() + Duration::from_secs(30);
         let status = loop {
             if let Some(st) = c.try_wait().ok()? {
                 break st;
             }
             if std::time::Instant::now() > end {
-                let _ = c.kill();
+                let _ = c.kill(); // closes the pipe, so the reader ends too
                 let _ = c.wait();
                 return None;
             }
             std::thread::sleep(Duration::from_millis(20));
         };
-        let mut out = String::new();
-        c.stdout.take()?.read_to_string(&mut out).ok()?;
+        let out = reader.join().ok()??;
         status.success().then_some(out)
     }
 }
@@ -436,5 +440,15 @@ mod tests {
         std::fs::write(p.join("name"), "k10temp").unwrap();
         std::fs::write(p.join("temp1_input"), "48000").unwrap();
         assert_eq!(read_temps(d.path()).0, Some(48.0));
+    }
+
+    #[test]
+    fn real_runner_handles_output_over_pipe_buffer() {
+        let t = std::time::Instant::now();
+        let out = RealRunner
+            .run("sh", &["-c", r#"head -c 200000 /dev/zero | tr "\0" a"#])
+            .unwrap();
+        assert_eq!(out.len(), 200_000);
+        assert!(t.elapsed() < Duration::from_secs(5));
     }
 }
