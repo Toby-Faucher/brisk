@@ -10,6 +10,8 @@
     agent: '<path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/><path d="M19 3l.9 2.1L22 6l-2.1.9L19 9l-.9-2.1L16 6l2.1-.9z"/>',
     news: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><rect x="7" y="8" width="10" height="2" rx="1" fill="#0b0c0f"/><rect x="7" y="12" width="10" height="2" rx="1" fill="#0b0c0f"/><rect x="7" y="16" width="6" height="2" rx="1" fill="#0b0c0f"/>',
     play: '<path d="M7 4.5v15l13-7.5z"/>',
+    dl: '<path d="M11 3h2v9l3-3 1.4 1.4L12 16l-5.4-5.6L8 9l3 3z"/><rect x="5" y="18" width="14" height="2.4" rx="1.2"/>',
+    search: '<circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="2.2" fill="none"/><path d="M15.5 15.5L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
     plus: '<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/>',
     fit: '<path d="M4 9.5c0-1 .8-1.8 1.8-1.8H7v8.6H5.8c-1 0-1.8-.8-1.8-1.8zM20 9.5c0-1-.8-1.8-1.8-1.8H17v8.6h1.2c1 0 1.8-.8 1.8-1.8zM8.5 11h7v2h-7z"/>',
   };
