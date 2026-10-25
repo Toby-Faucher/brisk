@@ -964,3 +964,25 @@ async fn dropped_request_mid_stop_still_leaves_one_bridge() {
     assert_one_at_a_time(&log);
     assert_eq!(r.call("GET", "/api/stream", "").await.1["state"], "idle");
 }
+
+#[tokio::test]
+async fn steam_tools_are_not_games() {
+    // With the owned list: installed apps missing from it are dropped.
+    let s = steam(&mock_steam(200).await, Some(KEY));
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    assert!(v["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710));
+    // Without it: dropped by name prefix, real games stay.
+    let s = steam(&mock_steam(500).await, Some(KEY));
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    assert_eq!(v["ownedAvailable"], false);
+    assert_eq!(v["games"].as_array().unwrap().len(), 3);
+    assert!(v["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710));
+}

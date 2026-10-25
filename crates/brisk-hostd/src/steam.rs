@@ -345,6 +345,23 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
         );
     }
     for i in installed {
+        // Steam tools (runtimes, Proton) have manifests but are not games: the owned list is the
+        // authority; without it, fall back to name prefixes.
+        let tool = [
+            "Steam Linux Runtime",
+            "Proton ",
+            "Proton Experimental",
+            "Steamworks Common Redistributables",
+        ]
+        .iter()
+        .any(|p| i.name.starts_with(p));
+        if if owned_available {
+            !by_id.contains_key(&i.appid)
+        } else {
+            tool
+        } {
+            continue;
+        }
         let g = by_id.entry(i.appid).or_insert_with(|| Game {
             appid: i.appid,
             name: i.name.clone(),
