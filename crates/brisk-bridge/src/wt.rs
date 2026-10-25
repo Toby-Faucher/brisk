@@ -258,6 +258,13 @@ async fn browser_uni(mut s: quinn::RecvStream, tx: mpsc::Sender<Bytes>) -> Optio
     Some(())
 }
 
+/// Reads a browser bidi stream's header: true for a WebTransport stream (`0x41`, session id).
+/// A connection has one session, so the id is not checked.
+pub async fn is_webtransport_bi(s: &mut quinn::RecvStream) -> bool {
+    matches!(VarInt::read(&mut *s).await, Ok(t) if t.into_inner() == 0x41)
+        && VarInt::read(&mut *s).await.is_ok()
+}
+
 impl Session {
     /// A new uni stream with send priority `priority` (higher goes first) and the WebTransport
     /// header already queued.
@@ -285,6 +292,12 @@ impl Session {
         self.conn
             .max_datagram_size()
             .map(|m| m.saturating_sub(self.datagram_header.len()))
+    }
+
+    /// The browser's next bidirectional stream (the page's input stream); check its header with
+    /// [`is_webtransport_bi`].
+    pub async fn accept_bi(&self) -> Result<(quinn::SendStream, quinn::RecvStream), Error> {
+        Ok(self.conn.accept_bi().await?)
     }
 
     /// Resolves when the browser closes the session or the connection dies.

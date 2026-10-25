@@ -1,0 +1,286 @@
+//! Browser input messages to Moonlight input events: the mapping, the bounded queue between the
+//! browser's stream and the control session, release-all, and the send loop's error handling.
+
+mod common;
+
+use std::sync::Arc;
+
+use brisk_bridge::input::{
+    frame, read_stream, send_loop, serve, InputQueue, Shared, KIND_BUTTON, KIND_KEY, KIND_MOVE,
+    KIND_SCROLL, MAX_PENDING,
+};
+use brisk_client::Error;
+use brisk_proto::input::{encode_input, InputEvent};
+use common::*;
+use tokio::time::timeout;
+
+fn key(vk: u8, down: bool, mods: u8) -> Vec<u8> {
+    vec![KIND_KEY, vk, down as u8, mods]
+}
+fn mv(dx: i16, dy: i16) -> Vec<u8> {
+    let mut b = vec![KIND_MOVE];
+    b.extend_from_slice(&dx.to_le_bytes());
+    b.extend_from_slice(&dy.to_le_bytes());
+    b
+}
+fn button(b: u8, down: bool) -> Vec<u8> {
+    vec![KIND_BUTTON, b, down as u8]
+}
+fn drain(q: &mut InputQueue) -> Vec<InputEvent> {
+    std::iter::from_fn(|| q.pop()).collect()
+}
+const fn k(vk: u8, down: bool) -> InputEvent {
+    InputEvent::Key {
+        vk,
+        down,
+        modifiers: 0,
+    }
+}
+
+#[test]
+fn maps_keydown_to_vk() {
+    let mut q = InputQueue::default();
+    q.on_message(&key(0x41, true, 1)); // KeyA with Shift held
+    let ev = q.pop().unwrap();
+    assert_eq!(
+        ev,
+        InputEvent::Key {
+            vk: 0x41,
+            down: true,
+            modifiers: 1
+        }
+    );
+    // On the wire to Sunshine: keyAction 3 (down), keyCode 0x8041, as Moonlight sends for `a`.
+    let p = &encode_input(&ev).unwrap()[0];
+    assert_eq!(u32::from_le_bytes(p[4..8].try_into().unwrap()), 3);
+    assert_eq!(&p[9..11], &[0x41, 0x80]);
+    q.on_message(&key(0x41, true, 1)); // a repeat: Sunshine repeats held keys itself
+    q.on_message(&key(0x41, false, 0));
+    assert_eq!(q.pop(), Some(k(0x41, false)));
+    q.on_message(&key(0x42, false, 0)); // never pressed: nothing to release
+    assert_eq!(q.pop(), None);
+    assert_eq!(q.stats.received, 4);
+    assert_eq!(q.stats.bad, 0);
+}
+
+#[test]
+fn maps_relative_mouse_buttons_and_scroll() {
+    let mut q = InputQueue::default();
+    q.on_message(&mv(-5, 3));
+    assert_eq!(q.pop(), Some(InputEvent::MouseMoveRel { dx: -5, dy: 3 }));
+    q.on_message(&button(3, true));
+    assert_eq!(
+        q.pop(),
+        Some(InputEvent::MouseButton {
+            button: 3,
+            down: true
+        })
+    );
+    q.on_message(&[KIND_SCROLL, 0x88, 0xff]); // -120: one notch down
+    assert_eq!(q.pop(), Some(InputEvent::Scroll { amount: -120 }));
+}
+
+#[test]
+fn maps_relative_mouse() {
+    let mut q = InputQueue::default();
+    q.on_message(&mv(5, -5));
+    q.on_message(&mv(2, 1)); // still queued: coalesced into one move
+    assert_eq!(q.pop(), Some(InputEvent::MouseMoveRel { dx: 7, dy: -4 }));
+    assert_eq!(q.pop(), None);
+    assert_eq!(q.stats.coalesced, 1);
+    // Not across a click: order is kept.
+    q.on_message(&mv(1, 0));
+    q.on_message(&button(1, true));
+    q.on_message(&mv(1, 0));
+    assert_eq!(drain(&mut q).len(), 3);
+}
+
+#[test]
+fn unknown_kind_is_counted_not_fatal() {
+    let mut q = InputQueue::default();
+    for bad in [
+        &[0x7f, 1, 2][..],           // unknown kind
+        &[][..],                     // empty
+        &[KIND_KEY, 0x41, 1][..],    // short
+        &[KIND_MOVE, 1, 0, 1][..],   // short
+        &key(0x00, true, 0)[..],     // vk 0
+        &key(0x41, true, 0x10)[..],  // modifier bit Sunshine does not know
+        &[KIND_KEY, 0x41, 2, 0][..], // down neither 0 nor 1
+        &button(6, true)[..],        // button out of 1..=5
+        &button(0, true)[..],
+    ] {
+        q.on_message(bad);
+    }
+    assert_eq!(q.stats.bad, 9);
+    assert_eq!(q.pop(), None, "nothing bad reaches Sunshine");
+    q.on_message(&key(0x42, true, 0));
+    assert_eq!(q.pop(), Some(k(0x42, true)), "still working after bad ones");
+}
+
+#[tokio::test]
+async fn releases_all_keys_on_stream_close() {
+    let sh = Shared::default();
+    let mut wire = Vec::new();
+    for m in [
+        key(0xA0, true, 1),
+        key(0x41, true, 1),
+        key(0x41, false, 1),
+        button(1, true),
+        vec![0xEE], // unknown kind inside a frame: skipped, the stream goes on
+        key(0x42, true, 1),
+    ] {
+        wire.extend_from_slice(&frame(&m));
+    }
+    wire.push(9); // a frame cut off by the close
+    read_stream(&wire[..], &sh).await;
+    let got = sh.with(|q| {
+        assert_eq!(q.stats.bad, 1);
+        drain(q)
+    });
+    assert_eq!(got.len(), 8, "{got:?}");
+    // Keys in vk order, then buttons.
+    assert_eq!(
+        got[5..],
+        vec![
+            k(0x42, false),
+            k(0xA0, false),
+            InputEvent::MouseButton {
+                button: 1,
+                down: false
+            },
+        ]
+    );
+    assert_eq!(sh.with(|q| q.stats.released), 3);
+    // Nothing is down any more: a second release-all adds nothing.
+    assert!(sh.with(|q| {
+        q.release_all();
+        q.pop().is_none()
+    }));
+}
+
+#[test]
+fn overflow_drops_moves_and_downs_but_keeps_key_ups() {
+    let mut q = InputQueue::default();
+    q.on_message(&key(0x41, true, 0));
+    q.on_message(&button(1, true));
+    for i in 0..(MAX_PENDING * 2) {
+        // Alternate kinds so nothing coalesces.
+        q.on_message(&mv(1, 0));
+        q.on_message(&[KIND_SCROLL, 120, 0]);
+        q.on_message(&key(0x50 + (i % 40) as u8, true, 0)); // more keys than fit
+    }
+    q.on_message(&key(0x41, false, 0));
+    q.on_message(&button(1, false));
+    let got = drain(&mut q);
+    assert!(got.len() <= MAX_PENDING + 2, "{} queued", got.len());
+    assert!(q.stats.dropped > 0);
+    assert_eq!(
+        &got[got.len() - 2..],
+        &[
+            k(0x41, false),
+            InputEvent::MouseButton {
+                button: 1,
+                down: false
+            }
+        ]
+    );
+    // A down that was dropped is not down: its key-up is redundant and nothing stays stuck.
+    q.release_all();
+    let ups = drain(&mut q);
+    assert!(
+        ups.iter()
+            .all(|e| matches!(e, InputEvent::Key { down: false, .. })),
+        "{ups:?}"
+    );
+    // Every key whose last queued event was a press gets its release.
+    let mut held = std::collections::BTreeMap::new();
+    for e in &got {
+        if let InputEvent::Key { vk, down, .. } = e {
+            held.insert(*vk, *down);
+        }
+    }
+    let held: Vec<_> = held
+        .into_iter()
+        .filter(|h| h.1)
+        .map(|h| k(h.0, false))
+        .collect();
+    assert!(held.len() > 20, "{} keys pressed", held.len());
+    assert_eq!(ups, held, "every press released once, no extra releases");
+}
+
+#[tokio::test]
+async fn timeout_is_not_fatal_and_keeps_releases() {
+    let sh = Shared::default();
+    sh.with(|q| {
+        q.on_message(&mv(5, 0));
+        q.on_message(&key(0x41, true, 0));
+        q.on_message(&key(0x41, false, 0));
+    });
+    let mut calls = Vec::new();
+    let r = send_loop(&sh, |ev| {
+        calls.push(ev.clone());
+        let n = calls.len();
+        async move {
+            match n {
+                // move and key-down time out: dropped; the key-up times out once: retried.
+                1..=3 => Err(Error::Timeout("not drained".into())),
+                4 => Ok(()),
+                _ => Err(Error::Closed("control session")),
+            }
+        }
+    });
+    let r = timeout(SECS2, async {
+        sh.with(|q| q.on_message(&key(0x42, true, 0))); // sent after the retry: ends the loop
+        r.await
+    })
+    .await
+    .unwrap();
+    assert!(matches!(r, Err(Error::Closed(_))), "{r:?}");
+    assert_eq!(
+        calls,
+        vec![
+            InputEvent::MouseMoveRel { dx: 5, dy: 0 },
+            k(0x41, true),
+            k(0x41, false),
+            k(0x41, false),
+            k(0x42, true),
+        ]
+    );
+    let st = sh.with(|q| q.stats);
+    assert_eq!((st.timeouts, st.sent), (3, 1));
+}
+
+#[test]
+fn shutdown_returns_pending_and_held_releases() {
+    let mut q = InputQueue::default();
+    q.on_message(&key(0x41, true, 0));
+    q.on_message(&key(0xA0, true, 0));
+    q.on_message(&mv(3, 3));
+    assert_eq!(q.pop(), Some(k(0x41, true))); // sent; 0xA0 down and the move still queued
+    assert_eq!(q.shutdown(), vec![k(0x41, false), k(0xA0, false)]);
+    assert_eq!(q.pop(), None);
+}
+
+#[tokio::test]
+async fn browser_bidi_stream_feeds_the_queue_and_releases_on_close() {
+    let (ep, _d) = server();
+    let (s, c, _cep) = session_pair(&ep).await;
+    let sh = Arc::new(Shared::default());
+    tokio::spawn(serve(Arc::new(s), sh.clone()));
+    let (mut tx, _rx) = c.open_bi().await.unwrap();
+    tx.write_all(&[0x40, 0x41, 0x00]).await.unwrap(); // WEBTRANSPORT_STREAM, session id 0
+    tx.write_all(&frame(&key(0x41, true, 0))).await.unwrap();
+    let wait = |n: usize| {
+        let sh = sh.clone();
+        async move {
+            while sh.with(|q| q.len()) < n {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        }
+    };
+    timeout(SECS2, wait(1)).await.unwrap();
+    c.close(0u32.into(), b"tab closed");
+    timeout(SECS2, wait(2)).await.unwrap();
+    let got = sh.with(drain);
+    assert_eq!(got, vec![k(0x41, true), k(0x41, false)]);
+}

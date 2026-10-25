@@ -11,7 +11,7 @@
 //! host ends the session). At exit it prints the latency report and the M2 gate.
 
 use brisk_bridge::session::{forward, AudioRx, Report};
-use brisk_bridge::wt;
+use brisk_bridge::{input, wt};
 use brisk_client::control::ControlSession;
 use brisk_client::identity::{load_identity, ServerCert};
 use brisk_client::rtsp::StreamPorts;
@@ -180,15 +180,25 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             };
             let run = c.run_until_with(deadline, &mut sink);
             let mut arx = AudioRx::new(p.enc_flags, p.key.rikey, p.key.rikeyid);
+            let inp = std::sync::Arc::new(input::Shared::default());
             let r = tokio::select! {
                 r = run => r,
-                r = forward(&mut tap, ep, token, &h, &mut arx_q, &mut arx, rep) => r,
+                r = forward(&mut tap, ep, token, &h, &mut arx_q, &mut arx, &inp, rep) => r,
+                r = input::send_loop(&inp, |ev| h.send_input(ev)) => r,
                 sig = stop => {
                     println!("{sig}: stopping");
                     Ok(())
                 }
             };
             rep.audio.queue_full = queue_full;
+            // No stuck keys on the host: release what the browser still holds (Sunshine also
+            // resets its input state when the session ends, input.cpp `reset`).
+            for ev in inp.with(input::InputQueue::shutdown) {
+                if !c.is_open() || c.send_input(&ev).await.is_err() {
+                    break;
+                }
+            }
+            rep.input = inp.with(|q| q.stats);
             r
         }
         .await;

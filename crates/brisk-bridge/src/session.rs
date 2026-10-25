@@ -25,7 +25,7 @@ use brisk_proto::sdp::SS_ENC_AUDIO;
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::wt;
+use crate::{input, wt};
 
 /// More unacknowledged frame streams than this means the browser is behind.
 pub const MAX_BEHIND: usize = 3;
@@ -443,6 +443,7 @@ pub struct Report {
     /// `bridge_ns - tap_ns` of every frame written: what the tap socket and the bridge add.
     pub bridge_tap: Hist,
     pub audio: AudioStats,
+    pub input: input::InputStats,
 }
 
 impl Report {
@@ -479,6 +480,7 @@ impl std::fmt::Display for Report {
             )?;
         }
         writeln!(f, "{}", self.audio)?;
+        writeln!(f, "{}", self.input)?;
         let gate = match self.gate() {
             Some(true) => "PASS",
             Some(false) => "FAIL",
@@ -528,7 +530,9 @@ enum Ev {
 
 /// Forwards tap frames and the audio datagrams from `audio` (raw, from the RTP socket) to the
 /// newest viewer until the tap or the control session fails; never returns `Ok`. A new viewer
-/// replaces the old one (a reloaded tab).
+/// replaces the old one (a reloaded tab). Each viewer's input streams feed `input` (sent to the
+/// host by [`input::send_loop`], which runs beside this).
+#[allow(clippy::too_many_arguments)]
 pub async fn forward(
     tap: &mut TapConn,
     ep: &quinn::Endpoint,
@@ -536,6 +540,7 @@ pub async fn forward(
     ctl: &ControlHandle,
     audio: &mut mpsc::Receiver<Bytes>,
     arx: &mut AudioRx,
+    input: &Arc<input::Shared>,
     r: &mut Report,
 ) -> brisk_client::Result<()> {
     let acceptor = wt::Acceptor::new(token, HANDSHAKE_WAIT);
@@ -584,9 +589,11 @@ pub async fn forward(
                 }
                 r.viewers += 1;
                 println!("viewer\t{} connected", s.remote());
+                let s = Arc::new(s);
+                tokio::spawn(input::serve(s.clone(), input.clone()));
                 viewer = Some(Viewer {
                     id: r.viewers,
-                    s: Arc::new(s),
+                    s,
                     inbox,
                     pacer: Pacer::new(),
                     cancels: HashMap::new(),

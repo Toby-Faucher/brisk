@@ -8,7 +8,7 @@
     <title>Brisk</title>
     <style>
       body { margin: 0; background: #000; color: #ccc; font: 12px ui-monospace, monospace; }
-      canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+      canvas { display: block; outline: none; width: 100vw; height: 100vh; object-fit: contain; }
       #stats { position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px; background: #000b; white-space: pre; }
       #connect { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 12px 28px; font: 16px ui-monospace, monospace; }
     </style>
@@ -20,6 +20,7 @@
     <script>
       import { startVideo, type Video } from '../lib/video';
       import { startAudio, type Audio } from '../lib/audio';
+      import { startInput, type Input } from '../lib/input';
       import workletUrl from '../lib/audio-worklet.ts?worker&url';
 
       const out = document.getElementById('stats')!;
@@ -27,6 +28,16 @@
 
       let audio: Audio | null = null;
       let audioError: string | null = null;
+      let input: Input | null = null;
+      let inputError: string | null = null;
+
+      function inputLine() {
+        if (inputError) return `input error: ${inputError}`;
+        if (!input) return 'input starting…';
+        const i = input.stats;
+        const how = document.pointerLockElement ? 'captured (Esc releases)' : document.activeElement?.id === 'video' ? 'keyboard only (Esc releases)' : 'click the video to capture';
+        return `input ${how}  keys ${i.keys}  buttons ${i.buttons}  moves ${i.moves}  scrolls ${i.scrolls}  dropped ${i.dropped}  release-all ${i.releaseAlls}`;
+      }
 
       function audioLine() {
         if (audioError) return `audio error: ${audioError}`;
@@ -49,6 +60,7 @@
           `decode p50 ${ms(s.decodeMs.pct(50))} p99 ${ms(s.decodeMs.pct(99))} ms   present p50 ${ms(s.presentMs.pct(50))} p99 ${ms(s.presentMs.pct(99))} ms`,
           `arrival jitter p50 ${ms(s.jitterMs.pct(50))} p99 ${ms(s.jitterMs.pct(99))} ms   delay over best p50 ${ms(queueOverMin(v, 50))} p99 ${ms(queueOverMin(v, 99))} ms`,
           audioLine(),
+          inputLine(),
           `up ${((performance.now() - t0) / 1000).toFixed(0)} s${s.lastError ? `   last error: ${s.lastError}` : ''}`,
         ].join('\n');
       }
@@ -75,8 +87,13 @@
           serverCertificateHashes: [{ algorithm: 'sha-256', value: hexBytes(hash) }],
         });
         await t.ready;
-        const v = startVideo(t, document.getElementById('video') as HTMLCanvasElement);
+        const canvas = document.getElementById('video') as HTMLCanvasElement;
+        const v = startVideo(t, canvas);
         (window as any).brisk = v;
+        startInput(t, canvas).then(
+          (i) => ((window as any).briskInput = input = i),
+          (e) => (inputError = String(e)),
+        );
         if (!('AudioDecoder' in window)) audioError = 'this browser has no WebCodecs AudioDecoder';
         else
           startAudio(t, ctx, workletUrl).then(
