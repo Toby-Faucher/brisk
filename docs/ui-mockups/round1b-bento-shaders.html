@@ -1,0 +1,251 @@
+<title>Brisk Bento Shaders</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Bento Home with live shaders behind each card and a faint one behind the whole window. Shaders are hand-written approximations of shaders.com effects. */
+:root {
+  --bg: #0b0c0f; --panel: #121419; --panel2: #171a21; --line: #22262f; --fg: #eceef3; --muted: #8e96a5;
+  --accent: #5eead4; --accent-fg: #04201b; --ok: #4ade80;
+  --c-lib: #fbbf24; --c-stream: #60a5fa; --c-host: #38bdf8; --c-set: #94a3b8; --c-agent: #a78bfa; --c-news: #fb7185; --c-power: #4ade80;
+  --sh: .9; /* card shader strength */
+  --shb: .09; /* window background shader strength */
+  --font: 'Geist', system-ui, sans-serif; --mono: 'Geist Mono', ui-monospace, monospace; --ease: cubic-bezier(.2,.8,.2,1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #07080a; color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 40px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: #07080a; }
+.page { max-width: 1180px; margin: 0 auto; }
+.ctrl { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: #07080a; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
+.row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.ctrl h1 { font-size: 15px; margin: 0; font-weight: 600; }
+.seg { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 9px; cursor: pointer; transition: all .2s var(--ease); }
+.seg button[aria-pressed="true"] { background: var(--panel2); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.sw { display: flex; gap: 7px; align-items: center; }
+.sw span, .lab { color: var(--muted); font-size: 12.5px; }
+.sw button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform .2s var(--ease); }
+.sw button:hover { transform: scale(1.15); } .sw button[aria-pressed="true"] { border-color: #fff; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note { color: var(--muted); font-size: 12.5px; margin: 14px 0; max-width: 80ch; }
+.scroll { overflow-x: auto; }
+.win { min-width: 980px; height: 660px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--bg); display: flex; position: relative; isolation: isolate; }
+.win > canvas.bgsh { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; opacity: var(--shb); pointer-events: none; }
+svg.i { width: 18px; height: 18px; flex: 0 0 auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); display: inline-block; animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px transparent; } }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.btn { border: 0; font: inherit; font-weight: 600; cursor: pointer; border-radius: 12px; padding: 8px 15px; background: var(--accent); color: var(--accent-fg); transition: transform .18s var(--ease), filter .18s; display: inline-flex; gap: 8px; align-items: center; }
+.btn:hover { filter: brightness(1.08); transform: translateY(-1px); } .btn:active { transform: scale(.97); }
+.btn.ghost { background: color-mix(in srgb, #fff 9%, transparent); color: var(--fg); backdrop-filter: blur(6px); }
+.tag { font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, #fff 8%, transparent); color: var(--muted); }
+.pill-k { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; margin-left: auto; }
+.cover { border-radius: 12px; flex: 0 0 auto; }
+.side { width: 218px; background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(10px); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; font-weight: 700; }
+.brand i { width: 22px; height: 22px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: var(--accent-fg); }
+.nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; color: var(--muted); border: 0; background: transparent; font: inherit; text-align: left; width: 100%; cursor: pointer; transition: background .18s, color .18s, transform .18s var(--ease); }
+.nav:hover { background: var(--panel2); color: var(--fg); transform: translateX(2px); }
+.nav[aria-current="page"] { background: var(--panel2); color: var(--fg); box-shadow: 0 0 0 1px var(--line) inset; }
+.sec { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #5d6575; padding: 14px 10px 4px; }
+.main { flex: 1; padding: 18px 20px; min-width: 0; }
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 120px; gap: 12px; }
+.card { background: color-mix(in srgb, var(--panel) 78%, transparent); border: 1px solid var(--line); border-radius: 22px; padding: 16px; position: relative; overflow: hidden; transition: transform .25s var(--ease), border-color .25s; min-width: 0; isolation: isolate; }
+.card:hover { transform: translateY(-3px); border-color: #3a4152; }
+.card > canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; opacity: 0; transition: opacity .45s var(--ease); pointer-events: none; }
+.card:hover > canvas, .card:focus-within > canvas { opacity: var(--sh); }
+.card::after { transition: opacity .45s var(--ease); }
+.card:hover::after, .card:focus-within::after { opacity: .55; } /* lighter scrim while the smoke is showing */
+.card::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgba(11,12,15,.05), rgba(11,12,15,.55)); }
+.card h4 { margin: 0; font-size: 12px; font-weight: 600; color: #c4cad6; display: flex; gap: 8px; align-items: center; }
+.s2 { grid-column: span 2; } .s3 { grid-column: span 3; } .r2 { grid-row: span 2; }
+.big { font-size: 30px; font-weight: 650; letter-spacing: -.03em; margin-top: 6px; }
+.mini { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid color-mix(in srgb, #fff 8%, transparent); }
+.mini:first-of-type { border-top: 0; }
+.ring { width: 52px; height: 52px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 1%), color-mix(in srgb, #fff 10%, transparent) 0); display: grid; place-items: center; }
+.ring b { width: 40px; height: 40px; border-radius: 50%; background: #0f1116; display: grid; place-items: center; font-size: 12px; font-family: var(--mono); }
+.ghostcard { border-style: dashed; background: transparent; display: grid; place-items: center; text-align: center; color: var(--muted); cursor: pointer; }
+[hidden] { display: none !important; }
+body.off { --sh: 0; }
+.perf { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+  <div class="ctrl"><div class="row">
+    <h1>Brisk, round 1b: bento with shaders</h1>
+    <div class="seg" id="lvl"><button data-v="0" data-b="0" aria-pressed="false">Off</button><button data-v=".9" data-b=".09" aria-pressed="true">Subtle</button><button data-v="1" data-b=".2" aria-pressed="false">Bold</button></div>
+    <div class="sw" id="sw"><span>Accent</span></div>
+    <span class="perf" id="perf"></span>
+  </div></div>
+  <p class="note">Every card has the same smoke in your accent color, and it only appears while you hover or focus the card. Only the faint one behind the whole window runs all the time. These are hand-written approximations of shaders.com effects; the real build would use the library itself. Try Off / Subtle / Bold.</p>
+  <div class="scroll"><div class="win" id="win"></div></div>
+  <p class="note">Sample data. On the Stream screen every shader would be switched off completely so video latency is untouched. Shaders also render at reduced resolution and pause when this tab is hidden.</p>
+</div>
+
+<script>
+const I = {
+  bolt: '<path d="M13.2 2 4.5 13.5h6L9.6 22l9.9-12.2h-6.4z"/>',
+  home: '<path d="M12 3 3 10.5V21h6.5v-6h5v6H21V10.5z"/>',
+  lib: '<rect x="3" y="3" width="8" height="8" rx="2.5"/><rect x="13" y="3" width="8" height="8" rx="2.5"/><rect x="3" y="13" width="8" height="8" rx="2.5"/><rect x="13" y="13" width="8" height="8" rx="2.5"/>',
+  stream: '<circle cx="12" cy="12" r="9.5"/><path d="M10 8v8l6.5-4z" fill="#0b0c0f"/>',
+  host: '<rect x="2.5" y="4" width="19" height="12.5" rx="3"/><rect x="8" y="18.5" width="8" height="2.5" rx="1.25"/>',
+  set: '<rect x="3" y="5.5" width="18" height="2.4" rx="1.2"/><circle cx="9" cy="6.7" r="3.2"/><rect x="3" y="10.8" width="18" height="2.4" rx="1.2"/><circle cx="15.5" cy="12" r="3.2"/><rect x="3" y="16.1" width="18" height="2.4" rx="1.2"/><circle cx="8" cy="17.3" r="3.2"/>',
+  agent: '<path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/><path d="M19 3l.9 2.1L22 6l-2.1.9L19 9l-.9-2.1L16 6l2.1-.9z"/>',
+  news: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><rect x="7" y="8" width="10" height="2" rx="1" fill="#0b0c0f"/><rect x="7" y="12" width="10" height="2" rx="1" fill="#0b0c0f"/><rect x="7" y="16" width="6" height="2" rx="1" fill="#0b0c0f"/>',
+  play: '<path d="M7 4.5v15l13-7.5z"/>', plus: '<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/>',
+  fit: '<path d="M4 9.5c0-1 .8-1.8 1.8-1.8H7v8.6H5.8c-1 0-1.8-.8-1.8-1.8zM20 9.5c0-1-.8-1.8-1.8-1.8H17v8.6h1.2c1 0 1.8-.8 1.8-1.8zM8.5 11h7v2h-7z"/>',
+};
+const ic = (k, c, s) => `<svg class="i" viewBox="0 0 24 24" fill="${c}" ${s ? `style="width:${s}px;height:${s}px"` : ''}>${I[k]}</svg>`;
+const cover = (g, s = 38) => `<div class="cover" style="width:${s}px;height:${s}px;background:${g}"></div>`;
+const G1 = 'linear-gradient(135deg,#7c3aed,#db2777)', G2 = 'linear-gradient(135deg,#0ea5e9,#1e3a8a)';
+
+document.getElementById('win').innerHTML = `
+<canvas class="bgsh" data-m="4" data-c="rose"></canvas>
+<aside class="side">
+  <div class="brand"><i>${ic('bolt', 'currentColor', 14)}</i> Brisk</div>
+  <button class="nav" aria-current="page">${ic('home', 'var(--accent)')}Home</button>
+  <button class="nav">${ic('lib', 'var(--c-lib)')}Library</button>
+  <button class="nav">${ic('stream', 'var(--c-stream)')}Stream</button>
+  <button class="nav">${ic('host', 'var(--c-host)')}Machines</button>
+  <button class="nav">${ic('set', 'var(--c-set)')}Settings</button>
+  <div class="sec">Coming</div>
+  <button class="nav" style="opacity:.55">${ic('agent', 'var(--c-agent)')}Agents<span class="tag" style="margin-left:auto">soon</span></button>
+  <button class="nav" style="opacity:.55">${ic('news', 'var(--c-news)')}News<span class="tag" style="margin-left:auto">soon</span></button>
+  <button class="nav" style="opacity:.55">${ic('fit', 'var(--c-power)')}Workouts<span class="tag" style="margin-left:auto">soon</span></button>
+  <div class="nav" style="margin-top:auto">${ic('host', 'var(--ok)')}bawn<span class="dot" style="margin-left:auto"></span></div>
+</aside>
+<main class="main"><div class="bento">
+  <div class="card s3 r2"><canvas data-m="4" data-c="rose"></canvas>
+    <h4>${ic('host', 'var(--c-host)', 16)} bawn <span class="dot"></span></h4>
+    <div class="big">Online</div><div class="lab">Sunshine ready · up 21 h</div>
+    <div style="display:flex;gap:16px;margin-top:26px;align-items:center">
+      <div class="ring" style="--p:48"><b>48°</b></div><div><div class="lab">GPU</div><b class="mono">48 °C</b></div>
+      <div class="ring" style="--p:41"><b>41°</b></div><div><div class="lab">CPU</div><b class="mono">41 °C</b></div>
+      <div><div class="lab">Network</div><b class="mono">Direct · 2 ms</b></div></div></div>
+  <div class="card s3"><canvas data-m="4" data-c="rose"></canvas>
+    <h4>${ic('stream', 'var(--c-stream)', 16)} Resume</h4>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:12px">${cover(G1, 48)}<div><b>Mewgenics</b><div class="lab">38 min ago</div></div><button class="btn" style="margin-left:auto">${ic('play', 'currentColor', 14)} Play</button></div></div>
+  <div class="card s3"><canvas data-m="4" data-c="rose"></canvas><h4>${ic('bolt', 'var(--c-power)', 16)} Quick actions</h4>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost">Wake</button><button class="btn ghost">Restart Sunshine</button><button class="btn ghost">Quality</button></div></div>
+  <div class="card s2 r2"><canvas data-m="4" data-c="rose"></canvas><h4>${ic('lib', 'var(--c-lib)', 16)} Recent</h4>
+    <div class="mini">${cover(G1, 30)}<div><b>Mewgenics</b><div class="lab">38 min</div></div></div>
+    <div class="mini">${cover(G2, 30)}<div><b>Big Picture</b><div class="lab">12 min</div></div></div>
+    <div class="mini">${cover(G1, 30)}<div><b>Mewgenics</b><div class="lab">1 h 04</div></div></div></div>
+  <div class="card s2 r2"><canvas data-m="4" data-c="rose"></canvas>
+    <h4>${ic('agent', 'var(--c-agent)', 16)} Agents <span class="tag">soon</span></h4>
+    <div class="big" style="font-size:24px">3 running</div><div class="lab">Runs, queues and logs would live here.</div></div>
+  <div class="card s2"><canvas data-m="4" data-c="rose"></canvas>
+    <h4>${ic('news', 'var(--c-news)', 16)} News <span class="tag">soon</span></h4><div class="lab" style="margin-top:8px">Your curated feed.</div></div>
+  <div class="card s2 ghostcard"><canvas data-m="4" data-c="rose"></canvas><div>${ic('plus', 'currentColor', 20)}<div>Add a module</div></div></div>
+</div></main>`;
+
+/* ---------- shaders: one tiny WebGL program per canvas ---------- */
+const VS = '#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 R; uniform float T; uniform int M; uniform vec3 A, B, C;
+out vec4 o;
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=a*n(p);p*=2.02;a*=.5;}return v;}
+void main(){
+  vec2 uv=gl_FragCoord.xy/R; float asp=R.x/R.y; vec2 p=(uv-.5)*vec2(asp,1.);
+  vec3 col=vec3(0.); float t=T;
+  if(M==0){ // mesh gradient: slow drifting blobs
+    for(int i=0;i<4;i++){float fi=float(i); vec2 c=vec2(sin(t*.07+fi*2.1)*.7*asp*.5+.0, cos(t*.06+fi*1.7)*.35);
+      float w=exp(-dot(p-c,p-c)*2.2); col+=w*mix(A,B,fract(fi*.37+.2));}
+  } else if(M==1){ // aurora curtains
+    float acc=0.;
+    for(int i=0;i<3;i++){float fi=float(i);
+      float wv=sin(uv.x*5.+t*.45+fi*2.+sin(uv.x*2.5+t*.2+fi)*1.6);
+      float y=.55+.16*wv-fi*.07; float cur=exp(-pow((uv.y-y)*4.2,2.));
+      cur*=.55+.45*sin(uv.x*70.+wv*4.+t*.6); acc+=cur*(.55-fi*.12);}
+    col=acc*mix(A,B,uv.x)+ .12*A*(1.-uv.y);
+  } else if(M==2){ // flowing gradient
+    vec2 q=uv*2.; q+=.45*vec2(sin(q.y*2.2+t*.5),cos(q.x*2.+t*.4)); q+=.25*vec2(sin(q.y*3.+t*.3),cos(q.x*3.1-t*.35));
+    float k=.5+.5*sin(q.x*2.+q.y*1.4+t*.2); col=mix(mix(A,B,k),C,smoothstep(.3,1.,fbm(q*1.5+t*.05)))*.95;
+  } else if(M==3){ // plasma
+    vec2 q=p*3.2; float v=sin(q.x*1.3+t*.8)+sin(q.y*1.7-t*.6)+sin((q.x+q.y)*1.1+t*.5)+sin(length(q+vec2(sin(t*.3),cos(t*.4)))*2.4);
+    v=.5+.25*v; col=mix(mix(A,B,v),C,smoothstep(.55,1.,v))*.9;
+  } else { // soft smoke
+    float f=fbm(p*2.2+vec2(t*.05,-t*.04)+fbm(p*3.+t*.07)); col=mix(A,B,f)*smoothstep(.2,.9,f)*1.9+C*.08;
+  }
+  col*=1.-.55*dot(uv-.5,uv-.5)*2.; // vignette
+  col+=(h(gl_FragCoord.xy+fract(t))-.5)*.035; // grain
+  o=vec4(max(col,0.),1.);
+}`;
+const hex = (s) => { const v = parseInt(s.slice(1), 16); return [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255]; };
+let accent = '#5eead4';
+const PAL = {
+  accent: () => [hex(accent), hex('#1e293b'), hex('#0b0c0f')],
+  game: () => [hex('#7c3aed'), hex('#db2777'), hex('#f59e0b')],
+  violet: () => [hex('#a78bfa'), hex('#4c1d95'), hex('#0b0c0f')],
+  rose: () => [hex(accent), hex(accent).map((v) => v * 0.22), hex(accent).map((v) => v * 0.1)], // the smoke follows the accent
+};
+const items = [];
+function mk(cv) {
+  const gl = cv.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'low-power' });
+  if (!gl) return null;
+  const sh = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); return x; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) return null;
+  gl.useProgram(pr);
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const u = (n) => gl.getUniformLocation(pr, n);
+  return { cv, gl, R: u('R'), T: u('T'), M: u('M'), A: u('A'), B: u('B'), C: u('C'), m: +cv.dataset.m, pal: cv.dataset.c, seed: Math.random() * 50 };
+}
+document.querySelectorAll('canvas[data-m]').forEach((cv) => {
+  const s = mk(cv); if (!s) return;
+  const card = cv.closest('.card');
+  if (!card) s.always = true; // only the faint window background runs all the time
+  else {
+    const on = () => { s.hot = true; }, off = () => { s.hot = false; s.off = performance.now(); };
+    card.addEventListener('pointerenter', on); card.addEventListener('pointerleave', off);
+    card.addEventListener('focusin', on); card.addEventListener('focusout', off);
+  }
+  items.push(s);
+});
+const SCALE = 0.5; // render at half resolution: the effects are soft anyway
+function draw(s, time) {
+  const w = Math.max(2, Math.round(s.cv.clientWidth * SCALE)), hgt = Math.max(2, Math.round(s.cv.clientHeight * SCALE));
+  if (s.cv.width !== w || s.cv.height !== hgt) { s.cv.width = w; s.cv.height = hgt; }
+  const g = s.gl; g.viewport(0, 0, w, hgt);
+  const [a, b, c] = PAL[s.pal]();
+  g.uniform2f(s.R, w, hgt); g.uniform1f(s.T, time + s.seed); g.uniform1i(s.M, s.m);
+  g.uniform3f(s.A, ...a); g.uniform3f(s.B, ...b); g.uniform3f(s.C, ...c);
+  g.drawArrays(g.TRIANGLES, 0, 3);
+}
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let last = 0, frames = 0, tmark = performance.now(), cost = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (document.hidden || document.body.classList.contains('off')) return;
+  if (ts - last < 33) return; last = ts; // 30 fps cap
+  const t0 = performance.now();
+  const now = performance.now();
+  const live = items.filter((s) => s.always || s.hot || now - (s.off || -1e9) < 500); // a card keeps drawing while it fades out
+  if (!still || frames === 0) live.forEach((s) => draw(s, ts / 1000));
+  cost += performance.now() - t0; frames++;
+  if (ts - tmark > 1000) { document.getElementById('perf').textContent = `${live.length} of ${items.length} shaders running · ${frames} fps · ${(cost / frames).toFixed(1)} ms CPU/frame`; frames = 0; cost = 0; tmark = ts; }
+}
+requestAnimationFrame(loop);
+if (!items.length) document.getElementById('perf').textContent = 'WebGL2 unavailable here: cards would use a plain CSS gradient';
+
+document.getElementById('lvl').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#lvl button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  document.documentElement.style.setProperty('--sh', b.dataset.v);
+  document.documentElement.style.setProperty('--shb', b.dataset.b);
+  document.body.classList.toggle('off', b.dataset.v === '0');
+  if (b.dataset.v === '0') document.getElementById('perf').textContent = 'shaders off: 0 GPU work';
+};
+const AC = [['#5eead4', '#04201b', 'Mint'], ['#818cf8', '#0d1030', 'Indigo'], ['#f472b6', '#2a0a1a', 'Pink'], ['#fb923c', '#2b1204', 'Orange'], ['#a3e635', '#142004', 'Lime'], ['#60a5fa', '#07162b', 'Sky']];
+const sw = document.getElementById('sw');
+AC.forEach(([c, fg, nm], i) => {
+  const b = document.createElement('button'); b.style.background = c; b.title = nm; b.setAttribute('aria-label', nm); b.setAttribute('aria-pressed', String(i === 0));
+  b.onclick = () => { accent = c; document.documentElement.style.setProperty('--accent', c); document.documentElement.style.setProperty('--accent-fg', fg); sw.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); };
+  sw.appendChild(b);
+});
+</script>

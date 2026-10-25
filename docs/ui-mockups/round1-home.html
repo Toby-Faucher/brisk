@@ -1,0 +1,263 @@
+<title>Brisk Mockups Round 1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Dark-only. One shared token set; each option styles the same data in its own layout. Accent is swapped live. */
+:root {
+  --bg: #0b0c0f; --panel: #121419; --panel2: #171a21; --line: #22262f; --fg: #eceef3; --muted: #8e96a5;
+  --accent: #5eead4; --accent-fg: #04201b;
+  --c-home: var(--accent); --c-lib: #fbbf24; --c-stream: #60a5fa; --c-host: #38bdf8; --c-set: #94a3b8;
+  --c-agent: #a78bfa; --c-news: #fb7185; --c-power: #4ade80; --ok: #4ade80; --warn: #fbbf24;
+  --font: 'Geist', system-ui, sans-serif; --mono: 'Geist Mono', ui-monospace, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #07080a; color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 40px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: #07080a; }
+.page { max-width: 1180px; margin: 0 auto; }
+.ctrl { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: #07080a; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
+.ctrl .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.ctrl h1 { font-size: 15px; margin: 0; font-weight: 600; }
+.seg { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 9px; cursor: pointer; transition: all .2s var(--ease); }
+.seg button[aria-selected="true"] { background: var(--panel2); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.sw { display: flex; gap: 7px; align-items: center; }
+.sw span { color: var(--muted); font-size: 12.5px; margin-right: 2px; }
+.sw button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform .2s var(--ease); outline-offset: 2px; }
+.sw button:hover { transform: scale(1.15); }
+.sw button[aria-pressed="true"] { border-color: #fff; }
+.note { color: var(--muted); font-size: 12.5px; margin: 14px 0; max-width: 78ch; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.win { min-width: 980px; height: 640px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg); display: flex; position: relative; }
+[hidden] { display: none !important; }
+
+/* shared bits */
+svg.i { width: 18px; height: 18px; flex: 0 0 auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); animation: pulse 2.4s ease-in-out infinite; display: inline-block; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 0%, transparent); } }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.btn { border: 0; font: inherit; font-weight: 600; cursor: pointer; border-radius: 12px; padding: 9px 16px; background: var(--accent); color: var(--accent-fg); transition: transform .18s var(--ease), filter .18s; display: inline-flex; gap: 8px; align-items: center; }
+.btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn.ghost { background: var(--panel2); color: var(--fg); box-shadow: 0 0 0 1px var(--line) inset; }
+.tag { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.tag.soon { background: var(--panel2); color: var(--muted); font-weight: 500; }
+.pill-k { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; }
+.cover { border-radius: 12px; flex: 0 0 auto; }
+
+/* sidebar (options 1 and 2) */
+.side { width: 224px; background: var(--panel); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; font-weight: 700; letter-spacing: -.01em; }
+.brand i { width: 22px; height: 22px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: var(--accent-fg); }
+.nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; color: var(--muted); cursor: pointer; border: 0; background: transparent; font: inherit; text-align: left; width: 100%; transition: background .18s, color .18s, transform .18s var(--ease); }
+.nav:hover { background: var(--panel2); color: var(--fg); transform: translateX(2px); }
+.nav[aria-current="page"] { background: var(--panel2); color: var(--fg); box-shadow: 0 0 0 1px var(--line) inset; }
+.nav .k { margin-left: auto; }
+.sec { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #5d6575; padding: 14px 10px 4px; }
+.search { display: flex; gap: 8px; align-items: center; padding: 7px 10px; margin: 0 0 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); }
+
+/* option 1: calm list */
+.main1 { flex: 1; padding: 22px 28px; overflow: hidden; min-width: 0; }
+.h1 { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.h1 h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.hostbar { display: flex; align-items: center; gap: 22px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); flex-wrap: wrap; }
+.hostbar .m { display: flex; flex-direction: column; }
+.hostbar .m b { font-size: 15px; font-weight: 600; }
+.lab { font-size: 11.5px; color: var(--muted); }
+.cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; margin-top: 22px; }
+.list h3, .qa h3 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.srow { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 12px; transition: background .18s; cursor: pointer; }
+.srow:hover { background: var(--panel); }
+.srow .t { font-weight: 500; }
+.srow .r { margin-left: auto; text-align: right; }
+.qa .q { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); margin-bottom: 8px; cursor: pointer; transition: transform .2s var(--ease), border-color .2s; }
+.qa .q:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.ico { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto; }
+
+/* option 2: bento cards */
+.main2 { flex: 1; padding: 20px 22px; min-width: 0; overflow: hidden; }
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 118px; gap: 12px; margin-top: 4px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 16px; position: relative; overflow: hidden; transition: transform .25s var(--ease), border-color .25s; min-width: 0; }
+.card:hover { transform: translateY(-3px); border-color: #323847; }
+.card h4 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.span2 { grid-column: span 2; } .span3 { grid-column: span 3; } .span4 { grid-column: span 4; } .row2 { grid-row: span 2; }
+.bigtxt { font-size: 28px; font-weight: 650; letter-spacing: -.03em; margin-top: 6px; }
+.glow { position: absolute; inset: auto -30% -60% auto; width: 70%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 35%, transparent), transparent); filter: blur(10px); pointer-events: none; }
+.bars { display: flex; align-items: flex-end; gap: 4px; height: 44px; margin-top: 10px; }
+.bars i { flex: 1; background: color-mix(in srgb, var(--accent) 70%, #fff 0%); border-radius: 4px; opacity: .85; animation: rise .9s var(--ease) both; }
+@keyframes rise { from { transform: scaleY(.1); } }
+.bars i { transform-origin: bottom; }
+.ghostcard { border-style: dashed; background: transparent; display: grid; place-items: center; text-align: center; color: var(--muted); cursor: pointer; }
+.mini { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); }
+.mini:first-of-type { border-top: 0; }
+.ring { --p: 62; width: 54px; height: 54px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--panel2) 0); display: grid; place-items: center; }
+.ring b { width: 42px; height: 42px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 12.5px; font-family: var(--mono); }
+
+/* option 3: console, icon rail + hero */
+.rail { width: 66px; background: var(--panel); border-right: 1px solid var(--line); padding: 14px 0; display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 0 0 auto; }
+.rail .ri { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; border: 0; cursor: pointer; background: transparent; position: relative; transition: transform .22s var(--ease), background .2s; }
+.rail .ri:hover { background: var(--panel2); transform: scale(1.08); }
+.rail .ri[aria-current="page"] { background: var(--panel2); box-shadow: 0 0 0 1px var(--line) inset; }
+.rail .ri[aria-current="page"]::before { content: ""; position: absolute; left: -12px; top: 11px; bottom: 11px; width: 4px; border-radius: 0 4px 4px 0; background: var(--accent); }
+.rail .ri svg { width: 22px; height: 22px; }
+.main3 { flex: 1; min-width: 0; position: relative; overflow: hidden; padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; }
+.hero { border-radius: 26px; padding: 26px; background: radial-gradient(120% 140% at 85% 0%, color-mix(in srgb, var(--accent) 38%, #12151c), #12151c 62%); border: 1px solid var(--line); display: flex; gap: 22px; align-items: center; min-height: 210px; position: relative; overflow: hidden; }
+.hero h2 { margin: 4px 0 6px; font-size: 30px; letter-spacing: -.03em; }
+.chiprow { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { display: inline-flex; gap: 7px; align-items: center; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, #fff 7%, transparent); font-size: 12.5px; }
+.shelf { display: flex; gap: 14px; }
+.tile { flex: 1; min-width: 0; border-radius: 20px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); cursor: pointer; transition: transform .25s var(--ease); }
+.tile:hover { transform: translateY(-4px) scale(1.01); }
+.tile .art { height: 92px; }
+.tile .cap { padding: 10px 12px; }
+.tile .cap b { display: block; font-weight: 600; }
+.statusbar { display: flex; gap: 18px; align-items: center; padding: 11px 16px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+  <div class="ctrl">
+    <div class="row">
+      <h1>Brisk, round 1: shell and Home</h1>
+      <div class="seg" role="tablist" id="seg">
+        <button role="tab" aria-selected="true" data-o="1">1 Calm list</button>
+        <button role="tab" aria-selected="false" data-o="2">2 Bento cards</button>
+        <button role="tab" aria-selected="false" data-o="3">3 Game console</button>
+      </div>
+      <div class="sw" id="sw"><span>Accent</span></div>
+    </div>
+  </div>
+  <p class="note" id="note"></p>
+  <div class="scroll"><div class="win" id="win"></div></div>
+  <p class="note">Mockups with sample data, not real status. The sidebar entries marked "soon" show where future modules (agents, news, workouts) would plug in. Hover things to feel the motion.</p>
+</div>
+
+<script>
+const ACCENTS = [['#5eead4', '#04201b', 'Mint'], ['#818cf8', '#0d1030', 'Indigo'], ['#f472b6', '#2a0a1a', 'Pink'], ['#fb923c', '#2b1204', 'Orange'], ['#a3e635', '#142004', 'Lime'], ['#60a5fa', '#07162b', 'Sky']];
+const NOTES = {
+  1: 'Linear-like. A text sidebar, a thin status bar, and Home as quiet lists. Densest and calmest. Best when you will run many modules.',
+  2: 'Modular tiles. Each module owns a card, so the dashboard can grow (agents, news, workouts) without redesign. Softest and most playful.',
+  3: 'Game first. A slim icon rail and a big Resume hero, with host status as small chips. Feels like a console. Other modules live behind the rail.',
+};
+const I = {
+  home: '<path d="M12 3 3 10.5V21h6.5v-6h5v6H21V10.5z"/>',
+  lib: '<rect x="3" y="3" width="8" height="8" rx="2.5"/><rect x="13" y="3" width="8" height="8" rx="2.5"/><rect x="3" y="13" width="8" height="8" rx="2.5"/><rect x="13" y="13" width="8" height="8" rx="2.5"/>',
+  stream: '<circle cx="12" cy="12" r="9.5"/><path d="M10 8v8l6.5-4z" fill="#0b0c0f"/>',
+  host: '<rect x="2.5" y="4" width="19" height="12.5" rx="3"/><rect x="8" y="18.5" width="8" height="2.5" rx="1.25"/>',
+  set: '<rect x="3" y="5.5" width="18" height="2.4" rx="1.2"/><circle cx="9" cy="6.7" r="3.2"/><rect x="3" y="10.8" width="18" height="2.4" rx="1.2"/><circle cx="15.5" cy="12" r="3.2"/><rect x="3" y="16.1" width="18" height="2.4" rx="1.2"/><circle cx="8" cy="17.3" r="3.2"/>',
+  agent: '<path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/><path d="M19 3l.9 2.1L22 6l-2.1.9L19 9l-.9-2.1L16 6l2.1-.9z"/>',
+  news: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><rect x="7" y="8" width="10" height="2" rx="1" fill="#0b0c0f"/><rect x="7" y="12" width="10" height="2" rx="1" fill="#0b0c0f"/><rect x="7" y="16" width="6" height="2" rx="1" fill="#0b0c0f"/>',
+  power: '<path d="M13.2 2 4.5 13.5h6L9.6 22l9.9-12.2h-6.4z"/>',
+  bolt: '<path d="M13.2 2 4.5 13.5h6L9.6 22l9.9-12.2h-6.4z"/>',
+  play: '<path d="M7 4.5v15l13-7.5z"/>',
+  plus: '<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/>',
+  fit: '<path d="M4 9.5c0-1 .8-1.8 1.8-1.8H7v8.6H5.8c-1 0-1.8-.8-1.8-1.8zM20 9.5c0-1-.8-1.8-1.8-1.8H17v8.6h1.2c1 0 1.8-.8 1.8-1.8zM8.5 11h7v2h-7z"/>',
+};
+const ic = (k, color, size) => `<svg class="i" viewBox="0 0 24 24" fill="${color}" ${size ? `style="width:${size}px;height:${size}px"` : ''}>${I[k]}</svg>`;
+const NAV = [
+  ['home', 'Home', 'var(--c-home)', true], ['lib', 'Library', 'var(--c-lib)'], ['stream', 'Stream', 'var(--c-stream)'],
+  ['host', 'Machines', 'var(--c-host)'], ['set', 'Settings', 'var(--c-set)'],
+];
+const SOON = [['agent', 'Agents', 'var(--c-agent)'], ['news', 'News', 'var(--c-news)'], ['fit', 'Workouts', 'var(--c-power)']];
+const SESS = [
+  ['Mewgenics', 'Today, 2:41 pm', '38 min', 'linear-gradient(135deg,#7c3aed,#db2777)'],
+  ['Steam Big Picture', 'Today, 1:12 pm', '12 min', 'linear-gradient(135deg,#0ea5e9,#1e3a8a)'],
+  ['Mewgenics', 'Yesterday, 9:30 pm', '1 h 04 min', 'linear-gradient(135deg,#7c3aed,#db2777)'],
+];
+const cover = (g, s = 38) => `<div class="cover" style="width:${s}px;height:${s}px;background:${g}"></div>`;
+
+const sidebar = () => `<aside class="side">
+  <div class="brand"><i>${ic('bolt', 'currentColor', 14)}</i> Brisk</div>
+  <div class="search">${ic('lib', 'currentColor', 14)}<span>Search or jump to…</span><span class="pill-k k" style="margin-left:auto">Ctrl K</span></div>
+  ${NAV.map(([k, t, c, cur]) => `<button class="nav" ${cur ? 'aria-current="page"' : ''}>${ic(k, c)}${t}</button>`).join('')}
+  <div class="sec">Coming</div>
+  ${SOON.map(([k, t, c]) => `<button class="nav" style="opacity:.55">${ic(k, c)}${t}<span class="tag soon k">soon</span></button>`).join('')}
+  <div style="margin-top:auto" class="nav">${ic('host', 'var(--ok)')}<span>bawn</span><span class="dot k"></span></div>
+</aside>`;
+
+const O = {
+  1: () => `${sidebar()}<main class="main1">
+    <div class="h1"><h2>Good afternoon</h2><span class="muted">Everything is running.</span></div>
+    <div class="hostbar">
+      <div class="m"><span class="lab">Machine</span><b>bawn <span class="dot" style="margin-left:6px"></span></b></div>
+      <div class="m"><span class="lab">Sunshine</span><b style="color:var(--ok)">Ready</b></div>
+      <div class="m"><span class="lab">GPU / CPU</span><b class="mono">48° / 41°</b></div>
+      <div class="m"><span class="lab">Path</span><b class="mono">Direct · 2 ms</b></div>
+      <div class="m"><span class="lab">Uptime</span><b class="mono">21 h</b></div>
+      <span style="margin-left:auto"></span><button class="btn">${ic('play', 'currentColor', 14)} Resume Mewgenics</button>
+    </div>
+    <div class="cols">
+      <div class="list"><h3>Recent sessions</h3>
+        ${SESS.map(([t, w, d, g]) => `<div class="srow">${cover(g)}<div><div class="t">${t}</div><div class="lab">${w}</div></div><div class="r mono">${d}</div></div>`).join('')}
+      </div>
+      <div class="qa"><h3>Quick actions</h3>
+        <div class="q"><span class="ico" style="background:color-mix(in srgb,var(--c-stream) 18%,transparent)">${ic('stream', 'var(--c-stream)')}</span>Stream a game<span class="pill-k k" style="margin-left:auto">G</span></div>
+        <div class="q"><span class="ico" style="background:color-mix(in srgb,var(--c-power) 18%,transparent)">${ic('power', 'var(--c-power)')}</span>Wake a machine<span class="pill-k" style="margin-left:auto">W</span></div>
+        <div class="q"><span class="ico" style="background:color-mix(in srgb,var(--c-set) 18%,transparent)">${ic('set', 'var(--c-set)')}</span>Quality presets<span class="pill-k" style="margin-left:auto">Q</span></div>
+      </div>
+    </div></main>`,
+  2: () => `${sidebar()}<main class="main2">
+    <div class="bento">
+      <div class="card span3 row2"><div class="glow"></div><h4>${ic('host', 'var(--c-host)', 16)} bawn <span class="dot"></span></h4>
+        <div class="bigtxt">Online</div><div class="muted">Sunshine ready · up 21 h</div>
+        <div style="display:flex;gap:18px;margin-top:20px;align-items:center">
+          <div class="ring" style="--p:48"><b>48°</b></div><div><div class="lab">GPU</div><b class="mono">48 °C</b></div>
+          <div class="ring" style="--p:41"><b>41°</b></div><div><div class="lab">CPU</div><b class="mono">41 °C</b></div>
+          <div><div class="lab">Network</div><b class="mono">Direct · 2 ms</b></div></div></div>
+      <div class="card span3"><h4>${ic('stream', 'var(--c-stream)', 16)} Resume</h4>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:12px">${cover('linear-gradient(135deg,#7c3aed,#db2777)', 46)}<div><b>Mewgenics</b><div class="lab">38 min ago</div></div><button class="btn" style="margin-left:auto">${ic('play', 'currentColor', 14)} Play</button></div></div>
+      <div class="card span3"><h4>${ic('power', 'var(--c-power)', 16)} Quick actions</h4>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost">Wake</button><button class="btn ghost">Restart Sunshine</button><button class="btn ghost">Quality</button></div></div>
+      <div class="card span2 row2"><h4>${ic('lib', 'var(--c-lib)', 16)} Recent</h4>
+        ${SESS.map(([t, w, d, g]) => `<div class="mini">${cover(g, 30)}<div style="min-width:0"><b>${t}</b><div class="lab">${d}</div></div></div>`).join('')}</div>
+      <div class="card span2 row2"><h4>${ic('agent', 'var(--c-agent)', 16)} Agents <span class="tag soon">soon</span></h4>
+        <div class="bars">${[30, 55, 40, 70, 50, 85, 60, 75, 45, 90].map((h) => `<i style="height:${h}%;background:var(--c-agent)"></i>`).join('')}</div>
+        <div class="lab" style="margin-top:10px">Runs, queues and logs would live here.</div></div>
+      <div class="card span2"><h4>${ic('news', 'var(--c-news)', 16)} News <span class="tag soon">soon</span></h4><div class="muted" style="margin-top:8px">Your curated feed.</div></div>
+      <div class="card span2 ghostcard"><div>${ic('plus', 'currentColor', 20)}<div style="margin-top:4px">Add a module</div></div></div>
+    </div></main>`,
+  3: () => `<nav class="rail" aria-label="Modules">
+      <button class="ri" style="background:var(--accent);color:var(--accent-fg);margin-bottom:8px" aria-label="Brisk">${ic('bolt', 'currentColor', 20)}</button>
+      ${NAV.map(([k, t, c, cur]) => `<button class="ri" ${cur ? 'aria-current="page"' : ''} title="${t}" aria-label="${t}">${ic(k, c)}</button>`).join('')}
+      <div style="height:1px;width:26px;background:var(--line);margin:4px 0"></div>
+      ${SOON.map(([k, t, c]) => `<button class="ri" style="opacity:.5" title="${t} (soon)" aria-label="${t}">${ic(k, c)}</button>`).join('')}
+    </nav>
+    <main class="main3">
+      <div class="hero"><div style="flex:1;min-width:0"><div class="chiprow"><span class="chip"><span class="dot"></span> bawn online</span><span class="chip mono">Direct · 2 ms</span><span class="chip mono">GPU 48°</span></div>
+        <div class="lab" style="margin-top:18px;color:#c9d1e0">Continue where you left off</div><h2>Mewgenics</h2><div class="muted">Played 38 min ago</div>
+        <div style="margin-top:16px;display:flex;gap:10px"><button class="btn">${ic('play', 'currentColor', 14)} Resume</button><button class="btn ghost">Pick another game</button></div></div>
+        ${cover('linear-gradient(135deg,#7c3aed,#db2777)', 150)}</div>
+      <div><div class="lab" style="margin-bottom:8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase">Your games</div>
+        <div class="shelf">
+          ${[['Mewgenics', 'linear-gradient(135deg,#7c3aed,#db2777)', 'Installed'], ['Steam Big Picture', 'linear-gradient(135deg,#0ea5e9,#1e3a8a)', 'Installed'], ['Hades II', 'linear-gradient(135deg,#f97316,#7f1d1d)', 'Not installed'], ['Balatro', 'linear-gradient(135deg,#22c55e,#14532d)', 'Installed']].map(([t, g, s]) => `<div class="tile"><div class="art" style="background:${g}"></div><div class="cap"><b>${t}</b><span class="lab">${s}</span></div></div>`).join('')}
+        </div></div>
+      <div class="statusbar" style="margin-top:auto"><span class="lab">Sunshine</span><b style="color:var(--ok)">Ready</b><span class="lab">Uptime</span><b class="mono">21 h</b><span class="lab">CPU</span><b class="mono">41°</b>
+        <span style="margin-left:auto" class="pill-k">Ctrl K</span></div>
+    </main>`,
+};
+
+const win = document.getElementById('win'), note = document.getElementById('note');
+function show(n) {
+  win.innerHTML = O[n](); note.textContent = NOTES[n];
+  document.querySelectorAll('#seg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.o == n)));
+  try { localStorage.setItem('brisk-mock-o', n); } catch (e) {}
+}
+document.getElementById('seg').onclick = (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.o); };
+const sw = document.getElementById('sw');
+ACCENTS.forEach(([c, fg, name], i) => {
+  const b = document.createElement('button'); b.style.background = c; b.title = name; b.setAttribute('aria-label', name); b.setAttribute('aria-pressed', String(i === 0));
+  b.onclick = () => {
+    document.documentElement.style.setProperty('--accent', c); document.documentElement.style.setProperty('--accent-fg', fg);
+    sw.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  };
+  sw.appendChild(b);
+});
+let start = '1'; try { start = localStorage.getItem('brisk-mock-o') || '1'; } catch (e) {}
+show(start);
+</script>

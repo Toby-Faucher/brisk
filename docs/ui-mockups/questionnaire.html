@@ -1,0 +1,318 @@
+<title>Brisk UI Questions</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky progress bar, section chips, one column of question cards with quick-pick chips and a textarea each. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #16181d;
+  --muted: #5c6370;
+  --line: #e1e4ea;
+  --accent: #0b7f72;
+  --accent-fg: #ffffff;
+  --accent-soft: #dff3f0;
+  --warn: #9a5b00;
+  --font: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101216; --surface: #171a20; --fg: #e9ebf0; --muted: #98a0ae; --line: #272b34;
+    --accent: #3cc9b6; --accent-fg: #06201c; --accent-soft: #14312d; --warn: #e0a64a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101216; --surface: #171a20; --fg: #e9ebf0; --muted: #98a0ae; --line: #272b34;
+  --accent: #3cc9b6; --accent-fg: #06201c; --accent-soft: #14312d; --warn: #e0a64a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+}
+.wrap { max-width: 760px; margin: 0 auto; }
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 0 10px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.count { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.spacer { flex: 1 1 auto; }
+.bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+button, .chip { font: inherit; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 6px;
+  padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: 500;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger { color: var(--warn); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+nav.jump { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: thin; }
+nav.jump button {
+  flex: 0 0 auto; border: 1px solid var(--line); background: transparent; color: var(--muted);
+  border-radius: 999px; padding: 3px 11px; font-size: 12.5px; cursor: pointer;
+}
+nav.jump button:hover { color: var(--fg); border-color: var(--muted); }
+.intro { color: var(--muted); margin: 18px 0 6px; max-width: 62ch; }
+section { margin-top: 30px; scroll-margin-top: 130px; }
+section > h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 4px; }
+section > p.sub { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 12px; margin-top: 10px; min-width: 0; }
+.q.done { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.qh { display: flex; gap: 10px; align-items: baseline; }
+.qid { font-family: var(--mono); font-size: 12px; color: var(--accent); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.qt { font-weight: 500; margin: 0; text-wrap: pretty; }
+.hint { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
+.chip {
+  border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 999px;
+  padding: 3px 10px; font-size: 12.5px; cursor: pointer;
+}
+.chip:hover { border-color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+.chip.call { border-style: dashed; color: var(--muted); }
+.chip.call[aria-pressed="true"] { color: var(--fg); border-style: solid; }
+textarea {
+  width: 100%; display: block; font: inherit; font-size: 14.5px; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical; min-height: 40px; margin-top: 8px;
+}
+.chips + textarea { margin-top: 0; }
+textarea::placeholder { color: var(--muted); opacity: .7; }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 20;
+  max-width: calc(100% - 32px);
+}
+#fallback { margin-top: 12px; }
+#fallback textarea { min-height: 220px; font-family: var(--mono); font-size: 12.5px; }
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="row">
+      <h1>Brisk UI questions</h1>
+      <span class="count" id="count">0 / 0 answered</span>
+      <span class="spacer"></span>
+      <button class="btn danger" id="clear" type="button">Clear all</button>
+      <button class="btn primary" id="copy" type="button">Copy answers</button>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <nav class="jump" id="jump" aria-label="Sections"></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="intro">Answer what you care about and skip the rest. A chip is a quick pick; click it again to remove it. "Your call" means I decide and tell you what I picked. Everything saves in this browser as you type. When you're done, press Copy answers and paste it to me.</p>
+  <div id="root"></div>
+  <div id="fallback" hidden>
+    <p class="hint">Your browser blocked the copy button. Select this text and copy it.</p>
+    <textarea id="fbText" readonly></textarea>
+  </div>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const CALL = 'Your call';
+const S = [
+  { id: 'A', title: 'The big picture', sub: 'What this site is for. Streaming is step one of a bigger control panel.', qs: [
+    { t: 'In one sentence, what is this site?', ph: 'e.g. "my home control panel, game streaming first"' },
+    { t: 'What are the first three things you will do on it every day?' },
+    { t: 'What else should it control one day?', chips: ['Game streaming', 'Remote desktop', 'Sunshine settings', 'Tailscale devices', 'Proxmox / Dockge', 'Wake and power', 'Smart home', 'Files', 'Terminal', 'Media', 'Monitoring and logs'] },
+    { t: 'Who uses it?', chips: ['Just me', 'Family', 'Friends who join my games', 'Public guests'] },
+    { t: 'Where do you open it?', chips: ['Laptop Chrome', 'Phone', 'Tablet', 'TV browser', 'Handheld (Deck style)'] },
+    { t: 'What would make you wince if I got it wrong?', ph: 'The things that would make you stop using it.' },
+    { t: 'What does success look like in a month?' },
+  ]},
+  { id: 'B', title: 'Look and feel', sub: 'Linear is the starting point. These pin down what that means for you.', qs: [
+    { t: 'What exactly do you like about Linear?', chips: ['Speed', 'Keyboard first', 'Dense but calm', 'Dark theme', 'Typography', 'Subtle motion', 'Restraint', 'The command menu'] },
+    { t: 'Other apps or sites with a look you love? Links are fine.' },
+    { t: 'What do you hate in Moonlight, moonlight-web, Steam Link or Parsec?' },
+    { t: 'Theme', chips: ['Dark only', 'Light only', 'Both, follow system', 'Both, with a toggle', CALL] },
+    { t: 'Accent color', chips: ['Indigo', 'Teal', 'Green', 'Orange', 'Pink', 'Red', 'Monochrome', CALL] },
+    { t: 'Density', chips: ['Compact', 'Comfortable', 'Spacious', CALL] },
+    { t: 'Corner style', chips: ['Sharp', 'Slightly rounded', 'Soft and round', CALL] },
+    { t: 'Typeface mood', chips: ['Neutral sans', 'Geometric sans', 'Technical / mono accents', 'Humanist', CALL] },
+    { t: 'Motion', chips: ['None', 'Subtle', 'Lively', CALL] },
+    { t: 'Icons', chips: ['Thin line', 'Bold line', 'Filled', 'Custom drawn', CALL] },
+    { t: 'The Brisk brand: logo, wordmark, tagline, mascot?', ph: 'Anything you picture, or "none yet".' },
+    { t: 'Tone of the words in the interface', chips: ['Terse and technical', 'Friendly', 'Playful', 'Minimal labels only', CALL] },
+    { t: 'UI sounds (clicks, connect chime)?', chips: ['None', 'Subtle', 'Yes, fun', CALL] },
+  ]},
+  { id: 'C', title: 'Structure and navigation', sub: 'How you move around.', qs: [
+    { t: 'Main layout', chips: ['Left sidebar like Linear', 'Top bar', 'Command menu only', 'Bottom tabs on phone', CALL] },
+    { t: 'Top-level pages you expect', chips: ['Home', 'Library', 'Stream', 'Hosts and devices', 'Settings', 'Stats and diagnostics', 'Logs', 'Power and wake', 'Users'] },
+    { t: 'What should the home screen show first?', chips: ['Resume last game', 'Game grid', 'Host status', 'Recent sessions', 'Quick actions', CALL] },
+    { t: 'Command menu (Ctrl+K): what should it do?', ph: 'e.g. launch a game, switch host, change quality, toggle stats' },
+    { t: 'Which keyboard shortcuts matter most?' },
+    { t: 'How many machines will you connect, now and later?', ph: 'Today: bawn. Later: ?' },
+    { t: 'On a machine page, what do you want to see?', chips: ['CPU / GPU load', 'Temperatures', 'Running apps', 'Who is connected', 'Sunshine status', 'Network path', 'Uptime'] },
+  ]},
+  { id: 'D', title: 'The stream screen', sub: 'The part you will stare at.', qs: [
+    { t: 'Fullscreen behavior', chips: ['Nothing on screen', 'Toolbar on hover at top', 'Hotkey overlay', 'Always a thin bar', CALL] },
+    { t: 'What belongs in the toolbar?', chips: ['Quality', 'Stats', 'Fullscreen', 'Keyboard capture', 'Audio volume', 'Clipboard', 'Screenshot', 'Input mode', 'Disconnect'] },
+    { t: 'The stats box', chips: ['Hidden by default', 'Small corner readout', 'Graphs', 'Plain numbers (like now)', 'Only on a hotkey', CALL] },
+    { t: 'How should connecting work?', chips: ['Click Connect', 'Auto-resume', 'Pick a game first', 'Continue where I left off', CALL] },
+    { t: 'When the connection drops', chips: ['Reconnect silently', 'Show a banner and retry', 'Ask me', CALL] },
+    { t: 'Leaving the mouse lock (Esc is taken by Chrome)', chips: ['Hold Esc', 'A hotkey you choose', 'Move to a screen edge', CALL] },
+    { t: 'Mouse modes', chips: ['Relative for games', 'Absolute for desktop', 'Auto-switch', 'A visible toggle', CALL] },
+    { t: 'Touch / phone controls', chips: ['None', 'On-screen gamepad', 'Touch as mouse', 'Both', CALL] },
+    { t: 'Controller UI (8BitDo and others)', chips: ['Just works', 'Status badge', 'Button test page', 'Rumble test', 'Mapping editor'] },
+    { t: 'Audio controls', chips: ['Volume', 'Mute', 'Latency indicator', 'Output picker', CALL] },
+    { t: 'Quality settings', chips: ['Presets (Fast / Balanced / Crisp)', 'Manual: resolution, fps, bitrate, codec', 'Both', CALL] },
+    { t: 'Network health display', chips: ['Traffic light', 'Number and graph', 'Hidden unless bad', CALL] },
+    { t: 'Clipboard sync or file transfer?', chips: ['Clipboard', 'File drop', 'Neither', 'Later'] },
+    { t: 'Multiple streams or monitors at once?' },
+    { t: 'Sharing a session (spectate, invite a friend)?' },
+    { t: 'Recording or clips?' },
+  ]},
+  { id: 'E', title: 'Library and hosts', sub: 'Games, machines and getting connected.', qs: [
+    { t: 'Game library: where do games come from?', chips: ['Steam on the host', 'Sunshine app list', 'Manual entries', 'Other launchers'] },
+    { t: 'Cover art', chips: ['Steam images', 'SteamGridDB', 'Plain tiles', CALL] },
+    { t: 'Clicking a game', chips: ['Launch and stream', 'Open its page first', CALL] },
+    { t: 'Host power and wake', chips: ['Show on / off', 'Wake-on-LAN button', 'Restart Sunshine', 'Restart the machine', 'None'] },
+    { t: 'First-time pairing should feel like', chips: ['Type a PIN', 'Scan a QR', 'Automatic on my tailnet', CALL] },
+    { t: 'Settings you expect to change often' },
+  ]},
+  { id: 'F', title: 'Accounts and security', sub: 'Who can get in, and from where.', qs: [
+    { t: 'Sign-in', chips: ['None (tailnet only)', 'Tailscale identity', 'Password', 'Passkey', CALL] },
+    { t: 'Can guests connect?', ph: 'If yes: how are they invited and what can they do?' },
+    { t: 'Where should the site run?', chips: ['On bawn', 'Dockge', 'Both', CALL] },
+    { t: 'How should you reach it?', chips: ['ssh tunnel (today)', 'Tailscale serve', 'A real HTTPS name', 'LAN address', CALL] },
+  ]},
+  { id: 'G', title: 'Tech and process', sub: 'How we build it.', qs: [
+    { t: 'Styling approach', chips: ['Tailwind', 'Plain CSS variables', 'Whatever fits Bits UI', CALL] },
+    { t: 'Components', chips: ['Bits UI headless, styled by us', 'Build everything', 'A ready kit', CALL] },
+    { t: 'Design for', chips: ['Desktop first', 'Mobile first', 'Both equally'] },
+    { t: 'Browsers', chips: ['Chrome only', 'Add Firefox later', 'Safari / iOS needed', CALL] },
+    { t: 'Installable app (PWA)?', chips: ['Yes', 'No', 'Later'] },
+    { t: 'Before building, how should we explore the design?', chips: ['HTML mockups in a browser tab', 'Static screenshots', 'Straight to code', CALL] },
+    { t: 'How many options do you want to see per screen?', chips: ['One', 'Two', 'Three', CALL] },
+    { t: 'What goes in version 1, and what is explicitly not in it?', ph: 'In: ...    Not yet: ...' },
+    { t: 'Anything I did not ask?' },
+  ]},
+];
+
+const KEY = 'brisk-ui-answers-v1';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} };
+
+const root = document.getElementById('root');
+const jump = document.getElementById('jump');
+const all = [];
+const toks = (v) => v.split(/,\s*/).map((x) => x.trim()).filter(Boolean);
+
+S.forEach((sec) => {
+  const el = document.createElement('section');
+  el.id = 'sec-' + sec.id;
+  el.innerHTML = `<h2>${sec.id}. ${sec.title}</h2><p class="sub">${sec.sub}</p>`;
+  const jb = document.createElement('button');
+  jb.type = 'button'; jb.textContent = `${sec.id}  ${sec.title}`;
+  jb.onclick = () => el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  jump.appendChild(jb);
+  sec.qs.forEach((q, i) => {
+    const id = `${sec.id}${i + 1}`;
+    const card = document.createElement('div');
+    card.className = 'q';
+    const head = document.createElement('div');
+    head.className = 'qh';
+    head.innerHTML = `<span class="qid">${id}</span>`;
+    const title = document.createElement('p'); title.className = 'qt'; title.textContent = q.t;
+    head.appendChild(title); card.appendChild(head);
+    const ta = document.createElement('textarea');
+    ta.id = 'a-' + id; ta.rows = 1; ta.placeholder = q.ph || 'Type here, or use the chips above';
+    ta.value = saved[id] || '';
+    const sync = () => {
+      saved[id] = ta.value; if (!ta.value.trim()) delete saved[id];
+      save(); ta.style.height = 'auto'; ta.style.height = Math.max(40, ta.scrollHeight + 2) + 'px';
+      const t = toks(ta.value);
+      card.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(t.includes(c.dataset.v))));
+      card.classList.toggle('done', !!ta.value.trim());
+      progress();
+    };
+    if (q.chips) {
+      const box = document.createElement('div'); box.className = 'chips';
+      q.chips.forEach((label) => {
+        const c = document.createElement('button');
+        c.type = 'button'; c.className = 'chip' + (label === CALL ? ' call' : ''); c.textContent = label; c.dataset.v = label;
+        c.setAttribute('aria-pressed', 'false');
+        c.onclick = () => {
+          let t = toks(ta.value);
+          if (t.includes(label)) t = t.filter((x) => x !== label);
+          else if (label === CALL) t = [CALL];
+          else t = t.filter((x) => x !== CALL).concat(label);
+          ta.value = t.join(', '); sync();
+        };
+        box.appendChild(c);
+      });
+      card.appendChild(box);
+    }
+    card.appendChild(ta);
+    ta.addEventListener('input', sync);
+    el.appendChild(card);
+    all.push({ id, sec, q, ta, sync });
+  });
+  root.appendChild(el);
+});
+
+function progress() {
+  const n = all.filter((x) => x.ta.value.trim()).length;
+  document.getElementById('count').textContent = `${n} / ${all.length} answered`;
+  document.getElementById('bar').style.width = (all.length ? (100 * n) / all.length : 0) + '%';
+}
+all.forEach((x) => x.sync());
+
+function build() {
+  const out = ['# Brisk UI answers', ''];
+  S.forEach((sec) => {
+    const rows = all.filter((x) => x.sec === sec && x.ta.value.trim());
+    if (!rows.length) return;
+    out.push(`## ${sec.id}. ${sec.title}`, '');
+    rows.forEach((x) => out.push(`**${x.id}. ${x.q.t}**`, x.ta.value.trim(), ''));
+  });
+  const skipped = all.filter((x) => !x.ta.value.trim()).map((x) => x.id);
+  out.push(skipped.length ? `Skipped (no answer, your call): ${skipped.join(', ')}` : 'Every question answered.');
+  return out.join('\n');
+}
+
+const toast = document.getElementById('toast');
+let tt;
+const say = (m) => { toast.textContent = m; toast.hidden = false; clearTimeout(tt); tt = setTimeout(() => (toast.hidden = true), 2400); };
+
+document.getElementById('copy').onclick = async () => {
+  const text = build();
+  const fb = document.getElementById('fallback');
+  try {
+    await navigator.clipboard.writeText(text);
+    fb.hidden = true; say('Copied. Paste it into the chat.');
+  } catch (e) {
+    fb.hidden = false;
+    const t = document.getElementById('fbText'); t.value = text; t.focus(); t.select();
+    fb.scrollIntoView({ block: 'center' }); say('Copy was blocked. Select the text below.');
+  }
+};
+
+const clearBtn = document.getElementById('clear');
+let armed = false, armT;
+clearBtn.onclick = () => {
+  if (!armed) {
+    armed = true; clearBtn.textContent = 'Really clear?';
+    armT = setTimeout(() => { armed = false; clearBtn.textContent = 'Clear all'; }, 3000);
+    return;
+  }
+  clearTimeout(armT); armed = false; clearBtn.textContent = 'Clear all';
+  saved = {}; save(); all.forEach((x) => { x.ta.value = ''; x.sync(); }); say('Cleared.');
+};
+</script>
