@@ -3,6 +3,7 @@
   import { settings } from '../state/settings';
   import Sidebar from './Sidebar.svelte';
   import Toasts from './Toasts.svelte';
+  import CommandMenu from './CommandMenu.svelte';
 
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => {
@@ -15,6 +16,7 @@
   <main>{@render children?.()}</main>
 </div>
 <Toasts />
+<CommandMenu />
 
 <style>
   .app { display: flex; min-height: 100vh; }
