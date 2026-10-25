@@ -6,13 +6,15 @@ mod common;
 use std::sync::Arc;
 
 use brisk_bridge::input::{
-    frame, read_stream, send_loop, serve, InputQueue, Shared, KIND_BUTTON, KIND_KEY, KIND_MOVE,
-    KIND_SCROLL, MAX_PENDING,
+    frame, read_stream, send_loop, serve, InputQueue, Shared, HOLD_TIMEOUT, KIND_BUTTON,
+    KIND_HEARTBEAT, KIND_KEY, KIND_MOVE, KIND_SCROLL, MAX_PENDING,
 };
 use brisk_client::Error;
 use brisk_proto::input::{encode_input, InputEvent};
 use common::*;
-use tokio::time::timeout;
+use std::time::Duration;
+use tokio::io::AsyncWriteExt;
+use tokio::time::{sleep, timeout};
 
 fn key(vk: u8, down: bool, mods: u8) -> Vec<u8> {
     vec![KIND_KEY, vk, down as u8, mods]
@@ -259,6 +261,157 @@ fn shutdown_returns_pending_and_held_releases() {
     assert_eq!(q.pop(), Some(k(0x41, true))); // sent; 0xA0 down and the move still queued
     assert_eq!(q.shutdown(), vec![k(0x41, false), k(0xA0, false)]);
     assert_eq!(q.pop(), None);
+}
+
+#[test]
+fn shutdown_also_releases_keys_whose_release_was_already_handed_on() {
+    // A release popped by the send loop may still sit unsent in ControlHandle's channel when the
+    // bridge stops; shutdown re-sends a release for every key and button ever pressed.
+    let mut q = InputQueue::default();
+    q.on_message(&key(0x42, true, 0));
+    q.on_message(&button(2, true));
+    q.on_message(&key(0x42, false, 0));
+    q.on_message(&button(2, false));
+    assert_eq!(drain(&mut q).len(), 4);
+    assert_eq!(
+        q.shutdown(),
+        vec![
+            k(0x42, false),
+            InputEvent::MouseButton {
+                button: 2,
+                down: false
+            }
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_non_timeout_error_drops_a_release_once_without_spinning() {
+    let sh = Shared::default();
+    sh.with(|q| {
+        q.on_message(&key(0x41, true, 0));
+        q.on_message(&key(0x41, false, 0));
+    });
+    let mut calls = Vec::new();
+    let r = send_loop(&sh, |e| {
+        calls.push(e);
+        let n = calls.len();
+        async move {
+            match n {
+                1 => Ok(()),
+                2 => Err(Error::Setup("bad input".into())), // not a Timeout: no retry
+                _ => Err(Error::Closed("control session")),
+            }
+        }
+    });
+    sh.with(|q| q.on_message(&key(0x43, true, 0))); // ends the loop on the 3rd call
+    let r = timeout(SECS2, r).await.expect("no spin");
+    assert!(matches!(r, Err(Error::Closed(_))));
+    assert_eq!(
+        calls,
+        vec![k(0x41, true), k(0x41, false), k(0x43, true)],
+        "the release was tried once"
+    );
+    let st = sh.with(|q| q.stats);
+    assert_eq!((st.timeouts, st.errors, st.sent), (0, 1, 1));
+}
+
+/// A read_stream over an in-memory pipe, on tokio's paused clock.
+fn piped() -> (
+    Arc<Shared>,
+    tokio::io::DuplexStream,
+    tokio::task::JoinHandle<()>,
+) {
+    let sh = Arc::new(Shared::default());
+    let (tx, rx) = tokio::io::duplex(4096);
+    let t = tokio::spawn({
+        let sh = sh.clone();
+        async move { read_stream(rx, &sh).await }
+    });
+    (sh, tx, t)
+}
+const BEAT: Duration = Duration::from_millis(250);
+
+#[tokio::test(start_paused = true)]
+async fn held_key_with_heartbeats_stays_down() {
+    let (sh, mut tx, _t) = piped();
+    tx.write_all(&frame(&key(0x41, true, 0))).await.unwrap();
+    for _ in 0..20 {
+        sleep(BEAT).await; // 5 s in all
+        tx.write_all(&frame(&[KIND_HEARTBEAT])).await.unwrap();
+    }
+    sleep(BEAT / 2).await;
+    sh.with(|q| {
+        assert_eq!(drain(q), vec![k(0x41, true)]);
+        assert_eq!(
+            (q.stats.released, q.stats.held_timeouts, q.stats.bad),
+            (0, 0, 0)
+        );
+        assert_eq!(q.stats.received, 1, "heartbeats are not input");
+        assert_eq!(q.stats.heartbeats, 20);
+    });
+}
+
+#[tokio::test(start_paused = true)]
+async fn held_key_and_silence_releases_once() {
+    let (sh, mut tx, _t) = piped();
+    tx.write_all(&frame(&key(0x41, true, 0))).await.unwrap();
+    tx.write_all(&frame(&button(1, true))).await.unwrap();
+    sleep(Duration::from_millis(750)).await; // the gate asks for about 1 s
+    assert_eq!(
+        sh.with(|q| q.stats.held_timeouts),
+        0,
+        "not before the timeout"
+    );
+    sleep(BEAT * 2).await;
+    assert_eq!(sh.with(|q| q.stats.held_timeouts), 1, "released by 1.25 s");
+    sleep(HOLD_TIMEOUT * 5).await; // and never again
+    sh.with(|q| {
+        assert_eq!(
+            drain(q),
+            vec![
+                k(0x41, true),
+                InputEvent::MouseButton {
+                    button: 1,
+                    down: true
+                },
+                k(0x41, false),
+                InputEvent::MouseButton {
+                    button: 1,
+                    down: false
+                },
+            ]
+        );
+        assert_eq!((q.stats.held_timeouts, q.stats.released), (1, 2));
+    });
+    // Heartbeats after the release do not bring the keys back.
+    for _ in 0..8 {
+        tx.write_all(&frame(&[KIND_HEARTBEAT])).await.unwrap();
+        sleep(BEAT).await;
+    }
+    sh.with(|q| {
+        assert_eq!(q.pop(), None);
+        q.release_all();
+        assert_eq!(q.pop(), None, "nothing is held");
+    });
+}
+
+#[tokio::test(start_paused = true)]
+async fn nothing_held_and_silence_does_nothing() {
+    let (sh, mut tx, t) = piped();
+    tx.write_all(&frame(&key(0x41, true, 0))).await.unwrap();
+    tx.write_all(&frame(&key(0x41, false, 0))).await.unwrap();
+    tx.write_all(&frame(&mv(5, 0))).await.unwrap();
+    let start = tokio::time::Instant::now();
+    sleep(HOLD_TIMEOUT * 10).await;
+    assert_eq!(start.elapsed(), HOLD_TIMEOUT * 10);
+    assert_eq!(
+        sh.with(|q| (q.stats.held_timeouts, q.stats.released)),
+        (0, 0)
+    );
+    assert_eq!(sh.with(|q| q.len()), 3);
+    // held_timeouts counts every firing of the reader's timer, which is only armed while held.
+    assert!(!t.is_finished());
 }
 
 #[tokio::test]

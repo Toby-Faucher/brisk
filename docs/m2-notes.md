@@ -168,6 +168,7 @@ frames `len u8` + `len` bytes of body. The body is `kind u8` + fields, little-en
 | `0x11` move | `dx i16, dy i16` | relative motion |
 | `0x12` button | `button u8 (1 L, 2 M, 3 R, 4 X1, 5 X2), down u8` | mouse button |
 | `0x13` scroll | `amount i16` | vertical wheel, 120 = one notch, positive = up |
+| `0x14` heartbeat | (none) | "something is still held": sent every 250 ms while any key or button is down; never reaches Sunshine |
 
 The stream header is Chrome's (`0x41`, session id). The bridge never writes on the stream. The
 one-byte "need a key frame" uni streams (above) are unchanged.
@@ -195,6 +196,8 @@ Page (`web/src/lib/input.ts`):
 - The first non-zero motion after a lock request is dropped: it is the cursor jumping into the
   lock, not the user (headless Chromium: -640,-360 on its 1280x720 page, sent *before*
   `pointerlockchange`, which is why the flag is set on the click).
+- While any key or button is held, a heartbeat frame goes out every 250 ms (`HEARTBEAT_MS`); the
+  interval runs exactly while something is held and stops with the last release or a release-all.
 - Everything held is released (key-ups and button-ups) on window `blur`, `visibilitychange` to
   hidden, `pagehide`, Pointer Lock loss, and transport close.
 
@@ -213,18 +216,27 @@ Bridge (`crates/brisk-bridge/src/input.rs`):
   scroll is evicted, or, with only presses queued, the new press or motion is dropped
   (`dropped`). Releases are never dropped and never count against the 32 (each needs an earlier
   press, so they stay bounded too).
-- `send_input` errors: `Closed` = the control session is over, the bridge stops. Anything else
-  (`Timeout`: not drained for 1 s) is not fatal: that event is dropped (`timeouts`), except a
-  release, which goes back to the front of the queue and is retried.
+- Held-key watchdog: while the queue holds any key or button down, a stream that sends no frame
+  (heartbeat or other) for 1 s (`HOLD_TIMEOUT`) gets everything released (`held_timeouts`). A lost
+  network, a closed lid or a frozen tab would otherwise leave the key down on bawn, auto-repeating,
+  until QUIC's 10 s idle timeout. The timer is re-armed by every frame and is not armed at all while
+  nothing is held. Heartbeats count as `heartbeats`, not `received` or `bad`.
+- `send_input` errors: `Closed` = the control session is over, the bridge stops. `Timeout` (not
+  drained for 1 s) is not fatal: that event is dropped (`timeouts`), except a release, which goes
+  back to the front of the queue and is retried. Any other error drops the event, logged and
+  counted `errors`, with no retry (so it cannot spin).
 - A stream that ends (tab closed, reload, connection lost or idle-timed-out) releases every held
   key (in vk order) and button (`released`). When the bridge stops (Ctrl-C, `--secs`, host
-  ended), it sends every release still owed straight on the control session before the ENet
-  disconnect. Sunshine also resets its input state when a session ends (`input::reset`,
+  ended), it sends a release for **every key and button pressed during the session** straight on
+  the control session before the ENet disconnect: a superset, because up to 64 encoded commands
+  (`CMD_QUEUE`) can still sit in the `ControlHandle` channel when the control loop is cancelled, and
+  their key-ups have already left the held set. Releasing a key the host does not hold does
+  nothing. If the ENet send window (256 in flight) filled first, the rest are skipped. Sunshine also resets its input state when a session ends (`input::reset`,
   input.cpp), so a key could stay down only while a live session's control path is stuck.
-- shortcut: an event already handed to `ControlHandle` but not yet sent by the control loop when
-  the bridge stops is lost (at most one release, in a window of microseconds); Sunshine's own
-  session-end reset covers it. Upgrade if input ever moves off the control session.
-- The report prints `input received sent bad coalesced dropped timeouts released`.
+- What can still be lost at stop: presses, motion and other non-release commands in that channel
+  (harmless to lose); releases are covered by the superset above, and Sunshine's own session-end
+  input reset covers anything else.
+- The report prints `input received sent bad coalesced dropped timeouts errors released held_timeouts heartbeats`.
 
 Headless (chromium_headless_shell-1248 on bawn): **Pointer Lock works** on a CDP click (a trusted
 gesture); `document.pointerLockElement` is the canvas. But under the lock each CDP
@@ -245,7 +257,7 @@ counted (it holds session keys and cookies); no raw lines are kept.
 
 | run | page sent | bridge received / sent / bad | Sunshine decoded |
 |---|---|---|---|
-| 3 short runs (first harness, before the lock-jump fix) | 30 keys, 7 moves | 37 / 37 / 0 | 30 keyboard packets, 7 relative moves, 0 buttons, 0 scroll |
+| 3 short runs (first harness, before the lock-jump fix) | 30 keys, 7 moves | 37 / 37 / 0 | 30 keyboard packets, 7 relative moves (3 x `-640,-360`, and one each of `+5,0`, `-5,0`, `0,+5`, `0,-5`), 0 buttons, 0 scroll |
 | M2 gate run (10 min, 20 rounds every 30 s) | 120 keys, 80 moves | 200 / 200 / 0 | 120 keyboard, 80 relative moves (20 each of dx +5, -5, dy +5, -5), 0 buttons, 0 scroll |
 
 Keyboard packets decode like Moonlight's (docs/moonlight-compare.md: keyAction 3, keyCode 8041 for
@@ -255,7 +267,9 @@ deltas sent.
 
 Deviation: before the lock-jump fix, the first three runs each sent one `-640,-360` relative move
 (headless Chromium's cursor jumping into the lock, see above), so bawn's pointer moved toward the
-top-left corner three times. No click or other key went with it. The gate run sent none (the 80
+top-left corner three times. The other 4 of those 7 moves were the four +-5 px moves of the third
+run's one completed round (deltas from the grep of Sunshine's `deltaX`/`deltaY` lines taken right
+after those runs). No click or other key went with them. The gate run sent none (the 80
 moves are all +-5).
 
 
@@ -446,6 +460,12 @@ Input (about 5 minutes; do it early so the long soak below runs with input used)
 9. Stuck-key test: hold Shift, then press Esc while still holding it; release Shift. Type a letter:
    it must be lowercase. Same with holding a mouse button and Alt-Tab away: back on the page,
    nothing on bawn is still pressed.
+9b. Network-drop test: open a text field on bawn, hold a letter key (it repeats on bawn), and while
+   holding it cut the laptop's network (unplug its cable or turn Wi-Fi off). The repeating on bawn
+   must stop within about 1-2 s. Cut it on the laptop side, not by stopping the bridge
+   (`Ctrl-Z`/`kill -STOP` on bawn would freeze the bridge's watchdog with the key still down).
+   Reconnect and reload the page (the old session ends after 10 s); the bridge report's `input`
+   line then shows `held_timeouts 1`.
 10. Do not use Ctrl+Alt+Shift+<key> on the page: that is Sunshine's own shortcut prefix (it would
     act on bawn's Sunshine, e.g. switch displays). Chrome keeps its own shortcuts (Ctrl+W, Ctrl+T,
     Ctrl+Tab) even while captured.
@@ -469,8 +489,9 @@ Soak (10 minutes, the M2 gate on the real path)
     docs/m0-baseline.md "client decode" and "client present queue", laptop column), `arrival jitter`,
     `delay over best`, `dropped`/`key requests`, the audio line (`lost`, `underruns [.. ms]`,
     `drift -x/+y`, `buffer`, `output`) and the input line.
-15. Close the tab (that releases everything on bawn), or let `--secs` run out. brisk-up prints the
-    bridge report: copy the `bridge_write-capture`, `frame_processing(tap-capture)`, `gate(...)`,
+15. Close the tab (that releases everything on bawn), then press **Ctrl-C** in the brisk-up terminal
+    (closing the tab alone does not stop the bridge: it waits for a new viewer until `--secs` runs
+    out). brisk-up then prints the bridge report: copy the `bridge_write-capture`, `frame_processing(tap-capture)`, `gate(...)`,
     `audio` and `input` lines (`input bad` should be 0; `released` counts keys the bridge let go
     of for you).
 16. `scripts/brisk-down.sh` (stock Sunshine back; it refuses while a session is busy).

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  attach, buttonFrame, CODE_TO_VK, FLUSH_MS, InputSender, keyFrame, KIND_BUTTON, KIND_KEY, KIND_MOVE,
+  attach, buttonFrame, CODE_TO_VK, FLUSH_MS, HEARTBEAT_MS, heartbeatFrame, InputSender, keyFrame, KIND_BUTTON, KIND_KEY, KIND_MOVE,
   KIND_SCROLL, modifiers, moveFrame, scrollFrame, wheelUnits,
 } from './input';
 
@@ -55,6 +55,7 @@ describe('frames', () => {
     expect([...moveFrame(-5, 258)]).toEqual([5, KIND_MOVE, 0xfb, 0xff, 0x02, 0x01]);
     expect([...buttonFrame(3, false)]).toEqual([3, KIND_BUTTON, 3, 0]);
     expect([...scrollFrame(-120)]).toEqual([3, KIND_SCROLL, 0x88, 0xff]);
+    expect([...heartbeatFrame]).toEqual([1, 0x14]);
   });
   it('modifier bits are shift 1, ctrl 2, alt 4, meta 8', () => {
     expect(modifiers({ shiftKey: true, ctrlKey: false, altKey: true, metaKey: false })).toBe(5);
@@ -114,6 +115,28 @@ describe('InputSender', () => {
     s.key(0x41, false, 0);
     expect(out).toEqual([[...keyFrame(0x41, true, 0)], [...keyFrame(0x41, false, 0)]]);
     open = true;
+  });
+
+  it('sends a heartbeat only while something is held', () => {
+    const { s, out } = sender();
+    const beats = () => out.filter((f) => f.length === heartbeatFrame.length && f[1] === heartbeatFrame[1]).length;
+    vi.advanceTimersByTime(HEARTBEAT_MS * 4);
+    expect(beats()).toBe(0); // nothing held
+    s.key(0x41, true, 0);
+    vi.advanceTimersByTime(HEARTBEAT_MS * 4);
+    expect(beats()).toBe(4);
+    s.button(1, true);
+    s.key(0x41, false, 0);
+    vi.advanceTimersByTime(HEARTBEAT_MS * 2);
+    expect(beats()).toBe(6); // the button is still down: one heartbeat, not two
+    s.button(1, false);
+    vi.advanceTimersByTime(HEARTBEAT_MS * 4);
+    expect(beats()).toBe(6); // stops when the last thing is released
+    s.key(0x42, true, 0);
+    s.releaseAll();
+    vi.advanceTimersByTime(HEARTBEAT_MS * 4);
+    expect(beats()).toBe(6); // and on releaseAll
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('releaseAll lets go of every held key and button once', () => {

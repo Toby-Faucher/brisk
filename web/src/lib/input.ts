@@ -18,6 +18,11 @@ export const KIND_SCROLL = 0x13;
 /// Motion and wheel are summed and sent at most once per this many ms (a 1 kHz mouse becomes
 /// 125 messages a second).
 export const FLUSH_MS = 8;
+/// While a key or button is held, a heartbeat goes out this often; the bridge releases
+/// everything after 1 s without any frame (a lost network or a frozen tab).
+export const HEARTBEAT_MS = 250;
+export const KIND_HEARTBEAT = 0x14;
+export const heartbeatFrame = Uint8Array.of(1, KIND_HEARTBEAT);
 /// Moonlight's one wheel notch.
 const WHEEL_DELTA = 120;
 
@@ -94,6 +99,7 @@ export class InputSender {
   private dy = 0;
   private wheel_ = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private beat: ReturnType<typeof setInterval> | null = null;
 
   constructor(private write: (f: Uint8Array, droppable: boolean) => boolean) {}
 
@@ -104,6 +110,7 @@ export class InputSender {
     else this.keys.delete(vk);
     this.stats.keys++;
     this.write(keyFrame(vk, down, mods), false);
+    this.heartbeat();
   }
 
   button(button: number, down: boolean) {
@@ -113,6 +120,17 @@ export class InputSender {
     else this.buttons.delete(button);
     this.stats.buttons++;
     this.write(buttonFrame(button, down), false);
+    this.heartbeat();
+  }
+
+  /// Heartbeats run exactly while something is held.
+  private heartbeat() {
+    const held = this.keys.size + this.buttons.size > 0;
+    if (held && this.beat === null) this.beat = setInterval(() => this.write(heartbeatFrame, false), HEARTBEAT_MS);
+    else if (!held && this.beat !== null) {
+      clearInterval(this.beat);
+      this.beat = null;
+    }
   }
 
   move(dx: number, dy: number) {
@@ -161,6 +179,7 @@ export class InputSender {
     for (const b of this.buttons) this.write(buttonFrame(b, false), false);
     this.keys.clear();
     this.buttons.clear();
+    this.heartbeat();
   }
 }
 

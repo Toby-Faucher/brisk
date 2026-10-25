@@ -29,6 +29,12 @@ pub const KIND_MOVE: u8 = 0x11;
 pub const KIND_BUTTON: u8 = 0x12;
 /// `amount i16`: vertical scroll, 120 = one notch, positive = up.
 pub const KIND_SCROLL: u8 = 0x13;
+/// No fields: "something is still held" (the page sends it every 250 ms while a key or button is
+/// down). Never reaches Sunshine.
+pub const KIND_HEARTBEAT: u8 = 0x14;
+/// With something held, a stream silent this long (no frame, heartbeat included) is taken as a
+/// lost page: everything is released.
+pub const HOLD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 /// Queued events that may be dropped (motion, scroll, presses); releases come on top.
 pub const MAX_PENDING: usize = 32;
 
@@ -48,20 +54,29 @@ pub struct InputStats {
     pub timeouts: u64,
     /// Releases the bridge made up itself (stream closed, bridge stopping).
     pub released: u64,
+    /// Heartbeat frames (not counted in `received`).
+    pub heartbeats: u64,
+    /// Streams silent for [`HOLD_TIMEOUT`] while something was held: released.
+    pub held_timeouts: u64,
+    /// Other control-session errors: that event dropped.
+    pub errors: u64,
 }
 
 impl std::fmt::Display for InputStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "input\treceived {} sent {} bad {} coalesced {} dropped {} timeouts {} released {}",
+            "input\treceived {} sent {} bad {} coalesced {} dropped {} timeouts {} errors {} released {} held_timeouts {} heartbeats {}",
             self.received,
             self.sent,
             self.bad,
             self.coalesced,
             self.dropped,
             self.timeouts,
-            self.released
+            self.errors,
+            self.released,
+            self.held_timeouts,
+            self.heartbeats
         )
     }
 }
@@ -104,12 +119,19 @@ pub struct InputQueue {
     /// Pressed (sent or queued, not yet released), by vk.
     keys: Vec<u8>,
     buttons: [bool; 6],
+    /// Every key and button pressed this session, for [`Self::shutdown`].
+    ever_keys: Vec<u8>,
+    ever_buttons: [bool; 6],
     pub stats: InputStats,
 }
 
 impl InputQueue {
     /// One frame body from the browser.
     pub fn on_message(&mut self, b: &[u8]) {
+        if b == [KIND_HEARTBEAT] {
+            self.stats.heartbeats += 1;
+            return;
+        }
         self.stats.received += 1;
         match parse(b) {
             Some(e) => self.push(e),
@@ -130,6 +152,9 @@ impl InputQueue {
                     return;
                 } else {
                     self.keys.push(vk);
+                    if !self.ever_keys.contains(&vk) {
+                        self.ever_keys.push(vk);
+                    }
                 }
             }
             InputEvent::MouseButton { button, down } => {
@@ -141,6 +166,7 @@ impl InputQueue {
                     return;
                 }
                 self.buttons[button as usize] = down;
+                self.ever_buttons[button as usize] |= down;
             }
             InputEvent::MouseMoveRel { dx, dy } => {
                 if let Some(InputEvent::MouseMoveRel { dx: x, dy: y }) = self.q.back_mut() {
@@ -196,6 +222,11 @@ impl InputQueue {
         self.q.is_empty()
     }
 
+    /// A key or button is down.
+    pub fn held(&self) -> bool {
+        !self.keys.is_empty() || self.buttons.contains(&true)
+    }
+
     /// Queues a release for every key (in vk order) and button that is down.
     pub fn release_all(&mut self) {
         let mut keys = std::mem::take(&mut self.keys);
@@ -219,11 +250,28 @@ impl InputQueue {
         }
     }
 
-    /// The bridge is stopping: every release still owed to the host (queued ones first), and an
-    /// empty queue.
+    /// The bridge is stopping: a release for every key and button pressed this session (in vk
+    /// order, then buttons), and an empty queue. A superset on purpose: a release the send loop
+    /// already handed to `ControlHandle` may still sit unsent in its channel (up to 64 commands)
+    /// when the control loop stops, so "released" is never known for sure. Releasing a key the
+    /// host does not hold does nothing.
     pub fn shutdown(&mut self) -> Vec<InputEvent> {
         self.release_all();
-        self.q.drain(..).filter(is_release).collect()
+        self.q.clear();
+        let mut keys = std::mem::take(&mut self.ever_keys);
+        keys.sort_unstable();
+        let keys = keys.into_iter().map(|vk| InputEvent::Key {
+            vk,
+            down: false,
+            modifiers: 0,
+        });
+        let buttons = (1..6u8)
+            .filter(|&b| std::mem::take(&mut self.ever_buttons[b as usize]))
+            .map(|button| InputEvent::MouseButton {
+                button,
+                down: false,
+            });
+        keys.chain(buttons.collect::<Vec<_>>()).collect()
     }
 }
 
@@ -253,22 +301,44 @@ pub fn frame(body: &[u8]) -> Vec<u8> {
     f
 }
 
-/// Reads frames until the stream ends or fails, then releases everything held down.
+/// Reads frames until the stream ends or fails, then releases everything held down. While
+/// something is held, a stream silent for [`HOLD_TIMEOUT`] (a lost network, a frozen or closed
+/// laptop: the QUIC idle timeout alone would take 10 s while Sunshine repeats the key) also
+/// releases everything. The timer runs only while something is held.
 pub async fn read_stream<R: AsyncRead + Unpin>(mut r: R, sh: &Shared) {
     let mut b = [0u8; 255];
-    while let Ok(n) = r.read_u8().await {
-        let b = &mut b[..n as usize];
-        if r.read_exact(b).await.is_err() {
-            break;
-        }
-        sh.push(|q| q.on_message(b));
+    loop {
+        let n = {
+            // One frame read, kept across timer firings (a frame read is not cancel-safe).
+            let f = read_frame(&mut r, &mut b);
+            tokio::pin!(f);
+            loop {
+                let held = sh.with(|q| q.held());
+                tokio::select! {
+                    n = &mut f => break n,
+                    _ = tokio::time::sleep(HOLD_TIMEOUT), if held => sh.push(|q| {
+                        q.stats.held_timeouts += 1;
+                        q.release_all();
+                    }),
+                }
+            }
+        };
+        let Some(n) = n else { break };
+        sh.push(|q| q.on_message(&b[..n]));
     }
     sh.push(InputQueue::release_all);
 }
 
+async fn read_frame<R: AsyncRead + Unpin>(r: &mut R, b: &mut [u8; 255]) -> Option<usize> {
+    let n = r.read_u8().await.ok()? as usize;
+    r.read_exact(&mut b[..n]).await.ok()?;
+    Some(n)
+}
+
 /// Hands queued events to `send` (the control session) one by one, until it returns `Closed`.
-/// Any other error (`Timeout`: the session took nothing for 1 s) drops that event, except a
-/// release, which goes back to the front of the queue.
+/// `Timeout` (the session took nothing for 1 s) drops that event, except a release, which goes
+/// back to the front of the queue and is retried. Any other error drops the event (no retry, so
+/// it cannot spin).
 pub async fn send_loop<F, Fut>(sh: &Shared, mut send: F) -> brisk_client::Result<()>
 where
     F: FnMut(InputEvent) -> Fut,
@@ -283,12 +353,16 @@ where
         match send(e.clone()).await {
             Ok(()) => sh.with(|q| q.stats.sent += 1),
             Err(err @ Error::Closed(_)) => return Err(err),
-            Err(err) => sh.with(|q| {
-                tracing::warn!("input dropped: {err}");
+            Err(err @ Error::Timeout(_)) => sh.with(|q| {
+                tracing::warn!("input: {err}");
                 q.stats.timeouts += 1;
                 if is_release(&e) {
                     q.q.push_front(e);
                 }
+            }),
+            Err(err) => sh.with(|q| {
+                tracing::warn!("input dropped: {err}");
+                q.stats.errors += 1;
             }),
         }
     }
