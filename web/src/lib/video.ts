@@ -141,6 +141,15 @@ export interface VideoStats {
   bridgeCaptureMs: Window;
   decodeMs: Window;
   presentMs: Window;
+  /// Gap between requestAnimationFrame callbacks, and drawImage cost, ms.
+  rafMs: Window;
+  /// Last 6 gaps over 250 ms: source (bawn write clock), arrival (page), raf.
+  stalls: string[];
+  /// Frame sizes: bytes of the last frame, and the current / longest run of tiny frames (< 300 B = unchanged picture).
+  lastBytes: number;
+  tinyRun: number;
+  tinyMax: number;
+  drawMs: Window;
   /// Arrival interval minus bridge-write interval (clock-sync free).
   jitterMs: Window;
   /// (arrival - bridge_ns) minus its minimum over the window: delay above the best frame.
@@ -161,6 +170,7 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
     framesReceived: 0, framesDecoded: 0, framesPresented: 0, framesDropped: 0, framesSkipped: 0,
     streamsReset: 0, decodeErrors: 0, keyRequests: 0, decodeQueueSize: 0, lastError: null,
     bridgeCaptureMs: new Window(), decodeMs: new Window(), presentMs: new Window(),
+    rafMs: new Window(), drawMs: new Window(), stalls: [], lastBytes: 0, tinyRun: 0, tinyMax: 0,
     jitterMs: new Window(), queueMs: new Window(),
   };
   const ctx = canvas.getContext('2d')!;
@@ -248,10 +258,24 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
   const onFrame = (b: Uint8Array, arrival: number) => {
     const h = parseHeader(b);
     stats.framesReceived++;
+    stats.lastBytes = b.length - HEADER_LEN;
+    if (stats.lastBytes < 300) {
+      if (++stats.tinyRun > stats.tinyMax) stats.tinyMax = stats.tinyRun;
+    } else {
+      if (stats.tinyRun >= 20) {
+        stats.stalls.push(`t=${(performance.now() / 1000).toFixed(1)}s SAME PICTURE for ${stats.tinyRun} frames (tiny frames from bawn) end_epoch=${Date.now()}`);
+        if (stats.stalls.length > 6) stats.stalls.shift();
+      }
+      stats.tinyRun = 0;
+    }
     const bridgeMs = Number(h.bridgeNs) / 1e6;
     if (h.captureNs !== 0n) stats.bridgeCaptureMs.push(Number(h.bridgeNs - h.captureNs) / 1e6);
     const q = arrival - bridgeMs;
     stats.queueMs.push(q);
+    if (prev && arrival - prev.arrival > 250) {
+      stats.stalls.push(`t=${(arrival / 1000).toFixed(1)}s src gap ${(bridgeMs - prev.bridgeMs).toFixed(0)} ms, arrival gap ${(arrival - prev.arrival).toFixed(0)} ms`);
+      if (stats.stalls.length > 6) stats.stalls.shift();
+    }
     if (prev) stats.jitterMs.push(Math.abs(arrival - prev.arrival - (bridgeMs - prev.bridgeMs)));
     prev = { arrival, bridgeMs };
     const annexb = b.subarray(HEADER_LEN);
@@ -283,7 +307,14 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
     }
   };
 
-  const paint = () => {
+  let lastRaf = 0;
+  const paint = (t: number) => {
+    if (lastRaf) stats.rafMs.push(t - lastRaf);
+    if (lastRaf && t - lastRaf > 250) {
+      stats.stalls.push(`t=${(t / 1000).toFixed(1)}s page raf gap ${(t - lastRaf).toFixed(0)} ms vis=${document.visibilityState} focus=${document.hasFocus()} lock=${document.pointerLockElement ? 1 : 0}`);
+      if (stats.stalls.length > 6) stats.stalls.shift();
+    }
+    lastRaf = t;
     if (pending) {
       const { frame, at } = pending;
       pending = null;
@@ -291,7 +322,9 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
         canvas.width = stats.width = frame.displayWidth;
         canvas.height = stats.height = frame.displayHeight;
       }
+      const d0 = performance.now();
       ctx.drawImage(frame, 0, 0);
+      stats.drawMs.push(performance.now() - d0);
       frame.close();
       stats.framesPresented++;
       stats.presentMs.push(performance.now() - at);

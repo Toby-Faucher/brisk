@@ -58,10 +58,13 @@
           `decode errors ${s.decodeErrors}  decodeQueueSize ${s.decodeQueueSize}`,
           `bridge_write-capture p50 ${ms(s.bridgeCaptureMs.pct(50))} p99 ${ms(s.bridgeCaptureMs.pct(99))} ms (bawn clock)`,
           `decode p50 ${ms(s.decodeMs.pct(50))} p99 ${ms(s.decodeMs.pct(99))} ms   present p50 ${ms(s.presentMs.pct(50))} p99 ${ms(s.presentMs.pct(99))} ms`,
+          `raf gap p50 ${ms(s.rafMs.pct(50))} p99 ${ms(s.rafMs.pct(99))} ms   drawImage p50 ${ms(s.drawMs.pct(50))} p99 ${ms(s.drawMs.pct(99))} ms`,
           `arrival jitter p50 ${ms(s.jitterMs.pct(50))} p99 ${ms(s.jitterMs.pct(99))} ms   delay over best p50 ${ms(queueOverMin(v, 50))} p99 ${ms(queueOverMin(v, 99))} ms`,
           audioLine(),
+          `frame bytes ${s.lastBytes}  tiny run now ${s.tinyRun}  longest tiny run ${s.tinyMax}`,
+          ...s.stalls.filter((x) => !x.includes('focus=false')).map((x) => `STALL ${x}`),
           inputLine(),
-          `up ${((performance.now() - t0) / 1000).toFixed(0)} s${s.lastError ? `   last error: ${s.lastError}` : ''}`,
+          `up ${((performance.now() - t0) / 1000).toFixed(2)} s${s.lastError ? `   last error: ${s.lastError}` : ''}`,
         ].join('\n');
       }
 
@@ -101,11 +104,22 @@
             (e) => (audioError = String(e)),
           );
         const t0 = performance.now();
-        const timer = setInterval(() => show(v, t0), 500);
+        // Redrawn from requestAnimationFrame (about 20 Hz) so a frozen clock means a frozen screen.
+        let alive = true;
+        let lastShow = 0;
+        const tick = (now: number) => {
+          if (!alive) return;
+          if (now - lastShow >= 50) {
+            lastShow = now;
+            show(v, t0);
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
         t.closed
           .then(() => 'closed', (e) => String(e))
           .then((why) => {
-            clearInterval(timer);
+            alive = false;
             show(v, t0);
             out.textContent += `\nsession ended: ${why}`;
             (window as any).briskEnded = why;
