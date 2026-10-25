@@ -1,7 +1,7 @@
 ---
 import Layout from '../shell/Layout.astro';
+import Home from '../modules/home/Home.svelte';
 ---
 <Layout title="Home">
-  <h1>Welcome back</h1>
-  <p class="lab">Your bento of host, resume and quick actions lands here soon.</p>
+  <Home client:load />
 </Layout>

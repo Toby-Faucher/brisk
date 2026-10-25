@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { host, refreshHost } from '../state/host';
+  import { host, pollHost } from '../state/host';
   import Icon from '../ui/Icon.svelte';
 
-  onMount(() => void refreshHost());
+  onMount(() => pollHost()); // every 10 s while visible; cleaned up on each remount
   const label = { ready: 'Sunshine ready', busy: 'Streaming', down: 'Sunshine down' } as const;
 </script>
 

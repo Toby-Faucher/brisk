@@ -2,7 +2,9 @@ import { writable } from 'svelte/store';
 import type { Preset } from './api';
 
 export type Accent = 'mint' | 'indigo' | 'pink' | 'orange' | 'lime' | 'sky';
-export type Settings = { accent: Accent; sounds: boolean; shaders: boolean; defaultPreset: Preset };
+/** Same values as tokens.css, for code that needs the colour itself (the smoke shader). */
+export const ACCENT_HEX: Record<Accent, string> = { mint: '#5eead4', indigo: '#818cf8', pink: '#f472b6', orange: '#fb923c', lime: '#a3e635', sky: '#60a5fa' };
+export type Settings ={ accent: Accent; sounds: boolean; shaders: boolean; defaultPreset: Preset };
 
 export const SETTINGS_KEY = 'brisk.settings';
 const DEFAULTS: Settings = { accent: 'mint', sounds: true, shaders: true, defaultPreset: 'balanced' };

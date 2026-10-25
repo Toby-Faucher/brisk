@@ -6,5 +6,6 @@ export default {
   icon: 'lib',
   color: 'var(--c-lib)',
   order: 1,
+  widget: () => import('./Widget.svelte'),
   routes: [{ path: '/library', title: 'Library' }],
 } satisfies ModuleManifest;
