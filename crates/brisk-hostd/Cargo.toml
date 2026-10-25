@@ -1,0 +1,13 @@
+[package]
+name = "brisk-hostd"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+tokio = { version = "1", features = ["rt", "net", "macros", "fs", "signal"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

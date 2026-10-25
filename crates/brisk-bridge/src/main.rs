@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 /// Audio datagrams waiting for the forward loop (64 = 160 ms of packets plus parity).
 const AUDIO_QUEUE: usize = 64;
 
-const USAGE: &str = "usage: brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM [--config DIR] [--secs N] [--page URL] [--take-over]";
+const USAGE: &str = "usage: brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM [--config DIR] [--secs N] [--page URL] [--take-over] [--width N] [--height N] [--fps N] [--bitrate-kbps N]";
 
 struct Args {
     host: String,
@@ -44,14 +44,23 @@ struct Args {
     secs: Option<u64>,
     page: String,
     take_over: bool,
+    width: u16,
+    height: u16,
+    fps: u16,
+    bitrate_kbps: u32,
 }
 
 fn parse_args() -> Result<Args, String> {
+    parse_from(std::env::args().skip(1))
+}
+
+fn parse_from(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let (mut host, mut app, mut listen, mut cert, mut key, mut config, mut secs) =
         (None, None, None, None, None, None, None);
     let mut page = "http://localhost:8443/".to_owned();
     let mut take_over = false;
-    let mut it = std::env::args().skip(1);
+    let (mut width, mut height, mut fps, mut bitrate_kbps) = (1920, 1080, 60, 20000);
+    let mut it = args;
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -64,6 +73,10 @@ fn parse_args() -> Result<Args, String> {
             "--secs" => secs = Some(val()?.parse().map_err(|_| "--secs must be a number")?),
             "--page" => page = val()?,
             "--take-over" => take_over = true,
+            "--width" => width = ranged(&a, val()?, 320, 3840)? as u16,
+            "--height" => height = ranged(&a, val()?, 320, 3840)? as u16,
+            "--fps" => fps = ranged(&a, val()?, 24, 144)? as u16,
+            "--bitrate-kbps" => bitrate_kbps = ranged(&a, val()?, 1000, 150000)?,
             _ => return Err(format!("unexpected argument {a:?}")),
         }
     }
@@ -81,7 +94,18 @@ fn parse_args() -> Result<Args, String> {
         secs,
         page,
         take_over,
+        width,
+        height,
+        fps,
+        bitrate_kbps,
     })
+}
+
+fn ranged(flag: &str, v: String, lo: u32, hi: u32) -> Result<u32, String> {
+    v.parse()
+        .ok()
+        .filter(|n| (lo..=hi).contains(n))
+        .ok_or(format!("{flag} must be a number in {lo}..={hi}"))
 }
 
 fn hex(b: &[u8]) -> String {
@@ -134,10 +158,10 @@ async fn run(a: Args) -> brisk_client::Result<()> {
     let mut s = Session::new(&a.host);
     let info = s.serverinfo(None).await?;
     let cfg = StreamConfig {
-        width: 1920,
-        height: 1080,
-        fps: 60,
-        bitrate_kbps: 20000,
+        width: a.width,
+        height: a.height,
+        fps: a.fps,
+        bitrate_kbps: a.bitrate_kbps,
         codec: Codec::H264,
         packet_size: 1392,
         fec_percent: 20,
@@ -247,5 +271,54 @@ async fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(extra: &[&str]) -> Result<Args, String> {
+        let base = "--host h --app 1 --listen 127.0.0.1:4433 --cert c --key k --config /x";
+        let v = base
+            .split(' ')
+            .chain(extra.iter().copied())
+            .map(String::from);
+        parse_from(v.collect::<Vec<_>>().into_iter())
+    }
+
+    #[test]
+    fn parses_quality_flags() {
+        let a = parse(&[
+            "--width",
+            "2560",
+            "--height",
+            "1440",
+            "--fps",
+            "120",
+            "--bitrate-kbps",
+            "40000",
+        ])
+        .unwrap();
+        assert_eq!(
+            (a.width, a.height, a.fps, a.bitrate_kbps),
+            (2560, 1440, 120, 40000)
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_range_fps() {
+        assert!(parse(&["--fps", "500"]).is_err());
+        assert!(parse(&["--bitrate-kbps", "999"]).is_err());
+        assert!(parse(&["--width", "abc"]).is_err());
+    }
+
+    #[test]
+    fn defaults_are_1080p60_20mbps() {
+        let a = parse(&[]).unwrap();
+        assert_eq!(
+            (a.width, a.height, a.fps, a.bitrate_kbps),
+            (1920, 1080, 60, 20000)
+        );
     }
 }

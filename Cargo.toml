@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/brisk-proto", "crates/brisk-client", "crates/brisk-bridge"]
+members = ["crates/brisk-proto", "crates/brisk-client", "crates/brisk-bridge", "crates/brisk-hostd"]
 
 [workspace.package]
 edition = "2021"
