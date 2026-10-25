@@ -67,27 +67,25 @@ export class KeyGate {
   needKey = true;
   private last = -1;
 
-  /// `askKey`: the gate just started waiting, so the bridge should be asked for an IDR.
+  /// `askKey`: ask the bridge for an IDR. True for every frame dropped while waiting, because an
+  /// ask can be lost (throttled, or its IDR dropped for a backed-up queue) and Sunshine sends no
+  /// periodic IDR; the caller's 100 ms throttle keeps this to 10 requests a second.
   accept(idx: number, idr: boolean, decodeQueueSize: number): { decode: boolean; askKey: boolean } {
-    let askKey = false;
-    if (decodeQueueSize > 2 && !this.needKey) {
-      this.needKey = true;
-      askKey = true;
-    }
-    if (idr) {
-      if (this.last >= 0 && !after(idx, this.last)) return { decode: false, askKey }; // stale
-      if (decodeQueueSize > 2) return { decode: false, askKey };
+    if (decodeQueueSize > 2) this.needKey = true;
+    if (this.last >= 0 && !after(idx, this.last)) return { decode: false, askKey: this.needKey }; // stale
+    if (idr && decodeQueueSize <= 2) {
       this.needKey = false;
       this.last = idx;
       return { decode: true, askKey: false };
     }
-    if (this.needKey) return { decode: false, askKey };
-    if (((idx - this.last) >>> 0) !== 1) {
+    if (!idr && !this.needKey) {
+      if (((idx - this.last) >>> 0) === 1) {
+        this.last = idx;
+        return { decode: true, askKey: false };
+      }
       this.needKey = true; // gap or out of order: the reference chain is broken
-      return { decode: false, askKey: true };
     }
-    this.last = idx;
-    return { decode: true, askKey: false };
+    return { decode: false, askKey: this.needKey };
   }
 
   reset(): void {

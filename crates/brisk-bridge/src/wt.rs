@@ -13,8 +13,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use subtle::ConstantTimeEq;
 use tokio::io::AsyncReadExt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 use web_transport_proto::{ConnectRequest, ConnectResponse, Settings, StreamUni, VarInt};
 
 use crate::quic_crypto::{endpoint_config, server_config, ServerCrypto};
@@ -83,6 +84,73 @@ pub fn endpoint(
     )
 }
 
+/// Unauthenticated handshakes allowed at once; more are refused.
+pub const MAX_PENDING: usize = 8;
+/// Open connections allowed (pending handshakes, the viewer, one being replaced); more are
+/// refused.
+pub const MAX_CONNECTIONS: usize = MAX_PENDING + 2;
+/// Application close code for a refused connection (H3_GENERAL_PROTOCOL_ERROR).
+const REFUSED: u32 = 0x101;
+
+/// Admits new connections and runs their handshakes: at most [`MAX_PENDING`] at a time, each
+/// closed unless it opens a session for our token within `wait`.
+pub struct Acceptor {
+    token: Arc<str>,
+    wait: Duration,
+    pending: Arc<Semaphore>,
+}
+
+impl Acceptor {
+    pub fn new(token: &str, wait: Duration) -> Self {
+        Self {
+            token: token.into(),
+            wait,
+            pending: Arc::new(Semaphore::new(MAX_PENDING)),
+        }
+    }
+
+    /// The handshake to run (spawn it), or `None` when the connection was refused because
+    /// [`MAX_PENDING`] handshakes are running or [`MAX_CONNECTIONS`] are open.
+    #[allow(clippy::type_complexity)]
+    pub fn admit(
+        &self,
+        ep: &quinn::Endpoint,
+        i: quinn::Incoming,
+    ) -> Option<
+        impl std::future::Future<Output = Result<(Session, mpsc::Receiver<Bytes>), Error>>
+            + Send
+            + 'static,
+    > {
+        let permit = match self.pending.clone().try_acquire_owned() {
+            Ok(p) if ep.open_connections() < MAX_CONNECTIONS => p,
+            _ => {
+                i.refuse();
+                return None;
+            }
+        };
+        let (token, wait) = (self.token.clone(), self.wait);
+        Some(async move {
+            let _permit = permit;
+            let deadline = tokio::time::Instant::now() + wait;
+            // A QUIC handshake that times out is dropped, which closes it (no other handle).
+            let conn = tokio::time::timeout_at(deadline, i)
+                .await
+                .map_err(|_| Error::Refused("no QUIC handshake in time".into()))??;
+            let r = match tokio::time::timeout_at(deadline, handshake(&conn, &token)).await {
+                Ok(r) => r,
+                Err(_) => Err(Error::Refused(format!(
+                    "no WebTransport session within {} ms",
+                    wait.as_millis()
+                ))),
+            };
+            if r.is_err() {
+                conn.close(REFUSED.into(), b"refused");
+            }
+            r
+        })
+    }
+}
+
 /// One WebTransport session (one browser tab).
 pub struct Session {
     conn: quinn::Connection,
@@ -93,11 +161,11 @@ pub struct Session {
     _connect: (quinn::SendStream, quinn::RecvStream),
 }
 
-/// HTTP/3 + WebTransport handshake on a new connection; only a CONNECT to `/<token>` succeeds.
-/// Also returns the browser's messages (the payload of each of its uni streams, at most
-/// [`MAX_MSG`] bytes).
-pub async fn accept(
-    conn: quinn::Connection,
+/// HTTP/3 + WebTransport handshake; only a CONNECT to `/<token>` succeeds. Also returns the
+/// browser's messages (the payload of each of its uni streams, at most [`MAX_MSG`] bytes). The
+/// caller closes the connection on error.
+async fn handshake(
+    conn: &quinn::Connection,
     token: &str,
 ) -> Result<(Session, mpsc::Receiver<Bytes>), Error> {
     let mut control = conn.open_uni().await?;
@@ -108,14 +176,12 @@ pub async fn accept(
         .await
         .map_err(|e| Error::Refused(format!("settings: {e}")))?;
 
-    let (tx, inbox) = mpsc::channel(INBOX);
-    tokio::spawn(browser_uni_streams(conn.clone(), tx));
-
     let (mut send, mut recv) = conn.accept_bi().await?;
     let req = ConnectRequest::read(&mut recv)
         .await
         .map_err(|e| Error::Refused(format!("CONNECT: {e}")))?;
-    if req.url.path() != format!("/{token}") {
+    let want = format!("/{token}");
+    if !bool::from(req.url.path().as_bytes().ct_eq(want.as_bytes())) {
         let _ = ConnectResponse::new(http::StatusCode::NOT_FOUND)
             .write(&mut send)
             .await;
@@ -126,6 +192,9 @@ pub async fn accept(
         .write(&mut send)
         .await
         .map_err(|e| Error::Refused(format!("CONNECT reply: {e}")))?;
+    // Only now: an unauthenticated peer gets no stream-draining tasks.
+    let (tx, inbox) = mpsc::channel(INBOX);
+    tokio::spawn(browser_uni_streams(conn.clone(), tx));
 
     let session_id = VarInt::try_from(u64::from(quinn::VarInt::from(send.id())))
         .expect("a QUIC stream id is a varint");
@@ -133,7 +202,7 @@ pub async fn accept(
     StreamUni::WEBTRANSPORT.encode(&mut h);
     session_id.encode(&mut h);
     let s = Session {
-        conn,
+        conn: conn.clone(),
         uni_header: h.into(),
         _control: control,
         _connect: (send, recv),

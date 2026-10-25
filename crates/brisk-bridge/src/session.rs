@@ -307,6 +307,7 @@ pub async fn forward(
     ctl: &ControlHandle,
     r: &mut Report,
 ) -> brisk_client::Result<()> {
+    let acceptor = wt::Acceptor::new(token, HANDSHAKE_WAIT);
     let (viewer_tx, mut viewer_rx) = mpsc::channel(1);
     // One message per spawned frame task; tasks are bounded by the pacers.
     let (done_tx, mut done_rx) = mpsc::unbounded_channel();
@@ -325,19 +326,18 @@ pub async fn forward(
         match ev {
             Ev::Incoming(None) => return Err(Error::Closed("webtransport endpoint")),
             Ev::Incoming(Some(i)) => {
-                let (tx, token) = (viewer_tx.clone(), token.to_owned());
+                let peer = i.remote_address();
+                let Some(h) = acceptor.admit(ep, *i) else {
+                    tracing::warn!("viewer {peer}: refused (too many connections)");
+                    continue;
+                };
+                let tx = viewer_tx.clone();
                 tokio::spawn(async move {
-                    let peer = i.remote_address();
-                    let r = tokio::time::timeout(HANDSHAKE_WAIT, async {
-                        wt::accept((*i).await?, &token).await
-                    })
-                    .await;
-                    match r {
-                        Ok(Ok(v)) => {
+                    match h.await {
+                        Ok(v) => {
                             let _ = tx.send(v).await;
                         }
-                        Ok(Err(e)) => tracing::warn!("viewer {peer}: {e}"),
-                        Err(_) => tracing::warn!("viewer {peer}: no session within 10 s"),
+                        Err(e) => tracing::warn!("viewer {peer}: {e}"),
                     }
                 });
             }
@@ -428,7 +428,48 @@ async fn request_idr(ctl: &ControlHandle) -> brisk_client::Result<()> {
     }
 }
 
+/// What became of one frame's stream.
+#[derive(Debug)]
+pub struct Sent {
+    /// When the frame was written (None: the stream never opened).
+    pub bridge_ns: Option<u64>,
+    /// The browser acknowledged the whole stream.
+    pub acked: bool,
+}
+
 /// One frame on one uni stream; reset if `cancel` fires (or its sender is dropped) first.
+pub async fn send_frame_stream(
+    s: &wt::Session,
+    f: &TapFrame,
+    cancel: &mut oneshot::Receiver<()>,
+) -> Sent {
+    let mut sent = Sent {
+        bridge_ns: None,
+        acked: false,
+    };
+    let opened = tokio::select! {
+        o = s.open_uni((f.idx & 0x7fff_ffff) as i32) => o.ok(),
+        _ = &mut *cancel => None,
+    };
+    if let Some(mut st) = opened {
+        let now = monotonic_ns();
+        sent.bridge_ns = Some(now);
+        let flags = if f.idr { FLAG_IDR } else { 0 };
+        let h = frame_header(f.idx, flags, f.capture_ns, now);
+        let written = tokio::select! {
+            w = write_frame(&mut st, &h, f.annexb.clone()) => Some(w.is_some()),
+            _ = &mut *cancel => None,
+        };
+        match written {
+            Some(acked) => sent.acked = acked,
+            None => {
+                let _ = st.reset(0u32.into());
+            }
+        }
+    }
+    sent
+}
+
 async fn send_frame(
     s: Arc<wt::Session>,
     viewer: u32,
@@ -436,44 +477,28 @@ async fn send_frame(
     done: mpsc::UnboundedSender<Done>,
     mut cancel: oneshot::Receiver<()>,
 ) {
-    let mut d = Done {
+    let sent = send_frame_stream(&s, &f, &mut cancel).await;
+    let _ = done.send(Done {
         viewer,
         idx: f.idx,
-        bridge_ns: None,
+        bridge_ns: sent.bridge_ns,
         capture_ns: f.capture_ns,
         tap_ns: f.tap_ns,
-        acked: false,
-    };
-    let opened = tokio::select! {
-        o = s.open_uni((f.idx & 0x7fff_ffff) as i32) => o.ok(),
-        _ = &mut cancel => None,
-    };
-    if let Some(mut st) = opened {
-        let now = monotonic_ns();
-        d.bridge_ns = Some(now);
-        let flags = if f.idr { FLAG_IDR } else { 0 };
-        let h = frame_header(f.idx, flags, f.capture_ns, now);
-        let written = tokio::select! {
-            w = write_frame(&mut st, &h, f.annexb) => Some(w.is_some()),
-            _ = &mut cancel => None,
-        };
-        match written {
-            Some(acked) => d.acked = acked,
-            None => {
-                let _ = st.reset(0u32.into());
-            }
-        }
-    }
-    let _ = done.send(d);
+        acked: sent.acked,
+    });
 }
 
-/// Writes header and payload, finishes, and waits until the browser acknowledged it all.
+/// Writes header and payload, finishes, and waits until the browser acknowledged it all;
+/// `None` if any step failed or the browser stopped the stream.
 async fn write_frame(st: &mut quinn::SendStream, h: &[u8], annexb: Bytes) -> Option<()> {
     st.write_all(h).await.ok()?;
     st.write_chunk(annexb).await.ok()?;
     st.finish().ok()?;
-    st.stopped().await.ok()?;
-    Some(())
+    // Ok(Some(code)): the browser sent STOP_SENDING, which is not an acknowledgement.
+    match st.stopped().await {
+        Ok(None) => Some(()),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

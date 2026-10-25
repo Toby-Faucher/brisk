@@ -13,3 +13,15 @@ spaced_restart() {
   "$@"
   date +%s > "$RUN/last-restart"
 }
+# brisk-up's EXIT trap. After Ctrl-C the bridge is still cancelling its Sunshine session: keep
+# bridge.pid until that process is gone (up to $BRISK_EXIT_WAIT s, default 90; the cancel retries
+# can take 45 s), so brisk-down waits for it instead of restarting Sunshine under it.
+bridge_exit_cleanup() {
+  local pid
+  pid=$(cat "$RUN/bridge.pid" 2>/dev/null || true)
+  if [ -n "$pid" ]; then
+    for _ in $(seq "${BRISK_EXIT_WAIT:-90}"); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    kill -0 "$pid" 2>/dev/null || rm -f "$RUN/bridge.pid"
+  fi
+  if [ -f "$RUN/page.pid" ]; then kill "$(cat "$RUN/page.pid")" 2>/dev/null || true; rm -f "$RUN/page.pid"; fi
+}

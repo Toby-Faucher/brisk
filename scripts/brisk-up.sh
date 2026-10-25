@@ -47,7 +47,7 @@ serverinfo_free || die "Sunshine is not FREE (busy or not answering); not launch
 # 4. Page on loopback only.
 python3 -m http.server --bind 127.0.0.1 "$PORT" -d "$here/web/dist" >/dev/null 2>&1 &
 echo $! > "$RUN/page.pid"
-trap 'kill "$(cat "$RUN/page.pid")" 2>/dev/null; rm -f "$RUN/page.pid" "$RUN/bridge.pid"' EXIT
+trap bridge_exit_cleanup EXIT
 
 cat <<MSG
 On the laptop:   ssh -N -L $PORT:127.0.0.1:$PORT $(hostname)
@@ -56,4 +56,8 @@ MSG
 "$here/target/release/brisk-bridge" --host 127.0.0.1 --app "$APP" --listen "$LISTEN" \
   --cert "$TLS/bridge.pem" --key "$TLS/bridge.key.pem" --page "http://localhost:$PORT/" "$@" &
 echo $! > "$RUN/bridge.pid"
-wait "$(cat "$RUN/bridge.pid")"
+# Background jobs of a script start with SIGINT ignored: pass Ctrl-C (and TERM/HUP) on to the
+# bridge so it cancels its session; the EXIT trap then waits for it.
+trap 'kill -INT "$(cat "$RUN/bridge.pid")" 2>/dev/null' INT TERM HUP
+wait "$(cat "$RUN/bridge.pid")" || true
+wait "$(cat "$RUN/bridge.pid")" 2>/dev/null || true

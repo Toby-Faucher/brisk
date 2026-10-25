@@ -56,6 +56,7 @@ over bawn's Tailscale IP.
   only back-pressures the bridge once Chrome's flow-control windows or stream credits run out
   (seconds). The page-side `decodeQueueSize > 2` rule and its key-frame request cover a slow
   decoder; the bridge's resets cover a slow network.
+- `stopped()` returning `Some(code)` means the browser sent STOP_SENDING; that is not an ack.
 - A tab that dies without closing keeps the QUIC connection until the 10 s idle timeout. The
   bridge then resets streams nobody acks; IDR requests back off from 100 ms to at most every 2 s
   while nothing is acknowledged, so Sunshine is not asked for 10 IDRs a second for nobody.
@@ -81,7 +82,11 @@ Chosen: **a self-signed ECDSA P-256 certificate, valid 13 days, pinned by the pa
   itself goes straight to `https://100.80.84.102:4433/<token>` over Tailscale (UDP; an SSH forward
   cannot carry it). The certificate hash replaces hostname checks, so the IP works.
 - Exposure: the bridge binds bawn's Tailscale IP only (it refuses `0.0.0.0`), the page server binds
-  127.0.0.1, and a WebTransport session needs the random 128-bit token from the page URL.
+  127.0.0.1, and a WebTransport session needs the random 128-bit token from the page URL
+  (compared in constant time). A connection that sends a wrong token or a malformed CONNECT, or no
+  session within 10 s, is closed (code 0x101). At most 8 handshakes run at once and at most 10
+  connections are open; more are refused. Only an authenticated connection gets the tasks that
+  read its uni streams (`tests/wt.rs`).
 
 ## Wire format (bridge to page)
 
@@ -89,7 +94,9 @@ One unidirectional stream per frame: 21-byte little-endian header
 `{frame_idx u32, flags u8 (b0 IDR), capture_ns u64, bridge_ns u64}`, Annex B H.264, FIN. Stream send
 priority = frame index (newer first). `capture_ns` and `bridge_ns` are both CLOCK_MONOTONIC on bawn,
 so the page can show `bridge_write - capture` without any clock sync. The page sends one-byte uni
-streams back: `0x01` = "my decoder needs a key frame" (gap, decoder error, decode queue > 2).
+streams back: `0x01` = "my decoder needs a key frame" (gap, decoder error, decode queue > 2). While
+it waits, every dropped frame asks again (throttled to one ask per 100 ms): an ask can be lost, or
+the IDR it brought can be dropped for a backed-up queue, and Sunshine sends no periodic IDR.
 
 Drop policy (`session.rs::Pacer`, tests in `tests/backpressure.rs`): more than 3 unacknowledged frame
 streams = behind: reset them all, drop until the next IDR, request an IDR (at most every 100 ms,
@@ -141,7 +148,18 @@ Playwright's `chromium_headless_shell-1248` on bawn (software, no GPU):
 | bridge resets / drops / IDR requests | 40 / 569 / 12, all in the 10 s after the headless browser was killed (dead tab until the idle timeout) |
 | bridge CPU / RSS | about 2 % / 6.5 MB; headless Chromium about 70 % of a core |
 
-Histogram percentiles are 0.1 ms bucket upper edges. Static screen only; a moving scene is not
+Histogram percentiles are 0.1 ms bucket upper edges.
+
+About 14 % of frames carry `capture_ns = 0` (31456 of 36556 tap frames had a capture time). The
+patch writes 0 and sets tap flag b2 (`no_capture_ts`) under the same condition, an empty
+`packet.frame_timestamp` (`patches/sunshine/0001-brisk-tap.patch`, header offsets 5 and 24).
+Sunshine leaves it empty when it encodes without a new captured image: its encode loop waits
+`max_frametime` for an image and, on a static screen, re-encodes the previous one to hold a
+minimum frame rate ("Encode at a minimum FPS to avoid image quality issues with static content",
+`src/video.cpp` around line 2472), or encodes a requested IDR from the last image without
+popping a new one. These frames have no capture time to measure from, so both latency histograms
+and the gate use only the frames with `capture_ns != 0`; `bridge_write - tap` covers all frames.
+(The 60 recorded fixtures in `fixtures/tap/` happen to contain none: flags 0 or 1 only.) Static screen only; a moving scene is not
 measured. Not measured: laptop Chrome (decode, present, network), see below.
 
 ## Toby to run (laptop Chrome)

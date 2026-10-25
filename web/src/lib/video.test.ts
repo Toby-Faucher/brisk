@@ -84,9 +84,27 @@ describe('KeyGate (drop until key)', () => {
     g.accept(0, true, 0);
     expect(g.accept(1, false, 2).decode).toBe(true);
     expect(g.accept(2, false, 3)).toEqual({ decode: false, askKey: true });
-    expect(g.accept(3, false, 0)).toEqual({ decode: false, askKey: false });
+    expect(g.accept(3, false, 0)).toEqual({ decode: false, askKey: true }); // keeps asking
     expect(g.accept(4, true, 3).decode).toBe(false); // still backed up
     expect(g.accept(5, true, 0).decode).toBe(true);
+  });
+  it('(a) an IDR dropped for a backed-up queue does not end the asking', () => {
+    const g = new KeyGate();
+    g.accept(0, true, 0);
+    expect(g.accept(1, false, 3).askKey).toBe(true); // starts waiting
+    expect(g.accept(2, true, 3).decode).toBe(false); // the IDR it asked for, dropped
+    // Sunshine sends no periodic IDR: every frame dropped while waiting must ask again
+    // (askKey() throttles to one request per 100 ms).
+    expect(g.accept(3, false, 0)).toEqual({ decode: false, askKey: true });
+    expect(g.accept(4, false, 0)).toEqual({ decode: false, askKey: true });
+  });
+  it('(b) an ask swallowed by the 100 ms throttle is repeated by the next dropped frame', () => {
+    const g = new KeyGate();
+    g.accept(0, true, 0);
+    g.reset(); // decoder error: its ask may land inside the throttle window
+    expect(g.accept(1, false, 0)).toEqual({ decode: false, askKey: true });
+    expect(g.accept(3, false, 0)).toEqual({ decode: false, askKey: true });
+    expect(g.accept(4, true, 0)).toEqual({ decode: true, askKey: false });
   });
   it('reset (decoder error) waits for a key frame', () => {
     const g = new KeyGate();

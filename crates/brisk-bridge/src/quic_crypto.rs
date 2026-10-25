@@ -316,6 +316,35 @@ impl crypto::ServerConfig for ServerCrypto {
     }
 }
 
+/// quinn client crypto over a caller-built `rustls::ClientConfig` (TLS 1.3 with [`provider`]).
+/// Only the bridge's tests use it, as the browser stand-in.
+pub struct ClientCrypto(pub Arc<rustls::ClientConfig>);
+
+impl crypto::ClientConfig for ClientCrypto {
+    fn start_session(
+        self: Arc<Self>,
+        version: u32,
+        server_name: &str,
+        params: &TransportParameters,
+    ) -> Result<Box<dyn crypto::Session>, quinn_proto::ConnectError> {
+        let version = interpret_version(version)
+            .map_err(|_| quinn_proto::ConnectError::UnsupportedVersion)?;
+        let name = rustls::pki_types::ServerName::try_from(server_name.to_owned())
+            .map_err(|_| quinn_proto::ConnectError::InvalidServerName(server_name.into()))?;
+        let mut tp = Vec::new();
+        params.write(&mut tp);
+        Ok(Box::new(TlsSession {
+            version,
+            got_handshake_data: false,
+            next_secrets: None,
+            inner: Connection::Client(
+                rq::ClientConnection::new(self.0.clone(), version, name, tp)
+                    .map_err(|e| quinn_proto::ConnectError::InvalidServerName(e.to_string()))?,
+            ),
+        }))
+    }
+}
+
 /// What `quinn::Connection::handshake_data` returns for our connections.
 pub struct HandshakeData {
     pub protocol: Option<Vec<u8>>,
@@ -330,6 +359,13 @@ struct TlsSession {
 }
 
 impl TlsSession {
+    fn side(&self) -> Side {
+        match self.inner {
+            Connection::Client(_) => Side::Client,
+            Connection::Server(_) => Side::Server,
+        }
+    }
+
     fn server_name(&self) -> Option<&str> {
         match &self.inner {
             Connection::Server(s) => s.server_name(),
@@ -362,7 +398,10 @@ impl crypto::Session for TlsSession {
     }
 
     fn early_data_accepted(&self) -> Option<bool> {
-        None
+        match &self.inner {
+            Connection::Client(c) => Some(c.is_early_data_accepted()),
+            Connection::Server(_) => None,
+        }
     }
 
     fn is_handshaking(&self) -> bool {
@@ -399,7 +438,7 @@ impl crypto::Session for TlsSession {
     fn transport_parameters(&self) -> Result<Option<TransportParameters>, TransportError> {
         match self.inner.quic_transport_parameters() {
             None => Ok(None),
-            Some(buf) => TransportParameters::read(Side::Server, &mut io::Cursor::new(buf))
+            Some(buf) => TransportParameters::read(self.side(), &mut io::Cursor::new(buf))
                 .map(Some)
                 .map_err(Into::into),
         }
@@ -424,8 +463,13 @@ impl crypto::Session for TlsSession {
         })
     }
 
-    fn is_valid_retry(&self, _: &ConnectionId, _: &[u8], _: &[u8]) -> bool {
-        false // client-side check; a server never receives a Retry
+    fn is_valid_retry(&self, orig_dst_cid: &ConnectionId, header: &[u8], payload: &[u8]) -> bool {
+        let Some(n) = payload.len().checked_sub(16) else {
+            return false;
+        };
+        let mut packet = header.to_vec();
+        packet.extend_from_slice(&payload[..n]);
+        retry_tag(self.version, orig_dst_cid, &packet)[..] == payload[n..]
     }
 
     fn export_keying_material(

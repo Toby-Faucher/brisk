@@ -94,8 +94,11 @@ dependencies = [
  "rustls",
  "rustls-rustcrypto",
  "sha2",
+ "subtle",
+ "tempfile",
  "tokio",
  "tracing",
+ "url",
  "web-transport-proto",
 ]
 
