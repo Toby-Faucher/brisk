@@ -1,0 +1,33 @@
+/* Design tokens (docs/ui-design.md section 7). Dark only. Accent swaps through html[data-accent]. */
+:root {
+  --bg: #0b0c0f;
+  --panel: #121419;
+  --panel2: #171a21;
+  --line: #22262f;
+  --fg: #eceef3;
+  --muted: #8e96a5;
+  --dim: #5d6575;
+  --accent: #5eead4;
+  --accent-fg: #04201b;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+  --c-lib: #fbbf24;
+  --c-stream: #60a5fa;
+  --c-host: #38bdf8;
+  --c-set: #94a3b8;
+  --c-agent: #a78bfa;
+  --c-news: #fb7185;
+  --c-power: #4ade80;
+  --font: 'Geist', system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --r-card: 22px;
+  --r-ctl: 12px;
+  color-scheme: dark;
+}
+:root[data-accent='indigo'] { --accent: #818cf8; --accent-fg: #0d1030; }
+:root[data-accent='pink'] { --accent: #f472b6; --accent-fg: #2a0a1a; }
+:root[data-accent='orange'] { --accent: #fb923c; --accent-fg: #2b1204; }
+:root[data-accent='lime'] { --accent: #a3e635; --accent-fg: #142004; }
+:root[data-accent='sky'] { --accent: #60a5fa; --accent-fg: #07162b; }

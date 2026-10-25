@@ -1,0 +1,38 @@
+---
+// One document for the whole app: ClientRouter swaps pages without a reload, so the page keeps
+// its user activation (audio) and module-level stores across navigation.
+import { ClientRouter } from 'astro:transitions';
+import Shell from './Shell.svelte';
+import { SETTINGS_KEY } from '../state/settings';
+import '@fontsource/geist/400.css';
+import '@fontsource/geist/500.css';
+import '@fontsource/geist/600.css';
+import '@fontsource/geist/700.css';
+import '@fontsource/geist-mono/400.css';
+import '@fontsource/geist-mono/500.css';
+import '../styles/tokens.css';
+import '../styles/base.css';
+
+const { title } = Astro.props as { title: string };
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title === 'Home' ? 'Brisk' : `${title} · Brisk`}</title>
+    <ClientRouter />
+    <script is:inline define:vars={{ key: SETTINGS_KEY }}>
+      // Apply the saved accent before first paint and after every page swap (no mint flash).
+      const accent = () => {
+        try {
+          document.documentElement.dataset.accent = JSON.parse(localStorage.getItem(key) || '{}').accent || 'mint';
+        } catch {}
+      };
+      accent();
+      document.addEventListener('astro:after-swap', accent);
+    </script>
+  </head>
+  <body>
+    <Shell client:load path={Astro.url.pathname}><slot /></Shell>
+  </body>
+</html>
