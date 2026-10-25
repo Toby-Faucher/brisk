@@ -1,0 +1,196 @@
+<title>Brisk Shader Ports</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Dark-only workbench: one canvas, a tab per ported shader, sliders for its parameters. */
+:root { --bg:#0b0c0f; --panel:#121419; --panel2:#171a21; --line:#22262f; --fg:#eceef3; --muted:#8e96a5; --accent:#5eead4; --accent-fg:#04201b;
+  --font:'Geist',system-ui,sans-serif; --mono:'Geist Mono',ui-monospace,monospace; color-scheme:dark; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--font); font-size:14px; line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); padding-block:0 48px; }
+body::before { content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px); z-index:10; background:var(--bg); }
+.wrap { max-width:1000px; margin:0 auto; }
+header { position:sticky; top:env(safe-area-inset-top,0px); z-index:5; background:var(--bg); padding:14px 0 12px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+h1 { font-size:15px; margin:0; font-weight:600; }
+.seg { display:flex; gap:4px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:3px; }
+.seg button { border:0; background:transparent; color:var(--muted); font:inherit; font-weight:500; padding:6px 14px; border-radius:9px; cursor:pointer; transition:all .2s; }
+.seg button[aria-selected="true"] { background:var(--panel2); color:var(--fg); box-shadow:0 0 0 1px var(--line); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.stage { position:relative; margin-top:16px; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#000; aspect-ratio:16/9; }
+canvas { width:100%; height:100%; display:block; }
+.hud { position:absolute; left:12px; bottom:10px; font-family:var(--mono); font-size:12px; color:#cfd6e4; background:rgba(0,0,0,.45); padding:3px 8px; border-radius:8px; }
+.err { position:absolute; inset:0; display:none; place-items:center; padding:24px; text-align:center; color:#f9a8a8; background:#150b0b; font-family:var(--mono); font-size:12.5px; white-space:pre-wrap; overflow:auto; }
+.panel { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin-top:16px; }
+@media (max-width:700px) { .panel { grid-template-columns:1fr; } }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:14px 16px; min-width:0; }
+.card h2 { margin:0 0 4px; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+.row { display:grid; grid-template-columns:130px 1fr 52px; gap:10px; align-items:center; margin:8px 0; }
+.row label { color:var(--muted); font-size:13px; }
+.row output { font-family:var(--mono); font-size:12.5px; text-align:right; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.btn { border:1px solid var(--line); background:var(--panel2); color:var(--fg); border-radius:10px; padding:6px 12px; font:inherit; cursor:pointer; }
+.btn:hover { border-color:var(--muted); }
+p { margin:6px 0; color:#c4cad6; }
+.muted { color:var(--muted); font-size:13px; }
+.credit { margin-top:18px; color:var(--muted); font-size:12.5px; }
+</style>
+<div class="wrap">
+  <header><h1>Brisk shader ports</h1><div class="seg" id="tabs" role="tablist"></div><button class="btn" id="pause" type="button">Pause</button>
+    <label class="muted" style="margin-left:auto">Quality <select id="q" style="background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:3px 6px"><option value=".5">50%</option><option value=".75" selected>75%</option><option value="1">100%</option></select></label></header>
+  <div class="stage"><canvas id="cv"></canvas><div class="hud" id="hud"></div><div class="err" id="err"></div></div>
+  <div class="panel"><div class="card"><h2 id="t"></h2><p id="b"></p><div id="ctl"></div></div>
+    <div class="card"><h2>How faithful</h2><p id="n"></p><p class="muted" id="s"></p><div id="ref"></div></div></div>
+  <p class="credit">Ports of three Blender files by celestialmaze (cmzw_, github.com/williamchange). Re-implemented by hand as GLSL; Blender's noise is approximated, so patterns match in spirit, not pixel for pixel. License of the originals not yet checked.</p>
+</div>
+<script>
+const SH = /*SHADERS*/;
+const cv = document.getElementById('cv'), hud = document.getElementById('hud'), err = document.getElementById('err');
+const gl = cv.getContext('webgl2', { antialias:false, alpha:false, powerPreference:'low-power', preserveDrawingBuffer:true });
+let cur = null, progs = {}, vals = {}, paused = false, t0 = performance.now(), tAcc = 0, last = performance.now(), frames = 0, fpsT = last, fps = 0;
+const VS = '#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+function build(key) {
+  const s = SH[key]; const mk = (t, src) => { const x = gl.createShader(t); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  const pr = gl.createProgram(); gl.attachShader(pr, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, s.frag + '\n'));
+  gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  const u = { R: gl.getUniformLocation(pr, 'R'), T: gl.getUniformLocation(pr, 'T') }; s.ctl.forEach((c) => (u[c[0]] = gl.getUniformLocation(pr, c[0]))); u.U_H = gl.getUniformLocation(pr, 'U_H');
+  let post = null;
+  if (s.post) { const pp = gl.createProgram(); gl.attachShader(pp, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(pp, mk(gl.FRAGMENT_SHADER, s.post + '\n')); gl.linkProgram(pp); if (!gl.getProgramParameter(pp, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pp)); post = { pr: pp, u: { R: gl.getUniformLocation(pp, 'R'), T: gl.getUniformLocation(pp, 'T'), S: gl.getUniformLocation(pp, 'S') } }; }
+  return { pr, u, post };
+}
+let fbo = null, fboTex = null, fboW = 0, fboH = 0;
+function ensureFbo(w, h) {
+  if (fbo && fboW === w && fboH === h) return;
+  if (!fbo) { fbo = gl.createFramebuffer(); fboTex = gl.createTexture(); }
+  gl.bindTexture(gl.TEXTURE_2D, fboTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  fboW = w; fboH = h;
+}
+// ---- pointer: a short drag trail (smoke follows the hand) and path segments that become impulses in the water simulation
+const trail = []; let lastM = null, move = null;
+document.querySelector('.stage').addEventListener('pointermove', (e) => {
+  const r = cv.getBoundingClientRect(), now = performance.now();
+  const x = ((e.clientX - r.left) / r.width * 2 - 1) * (r.width / r.height), y = 1 - (e.clientY - r.top) / r.height * 2;
+  const tx = (e.clientX - r.left) / r.width, ty = 1 - (e.clientY - r.top) / r.height;
+  if (lastM) {
+    const dt = Math.max(now - lastM.t, 8) / 1000, dist = Math.hypot(x - lastM.x, y - lastM.y);
+    trail.push({ x, y, vx: (x - lastM.x) / dt, vy: (y - lastM.y) / dt, t: now }); if (trail.length > 24) trail.shift();
+    move = move ? { x0: move.x0, y0: move.y0, x1: tx, y1: ty, d: move.d + dist, dt: move.dt + dt } : { x0: lastM.tx, y0: lastM.ty, x1: tx, y1: ty, d: dist, dt };
+  }
+  lastM = { x, y, t: now, tx, ty };
+});
+const trailBuf = new Float32Array(24 * 4);
+function uploadTrail(P) {
+  if (P.trailLoc === undefined) P.trailLoc = gl.getUniformLocation(P.pr, 'U_TRAIL[0]');
+  if (!P.trailLoc) return;
+  const now = performance.now(); trailBuf.fill(0);
+  trail.forEach((e, i) => { const w = Math.exp(-(now - e.t) / 1600); trailBuf[i*4] = e.x; trailBuf[i*4+1] = e.y; trailBuf[i*4+2] = e.vx * w; trailBuf[i*4+3] = e.vy * w; });
+  gl.uniform4fv(P.trailLoc, trailBuf);
+}
+// ---- water: the 2D wave equation on the GPU. Texture holds (height now, height one step ago). Two sub-steps per frame.
+const SIM_FS = `#version 300 es
+precision highp float;
+uniform sampler2D H; uniform vec2 TX; uniform float DAMP; uniform vec4 P0; uniform vec4 P1; uniform float STR; out vec4 o;
+void main(){
+  vec2 uv = gl_FragCoord.xy * TX;
+  vec2 c = texture(H, uv).rg;
+  float l = texture(H, uv - vec2(TX.x,0.)).r, r = texture(H, uv + vec2(TX.x,0.)).r, d = texture(H, uv - vec2(0.,TX.y)).r, u = texture(H, uv + vec2(0.,TX.y)).r;
+  float n = (2.0*c.r - c.g + 0.30*(l + r + d + u - 4.0*c.r)) * DAMP;           // wave equation (c^2 = 0.30) with a little damping
+  vec2 e = min(uv, 1.0 - uv); n *= smoothstep(0.0, 0.05, min(e.x, e.y));         // absorbing border: no hard reflections
+  if (P1.w > 0.5) { for (int i=0;i<8;i++) { vec2 q = mix(P0.xy, P1.xy, float(i)/7.0); vec2 dd = (uv - q)/TX; n += STR * exp(-dot(dd,dd)/9.0); } }   // the finger presses the surface along its path
+  o = vec4(n, c.r, 0.0, 1.0);
+}`;
+let sim = null;
+function ensureSim() {
+  if (sim) return sim.ok;
+  sim = { ok: false };
+  if (!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'))) return false;
+  const mk = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  const pr = gl.createProgram(); gl.attachShader(pr, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, SIM_FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  sim.pr = pr; sim.w = 256; sim.h = 256; sim.cur = 0; sim.tex = []; sim.fbo = [];
+  for (let i = 0; i < 2; i++) {
+    const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, sim.w, sim.h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tx, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); return false; }
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    sim.tex.push(tx); sim.fbo.push(fb);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); sim.ok = true; return true;
+}
+function stepSim() {
+  if (!ensureSim()) return;
+  const S = sim; gl.useProgram(S.pr); ensureBuf();
+  const loc = gl.getAttribLocation(S.pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform2f(gl.getUniformLocation(S.pr, 'TX'), 1 / S.w, 1 / S.h); gl.uniform1f(gl.getUniformLocation(S.pr, 'DAMP'), 0.9905); gl.uniform1i(gl.getUniformLocation(S.pr, 'H'), 0);
+  gl.viewport(0, 0, S.w, S.h); gl.activeTexture(gl.TEXTURE0);
+  for (let k = 0; k < 2; k++) {
+    const m = k === 0 ? move : null;
+    if (m) { const speed = m.d / Math.max(m.dt, 0.008); gl.uniform4f(gl.getUniformLocation(S.pr, 'P0'), m.x0, m.y0, 0, 1); gl.uniform4f(gl.getUniformLocation(S.pr, 'P1'), m.x1, m.y1, 0, 1); gl.uniform1f(gl.getUniformLocation(S.pr, 'STR'), -Math.min(0.1, 0.012 + 0.035 * speed)); }
+    else gl.uniform4f(gl.getUniformLocation(S.pr, 'P1'), 0, 0, 0, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, S.fbo[1 - S.cur]); gl.bindTexture(gl.TEXTURE_2D, S.tex[S.cur]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3); S.cur = 1 - S.cur;
+  }
+  move = null; gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+let zeroTex = null;
+function bindWater(P) {                               // the height field goes to texture unit 1 for the scene shader
+  gl.activeTexture(gl.TEXTURE1);
+  if (sim && sim.ok) gl.bindTexture(gl.TEXTURE_2D, sim.tex[sim.cur]);
+  else { if (!zeroTex) { zeroTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, zeroTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); } gl.bindTexture(gl.TEXTURE_2D, zeroTex); }
+  if (P.u.U_H) gl.uniform1i(P.u.U_H, 1);
+  gl.activeTexture(gl.TEXTURE0);
+}
+window.__pointer = (x, y) => document.querySelector('.stage').dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+let vbo = null;
+function ensureBuf() { if (vbo) return; vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW); }
+function select(key) {
+  cur = key; err.style.display = 'none';
+  try { if (!progs[key]) progs[key] = build(key); } catch (e) { err.style.display = 'grid'; err.textContent = 'Shader failed to compile:\n' + e.message; return; }
+  const s = SH[key]; document.querySelector('.stage').style.aspectRatio = s.aspect ? '1' : '16/9'; document.querySelector('.stage').style.maxWidth = s.aspect ? '620px' : 'none'; document.getElementById('t').textContent = s.title; document.getElementById('b').textContent = s.blurb; document.getElementById('n').textContent = s.notes; document.getElementById('s').textContent = 'Source: ' + s.src; document.getElementById('ref').innerHTML = s.ref ? `<p class="muted" style="margin-top:10px">The original, rendered in Blender (my camera):</p><img src="${s.ref}" alt="Blender render of the original" style="width:100%;max-width:300px;border-radius:12px;border:1px solid var(--line)">` : '';
+  const box = document.getElementById('ctl'); box.innerHTML = '';
+  vals[key] = vals[key] || {};
+  s.ctl.forEach(([id, label, min, max, def, step]) => {
+    if (vals[key][id] === undefined) vals[key][id] = def;
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label for="c-${id}">${label}</label><input id="c-${id}" type="range" min="${min}" max="${max}" step="${step}" value="${vals[key][id]}"><output>${vals[key][id]}</output>`;
+    const inp = row.querySelector('input'), out = row.querySelector('output');
+    inp.oninput = () => { vals[key][id] = +inp.value; out.textContent = inp.value; };
+    box.appendChild(row);
+  });
+  document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.k === key)));
+}
+Object.entries(SH).forEach(([k, v]) => { const b = document.createElement('button'); b.type = 'button'; b.role = 'tab'; b.dataset.k = k; b.textContent = v.title; b.onclick = () => select(k); document.getElementById('tabs').appendChild(b); });
+document.getElementById('pause').onclick = (e) => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (document.hidden) return;
+  const dt = (now - last) / 1000; last = now; if (!paused) tAcc += dt;
+  const q = +document.getElementById('q').value, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(2, Math.round(cv.clientWidth * dpr * q)), h = Math.max(2, Math.round(cv.clientHeight * dpr * q));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  if (!cur || !progs[cur]) return;
+  ensureBuf(); const P = progs[cur];
+  if (SH[cur].sim && !paused) stepSim();
+  if (P.post) { ensureFbo(w, h); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); } else gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(P.pr); gl.viewport(0, 0, w, h);
+  const loc = gl.getAttribLocation(P.pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform2f(P.u.R, w, h); gl.uniform1f(P.u.T, window.__fixedT ?? tAcc);
+  SH[cur].ctl.forEach(([id]) => gl.uniform1f(P.u[id], vals[cur][id]));
+  uploadTrail(P); if (SH[cur].sim) bindWater(P);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (P.post) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(P.post.pr); gl.viewport(0, 0, w, h);
+    const l2 = gl.getAttribLocation(P.post.pr, 'p'); gl.enableVertexAttribArray(l2); gl.vertexAttribPointer(l2, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fboTex); gl.uniform1i(P.post.u.S, 0);
+    gl.uniform2f(P.post.u.R, w, h); gl.uniform1f(P.post.u.T, window.__fixedT ?? tAcc); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  frames++; if (now - fpsT > 800) { fps = Math.round((frames * 1000) / (now - fpsT)); frames = 0; fpsT = now; hud.textContent = `${fps} fps · ${w}×${h}`; }
+}
+if (!gl) { err.style.display = 'grid'; err.textContent = 'WebGL2 is not available in this view.'; } else { select('hex'); requestAnimationFrame(frame); }
+window.__select = select;
+</script>

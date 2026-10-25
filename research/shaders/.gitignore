@@ -1,0 +1,7 @@
+*.blend
+*.blend1
+*.zip
+zip-*/
+renders/
+dumps/
+ports/ref/
