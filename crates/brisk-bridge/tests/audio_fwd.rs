@@ -6,9 +6,11 @@ mod common;
 
 use std::time::Duration;
 
-use brisk_bridge::session::{audio_datagram, send_audio, AudioRx, AudioStats, AUDIO_HEADER_LEN};
+use brisk_bridge::session::{
+    audio_datagram, send_audio, AudioRx, AudioStats, AUDIO_HEADER_LEN, REORDER_HOLD_NS,
+};
 use brisk_bridge::wt::AUDIO_SEND_BUFFER;
-use brisk_proto::audio::{parse_audio_packet, OpusFrame, PT_FEC};
+use brisk_proto::audio::{encode_parity, parse_audio_packet, OpusFrame, PT_AUDIO, PT_FEC};
 use brisk_proto::sdp::SS_ENC_AUDIO;
 use common::*;
 use tokio::time::timeout;
@@ -78,17 +80,18 @@ async fn forwards_decrypted_opus_unchanged() {
         if !is_fec(d) && u16::from_be_bytes([d[2], d[3]]) == erased {
             continue;
         }
-        got.extend(rx.push(d));
+        got.extend(rx.push(d, 0));
     }
     assert_eq!(rx.stats.errors, 0);
     assert_eq!(rx.stats.packets, want.len() as u64);
     assert_eq!(rx.stats.recovered, 1, "the erased packet came back by FEC");
-    let mut by_seq = got.clone();
-    by_seq.sort_by_key(|f| f.seq);
+    // Not sorted: the recovered packet must come out in its place, in strict seq order.
     assert_eq!(
-        by_seq, want,
-        "every Opus packet, decrypted, bytes unchanged"
+        got.iter().map(|f| f.seq).collect::<Vec<_>>(),
+        want.iter().map(|f| f.seq).collect::<Vec<_>>(),
+        "seq order"
     );
+    assert_eq!(got, want, "every Opus packet, decrypted, bytes unchanged");
 
     let (ep, _d) = server();
     let (s, c, _cep) = session_pair(&ep).await;
@@ -217,4 +220,220 @@ async fn a_send_that_just_fits_evicts_nothing() {
         seqs.push(parse(&d).0);
     }
     assert_eq!(seqs, (1..9).collect::<Vec<_>>());
+}
+
+// Synthetic plain (unencrypted) blocks: 4 data packets then 2 parity packets, as Sunshine sends
+// them; the payload of seq s is 40 bytes of (s as u8).
+const MS: u64 = 1_000_000;
+
+fn rtp(pt: u8, seq: u16, ts: u32) -> Vec<u8> {
+    let mut h = vec![0x80, pt];
+    h.extend_from_slice(&seq.to_be_bytes());
+    h.extend_from_slice(&ts.to_be_bytes());
+    h.extend_from_slice(&[0; 4]);
+    h
+}
+
+/// [data base..base+3, fec 0, fec 1].
+fn block(base: u16) -> Vec<Vec<u8>> {
+    let mut shards: Vec<Vec<u8>> = (0..4)
+        .map(|i| vec![base.wrapping_add(i) as u8; 40])
+        .chain([vec![0; 40], vec![0; 40]])
+        .collect();
+    encode_parity(&mut shards).unwrap();
+    let ts = |s: u16| s as u32 * 5;
+    let mut out: Vec<Vec<u8>> = (0..4u16)
+        .map(|i| {
+            let s = base.wrapping_add(i);
+            let mut d = rtp(PT_AUDIO, s, ts(s));
+            d.extend_from_slice(&shards[i as usize]);
+            d
+        })
+        .collect();
+    for k in 0..2u16 {
+        let mut d = rtp(PT_FEC, base.wrapping_add(4 + k), ts(base));
+        d.extend_from_slice(&[k as u8, PT_AUDIO]);
+        d.extend_from_slice(&base.to_be_bytes());
+        d.extend_from_slice(&ts(base).to_be_bytes());
+        d.extend_from_slice(&[0; 4]);
+        d.extend_from_slice(&shards[4 + k as usize]);
+        out.push(d);
+    }
+    out
+}
+
+fn seqs(fs: &[OpusFrame]) -> Vec<u16> {
+    fs.iter().map(|f| f.seq).collect()
+}
+
+#[tokio::test]
+async fn a_recovered_packet_reaches_the_browser_in_its_place() {
+    let b = block(8);
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let (ep, _d) = server();
+    let (s, c, _cep) = session_pair(&ep).await;
+    let mut st = AudioStats::default();
+    // Slot 1 (seq 9) is lost; its parity comes after slots 2 and 3, as Sunshine sends it.
+    let mut t = 0;
+    for d in [&b[0], &b[2], &b[3], &b[4]] {
+        t += MS;
+        for f in rx.push(d, t) {
+            send_audio(&s, &f, &mut st);
+        }
+    }
+    let mut got = Vec::new();
+    for _ in 0..4 {
+        let d = timeout(SECS2, c.read_datagram()).await.unwrap().unwrap();
+        let (seq, _, opus) = parse(&d);
+        assert_eq!(opus, vec![seq as u8; 40]);
+        got.push(seq);
+    }
+    assert_eq!(
+        got,
+        vec![8, 9, 10, 11],
+        "strict seq order, 9 rebuilt in place"
+    );
+    assert_eq!(rx.stats.recovered, 1);
+    assert_eq!(rx.stats.reordered, 2, "10 and 11 waited for 9");
+    assert_eq!((rx.stats.skipped, rx.stats.lost), (0, 0));
+    assert_eq!(rx.deadline(), None);
+}
+
+#[test]
+fn without_loss_every_packet_goes_out_at_once() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    for base in (0..64u16).step_by(4) {
+        let b = block(base);
+        for (i, d) in b.iter().enumerate() {
+            let out = rx.push(d, base as u64 * MS);
+            let want: Vec<u16> = if i < 4 { vec![base + i as u16] } else { vec![] };
+            assert_eq!(seqs(&out), want, "the push that brought it");
+            assert_eq!(rx.deadline(), None, "nothing held");
+        }
+    }
+    assert_eq!(rx.stats.reordered, 0);
+}
+
+#[test]
+fn reorder_wraps_at_65535() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let b = block(65532);
+    let mut out = Vec::new();
+    for d in [&b[0], &b[2], &b[3], &b[4]] {
+        out.extend(rx.push(d, 0));
+    }
+    assert_eq!(seqs(&out), vec![65532, 65533, 65534, 65535]);
+    let n = block(0);
+    assert_eq!(seqs(&rx.push(&n[0], 0)), vec![0], "0 follows 65535");
+    assert_eq!(rx.stats.skipped, 0);
+}
+
+#[test]
+fn unrecoverable_loss_is_flushed_in_order_after_the_timeout() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let b = block(4);
+    // Slots 1 and 2 lost and only one parity packet arrives: 3 of 6 shards, beyond FEC.
+    assert_eq!(seqs(&rx.push(&b[0], 0)), vec![4]);
+    assert!(rx.push(&b[3], MS).is_empty(), "7 waits for 5 and 6");
+    assert!(rx.push(&b[4], 2 * MS).is_empty());
+    let dl = rx.deadline().expect("holding");
+    assert_eq!(dl, MS + REORDER_HOLD_NS);
+    assert!(rx.poll(dl - 1).is_empty(), "not before the deadline");
+    assert_eq!(seqs(&rx.poll(dl)), vec![7]);
+    assert_eq!(rx.stats.skipped, 2, "5 and 6 given up, once");
+    assert_eq!(rx.deadline(), None);
+    assert!(rx.poll(dl + 10 * MS).is_empty());
+    assert_eq!(rx.stats.skipped, 2);
+    // A late rebuild of 5 or 6 can no longer be played: dropped, not sent out of order.
+    let n = block(8);
+    assert_eq!(seqs(&rx.push(&n[0], dl + MS)), vec![8]);
+}
+
+#[test]
+fn holding_never_spans_more_than_one_block() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let b = block(0);
+    let n = block(4);
+    assert_eq!(seqs(&rx.push(&b[0], 0)), vec![0]);
+    assert!(rx.push(&b[2], 0).is_empty());
+    assert!(rx.push(&b[3], 0).is_empty()); // 1 missing, no parity yet
+                                           // The next block's first packet: 1's parity was sent before it, so give up at once.
+    assert_eq!(seqs(&rx.push(&n[0], 0)), vec![2, 3, 4]);
+    assert_eq!(rx.stats.skipped, 1);
+    assert_eq!(rx.deadline(), None);
+    // A late parity for block 0 rebuilds 1 now: too late, dropped and counted, not sent.
+    assert!(rx.push(&b[4], 0).is_empty());
+    assert_eq!(rx.stats.late, 1);
+}
+
+#[test]
+fn a_host_restart_far_behind_resyncs() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    for d in &block(4000)[..4] {
+        rx.push(d, 0);
+    }
+    // AudioFec resyncs after 8 far packets; the reorder must follow, not call them late.
+    let mut out = Vec::new();
+    for base in [0u16, 4, 8] {
+        for d in &block(base)[..4] {
+            out.extend(rx.push(d, 0));
+        }
+    }
+    assert!(seqs(&out).ends_with(&[8, 9, 10, 11]), "{:?}", seqs(&out));
+}
+
+#[test]
+fn a_late_rebuild_across_the_wrap_is_late() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let b = block(65532);
+    for d in &b[..3] {
+        rx.push(d, 0);
+    }
+    // 65535 lost; block 0 starts before 65532's parity arrives (reordered on the way).
+    assert_eq!(seqs(&rx.push(&block(0)[0], 0)), vec![0]);
+    assert!(rx.push(&b[4], 0).is_empty(), "65535 rebuilt too late");
+    assert_eq!(rx.stats.late, 1);
+    assert_eq!(rx.deadline(), None);
+}
+
+#[test]
+fn the_deadline_runs_from_the_first_held_packet() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let b = block(0);
+    rx.push(&b[0], 0);
+    rx.push(&b[2], MS);
+    rx.push(&b[3], 3 * MS);
+    assert_eq!(rx.deadline(), Some(MS + REORDER_HOLD_NS));
+}
+
+#[test]
+fn giving_up_on_a_block_still_waits_for_a_gap_in_the_next() {
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let (b, n) = (block(0), block(4));
+    for d in [&b[0], &b[2], &b[3]] {
+        rx.push(d, 0); // 1 missing, its parity lost
+    }
+    // 4 is missing too: 5 gives up on 1, then waits for 4.
+    assert_eq!(seqs(&rx.push(&n[1], 0)), vec![2, 3]);
+    assert!(rx.push(&n[2], 0).is_empty());
+    assert!(rx.push(&n[3], 0).is_empty());
+    assert_eq!(
+        seqs(&rx.push(&n[4], 0)),
+        vec![4, 5, 6, 7],
+        "4 rebuilt in place"
+    );
+    assert_eq!(rx.stats.skipped, 1);
+}
+
+#[test]
+fn a_start_mid_block_waits_for_the_rebuild_of_its_first_slots() {
+    // The bridge's AudioRx starts when the tap connects, mid-stream: slots 0-1 of this block went
+    // by before it existed, and parity rebuilds them. They must come first, not be called late.
+    let mut rx = AudioRx::new(0, [0; 16], 0);
+    let b = block(20);
+    assert!(rx.push(&b[2], 0).is_empty());
+    assert!(rx.push(&b[3], 0).is_empty());
+    assert!(rx.push(&b[4], 0).is_empty(), "one parity: 3 of 6 shards");
+    assert_eq!(seqs(&rx.push(&b[5], 0)), vec![20, 21, 22, 23]);
+    assert_eq!((rx.stats.late, rx.stats.skipped), (0, 0));
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CAPACITY_FRAMES, DEADBAND_FRAMES, FADE_FRAMES, PACKET_FRAMES, PAUSE_FRAMES, Playout, TARGET_FRAMES,
-  concealment, driftStep, parseAudioHeader, seqDelta,
+  CAPACITY_FRAMES, DEADBAND_FRAMES, FADE_FRAMES, MAX_DECODER_RESTARTS, PACKET_FRAMES, PAUSE_FRAMES, Playout,
+  Restarts, TARGET_FRAMES, UNDERRUN_LOG, concealment, driftStep, parseAudioHeader, seqDelta,
 } from './audio';
 
 const QUANTUM = 128;
@@ -112,6 +112,19 @@ describe('Playout', () => {
     expect(p.fill).toBe(0);
     p.push(seq++, ...pkt(0.5));
     expect(p.stats).toMatchObject({ underruns: 1, lost: 0, pauses: 0 });
+    // Dry from the quantum that ran out until this packet: 2 quanta here.
+    expect(p.stats.underrunMs).toEqual([Math.round((quanta * QUANTUM - 832) / 48)]);
+  });
+
+  it('keeps the durations of the last UNDERRUN_LOG underruns only', () => {
+    let { p, seq } = playing();
+    for (let k = 0; k < UNDERRUN_LOG + 5; k++) {
+      for (let i = 0; i < 8 + k; i++) pull(p);
+      for (let i = 0; i < 4; i++) p.push(seq++ & 0xffff, ...pkt(0.5));
+    }
+    expect(p.stats.underruns).toBe(UNDERRUN_LOG + 5);
+    expect(p.stats.underrunMs.length).toBe(UNDERRUN_LOG);
+    expect(p.stats.underrunMs[UNDERRUN_LOG - 1]).toBeGreaterThan(p.stats.underrunMs[0]); // newest last
   });
 
   it('a long starvation that ends with a seq gap is loss, so an underrun', () => {
@@ -212,5 +225,22 @@ describe('drift', () => {
   it('matched clocks never adjust', () => {
     const p = run(1, 60);
     expect(p.stats).toMatchObject({ dropped: 0, repeated: 0, underruns: 0, overflows: 0 });
+  });
+});
+
+describe('Restarts', () => {
+  it('allows MAX_DECODER_RESTARTS failures in a row, then stops', () => {
+    const r = new Restarts();
+    for (let i = 0; i < MAX_DECODER_RESTARTS; i++) expect(r.failed()).toBe(true);
+    expect(r.failed()).toBe(false);
+  });
+  it('a decoded packet resets the count', () => {
+    const r = new Restarts(2);
+    expect(r.failed()).toBe(true);
+    expect(r.failed()).toBe(true);
+    r.ok();
+    expect(r.failed()).toBe(true);
+    expect(r.failed()).toBe(true);
+    expect(r.failed()).toBe(false);
   });
 });

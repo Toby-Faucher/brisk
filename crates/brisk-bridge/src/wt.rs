@@ -208,18 +208,24 @@ async fn handshake(
     let mut h = Vec::new();
     StreamUni::WEBTRANSPORT.encode(&mut h);
     session_id.encode(&mut h);
-    let mut dh = Vec::new();
-    VarInt::try_from(session_id.into_inner() / 4)
-        .expect("smaller than a varint")
-        .encode(&mut dh);
     let s = Session {
         conn: conn.clone(),
         uni_header: h.into(),
-        datagram_header: dh,
+        datagram_header: datagram_header(session_id.into_inner()),
         _control: control,
         _connect: (send, recv),
     };
     Ok((s, inbox))
+}
+
+/// HTTP datagram prefix for the session on CONNECT stream `stream_id`: the quarter stream id
+/// (`stream_id / 4`, RFC 9297 section 2.1) as a varint.
+pub fn datagram_header(stream_id: u64) -> Vec<u8> {
+    let mut h = Vec::new();
+    VarInt::try_from(stream_id / 4)
+        .expect("a stream id / 4 fits a varint")
+        .encode(&mut h);
+    h
 }
 
 /// Takes the browser's uni streams. Each gets its own task: the HTTP/3 control and QPACK
@@ -292,5 +298,23 @@ impl Session {
 
     pub fn close(&self) {
         self.conn.close(0u32.into(), b"replaced");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::datagram_header;
+
+    #[test]
+    fn datagram_header_is_the_quarter_stream_id_varint() {
+        assert_eq!(datagram_header(0), [0x00]);
+        assert_eq!(datagram_header(4), [0x01]);
+        assert_eq!(datagram_header(8), [0x02]);
+        assert_eq!(
+            datagram_header(252),
+            [0x3f],
+            "quarter id 63: the last 1-byte varint"
+        );
+        assert_eq!(datagram_header(256), [0x40, 0x40], "quarter id 64: 2 bytes");
     }
 }

@@ -120,6 +120,17 @@ oldest queued datagram, counted as `evicted` (exactly one per send for CBR packe
 RTP socket and the forward loop a 64-packet channel drops new packets when full (`queue_full`).
 Audio never requests an IDR. The bridge report prints one `audio` line.
 
+Reorder (`AudioRx`): AudioFec passes data through as it arrives and rebuilds a lost packet only
+when the block's parity comes, after the block's later data. So on a seq gap the bridge holds the
+packets behind it (never otherwise: no added delay without loss), at most the rest of that 4-packet
+block, until the rebuild fills the gap (they go out in order, `reordered`), the next block starts
+(its parity was sent before), or 20 ms pass (`REORDER_HOLD_NS`); then the held packets go out in
+order and the missing seqs count `skipped`. A rebuild that comes after that is dropped (`late`).
+
+Counters at two layers: bridge `lost` is AudioFec giving up on a block (beyond FEC), `skipped` the
+reorder giving up; page `lost` is every seq gap the page sees, so it also includes bridge
+`skipped`/`evicted`/`queue_full` and anything lost between bridge and browser.
+
 Page (`web/src/lib/audio.ts`, `audio-worklet.ts`): WebCodecs `AudioDecoder` `{codec:"opus",
 sampleRate:48000, numberOfChannels:2}` (no description), planar PCM posted to an AudioWorklet
 ring (`Playout`). The AudioContext is created inside the **Connect** button's click (Chrome's
@@ -135,11 +146,15 @@ autoplay policy); the page now waits for that click before it connects.
   Sunshine may stop sending while silent): not a glitch.
 - Drift: when the ring's average fill (about 1.4 s time constant) is more than 5 ms off the
   20 ms target, one frame per 128-frame quantum is dropped or repeated (`drift -dropped/+repeated`).
-  Limit: no interpolation, at most 0.8 %; fine for crystal drift (tens of ppm, measured about
-  30 ppm below), audible only if clocks were far apart.
+  Limit: no interpolation, at most 0.8 %; fine for crystal drift (tens of ppm), audible only if
+  clocks were far apart. The real host/client drift is not measured yet (see below).
 - AudioData timestamps are rewritten by Chrome's decoder (contiguous), so seqs go through a FIFO
   next to the decoder (Opus gives one output per chunk, in order).
 - `non-silent` counts decoded packets with any sample above -60 dBFS: real audio, not zeros.
+- `underruns [a b c ms]`: how long each of the last 20 underruns kept the ring empty (until the
+  next packet; playback then waits for the 20 ms target on top).
+- The decoder is re-created after an error at most 5 times in a row without a decoded packet;
+  then audio stops and `last error` says so.
 
 ## Running it
 
@@ -213,9 +228,15 @@ measured. Not measured: laptop Chrome (decode, present, network), see below.
 | page: lost / late / pauses / overflows | 0 / 0 / 0 / 2 (the 2 overflows: start-up burst) |
 | page: underruns | 7 in 10 min (headless main thread also software-decodes 1080p60 video) |
 | page: bufferMs (end) / AudioContext output latency | 18.9 ms / 42.7 ms (null sink's reported latency) |
-| page: drift | 908 frames dropped, 0 repeated (start-up included; about 30 ppm) |
+| page: drift | 908 frames dropped, 0 repeated (see below: not a drift measurement) |
 | bridge: packets / FEC recovered / lost / errors | 139969 / 1 / 0 / 0 |
 | bridge: sent / evicted / too_large / queue_full | 127066 / 3862 / 0 / 0 |
+
+The 908 dropped frames are not a drift figure: most are the start-up burst draining from the
+40 ms cap down to the 25 ms deadband edge (about 720 frames), so real clock drift was not measured
+(if the remaining ~190 frames were all drift that would be ~7 ppm, but the split is an estimate,
+not a measurement). This run predates the reorder
+buffer (it had no `reordered`/`skipped` counters; 1 FEC recovery in 10 min on loopback).
 
 Sunshine sent audio continuously (200 packets/s) while the host was silent. The evictions all fall
 in the two 10 s windows after a headless browser was closed (dead tab until the idle timeout):
@@ -256,4 +277,6 @@ Audio, in the same run (play something on bawn: music in a browser on bawn's des
   glitch. If you hear a glitch and no counter moved, note the time: it is the laptop's audio device
   or Chrome, not the stream.
 - Note `output` (ms the laptop's audio device adds after the ring) for the A/V budget.
-- At the end, copy the bridge's `audio` line (`lost`, `evicted`, `queue_full` should be 0 or small).
+- At the end, copy the bridge's `audio` line (`lost`, `skipped`, `late`, `evicted`, `queue_full`
+  should be 0 or small; `recovered` and `reordered` show FEC repairs played in place), and the
+  page's `underruns [.. ms]` list.

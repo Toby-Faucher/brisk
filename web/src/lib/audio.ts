@@ -24,6 +24,10 @@ export const DEADBAND_FRAMES = 240;
 export const PAUSE_FRAMES = 9600;
 /// Fade-in after concealment or starvation, so resumed audio does not click.
 export const FADE_FRAMES = 96;
+/// Underrun durations kept in the stats.
+export const UNDERRUN_LOG = 20;
+/// Decoder errors in a row (no packet decoded in between) before audio gives up.
+export const MAX_DECODER_RESTARTS = 5;
 /// Weight of each render quantum in the fill average (about a 1.4 s time constant).
 const AVG_ALPHA = 1 / 512;
 
@@ -72,6 +76,9 @@ export function driftStep(avgFill: number, target: number, deadband = DEADBAND_F
 export interface PlayoutStats {
   /// Starvations that were glitches: short ones, or ones that ended with a seq gap.
   underruns: number;
+  /// How long each of the last UNDERRUN_LOG underruns lasted, ms: ring empty until the next
+  /// packet (playback then waits for the 20 ms target on top of that).
+  underrunMs: number[];
   /// Packets missing from the seq sequence (concealed when playing).
   lost: number;
   /// Packets older than one already played (reordered or duplicated): dropped.
@@ -90,7 +97,7 @@ export interface PlayoutStats {
 /// one decoded packet, `pull` one render quantum.
 export class Playout {
   stats: PlayoutStats = {
-    underruns: 0, lost: 0, late: 0, pauses: 0, overflows: 0, dropped: 0, repeated: 0, bufferMs: 0,
+    underruns: 0, underrunMs: [], lost: 0, late: 0, pauses: 0, overflows: 0, dropped: 0, repeated: 0, bufferMs: 0,
   };
   avgFill = TARGET_FRAMES;
   private l = new Float32Array(CAPACITY_FRAMES);
@@ -117,9 +124,12 @@ export class Playout {
     }
     this.stats.lost += gap;
     if (this.starvedAt !== null) {
-      const glitch = gap > 0 || this.clock - this.starvedAt < PAUSE_FRAMES;
-      if (glitch) this.stats.underruns++;
-      else this.stats.pauses++;
+      const dry = this.clock - this.starvedAt;
+      if (gap > 0 || dry < PAUSE_FRAMES) {
+        this.stats.underruns++;
+        this.stats.underrunMs.push(Math.round(dry / (RATE / 1000)));
+        if (this.stats.underrunMs.length > UNDERRUN_LOG) this.stats.underrunMs.shift();
+      } else this.stats.pauses++;
       this.starvedAt = null;
       this.fadeLeft = FADE_FRAMES;
     } else if (gap > 0 && this.last) {
@@ -196,6 +206,20 @@ export class Playout {
   }
 }
 
+/// Counts decoder failures with no successful decode in between: a decoder that keeps failing
+/// (a bad config, an unsupported codec) is not re-created forever.
+export class Restarts {
+  private row = 0;
+  constructor(private max = MAX_DECODER_RESTARTS) {}
+  /// A failure; true while another restart is allowed.
+  failed(): boolean {
+    return ++this.row <= this.max;
+  }
+  ok(): void {
+    this.row = 0;
+  }
+}
+
 export interface AudioStats extends PlayoutStats {
   /// Datagrams received / Opus packets decoded.
   packets: number;
@@ -221,7 +245,7 @@ const DECODER_CONFIG = { codec: 'opus', sampleRate: RATE, numberOfChannels: 2 };
 /// `workletUrl`: the bundled audio-worklet.ts.
 export async function startAudio(transport: WebTransport, ctx: AudioContext, workletUrl: string): Promise<Audio> {
   const stats: AudioStats = {
-    underruns: 0, lost: 0, late: 0, pauses: 0, overflows: 0, dropped: 0, repeated: 0, bufferMs: 0,
+    underruns: 0, underrunMs: [], lost: 0, late: 0, pauses: 0, overflows: 0, dropped: 0, repeated: 0, bufferMs: 0,
     packets: 0, decoded: 0, nonSilent: 0, decodeErrors: 0, contextState: ctx.state, outputMs: 0, lastError: null,
   };
   await ctx.audioWorklet.addModule(workletUrl);
@@ -235,28 +259,37 @@ export async function startAudio(transport: WebTransport, ctx: AudioContext, wor
   // AudioData timestamps are rewritten by Chrome's decoder (contiguous from the first one), so
   // the seq of each output comes from this FIFO: Opus gives one output per chunk, in order.
   let seqs: number[] = [];
-  let decoder: AudioDecoder;
+  let decoder: AudioDecoder | null = null;
+  const restarts = new Restarts();
+  const fail = (e: unknown) => {
+    stats.decodeErrors++;
+    stats.lastError = String(e);
+    seqs = [];
+    if (restarts.failed()) return newDecoder();
+    decoder = null;
+    stats.lastError = `audio stopped: decoder failed ${MAX_DECODER_RESTARTS + 1} times in a row (${e})`;
+  };
   const newDecoder = () => {
-    decoder = new AudioDecoder({
-      output: (a) => {
-        const seq = seqs.shift();
-        const l = new Float32Array(a.numberOfFrames);
-        const r = new Float32Array(a.numberOfFrames);
-        a.copyTo(l, { planeIndex: 0, format: 'f32-planar' });
-        a.copyTo(r, { planeIndex: a.numberOfChannels > 1 ? 1 : 0, format: 'f32-planar' });
-        a.close();
-        stats.decoded++;
-        if (l.some((x) => Math.abs(x) > 1e-3)) stats.nonSilent++;
-        if (seq !== undefined) node.port.postMessage({ seq, l, r }, [l.buffer, r.buffer]);
-      },
-      error: (e) => {
-        stats.decodeErrors++;
-        stats.lastError = String(e);
-        seqs = [];
-        newDecoder();
-      },
-    });
-    decoder.configure(DECODER_CONFIG);
+    try {
+      decoder = new AudioDecoder({
+        output: (a) => {
+          const seq = seqs.shift();
+          const l = new Float32Array(a.numberOfFrames);
+          const r = new Float32Array(a.numberOfFrames);
+          a.copyTo(l, { planeIndex: 0, format: 'f32-planar' });
+          a.copyTo(r, { planeIndex: a.numberOfChannels > 1 ? 1 : 0, format: 'f32-planar' });
+          a.close();
+          stats.decoded++;
+          restarts.ok();
+          if (l.some((x) => Math.abs(x) > 1e-3)) stats.nonSilent++;
+          if (seq !== undefined) node.port.postMessage({ seq, l, r }, [l.buffer, r.buffer]);
+        },
+        error: fail,
+      });
+      decoder.configure(DECODER_CONFIG);
+    } catch (e) {
+      fail(e); // a config the browser rejects outright
+    }
   };
   newDecoder();
   let timestamp = 0;
@@ -266,6 +299,7 @@ export async function startAudio(transport: WebTransport, ctx: AudioContext, wor
       const { value, done } = await reader.read();
       if (done) return;
       stats.packets++;
+      if (!decoder) continue; // gave up (stats.lastError says why)
       let h: AudioHeader;
       try {
         h = parseAudioHeader(value);
@@ -276,7 +310,7 @@ export async function startAudio(transport: WebTransport, ctx: AudioContext, wor
       seqs.push(h.seq);
       try {
         // Timestamps only need to increase; 5 ms per packet.
-        decoder!.decode(new EncodedAudioChunk({ type: 'key', timestamp, data: h.opus }));
+        decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp, data: h.opus }));
         timestamp += 5000;
       } catch (e) {
         seqs.pop();

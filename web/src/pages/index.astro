@@ -34,7 +34,7 @@
         const a = audio.stats;
         return [
           `audio ${a.contextState}  packets ${a.packets}  decoded ${a.decoded}  non-silent ${a.nonSilent}  decode errors ${a.decodeErrors}`,
-          `audio lost ${a.lost}  underruns ${a.underruns}  late ${a.late}  pauses ${a.pauses}  overflows ${a.overflows}  buffer ${a.bufferMs.toFixed(1)} ms  output ${a.outputMs.toFixed(1)} ms  drift -${a.dropped}/+${a.repeated}${a.lastError ? `  last error: ${a.lastError}` : ''}`,
+          `audio lost ${a.lost}  underruns ${a.underruns} [${a.underrunMs.join(' ')} ms]  late ${a.late}  pauses ${a.pauses}  overflows ${a.overflows}  buffer ${a.bufferMs.toFixed(1)} ms  output ${a.outputMs.toFixed(1)} ms  drift -${a.dropped}/+${a.repeated}${a.lastError ? `  last error: ${a.lastError}` : ''}`,
         ].join('\n');
       }
 

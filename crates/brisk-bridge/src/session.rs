@@ -245,17 +245,26 @@ pub struct AudioStats {
     pub too_large: u64,
     /// Dropped before the forward loop because its queue was full.
     pub queue_full: u64,
+    /// Packets held back behind a gap and then sent in seq order.
+    pub reordered: u64,
+    /// Missing seqs the reorder waited for and gave up on (FEC could not rebuild them in time).
+    pub skipped: u64,
+    /// Packets (usually late FEC rebuilds) behind ones already sent: dropped.
+    pub late: u64,
 }
 
 impl std::fmt::Display for AudioStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "audio\tpackets {} recovered {} lost {} errors {} sent {} evicted {} too_large {} queue_full {}",
+            "audio\tpackets {} recovered {} lost {} errors {} reordered {} skipped {} late {} sent {} evicted {} too_large {} queue_full {}",
             self.packets,
             self.recovered,
             self.lost,
             self.errors,
+            self.reordered,
+            self.skipped,
+            self.late,
             self.sent,
             self.evicted,
             self.too_large,
@@ -264,10 +273,31 @@ impl std::fmt::Display for AudioStats {
     }
 }
 
-/// Sunshine audio datagrams in, Opus packets out (sans-io).
+/// Longest a packet is held behind a gap. A packet lost in slot 0 of a block is rebuilt when the
+/// block's parity arrives, right after slot 3: 15 ms later, plus jitter.
+pub const REORDER_HOLD_NS: u64 = 20_000_000;
+/// A packet further behind than this is a restarted stream, not a late one.
+const MAX_LATE: i16 = 16;
+
+fn block_of(seq: u16) -> u16 {
+    seq & !(brisk_proto::audio::DATA_SHARDS as u16 - 1)
+}
+
+/// Sunshine audio datagrams in, Opus packets out in strict seq order (sans-io).
+///
+/// AudioFec passes data packets through as they arrive and rebuilds a lost one only when the
+/// block's parity comes, after the later data of that block. So on a gap the packets behind it
+/// are held (only then: no added delay without loss) until the rebuild fills it, the next block
+/// starts (its parity was sent before), or [`REORDER_HOLD_NS`] passes ([`Self::poll`]). At most
+/// one block (3 packets) is ever held.
 pub struct AudioRx {
     fec: AudioFec,
     cipher: Option<AudioCipher>,
+    /// Next seq to send.
+    next: Option<u16>,
+    /// Held packets, in seq order, all in `next`'s block.
+    held: Vec<OpusFrame>,
+    held_since: Option<u64>,
     pub stats: AudioStats,
 }
 
@@ -277,12 +307,15 @@ impl AudioRx {
         Self {
             fec: AudioFec::new(brisk_client::stream::AUDIO_PACKET_MS),
             cipher: (enc_flags & SS_ENC_AUDIO != 0).then(|| AudioCipher::new(&rikey, rikeyid)),
+            next: None,
+            held: Vec::with_capacity(brisk_proto::audio::DATA_SHARDS),
+            held_since: None,
             stats: AudioStats::default(),
         }
     }
 
-    /// One audio datagram (data or parity); returns the Opus packets that became available.
-    pub fn push(&mut self, d: &[u8]) -> Vec<OpusFrame> {
+    /// One audio datagram (data or parity) at `now_ns`; returns the Opus packets to send now.
+    pub fn push(&mut self, d: &[u8], now_ns: u64) -> Vec<OpusFrame> {
         let ps = match self.fec.push(d) {
             Ok(ps) => ps,
             Err(_) => {
@@ -294,20 +327,90 @@ impl AudioRx {
         (self.stats.recovered, self.stats.lost) = (fs.recovered, fs.lost);
         let mut out = Vec::with_capacity(ps.len());
         for p in ps {
-            match &self.cipher {
+            let f = match &self.cipher {
                 Some(c) => match c.open(&p) {
-                    Ok(f) => out.push(f),
-                    Err(_) => self.stats.errors += 1,
+                    Ok(f) => f,
+                    Err(_) => {
+                        self.stats.errors += 1;
+                        continue;
+                    }
                 },
-                None => out.push(OpusFrame {
+                None => OpusFrame {
                     seq: p.seq,
                     ts: p.ts,
                     data: p.payload,
-                }),
-            }
+                },
+            };
+            self.stats.packets += 1;
+            self.take(f, now_ns, &mut out);
         }
-        self.stats.packets += out.len() as u64;
         out
+    }
+
+    /// When [`Self::poll`] must run to give up on a gap; `None` while nothing is held.
+    pub fn deadline(&self) -> Option<u64> {
+        self.held_since.map(|t| t + REORDER_HOLD_NS)
+    }
+
+    /// The held packets, in order, once the deadline has passed.
+    pub fn poll(&mut self, now_ns: u64) -> Vec<OpusFrame> {
+        let mut out = Vec::new();
+        if self.deadline().is_some_and(|t| now_ns >= t) {
+            let after = self.held.last().map(|f| f.seq.wrapping_add(1));
+            self.give_up(&mut out);
+            self.next = after;
+        }
+        out
+    }
+
+    fn take(&mut self, f: OpusFrame, now_ns: u64, out: &mut Vec<OpusFrame>) {
+        let Some(next) = self.next else {
+            // Start at the block's first slot: AudioRx starts mid-stream (when the tap connects)
+            // and parity may still rebuild the slots before `f`.
+            self.next = Some(block_of(f.seq));
+            return self.take(f, now_ns, out);
+        };
+        let d = f.seq.wrapping_sub(next) as i16;
+        if d == 0 {
+            self.next = Some(f.seq.wrapping_add(1));
+            out.push(f);
+            while self.held.first().map(|h| h.seq) == self.next {
+                let h = self.held.remove(0);
+                self.next = Some(h.seq.wrapping_add(1));
+                self.stats.reordered += 1;
+                out.push(h);
+            }
+            if self.held.is_empty() {
+                self.held_since = None;
+            }
+        } else if (-MAX_LATE..0).contains(&d) {
+            self.stats.late += 1;
+        } else if d > 0 && block_of(f.seq) == block_of(next) {
+            if let Err(i) = self
+                .held
+                .binary_search_by_key(&f.seq.wrapping_sub(next), |h| h.seq.wrapping_sub(next))
+            {
+                self.held.insert(i, f);
+            }
+            self.held_since.get_or_insert(now_ns);
+        } else {
+            // A later block (its gap's parity is gone by) or a restarted stream: send what is
+            // held, then treat `f` from the start of its own block, where FEC may still help.
+            self.give_up(out);
+            self.next = Some(if d > 0 { block_of(f.seq) } else { f.seq });
+            self.take(f, now_ns, out);
+        }
+    }
+
+    /// Sends the held packets in order, counting the seqs before and between them as skipped.
+    fn give_up(&mut self, out: &mut Vec<OpusFrame>) {
+        if let (Some(next), Some(last)) = (self.next, self.held.last()) {
+            let span = last.seq.wrapping_sub(next) as u64 + 1;
+            self.stats.skipped += span - self.held.len() as u64;
+        }
+        self.stats.reordered += self.held.len() as u64;
+        out.append(&mut self.held);
+        self.held_since = None;
     }
 }
 
@@ -419,6 +522,8 @@ enum Ev {
     Msg(Bytes),
     Gone(quinn::ConnectionError),
     Audio(Bytes),
+    /// A held audio gap timed out.
+    AudioDue,
 }
 
 /// Forwards tap frames and the audio datagrams from `audio` (raw, from the RTP socket) to the
@@ -439,12 +544,16 @@ pub async fn forward(
     let (done_tx, mut done_rx) = mpsc::unbounded_channel();
     let mut viewer: Option<Viewer> = None;
     loop {
+        let audio_due = arx
+            .deadline()
+            .map(|t| Duration::from_nanos(t.saturating_sub(monotonic_ns())));
         let ev = tokio::select! {
             i = ep.accept() => Ev::Incoming(i.map(Box::new)),
             Some((s, inbox)) = viewer_rx.recv() => Ev::Viewer(s, inbox),
             f = tap.recv() => Ev::Frame(f),
             Some(d) = done_rx.recv() => Ev::Done(d),
             Some(a) = audio.recv() => Ev::Audio(a),
+            _ = tokio::time::sleep(audio_due.unwrap_or_default()), if audio_due.is_some() => Ev::AudioDue,
             e = viewer_event(&mut viewer) => e,
         };
         if let Some(v) = &viewer {
@@ -521,8 +630,12 @@ pub async fn forward(
                     request_idr(ctl).await?;
                 }
             }
-            Ev::Audio(d) => {
-                for f in arx.push(&d) {
+            Ev::Audio(_) | Ev::AudioDue => {
+                let fs = match ev {
+                    Ev::Audio(d) => arx.push(&d, monotonic_ns()),
+                    _ => arx.poll(monotonic_ns()),
+                };
+                for f in fs {
                     if let Some(v) = &viewer {
                         send_audio(&v.s, &f, &mut arx.stats);
                     }
