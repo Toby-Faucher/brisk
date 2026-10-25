@@ -87,8 +87,8 @@ the output callback (the newest frame wins; older ones are closed unpainted).
 
 | stage | headless Chromium on bawn (software decode, no GPU; NOT the real client) | laptop Chrome |
 |---|---|---|
-| client decode | p50 4.1, p99 11.4 ms (10 min, 34619 frames, 0 errors) | PENDING (Toby, docs/m2-notes.md "Toby to run") |
-| client present queue | p50 9.9, p99 19.4 ms (headless rAF) | PENDING (Toby) |
+| client decode | p50 4.1, p99 11.4 ms (10 min, 34619 frames, 0 errors) | p50 1.0, p99 2.0 ms (147 s, 8796 frames, 0 errors, hardware decode, Chrome 152, 2026-10-25) |
+| client present queue | p50 9.9, p99 19.4 ms (headless rAF) | p50 5.1, p99 7.9 ms; 595 of 8796 frames skipped (6.8%), 55.9 presented/s (same run) |
 | `bridge_write - capture` (bawn clock) | p50 6.0, p99 8.0 ms vs `frame_processing_latency` p50 5.9, p99 7.9 ms: M2 gate PASS | same host side |
 
 ### M2 gate run with video + audio + input (2026-10-24, Task 6)
@@ -110,5 +110,5 @@ IP, page on bawn): NOT the laptop and NOT the real network path. Details: docs/m
 | network path | none (same box) | PENDING (Toby) |
 | audio | 120044 decoded, 0 decode errors, page lost 0, underruns 9, bridge lost 3 | PENDING (Toby: listening check) |
 | input | 200 messages (120 keys, 80 moves) page = bridge = Sunshine decoded, 0 bad, 0 dropped | PENDING (Toby: real mouse, buttons, wheel, typing) |
-| Moonlight overlay, same path (head-to-head) | n/a | PENDING (Toby, "Toby to run" steps 17-20) |
+| Moonlight overlay, same path (head-to-head) | n/a | 2026-10-25, Mewgenics, 1080p60 H.264, different scenes: Moonlight 60.05 fps in/decoded/rendered, host processing min/avg/max 4.2/6.6/10.8 ms, 0% network and jitter drops, net latency 3 ms, decode 0.45 ms, queue 0.06 ms, render 1.56 ms. Brisk: bridge_write-capture p50 4.7 / p99 6.9 ms, decode p50 1.0, present p50 5.1, 6.8% skipped. Toby: Moonlight felt a bit smoother; both played well. Host leg is a tie; client leg about 4 ms behind (decode +0.5, draw +3.5) and Brisk drops ~4 frames/s. No freezes after the bawn fix (docs/bawn-display-stalls.md). |
 

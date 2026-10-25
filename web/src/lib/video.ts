@@ -129,7 +129,7 @@ export interface VideoStats {
   framesPresented: number;
   /// Received but not decoded (waiting for a key frame, gaps, stale).
   framesDropped: number;
-  /// Decoded but replaced by a newer frame before a paint.
+  /// Unused since frames are drawn on arrival (was: replaced before a paint); stays 0.
   framesSkipped: number;
   /// Bridge reset the stream before it was complete.
   streamsReset: number;
@@ -173,13 +173,13 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
     rafMs: new Window(), drawMs: new Window(), stalls: [], lastBytes: 0, tinyRun: 0, tinyMax: 0,
     jitterMs: new Window(), queueMs: new Window(),
   };
-  const ctx = canvas.getContext('2d')!;
+  // desynchronized: draw straight to the front buffer, no wait for the compositor's next frame.
+  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
   const gate = new KeyGate();
   const decodeStart = new Map<number, number>();
   let config: VideoDecoderConfig | null = null;
   let decoder: VideoDecoder | null = null;
   let configuring = false;
-  let pending: { frame: VideoFrame; at: number } | null = null;
   let prev: { arrival: number; bridgeMs: number } | null = null;
   let lastAsk = -Infinity;
   let stallUntil = 0;
@@ -208,11 +208,18 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
           decodeStart.delete(frame.timestamp);
         }
         stats.framesDecoded++;
-        if (pending) {
-          pending.frame.close();
-          stats.framesSkipped++;
+        // Drawn on arrival (no rAF wait, so none are skipped); the display shows the latest at its next refresh.
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+          canvas.width = stats.width = frame.displayWidth;
+          canvas.height = stats.height = frame.displayHeight;
         }
-        pending = { frame, at: now };
+        const d0 = performance.now();
+        ctx.drawImage(frame, 0, 0);
+        const d1 = performance.now();
+        frame.close();
+        stats.drawMs.push(d1 - d0);
+        stats.framesPresented++;
+        stats.presentMs.push(d1 - now);
       },
       error: (e) => {
         stats.decodeErrors++;
@@ -315,20 +322,6 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
       if (stats.stalls.length > 6) stats.stalls.shift();
     }
     lastRaf = t;
-    if (pending) {
-      const { frame, at } = pending;
-      pending = null;
-      if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
-        canvas.width = stats.width = frame.displayWidth;
-        canvas.height = stats.height = frame.displayHeight;
-      }
-      const d0 = performance.now();
-      ctx.drawImage(frame, 0, 0);
-      stats.drawMs.push(performance.now() - d0);
-      frame.close();
-      stats.framesPresented++;
-      stats.presentMs.push(performance.now() - at);
-    }
     requestAnimationFrame(paint);
   };
   requestAnimationFrame(paint);

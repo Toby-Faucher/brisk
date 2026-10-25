@@ -33,3 +33,20 @@ getty drop-in). HDMI-A-3 (forced virtual display) is a different pin and is unaf
 `bawn-virtual-display.service`) apply the two settings above at every boot. Not yet verified across a reboot.
 Undo: `systemctl disable --now bawn-hpd-fix`, then the revert commands above. Surest fix remains unplugging the
 ArkKVM / fixing its HPD line.
+
+## Side effect: lost mouse motion during a stall (found 2026-10-25)
+While sway is blocked, the relative mouse events Sunshine writes to uinput pile up in sway's evdev client
+buffer; when it overflows the kernel drops the queued events, so motion is lost, not delayed (the in-game
+cursor then stops short of where you aimed; hitting a screen edge re-syncs it).
+Repro (agent-runnable): headless page sends 300 moves of (+4,+2), `kill -STOP` sway for 1.5 s mid-run, compare
+the X pointer (ctypes XQueryPointer on :0) with no-stall runs: 1230-1240 px vs 670-780 px (36-46% lost).
+Halving the page's send rate (FLUSH_MS 8 -> 16) did not help (the kernel discards everything queued on overflow),
+so it was reverted. The real fix is no sway stalls (above); residual rate after the fix: 1 stall of 0.66 s in 120 s.
+Possible mitigation if it still bites: slow input to ~12 Hz while the picture is unchanged (tiny frames) and the
+mouse is moving; trade-off is 80 ms input lag whenever a static scene hides the cursor.
+
+## Confirmed cause and decision (2026-10-25)
+After the software fix one 0.7 s stall remained every ~131 s (i915 re-enables the stormed HPD pin after ~2 min,
+the next pulse costs one AUX timeout under the modeset lock; 5 mouse offsets in 10 min matched). With the ArkKVM
+video cable unplugged: 0 HPD/detect lines in 380 s of KMS debug. Toby left the KVM unplugged. Replug options if
+the KVM is needed: a different video port on bawn (DP-1/DP-3/HDMI-A-1), or another cable/adapter.
