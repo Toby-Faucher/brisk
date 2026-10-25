@@ -14,7 +14,7 @@
 - anything else: the static page from `web/dist`
 
 ## Env vars
-BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address, brisk-up sets tailscale ip:4433),
+BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),
 BRISK_DIST, BRISK_DATA_DIR, BRISK_BRIDGE_BIN, BRISK_STEAM_DIR, BRISK_STEAM_KEY_FILE
 (`~/.config/brisk/steam-api-key`, never printed or committed), BRISK_STEAM_API_BASE.
 

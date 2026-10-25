@@ -1,5 +1,9 @@
 # M2 notes
 
+> Superseded for running: `scripts/brisk-up.sh` now runs `brisk-hostd`, which serves the page and
+> starts/stops the bridge (no `--secs`, no python page server). See docs/ui-notes.md. The run
+> recipes below are the historical M2 ones (`brisk-up.sh --secs N`); measurements are unchanged.
+
 ## WebTransport stack (Task 4 spike, 2026-10-24)
 
 Decision: **raw quinn 0.11 + `web-transport-proto` 0.6 framing + our own pure-Rust QUIC crypto**
@@ -275,15 +279,15 @@ moves are all +-5).
 
 ## Running it
 
-- Up: `scripts/brisk-up.sh [--secs N]`. Checks the listen address first (IPv4:PORT, not 0.0.0.0),
+- Up: `scripts/brisk-up.sh` (now runs hostd; the old `--secs N` bridge argument is gone, see docs/ui-notes.md). Checks the listen address first (IPv4:PORT, not 0.0.0.0),
   builds inside the same memory-capped scope as the Sunshine build (`scripts/capped.sh`; it refuses
   to build if the cap is not enforced), makes or renews the certificate, switches Sunshine to the
   patched build only if it is FREE (checked before `sunshine-brisk.sh install` writes the drop-in,
-  then `enable`; restarts kept 100 s apart), serves the page on 127.0.0.1:8443, and runs the bridge in the
-  foreground. It prints the `ssh -L` line and the page URL.
+  then `enable`; restarts kept 100 s apart), runs brisk-hostd in the foreground (it serves the page on
+  127.0.0.1:8443 and runs the bridge when a stream starts). It prints the `ssh -L` line and the page URL.
 - Down: Ctrl-C in brisk-up's terminal (brisk-up sends the bridge SIGTERM, which it handles like
-  SIGINT, and cancels its own Sunshine session), then `scripts/brisk-down.sh`: SIGTERM to the bridge
-  and the page server if still running, then `sunshine-brisk.sh rollback` (stock Sunshine, refuses
+  SIGINT, and cancels its own Sunshine session), then `scripts/brisk-down.sh`: SIGTERM to hostd
+  (which stops its bridge) if still running, then `sunshine-brisk.sh rollback` (stock Sunshine, refuses
   while busy) whenever the brisk build runs *or* its drop-in exists. Stub tests:
   `scripts/test-brisk-up-down.sh`, `scripts/test-brisk-up-exit.sh`, `scripts/test-sunshine-brisk.sh`.
 - Headless check on bawn: `cd web && node scripts/headless.mjs '<page URL>' --secs 20 [--stall 3000] [--input 30]`
