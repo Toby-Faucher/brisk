@@ -32,6 +32,7 @@
   // arriving after first paint would be a layout shift. At most 1.5 s, then whatever is there shows.
   let ready = $state(false);
   let said = $state('');
+  let puts = 0;
 
   onMount(() => {
     const w = Promise.all(mods.flatMap((m) => (m.widget ? [m.widget().then((x) => [m.id, [m.title, x.default]] as [string, [string, Component]])] : []))).then((w) => void (widgets = Object.fromEntries(w)), () => {});
@@ -59,8 +60,9 @@
       said = `${label(id)} card dropped, position ${next.indexOf(id) + 1} of ${next.length}`;
       if (!changed) return;
       homeOrder.set(next); // a later visit uses it even before hostd answers
+      const n = ++puts; // replies can arrive out of order: only the latest one may set the store
       api.putLayout(next).then(
-        (r) => homeOrder.set(r.homeOrder),
+        (r) => n === puts && homeOrder.set(r.homeOrder),
         () => toast('Could not save the Home layout', { error: true }),
       );
     },
@@ -96,7 +98,10 @@
   .bg { position: fixed; inset: 0; z-index: -1; opacity: .1; pointer-events: none; }
   /* position: the cards' offsets (drag.ts hit tests on them) are relative to the grid */
   .bento { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 120px; grid-auto-flow: dense; gap: 12px; position: relative; }
-  .bento[data-hold] { visibility: hidden; }
+  /* CSS-only fallback if the Home chunk never runs: shown after 3 s like the head script's data-enter-pending. A discrete
+     switch, not motion: !important so the reduced-motion `animation: none !important` (base.css) does not cancel it. */
+  .bento[data-hold] { visibility: hidden; animation: hold-show 0s 3s forwards !important; }
+  @keyframes hold-show { to { visibility: visible; } }
   .bento :global(.soon) { opacity: .7; }
   /* picked up (drag.ts): above the others, a little bigger, a shadow; the hover lift is off while held */
   .bento :global([data-lifted]) { z-index: 3; scale: 1.03; background: var(--panel); /* opaque: the cards below must not show through */ box-shadow: 0 18px 40px rgba(0, 0, 0, .45); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }

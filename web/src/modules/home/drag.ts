@@ -153,7 +153,8 @@ export function reorder(o: ReorderOpts) {
       const grip = (e.target as Element).closest?.<HTMLElement>('[data-grip]');
       if (!grip) return;
       if (!drag) {
-        if (e.key === ' ') (e.preventDefault(), lift(grip, null));
+        // a held Space repeats: only the first press picks up (else hold = pick up, then drop)
+        if (e.key === ' ') (e.preventDefault(), e.repeat || lift(grip, null));
         return;
       }
       if (drag.grip !== grip || drag.pointer != null) return;
@@ -167,9 +168,14 @@ export function reorder(o: ReorderOpts) {
       } else if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        finish(e.key !== 'Escape');
+        if (!e.repeat) finish(e.key !== 'Escape');
       }
     }
+
+    // The window loses focus or the tab hides mid pointer drag (Alt+Tab, a notification): the release may never come,
+    // so it is cancelled like Esc. A keyboard pick-up is left to focusout.
+    const lose = () => drag?.pointer != null && finish(false);
+    const hidden = () => document.hidden && lose();
 
     // Tabbing away from a picked-up card drops it where it is
     const blur = (e: FocusEvent) => !moving && drag?.pointer == null && e.target === drag?.grip && finish(true);
@@ -181,6 +187,8 @@ export function reorder(o: ReorderOpts) {
     bento.addEventListener('lostpointercapture', up);
     bento.addEventListener('keydown', key);
     bento.addEventListener('focusout', blur);
+    addEventListener('blur', lose);
+    document.addEventListener('visibilitychange', hidden);
     return () => {
       bento.removeEventListener('pointerdown', down);
       bento.removeEventListener('pointermove', move);
@@ -189,6 +197,8 @@ export function reorder(o: ReorderOpts) {
       bento.removeEventListener('lostpointercapture', up);
       bento.removeEventListener('keydown', key);
       bento.removeEventListener('focusout', blur);
+      removeEventListener('blur', lose);
+      document.removeEventListener('visibilitychange', hidden);
       removeEventListener('keydown', esc, true);
       // destroyed mid-drag (navigation): undo our marks, keep the order as it is, save nothing
       if (drag) {

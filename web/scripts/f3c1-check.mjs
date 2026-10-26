@@ -1,7 +1,7 @@
 // Motion pass 2, F3c1: Home card drag-to-reorder (#10). Real pointer events (mouse, touch, pen) and the keyboard path in
 // headless Chrome against `astro preview` (stubbed /api with a stateful homeOrder, own port), killed by PID:
 //   npx astro preview --host 127.0.0.1 --port 4491 &   then   node scripts/f3c1-check.mjs [section...]
-// Sections: load pointer touch pen keyboard cancel persist nav reduce stream axe. Screenshots go to $OUT.
+// Sections: load nojs pointer touch pen keyboard cancel persist race nav reduce stream axe. Screenshots go to $OUT.
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,16 +23,18 @@ const host = { name: 'bawn', sunshine: 'ready', uptimeS: 5000, cpuTempC: 40, gpu
 
 const browser = await chromium.launch({ executablePath: exe });
 // `state.homeOrder` is the stub hostd's prefs.json: it lives across reloads of one context (persistence)
-async function mk({ homeOrder = [], prefsDelay = 0, ...opts } = {}) {
+async function mk({ homeOrder = [], prefsDelay = 0, blockHome = false, ...opts } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, ...opts });
-  const state = { homeOrder, puts: [], deletes: 0, gets: 0 };
+  const state = { homeOrder, puts: [], deletes: 0, gets: 0, putDelay: [] };
   await ctx.route('**/api/**', async (r) => {
     const req = r.request();
     const p = new URL(req.url()).pathname;
     if (p === '/api/prefs/layout' && req.method() === 'PUT') {
       const ids = req.postDataJSON().homeOrder;
+      const wait = state.putDelay[state.puts.length] ?? 0;
       state.puts.push(ids);
       state.homeOrder = ids;
+      await sleep(wait);
       return r.fulfill({ json: { homeOrder: ids } });
     }
     if (p === '/api/prefs/layout' && req.method() === 'DELETE') return (state.deletes++, (state.homeOrder = []), r.fulfill({ status: 204 }));
@@ -49,6 +51,8 @@ async function mk({ homeOrder = [], prefsDelay = 0, ...opts } = {}) {
       : {};
     await r.fulfill({ json });
   });
+  // Astro retries a failed island import once as `?astro-retry=<n>`: block that too
+  if (blockHome) await ctx.route(/\/_astro\/Home\.[^/?]*\.js(\?.*)?$/, (r) => r.abort());
   await ctx.addInitScript(() => {
     window.__cls = 0;
     window.__shifts = [];
@@ -140,6 +144,22 @@ if (want('load')) {
   await shot(page, 'load-saved-order');
   check('no errors', errs.length === 0, errs.join('|'));
   await page.context().close();
+}
+
+// ---- the Home chunk never loads: the held grid shows by its CSS-only fallback (~3 s), with or without reduced motion
+if (want('nojs')) {
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const { page } = await mk({ blockHome: true, reducedMotion });
+    await page.goto(BASE + '/', { waitUntil: 'commit' });
+    await page.waitForSelector('.bento[data-hold]', { state: 'attached' });
+    await sleep(1000);
+    const early = await page.evaluate(() => getComputedStyle(document.querySelector('.bento')).visibility);
+    await sleep(2600);
+    const late = await page.evaluate(() => ({ vis: getComputedStyle(document.querySelector('.bento')).visibility, hold: document.querySelector('.bento').hasAttribute('data-hold'), op: getComputedStyle(document.querySelector('.bento [data-card]')).opacity }));
+    check(`nojs (${reducedMotion}): with the Home chunk blocked the grid is hidden at 1 s and shown by 3.6 s (SSR cards, still data-hold)`, early === 'hidden' && late.vis === 'visible' && late.hold && late.op === '1', JSON.stringify({ early, ...late }));
+    if (reducedMotion === 'no-preference') await shot(page, 'nojs-fallback');
+    await page.context().close();
+  }
 }
 
 // ---- mouse: lift, neighbours FLIP, spring drop, saved
@@ -298,6 +318,24 @@ if (want('persist')) {
   await page.reload();
   await page.waitForSelector('.bento:not([data-hold]) [data-card]'); await sleep(200);
   check('persist: and after a reload', JSON.stringify(await order(page)) === JSON.stringify(DEFAULT));
+  check('no errors', errs.length === 0, errs.join('|'));
+  await page.context().close();
+}
+
+// ---- two quick drops whose PUT replies arrive out of order: the store keeps the latest order
+if (want('race')) {
+  const { page, errs, state } = await mk();
+  state.putDelay = [900, 0]; // the first reply is slow (and stale)
+  await home(page);
+  await page.focus(grip('host'));
+  await page.keyboard.press('Space'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+  await page.keyboard.press('Space'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+  const o = await order(page);
+  await sleep(1300); // both replies are in, the stale one last
+  check('race: two PUTs, the second is the newer order', state.puts.length === 2 && JSON.stringify(state.puts[1]) === JSON.stringify(o) && o[2] === 'host', JSON.stringify(state.puts));
+  await nav(page, '/library'); await nav(page, '/');
+  await page.waitForSelector('.bento:not([data-hold]) [data-card]'); await sleep(200);
+  check('race: after the stale reply landed, Home still comes back in the latest order', JSON.stringify(await order(page)) === JSON.stringify(o), (await order(page)).join());
   check('no errors', errs.length === 0, errs.join('|'));
   await page.context().close();
 }

@@ -111,9 +111,10 @@
     opacity there in `--dur-page` with `--ease-exit` (faster than the 700 ms swell), so Bits waits for it. A close mid-swell cancels
     the swell first. Esc, Tab trap, focus return to the card and axe are unchanged/clean; reduced motion = no rule, instant.
     Non-uniform scale squashes the text for the first frames (card 386x120 -> panel 420x398); accepted for a 700 ms swell.
-- Motion pass 2, F3c1 (#10 Home card drag-to-reorder; check: `node web/scripts/f3c1-check.mjs [load pointer touch pen
-  keyboard cancel persist nav reduce stream axe]`, port 4491, stub hostd keeps homeOrder across reloads, screenshots to `$OUT`;
-  unit tests `home.test.ts` (reconcileOrder, moveItem), `prefs.test.ts` (refreshPrefs), hostd `prefs.rs` + `tests/prefs.rs`).
+- Motion pass 2, F3c1 (#10 Home card drag-to-reorder; check: `node web/scripts/f3c1-check.mjs [load nojs pointer touch pen
+  keyboard cancel persist race nav reduce stream axe]`, port 4491, stub hostd keeps homeOrder across reloads, screenshots to
+  `$OUT`; unit tests `home.test.ts` (reconcileOrder, moveItem), `prefs.test.ts` (refreshPrefs), browser test
+  `drag.browser.test.ts` (blur/hidden cancel, key repeat), hostd `prefs.rs` + `tests/prefs.rs`).
   Native Web Animations only (`modules/home/drag.ts`, an attachment on the bento), no anime.js.
   - Each Home card sits in a `home/Slot.svelte` (no markup, sets a context); `ui/Card.svelte` then renders `data-card=<id>`
     and a 28 px handle (`[data-grip]`, top right, `touch-action: none`, `aria-pressed`, described by `#grip-hint`). Only the
@@ -125,9 +126,10 @@
     another card's layout box (`offsetLeft/Top`, so cards in flight do not confuse the hit test) it takes that card's place:
     the others FLIP from where they are drawn on `translate` only (`--spring-snappy`). No swap back with the same card until
     the pointer leaves it (cards differ in size). Release lands it on `--spring-settle` (`[data-landing]` keeps it above until
-    it is down). Esc (or pointercancel) puts everything back in the pick-up order. A press without a move changes nothing.
+    it is down). Esc, pointercancel, window blur or the tab hiding put everything back in the pick-up order (the release
+    may never come). A press without a move changes nothing.
   - Keyboard: focus the handle, Space picks up, arrows move one place in the order (Left/Up back, Right/Down on), Space or
-    Enter drops, Esc puts it back, Tab away drops. Focus is put back on the handle after each move. One polite line on a drop
+    Enter drops, Esc puts it back, Tab away drops. Key repeats of Space/Enter are ignored (holding Space picks up once). Focus is put back on the handle after each move. One polite line on a drop
     ("Resume card dropped, position 4 of 9", `.sr[role=status]` on Home); pick-up, steps and cancel say nothing.
   - The first DOM move sets `data-sorted` on the bento, which turns off the time-based load entrance there: a moved node would
     replay it. Reduced motion: no lift transition, no FLIP, no drop spring (instant swap); the held card still follows the
@@ -136,8 +138,11 @@
   - Order: `homeOrder` in hostd prefs (below, API); `reconcileOrder(saved, current)` keeps saved ids in order, appends new
     cards, drops gone ones. To keep a saved order from moving cards after first paint, the bento is `visibility: hidden`
     (`data-hold`, keeps its size) until the order and the widget chunks are in, at most 1.5 s; `enter()` (shell/reveal.ts)
-    skips `[data-hold]` and runs again when it shows. Repeat visits use the store (no wait). A drop PUTs the whole order (a
-    failure is a toast). Reset: Settings > General > Home layout > "Reset layout" (DELETE, then Home is in the default order).
+    skips `[data-hold]` and runs again when it shows. If the Home chunk never runs (Astro retries the import once), a
+    CSS-only fallback shows the server-rendered grid after 3 s (a 0 s `visibility` animation delayed 3 s, `!important` so
+    the reduced-motion `animation: none` does not cancel it), as the head script does for data-enter-pending. Repeat
+    visits use the store (no wait). A drop PUTs the whole order (a failure is a toast); only the latest PUT's reply may
+    set the store (sequence counter), so a slow stale reply cannot bring an older order back. Reset: Settings > General > Home layout > "Reset layout" (DELETE, then Home is in the default order).
 - Not done: Library grid FLIP (`createLayout`): it works with the keyed list, but walks the whole subtree under its root and
   cost 50-61 ms per change on the 40-card "Show all" grid (over the 50 ms long-task budget while typing). Patch and numbers:
   `.superpowers/sdd/anime-pass-flip-experiment.patch`, `anime-check.mjs flip`.
