@@ -42,29 +42,31 @@
 
   // Filter chips: a view transition. Cards in an open "Show all" grid that are on screen get a name (vt-<appid>) and
   // glide to their new place; virtualised shelf rows are never named. Names come off when it ends. Skipped (plain
-  // swap) without support, with reduced motion, during the router's own transition or while one of ours runs.
+  // swap) without support, with reduced motion or during the router's own transition. A second click skips ours first.
   // Not on search: measured in headless Chrome it made the slowest key 3-4x slower (docs/ui-notes.md, Platform features).
-  let vtRunning = false;
+  let vt: ViewTransition | null = null;
+  const named = new Set<HTMLElement>();
+  const unname = () => (named.forEach((el) => (el.style.viewTransitionName = '')), named.clear());
   const nameCards = () => {
     const els = [...(body?.querySelectorAll<HTMLElement>('.grid [data-appid]') ?? [])].filter((el) => {
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < innerHeight;
     });
-    for (const el of els) el.style.viewTransitionName = `vt-${el.dataset.appid}`;
-    return els;
+    for (const el of els.filter((e) => !named.has(e)).slice(0, 60 - named.size)) (el.style.viewTransitionName = `vt-${el.dataset.appid}`), named.add(el);
   };
   function pickFilter(id: Filter) {
     const update = () => glideSwap(chips, '[aria-pressed="true"]', () => (f = id));
-    if (vtRunning || !document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.hasAttribute('data-astro-transition'))
+    vt?.skipTransition();
+    unname();
+    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.hasAttribute('data-astro-transition'))
       return void (update(), fade());
-    vtRunning = true;
-    const named = nameCards();
-    const vt = document.startViewTransition({ update: async () => (update(), await tick(), named.push(...nameCards())), types: ['library'] });
-    vt.ready.catch(() => {}); // skipped (a navigation, hidden tab): the update still ran
-    void vt.finished.finally(() => {
-      vtRunning = false;
-      for (const el of named) el.style.viewTransitionName = '';
-    });
+    nameCards();
+    const t = (vt = document.startViewTransition({ update: async () => (update(), fade(), await tick(), nameCards()), types: ['library'] }));
+    // skipped, aborted or a failed update: the promises reject; names come off either way (only the latest one's)
+    const done = () => void (vt === t && ((vt = null), unname()));
+    t.ready.catch(() => {});
+    t.updateCallbackDone.catch(() => {});
+    t.finished.then(done, done);
   }
 
   onMount(() => {

@@ -45,6 +45,10 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
   .cm-dim { transition: opacity var(--dur-page) var(--ease); }
   :is(.cm, .rs, .cm-dim)[data-ending-style] { opacity: 0; transition-duration: var(--dur-exit); transition-timing-function: var(--ease-exit); }
   :is(.cm, .rs)[data-ending-style] { translate: 0 6px; scale: .98; }
+  /* clicks reach the page while the backdrop fades: Bits sets pointer-events inline on the overlay and on <body> (modal)
+     until it unmounts */
+  body:has(.cm-dim[data-ending-style]) { pointer-events: auto !important; }
+  .cm-dim[data-ending-style] { pointer-events: none !important; }
   @starting-style {
     :is(.cm, .rs, .cm-dim)[data-state='open'] { opacity: 0; }
     .cm[data-state='open'] { translate: 0 -12px; scale: .97; }
@@ -59,15 +63,15 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
     .reveal { animation-name: rise-scroll; animation-timing-function: linear; animation-fill-mode: both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
   }
 }
-/* Library view transition (Library.svelte swap(), type `library`; the router's own transitions are untouched): cards
-   glide, the rest cross-fades; the header and chips swap without a cross-fade (the chip highlight glides by itself). */
+/* Library view transition (Library.svelte pickFilter(), type `library`; the router's own transitions are untouched): only
+   the named grid cards are captured and glide; the root is NOT captured, so the rest of the page stays live (it swaps
+   with the usual .body fade) and clicks reach it while the cards move. With the root captured Chrome hit-tests <html>
+   for the whole transition even with pointer-events: none on ::view-transition (checked in headless Chrome 1248). */
 html:active-view-transition-type(library) {
-  .top.reveal { view-transition-name: lib-top; view-transition-class: still; }
-  .filters { view-transition-name: lib-chips; view-transition-class: still; }
-  &::view-transition-group(*) { animation-duration: var(--dur-enter); animation-timing-function: var(--ease); }
+  view-transition-name: none;
+  &::view-transition { pointer-events: none; }
+  &::view-transition-group(*) { animation-duration: var(--dur-tab); animation-timing-function: var(--ease); }
   &::view-transition-old(*), &::view-transition-new(*) { animation-duration: var(--dur-tab); }
-  &::view-transition-old(*.still) { display: none; }
-  &::view-transition-new(*.still) { animation: none; }
 }
 /* Motion only; sounds are not affected by this preference. */
 @media (prefers-reduced-motion: reduce) {
