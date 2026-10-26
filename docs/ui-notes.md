@@ -492,7 +492,8 @@ records what this found (two bugs fixed, two behaviours described and left).
   + 64 KiB, measured by a counting `#[global_allocator]` in that test binary) and `tests/prop_roundtrip.rs`
   (round trips, Reed-Solomon under random loss, AES wrappers), brisk-bridge `tests/prop_input.rs` and
   `tests/prop_audio.rs`, and `#[cfg(test)]` modules in brisk-client `session.rs`, `tap.rs`, `rtsp.rs`.
-  Default 256 cases per property (about 1.5 s added to the suite); longer local runs:
+  Default 256 cases per property (41 tests, about 4 s of test time in parallel; the suite's wall
+  time stays about 10 s, set by a 10 s control timeout test); longer local runs:
   `PROPTEST_CASES=5000 cargo nextest run -p brisk-proto` (or `-p brisk-bridge`). A failure prints
   the shrunk input and writes `tests/<file>.proptest-regressions`; commit that file only for a real bug.
 - **cargo-fuzz** (0.13.2, `cargo install --locked cargo-fuzz`, nightly: `rustup toolchain install
