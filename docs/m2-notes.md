@@ -174,8 +174,9 @@ frames `len u8` + `len` bytes of body. The body is `kind u8` + fields, little-en
 | `0x13` scroll | `amount i16` | vertical wheel, 120 = one notch, positive = up |
 | `0x14` heartbeat | (none) | "something is still held": sent every 250 ms while any key or button is down; never reaches Sunshine |
 
-The stream header is Chrome's (`0x41`, session id). The bridge never writes on the stream. The
-one-byte "need a key frame" uni streams (above) are unchanged.
+The stream header is Chrome's (`0x41`, session id). Gamepads (`0x15`, `0x16`) and rumble from the
+bridge (`0x20`, the only thing the bridge writes on this stream) came in M3: docs/controller-notes.md.
+The one-byte "need a key frame" uni streams (above) are unchanged.
 
 Page (`web/src/lib/input.ts`):
 - A click on the video focuses the canvas and asks for Pointer Lock. The click itself is never sent
