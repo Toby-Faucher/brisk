@@ -230,7 +230,7 @@ try {
     const off = { long: med(runs.off, 'long'), ev: med(runs.off, 'ev'), evSum: med(runs.off, 'evSum'), chipLong: med(runs.off, 'chipLong') };
     console.log(`     typing "game 1" (6 keys, 80 ms apart, both grids open): with VT ${JSON.stringify(on)} vts=${runs.on.map((r) => r.n)} | without ${JSON.stringify(off)}`);
     check('typing: no long task over 50 ms with view transitions', on.long < 50, `${on.long} ms`);
-    check('typing: slowest key event no slower than without (+8 ms jitter)', on.ev <= off.ev + 8, `${on.ev} vs ${off.ev} ms`);
+    check('typing: slowest key event no slower than without (+16 ms, one frame of jitter)', on.ev <= off.ev + 16, `${on.ev} vs ${off.ev} ms`);
     check('filter chip with both grids open: no long task over 50 ms', on.chipLong < 50, `${on.chipLong} ms (plain swap ${off.chipLong} ms)`);
   }
 

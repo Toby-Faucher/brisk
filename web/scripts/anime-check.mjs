@@ -232,6 +232,8 @@ if (want('glide')) {
   check('settings -> library: glides back', (await glides(page, 'aside')).some((x) => x.href === '/library'));
   await sleep(1000);
   await page.click('.filters button:has-text("Installed")');
+  // the chip change runs inside a view transition's update (a frame later), so wait for the glide to start
+  await page.waitForFunction(() => document.getAnimations().some((a) => a.effect?.pseudoElement === '::before' && a.effect.target.closest('.filters')), null, { timeout: 1000 }).catch(() => {});
   const c = await glides(page, '.filters');
   check('library filter chip: the selected fill glides from All to Installed (translate+scale)', c.length === 1 && c[0].txt === 'Installed' && c[0].props === 'scale,translate' && parseFloat(c[0].from) < 0, JSON.stringify(c));
   await page.evaluate(() => { const a = document.getAnimations().find((x) => x.effect?.pseudoElement && x.effect.target.closest('.filters')); a.pause(); a.currentTime = a.effect.getTiming().duration * 0.3; });
@@ -394,8 +396,9 @@ if (want('spring')) {
   check('card hover: transform transition uses the generated linear() spring', tr.length >= 1 && tr.every((e) => /^linear\(/.test(e)), tr.map((e) => e.slice(0, 30)).join());
   await page.mouse.move(5, 890);
   await page.click('button:has-text("Restart Sunshine")'); await sleep(60);
-  const dlg = await page.evaluate(() => document.getAnimations().filter((a) => a.animationName === 'rs-in').map((a) => [a.effect.getKeyframes()[0].easing.slice(0, 20), a.effect.getTiming().duration]));
-  check('restart dialog: rises in on the settle spring (CSS animation)', dlg.length === 1 && /^linear\(/.test(dlg[0][0]) && dlg[0][1] > 500, JSON.stringify(dlg));
+  // platform pass: an @starting-style transition on the snappy spring (exit: scripts/platform-check.mjs dialog)
+  const dlg = await page.evaluate(() => document.getAnimations().filter((a) => a.transitionProperty === 'translate' && a.effect.target.matches('.rs')).map((a) => [a.effect.getTiming().easing.slice(0, 20), a.effect.getTiming().duration]));
+  check('restart dialog: rises in on the snappy spring (CSS transition from @starting-style)', dlg.length === 1 && /^linear\(/.test(dlg[0][0]) && dlg[0][1] > 500, JSON.stringify(dlg));
   await page.keyboard.press('Escape');
   await page.goto(BASE + '/stream'); await sleep(800);
   // the bar only renders while connected: read its rule from the loaded stylesheet instead
