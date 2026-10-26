@@ -3,7 +3,7 @@
 // its user activation (audio) and module-level stores across navigation.
 import { ClientRouter } from 'astro:transitions';
 import Shell from './Shell.svelte';
-import { SETTINGS_KEY } from '../state/settings';
+import { ACCENT_HEX, SETTINGS_KEY } from '../state/settings';
 import '@fontsource/geist/400.css';
 import '@fontsource/geist/500.css';
 import '@fontsource/geist/600.css';
@@ -21,11 +21,12 @@ const { title } = Astro.props as { title: string };
     <meta name="viewport" content="width=device-width" />
     <title>{title === 'Home' ? 'Brisk' : `${title} · Brisk`}</title>
     <ClientRouter />
-    <script is:inline define:vars={{ key: SETTINGS_KEY }}>
+    <script is:inline define:vars={{ key: SETTINGS_KEY, accents: Object.keys(ACCENT_HEX) }}>
       // Apply the saved accent before first paint and after every page swap (no mint flash).
       const accent = () => {
         try {
-          document.documentElement.dataset.accent = JSON.parse(localStorage.getItem(key) || '{}').accent || 'mint';
+          const a = JSON.parse(localStorage.getItem(key) || '{}').accent;
+          document.documentElement.dataset.accent = accents.includes(a) ? a : 'mint';
         } catch {}
       };
       accent();

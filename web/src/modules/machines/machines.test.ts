@@ -16,6 +16,7 @@ describe('machines', () => {
   it('machinesFrom_falls_back_to_bawn_and_lowercases', () => {
     expect(machinesFrom({ ...info, name: '' })[0].id).toBe('bawn');
     expect(machinesFrom({ ...info, name: 'BaWn' })[0].id).toBe('bawn');
+    expect(machinesFrom({ ...info, name: '  BaWn ' })[0].id).toBe('bawn');
   });
   it('restart_429_message', () => {
     expect(restartError(new ApiError('slow down', 429))).toBe('Sunshine was restarted a moment ago, try again in a minute');
@@ -40,9 +41,13 @@ describe('machines', () => {
     expect(get(settings).accent).toBe('sky');
   });
   it('stored_invalid_accent_falls_back_to_mint', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => '{"accent":"zzz"}', setItem() {} });
-    vi.resetModules();
-    expect(get((await import('../../state/settings')).settings).accent).toBe('mint');
+    for (const bad of ['zzz', 'toString', 'constructor']) {
+      vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ accent: bad }), setItem() {} });
+      vi.resetModules();
+      expect(get((await import('../../state/settings')).settings).accent).toBe('mint');
+      applyAccent(root0, bad);
+      expect(root0.dataset.accent).toBe('mint');
+    }
     applyAccent(root0, 'zzz');
     expect(root0.dataset.accent).toBe('mint');
   });
