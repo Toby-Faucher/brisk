@@ -62,7 +62,7 @@ npm run dev      # dev server on 127.0.0.1
 npm run ci       # svelte-check, unit tests, production build
 ```
 
-The Rust side builds with the pinned toolchain. Use `cargo test` for the tests, or `cargo build --release` for `brisk-hostd`, `brisk-bridge` and `brisk-probe`.
+The Rust side builds with the pinned toolchain. Use `cargo test` for the tests, or `cargo build --release` for `brisk-hostd`, `brisk-bridge` and `brisk-probe`. `scripts/check.sh` runs every check (Rust and web) in order.
 
 Hosting it for real, with the systemd user service and Tailscale, is in [`docs/hosting-runbook.md`](docs/hosting-runbook.md). The patched Sunshine build is described in [`patches/sunshine/`](patches/sunshine/README.md).
 
@@ -71,6 +71,7 @@ Hosting it for real, with the systemd user service and Tailscale, is in [`docs/h
 - [`docs/design.md`](docs/design.md): goals, non-goals and the architecture decisions
 - [`docs/ui-notes.md`](docs/ui-notes.md): the UI, hosting and the full list of checks
 - [`docs/hosting-runbook.md`](docs/hosting-runbook.md): standing it up on a host
+- [`docs/env.md`](docs/env.md): every `BRISK_*` environment variable
 - [`docs/moonlight-compare.md`](docs/moonlight-compare.md): how it compares with Moonlight
 - [`docs/fuzz-inventory.md`](docs/fuzz-inventory.md): what is fuzzed
 
