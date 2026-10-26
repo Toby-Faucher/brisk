@@ -2,6 +2,7 @@
   import type { Game } from '../../state/api';
   import { prefs, prefsChip } from '../../state/prefs';
   import Icon from '../../ui/Icon.svelte';
+  import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover, { hue } from './Cover.svelte';
   import { playLabel } from './library';
@@ -17,7 +18,7 @@
   <div class="txt">
     <div class="lab">{game.running ? 'Running on the host' : 'Continue where you left off'}</div>
     <h3>{game.name}</h3>
-    <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip" title="Saved quality for this game">{prefsChip(saved)}</span>{/if}</div>
+    <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}</div>
     <div class="acts">
       <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><Icon name="play" size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
       {#if game.running}

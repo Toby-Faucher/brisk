@@ -28,19 +28,46 @@
     if ($games && !arrived) (arrived = true), void tick().then(enter);
   });
 
-  // Search/filter: the results cross-fade quickly, at most once per 150 ms so typing never strobes.
   let body: HTMLElement | undefined = $state();
   let chips: HTMLElement | undefined = $state();
+
+  // Plain swap: the results cross-fade quickly, at most once per 150 ms so typing never strobes.
   let fadedAt = 0;
-  let firstRun = true;
-  $effect(() => {
-    void [q, f];
-    if (firstRun) return void (firstRun = false);
+  function fade() {
     const now = performance.now();
     if (!body || now - fadedAt < 150 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     fadedAt = now;
     body.animate({ opacity: [0.3, 1] }, { duration: 140, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  });
+  }
+
+  // Filter chips: a view transition. Cards in an open "Show all" grid that are on screen get a name (vt-<appid>) and
+  // glide to their new place; virtualised shelf rows are never named. Names come off when it ends. Skipped (plain
+  // swap) without support, with reduced motion or during the router's own transition. A second click skips ours first.
+  // Not on search: measured in headless Chrome it made the slowest key 3-4x slower (docs/ui-notes.md, Platform features).
+  let vt: ViewTransition | null = null;
+  const named = new Set<HTMLElement>();
+  const unname = () => (named.forEach((el) => (el.style.viewTransitionName = '')), named.clear());
+  const nameCards = () => {
+    const els = [...(body?.querySelectorAll<HTMLElement>('.grid [data-appid]') ?? [])].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > 0 && r.top < innerHeight;
+    });
+    for (const el of els.filter((e) => !named.has(e)).slice(0, 60 - named.size)) (el.style.viewTransitionName = `vt-${el.dataset.appid}`), named.add(el);
+  };
+  function pickFilter(id: Filter) {
+    const update = () => glideSwap(chips, '[aria-pressed="true"]', () => (f = id));
+    vt?.skipTransition();
+    unname();
+    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.hasAttribute('data-astro-transition'))
+      return void (update(), fade());
+    nameCards();
+    const t = (vt = document.startViewTransition({ update: async () => (update(), fade(), await tick(), nameCards()), types: ['library'] }));
+    // skipped, aborted or a failed update: the promises reject; names come off either way (only the latest one's)
+    const done = () => void (vt === t && ((vt = null), unname()));
+    t.ready.catch(() => {});
+    t.updateCallbackDone.catch(() => {});
+    t.finished.then(done, done);
+  }
 
   onMount(() => {
     const offGames = watchGames();
@@ -81,10 +108,10 @@
 
 <div class="top reveal">
   <h2>Library</h2>
-  <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} placeholder="Search games" aria-label="Search games" /></label>
+  <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} oninput={fade} placeholder="Search games" aria-label="Search games" /></label>
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
-  {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => glideSwap(chips, '[aria-pressed="true"]', () => (f = id))}>{label}</button>{/each}
+  {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => pickFilter(id)}>{label}</button>{/each}
 </div>
 
 <div class="body" bind:this={body}>

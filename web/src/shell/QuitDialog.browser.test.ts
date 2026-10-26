@@ -25,4 +25,23 @@ describe('Quit confirm dialog', () => {
     await expect.element(dialog).not.toBeInTheDocument();
     await expect.element(quit).toHaveFocus();
   });
+
+  it('stays mounted (with its text) while its exit transition runs, then unmounts', async () => {
+    // base.css is not loaded in browser tests (and motion is reduced): this injected rule is the only transition.
+    const css = document.head.appendChild(document.createElement('style'));
+    css.textContent = '.rs { transition: opacity 2000ms linear; } .rs[data-ending-style] { opacity: 0; }';
+    try {
+      await render(QuitHarness, { props: { game } });
+      await userEvent.click(page.getByRole('button', { name: 'Quit Portal 2' }));
+      await expect.element(page.getByRole('dialog', { name: 'Quit Portal 2?' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      await new Promise((r) => setTimeout(r, 100));
+      const el = document.querySelector('.rs');
+      expect(el?.hasAttribute('data-ending-style')).toBe(true);
+      expect(el?.textContent).toContain('Quit Portal 2?');
+      await expect.poll(() => document.querySelector('.rs'), { timeout: 4000 }).toBeNull();
+    } finally {
+      css.remove();
+    }
+  });
 });

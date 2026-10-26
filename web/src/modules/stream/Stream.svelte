@@ -18,6 +18,7 @@
   import { holdEsc, type Hold } from './ghostbar';
   import { ClipSync, browserClipboard, uploadQueue, type Upload } from './clipboard';
   import { clipInWorker, download, fileName, reserveHotkeys, screenshot } from './capture';
+  import { keepAwake } from './wakelock';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
 
@@ -207,6 +208,14 @@
     return () => clip.stop();
   });
 
+  // Screen wake lock while live (Settings > Streaming); released on failed, disconnect and unmount.
+  let awake: ReturnType<typeof keepAwake> | null = null; // made in the browser only (effects never run on the server)
+  const keepAwakeOn = $derived($settings.keepAwake);
+  $effect(() => {
+    const on = $phase === 'live' && keepAwakeOn;
+    (awake ??= keepAwake()).set(on);
+  });
+
   // Mount the session's canvas (a fresh one per connection) into the stage.
   $effect(() => {
     const c = $canvasEl;
@@ -307,6 +316,7 @@
       session.disconnect();
       series.close();
       clip.stop();
+      awake?.stop();
       uploads.cancel();
       for (const [k, f] of drag) window.removeEventListener(k, f as EventListener);
       window.removeEventListener('focus', clipFocus);

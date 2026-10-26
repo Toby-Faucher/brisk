@@ -80,8 +80,7 @@
 <style>
   /* Portal content is outside this component's scope, so these are global by necessity. */
   :global(.cm-dim) { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 40; }
-  :global(.cm) { position: fixed; left: 50%; top: 16%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); padding: 8px; z-index: 41; --cm-r: 20px; --cm-pad: 8px; animation: cm-in .3s var(--ease); }
-  @keyframes cm-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(.97); } }
+  :global(.cm) { position: fixed; left: 50%; top: 16%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); padding: 8px; z-index: 41; --cm-r: 20px; --cm-pad: 8px; } /* enter/exit: base.css */
   :global(.cm .sr) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   :global(.cm-in) { width: 100%; background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; font-size: 16px; padding: 12px 14px; border-bottom: 1px solid color-mix(in srgb, #fff 10%, transparent); box-sizing: border-box; }
   :global(.cm-list) { padding: 4px 0 0; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
@@ -96,5 +95,4 @@
   :global(.cm-it .k) { margin-left: auto; color: var(--dim); font-size: 12px; }
   :global(.cm-it[data-selected] .k) { color: var(--muted); } /* --dim is under 4.5:1 on the selected row's fill */
   :global(.cm-empty) { padding: 12px; color: var(--muted); }
-  @media (prefers-reduced-motion: reduce) { :global(.cm) { animation: none; } }
 </style>

@@ -7,11 +7,12 @@ export const ACCENT_HEX: Record<Accent, string> = { mint: '#5eead4', indigo: '#8
 /** Instant replay length; 0 = off (nothing is kept). */
 export const REPLAY_SECONDS = [0, 15, 30, 60] as const;
 export type ReplaySeconds = (typeof REPLAY_SECONDS)[number];
-/** `clipboardSync`: the Stream page syncs the clipboard with the host both ways. `replaySeconds`: Save replay keeps this much. */
-export type Settings = { accent: Accent; sounds: boolean; shaders: boolean; defaultPreset: Preset; clipboardSync: boolean; replaySeconds: ReplaySeconds };
+/** `clipboardSync`: the Stream page syncs the clipboard with the host both ways. `replaySeconds`: Save replay keeps this much.
+ *  `keepAwake`: the Stream page holds a screen wake lock while live. */
+export type Settings = { accent: Accent; sounds: boolean; shaders: boolean; defaultPreset: Preset; clipboardSync: boolean; replaySeconds: ReplaySeconds; keepAwake: boolean };
 
 export const SETTINGS_KEY = 'brisk.settings';
-const DEFAULTS: Settings = { accent: 'mint', sounds: true, shaders: true, defaultPreset: 'balanced', clipboardSync: true, replaySeconds: 0 };
+const DEFAULTS: Settings = { accent: 'mint', sounds: true, shaders: true, defaultPreset: 'balanced', clipboardSync: true, replaySeconds: 0, keepAwake: true };
 
 function read(): Settings {
   try {

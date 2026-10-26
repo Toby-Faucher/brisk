@@ -5,6 +5,7 @@
   import { games, watchGames } from '../../state/games';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import Tip from '../../ui/Tip.svelte';
   import { DASH, fmtDuration } from '../home/home';
   import { chartRows, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows } from './history';
 
@@ -63,7 +64,8 @@
     <button class="btn ghost back" onclick={() => open(null)}><Icon name="chev" size={14} /> History</button>
     {#if s}
       <h2>{s.name}</h2>
-      {#if s.stats?.gate}<span class="gate {s.stats.gate}" title="M2 gate: bridge write p50 within 2 ms of the host's own">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span>{/if}
+      {#if s.stats?.gate}<!-- svelte-ignore a11y_no_noninteractive_tabindex (focusable so keyboard users get its Tip too) -->
+      <span class="gate {s.stats.gate}" role="note" tabindex="0">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span><Tip label="M2 gate: bridge write p50 within 2 ms of the host's own" placement="bottom" />{/if}
     {/if}
   </div>
   {#if s}

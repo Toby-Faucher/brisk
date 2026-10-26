@@ -5,6 +5,7 @@
   import type { Preset } from '../../state/api';
   import { host } from '../../state/host';
   import Card from '../../ui/Card.svelte';
+  import Tip from '../../ui/Tip.svelte';
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
   import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
@@ -77,7 +78,7 @@
           <h4>Accent</h4>
           <div class="row" role="radiogroup" aria-label="Accent colour">
             {#each Object.entries(ACCENT_HEX) as [a, hex] (a)}
-              <button class="sw" style:background={hex} role="radio" aria-checked={$settings.accent === a} aria-label={a} tabindex={$settings.accent === a ? 0 : -1} onkeydown={arrow} onclick={() => pickAccent(a as Accent)}></button>
+              <button class="sw" style:background={hex} role="radio" aria-checked={$settings.accent === a} aria-label={a} tabindex={$settings.accent === a ? 0 : -1} onkeydown={arrow} onclick={() => pickAccent(a as Accent)}></button><Tip label={a} />
             {/each}
           </div>
         </Card>
@@ -112,6 +113,11 @@
           <h4>Clipboard</h4>
           <label class="opt"><span>Clipboard sync <small class="lab">text and images, while streaming</small></span><input type="checkbox" checked={$settings.clipboardSync} onchange={(e) => set({ clipboardSync: e.currentTarget.checked })} /></label>
           <p class="note">On: every copy on this laptop goes to the host's clipboard while the stream has focus, passwords from a password manager included.</p>
+        </Card>
+        <Card cols={2}>
+          <h4>Screen</h4>
+          <label class="opt"><span>Keep the screen awake while streaming</span><input type="checkbox" checked={$settings.keepAwake} onchange={(e) => set({ keepAwake: e.currentTarget.checked })} /></label>
+          <p class="note">Asks the browser for a screen wake lock while the stream is live and this tab is visible.</p>
         </Card>
       </div>
     </Tabs.Content>

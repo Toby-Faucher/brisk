@@ -32,6 +32,8 @@
   --stagger: 55ms;
   --dur-count: 600ms; /* number tweens (motion.ts tweenNumber) */
   --dur-draw: 700ms; /* chart lines drawing in (motion.ts drawIn) */
+  --dur-exit: 140ms; /* dialogs, menus and tips leaving: quicker than they came */
+  --ease-exit: cubic-bezier(.4, 0, 1, 1);
   --r-card: 22px;
   --r-ctl: 12px;
   color-scheme: dark;

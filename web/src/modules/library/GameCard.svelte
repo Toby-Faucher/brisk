@@ -2,6 +2,7 @@
   import type { Game } from '../../state/api';
   import { prefs, prefsChip } from '../../state/prefs';
   import Icon from '../../ui/Icon.svelte';
+  import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
   import { badgeLabel, fmtSize, installLabel, playLabel } from './library';
@@ -18,12 +19,12 @@
   );
 </script>
 
-<div class="wrap">
+<div class="wrap" data-appid={game.appid}>
   <!-- aria-disabled (not disabled) keeps focus on the card while its stream starts -->
   <button class="g" class:off={!game.installed} class:sel={selected} aria-disabled={busy} aria-expanded={game.installed ? undefined : selected} onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
-      {#if saved}<span class="pchip" title="Saved quality for this game">{prefsChip(saved)}</span>{/if}
+      {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
       <span class="glow"></span>
       {#if game.installed}<span class="btn play"><Icon name="play" size={13} /> {busy ? 'Starting…' : playLabel(game)}</span>{/if}
     </Cover>
@@ -32,7 +33,7 @@
   </button>
   {#if game.running}
     {@const q = $quitting.has(game.appid)}
-    <button class="btn ghost quit" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`} title="Quit"><Icon name="power" size={13} />{q ? ' Quitting…' : ''}</button>
+    <button class="btn ghost quit" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={13} />{q ? ' Quitting…' : ''}</button><Tip label="Quit game" />
   {/if}
   {#if selected}
     <div class="over"><button class="btn install" aria-disabled={busy} onclick={() => oninstall(game)}><Icon name="dl" size={13} /> {busy ? 'Asking Steam…' : installLabel(game)}</button></div>

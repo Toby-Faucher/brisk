@@ -38,6 +38,22 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
   html[data-enter-pending] main.page-in :is(.reveal, .enter) { opacity: 0; }
   /* set only after a user action (tab change, list/detail swap), so first load animates once (page-in) */
   .swap-in { animation: rise-in var(--dur-tab) var(--ease) backwards; }
+  /* Bits UI dialogs (command menu .cm, confirms .rs, their .cm-dim overlay): CSS transitions only. They enter from
+     @starting-style on the snappy spring and leave faster from data-ending-style; Bits keeps the node mounted until
+     getAnimations() on it has finished, then unmounts. Portalled divs, not top layer: no allow-discrete needed. */
+  :is(.cm, .rs) { transition: opacity var(--dur-page) var(--ease), translate var(--spring-snappy-dur) var(--spring-snappy), scale var(--spring-snappy-dur) var(--spring-snappy); }
+  .cm-dim { transition: opacity var(--dur-page) var(--ease); }
+  :is(.cm, .rs, .cm-dim)[data-ending-style] { opacity: 0; transition-duration: var(--dur-exit); transition-timing-function: var(--ease-exit); }
+  :is(.cm, .rs)[data-ending-style] { translate: 0 6px; scale: .98; }
+  /* clicks reach the page while the backdrop fades: Bits sets pointer-events inline on the overlay and on <body> (modal)
+     until it unmounts */
+  body:has(.cm-dim[data-ending-style]) { pointer-events: auto !important; }
+  .cm-dim[data-ending-style] { pointer-events: none !important; }
+  @starting-style {
+    :is(.cm, .rs, .cm-dim)[data-state='open'] { opacity: 0; }
+    .cm[data-state='open'] { translate: 0 -12px; scale: .97; }
+    .rs[data-state='open'] { translate: 0 10px; }
+  }
 }
 /* Scroll reveal for cards and headers on a view timeline: nothing runs in JS. Without support (or with reduced
    motion) the rule is absent and everything is simply visible. Never on virtualised or mount/unmount items. */
@@ -46,6 +62,16 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
     /* longhands on purpose: with all of them set the minifier folds them into `animation: ... view()`, which Chrome drops */
     .reveal { animation-name: rise-scroll; animation-timing-function: linear; animation-fill-mode: both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
   }
+}
+/* Library view transition (Library.svelte pickFilter(), type `library`; the router's own transitions are untouched): only
+   the named grid cards are captured and glide; the root is NOT captured, so the rest of the page stays live (it swaps
+   with the usual .body fade) and clicks reach it while the cards move. With the root captured Chrome hit-tests <html>
+   for the whole transition even with pointer-events: none on ::view-transition (checked in headless Chrome 1248). */
+html:active-view-transition-type(library) {
+  view-transition-name: none;
+  &::view-transition { pointer-events: none; }
+  &::view-transition-group(*) { animation-duration: var(--dur-tab); animation-timing-function: var(--ease); }
+  &::view-transition-old(*), &::view-transition-new(*) { animation-duration: var(--dur-tab); }
 }
 /* Motion only; sounds are not affected by this preference. */
 @media (prefers-reduced-motion: reduce) {
