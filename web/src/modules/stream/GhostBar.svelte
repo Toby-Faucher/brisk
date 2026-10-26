@@ -68,7 +68,7 @@
   let muted = $state(false);
   let adv = $state<Advanced>({ res: '1920x1080', fps: 60, bitrateKbps: 20000, codec: 'h264' });
   let hevcOk = $state(false);
-  let fileInput: HTMLInputElement;
+  let fileInput = $state<HTMLInputElement>();
 
   // Pointer state for edgeReveal: last y, whether it is on the bar, when it left the bar or edge.
   let y = 999;
@@ -242,7 +242,7 @@
         <p class="line warn">Allow clipboard access: click the icon left of the address, then Clipboard: Allow.</p>
       {/if}
       <p class="line muted">Files go to ~/Downloads/brisk on {host}. Drop them on the stream, or:</p>
-      <button class="btn ghost sm" onclick={() => fileInput.click()}>Send files…</button>
+      <button class="btn ghost sm" onclick={() => fileInput?.click()}>Send files…</button>
       <input type="file" multiple hidden bind:this={fileInput} onchange={(e) => (onfiles(Array.from(e.currentTarget.files ?? [])), (e.currentTarget.value = ''))} />
       {#if upload}
         <p class="line mono">{upload.u.name} · {upload.u.total ? Math.floor((upload.u.loaded / upload.u.total) * 100) : 100}%{upload.queued ? ` · ${upload.queued} more` : ''}</p>

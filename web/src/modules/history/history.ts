@@ -1,10 +1,17 @@
 // View model of the History page: pure formatting, no fetching.
 import type { SeriesPoint, SessionRec, SessionStats } from '../../state/api';
 import { DASH } from '../home/home';
+import { fold } from '../library/library';
 
 export function listState(list: SessionRec[] | null, failed: boolean): 'loading' | 'error' | 'empty' | 'list' {
   if (!list) return failed ? 'error' : 'loading';
   return list.length ? 'list' : 'empty';
+}
+
+/** Sessions whose game name contains q (case, accents and punctuation ignored); a blank q keeps all. */
+export function filterSessions<T extends { name: string }>(list: T[], q: string): T[] {
+  const fq = fold(q);
+  return fq ? list.filter((s) => fold(s.name).includes(fq)) : list;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
