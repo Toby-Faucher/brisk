@@ -143,6 +143,31 @@
     the reduced-motion `animation: none` does not cancel it), as the head script does for data-enter-pending. Repeat
     visits use the store (no wait). A drop PUTs the whole order (a failure is a toast); only the latest PUT's reply may
     set the store (sequence counter), so a slow stale reply cannot bring an older order back. Reset: Settings > General > Home layout > "Reset layout" (DELETE, then Home is in the default order).
+- Motion pass 2, F3c2 (#14 session cover grows into the detail header; check: `node web/scripts/f3c2-check.mjs [morph back
+  pop rapid during fail reduce nav cross stream axe]`, port 4492, mocked /api and covers, seeked screenshots to `$OUT`; unit
+  tests `motion.test.ts` (morph)). No anime.js, no new chunk.
+  - The detail view already existed (in-page, `?session=<started>`, pushState); it now has a header: 112 px cover (fixed box,
+    placeholder when there is no cover or it failed to load: a `SvelteSet` of failed URLs, used by the list too), name
+    (`#session-title`), gate, and the when / duration / quality line. Nothing new is fetched or invented.
+  - `morph(name, pick, update)` in motion.ts: a same-document view transition of type `morph` where ONLY the cover is named
+    (`view-transition-name: session-cover`, inline, set on the old cover before and the new one after the update, removed
+    when it ends, is skipped or fails; an emptied `style` attribute is removed too). base.css `:active-view-transition-type(morph)`
+    keeps the root out of the capture (`view-transition-name: none`, `::view-transition { pointer-events: none }`), as for the
+    Library chips: the rest of the page swaps live (the usual `.swap-in`) and a click 80 ms in reaches the back button.
+    Group on `--spring-snappy`, the two snapshots cross-fade in `--dur-tab` so the sharp cover shows early. Chosen over a
+    FLIP: the swap-in fade's opacity on the parent would fade a FLIPped cover with it; the snapshot sits above it. The
+    group animates width/height (the browser's, one small snapshot): accepted, like the Library cards.
+  - A second swap skips the running one and takes its name off synchronously (never two elements with one name); its update
+    still runs and converges on the latest target (`want`). Skipped (plain swap) without support, under reduced motion
+    (also switched on mid-flight: base.css drops the pseudo animations), on /stream, during the router's own transition.
+    History's destroy calls `skipMorph()`.
+  - Focus: open focuses the heading (`tabindex=-1`, after an instant scroll to the top); back focuses that session's link
+    (scrolled into view, instant, before the new snapshot is taken, so the cover lands where the card now is).
+  - Browser back/forward: before, the list entry (made by the router, with its state) made the router refetch and swap the
+    whole page on Back, and our entries had null state, so leaving a session for another page and coming back left that
+    page's content under the session URL. Now our entries copy the router's state (same index) and History listens to
+    `astro:before-preparation`: a traverse to its own path gets a loader that never settles (the router's documented hook;
+    the next router navigation aborts it), and History's own popstate listener morphs. Other pages stay the router's (`cross`).
 - Not done: Library grid FLIP (`createLayout`): it works with the keyed list, but walks the whole subtree under its root and
   cost 50-61 ms per change on the 40-card "Show all" grid (over the 50 ms long-task budget while typing). Patch and numbers:
   `.superpowers/sdd/anime-pass-flip-experiment.patch`, `anime-check.mjs flip`.

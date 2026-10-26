@@ -678,3 +678,89 @@ describe('splitIn (hero title)', () => {
   });
 });
 
+describe('morph (shared-element view transition)', () => {
+  type VT = { o: any; skipped: boolean; end(): void; skipTransition(): void; ready: Promise<void>; updateCallbackDone: Promise<void>; finished: Promise<void> };
+  const doc = document as any;
+  let vts: VT[] = [];
+  let astro = false;
+  beforeEach(() => {
+    vts = [];
+    astro = false;
+    doc.documentElement = { hasAttribute: (a: string) => a === 'data-astro-transition' && astro };
+    doc.startViewTransition = (o: any) => {
+      let end!: () => void;
+      const t: VT = { o, skipped: false, end: () => end(), skipTransition: () => ((t.skipped = true), end()), ready: Promise.resolve(), updateCallbackDone: Promise.resolve(), finished: new Promise<void>((r) => (end = r)) };
+      vts.push(t);
+      return t;
+    };
+  });
+  afterEach(() => (m.skipMorph(), delete doc.startViewTransition));
+  const cover = () => {
+    const css: Record<string, string> = {};
+    return {
+      css,
+      style: { set viewTransitionName(v: string) { css.vtn = v; }, removeProperty: (k: string) => k === 'view-transition-name' && delete css.vtn },
+      getAttribute: (a: string) => (a === 'style' && css.vtn ? `view-transition-name: ${css.vtn}` : null),
+      removeAttribute: vi.fn(),
+    } as any;
+  };
+
+  it('names the old element, then only the new one after the update, type morph; names come off at the end', async () => {
+    const a = cover(), b = cover();
+    let cur = a;
+    const update = vi.fn(() => (cur = b));
+    const t = m.morph('sc', () => cur, update)!;
+    expect(vts).toHaveLength(1);
+    expect(vts[0].o.types).toEqual(['morph']);
+    expect(a.css.vtn).toBe('sc');
+    expect(update).not.toHaveBeenCalled(); // the browser calls it after capturing the old state
+    vts[0].o.update();
+    expect(update).toHaveBeenCalledOnce();
+    expect([a.css.vtn, b.css.vtn]).toEqual([undefined, 'sc']);
+    expect(a.removeAttribute).toHaveBeenCalledWith('style'); // no empty style="" left behind
+    vts[0].end();
+    await t.finished;
+    await flush();
+    expect(b.css.vtn).toBeUndefined();
+  });
+
+  it('plain update (no transition, no name) without support, under reduced motion, during the router transition, or with no old element', () => {
+    const run = (pick: () => any) => {
+      const update = vi.fn();
+      expect(m.morph('sc', pick, update)).toBeNull();
+      expect(update).toHaveBeenCalledOnce();
+    };
+    const a = cover();
+    reduce = true;
+    run(() => a);
+    reduce = false;
+    astro = true;
+    run(() => a);
+    astro = false;
+    run(() => null);
+    delete doc.startViewTransition;
+    run(() => a);
+    expect(vts).toHaveLength(0);
+    expect(a.css.vtn).toBeUndefined();
+  });
+
+  it('a second call skips the first and takes its name off at once; the skipped update, run late, names nothing', () => {
+    const a = cover(), b = cover();
+    m.morph('sc', () => a, () => {});
+    m.morph('sc', () => b, () => {});
+    expect(vts[0].skipped).toBe(true);
+    expect([a.css.vtn, b.css.vtn]).toEqual([undefined, 'sc']); // never two elements with one name
+    vts[0].o.update();
+    expect(a.css.vtn).toBeUndefined();
+    expect(b.css.vtn).toBe('sc');
+  });
+
+  it('skipMorph (component destroyed) skips it and removes the name', () => {
+    const a = cover();
+    m.morph('sc', () => a, () => {});
+    m.skipMorph();
+    expect(vts[0].skipped).toBe(true);
+    expect(a.css.vtn).toBeUndefined();
+  });
+});
+
