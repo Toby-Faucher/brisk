@@ -104,12 +104,14 @@ impl ControlMsg {
     /// Packets for one input event, each on moonlight's channel (InputStream.c): keyboard 0x02,
     /// mouse move/button/scroll 0x03, gamepad 0x10 + index. All are sent reliable.
     pub fn input(ev: &InputEvent) -> Result<Vec<ControlMsg>, InputError> {
+        // Encode first: it rejects a gamepad index >= 16, so the channel sum below cannot overflow.
+        let packets = encode_input(ev)?;
         let channel = match ev {
             InputEvent::Key { .. } => channel::KEYBOARD,
             InputEvent::Gamepad { index, .. } => channel::GAMEPAD_BASE + index,
             _ => channel::MOUSE,
         };
-        Ok(encode_input(ev)?
+        Ok(packets
             .into_iter()
             .map(|packet| ControlMsg::Input { channel, packet })
             .collect())

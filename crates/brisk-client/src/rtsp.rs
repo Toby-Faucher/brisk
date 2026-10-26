@@ -255,3 +255,26 @@ impl Conn<'_> {
         Ok(r)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_session_url;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Launch session URLs come from Sunshine's XML: any text, no panic; a well-formed one
+        /// gives back its host and port.
+        #[test]
+        fn parse_session_url_takes_any_text(
+            s in "\\PC{0,80}",
+            port in any::<u16>(),
+            host in "[a-z0-9.:\\[\\]]{0,30}",
+        ) {
+            let _ = parse_session_url(&s);
+            let (enc, h, p) = parse_session_url(&format!("rtspenc://{host}:{port}/")).unwrap();
+            prop_assert!(enc);
+            prop_assert_eq!(h, host);
+            prop_assert_eq!(p, port);
+        }
+    }
+}

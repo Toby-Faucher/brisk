@@ -520,3 +520,23 @@ impl std::fmt::Display for TapSummary {
         write!(f, "=== end summary ===")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::find_sps;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Any Annex B bytes (start codes are frequent in the strategy): no panic, and an SPS
+        /// found is a slice of the input starting with NAL type 7.
+        #[test]
+        fn find_sps_takes_any_annexb(
+            b in prop::collection::vec(prop::sample::select(vec![0u8, 0, 1, 7, 0x67, 0x65, 0xff]), 0..200)
+        ) {
+            if let Some(s) = find_sps(&b) {
+                prop_assert_eq!(s[0] & 0x1f, 7);
+                prop_assert!(s.len() <= b.len());
+            }
+        }
+    }
+}

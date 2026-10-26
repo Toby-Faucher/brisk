@@ -13,3 +13,7 @@ web/dist/
 web/dist
 web/dist.*
 web/.astro/
+fuzz/target/
+fuzz/artifacts/
+fuzz/corpus/
+fuzz/coverage/

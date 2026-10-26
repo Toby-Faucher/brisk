@@ -691,4 +691,24 @@ mod tests {
         );
         assert_eq!(enc("a b/+Z~"), "a%20b%2F%2BZ~");
     }
+
+    proptest::proptest! {
+        /// Any response bytes (and any declared Content-Length): no panic, and the body is cut
+        /// from the bytes that arrived, never sized by the header.
+        #[test]
+        fn body_takes_any_response(
+            raw in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..400),
+            n in proptest::prelude::any::<u64>(),
+            tail in "[ -~]{0,80}",
+        ) {
+            let shaped = format!("HTTP/1.1 200 OK\r\nContent-Length: {n}\r\n\r\n{tail}");
+            for r in [&raw[..], shaped.as_bytes()] {
+                for need_len in [false, true] {
+                    if let Ok(b) = body(r, need_len) {
+                        proptest::prop_assert!(b.len() <= r.len());
+                    }
+                }
+            }
+        }
+    }
 }
