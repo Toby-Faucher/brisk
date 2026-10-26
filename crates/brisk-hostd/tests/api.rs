@@ -594,7 +594,13 @@ fn rig(mode: &str) -> Rig {
     let mut cfg = Config::from_env(d.path().to_path_buf());
     cfg.secret = SECRET.into();
     cfg.bridge_bin = bin;
-    cfg.bridge_listen = "100.64.0.1:4433".into();
+    cfg.bridge_listen = Some("100.64.0.1:4433".into());
+    // A fresh pair, so starts never run openssl (and never look at the real ~/.config/brisk).
+    cfg.tls_dir = d.path().join(".config/brisk/tls");
+    std::fs::create_dir_all(&cfg.tls_dir).unwrap();
+    for f in ["bridge.pem", "bridge.key.pem"] {
+        std::fs::write(cfg.tls_dir.join(f), "-----BEGIN fake\n").unwrap();
+    }
     cfg.app_id = 42;
     cfg.data_dir = d.path().join("data");
     cfg.steam_dir = d.path().join("nosteam");

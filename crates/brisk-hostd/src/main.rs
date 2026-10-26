@@ -1,9 +1,11 @@
 //! brisk-hostd: the host agent behind the Brisk web UI. Binds 127.0.0.1:8443 only; reach it with
-//! `ssh -N -L 8443:127.0.0.1:8443 bawn`.
+//! `ssh -N -L 8443:127.0.0.1:8443 bawn` or through `tailscale serve` (docs/ui-notes.md, Hosting).
 //!   brisk-hostd [DIST_DIR]      (default ./web/dist, or BRISK_DIST)
 
-use brisk_hostd::config::Config;
+use brisk_hostd::config::{load_secret, load_users, Config};
 use brisk_hostd::http::{router, AppState};
+use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
@@ -12,7 +14,27 @@ async fn main() -> std::process::ExitCode {
         .nth(1)
         .or_else(|| std::env::var_os("BRISK_DIST"))
         .unwrap_or_else(|| "web/dist".into());
-    let cfg = Config::from_env(dist.into());
+    let mut cfg = Config::from_env(dist.into());
+    let conf = std::env::var_os("HOME")
+        .map_or_else(|| PathBuf::from("."), PathBuf::from)
+        .join(".config/brisk");
+    let secret_file =
+        std::env::var_os("BRISK_SECRET_FILE").map_or_else(|| conf.join("secret"), PathBuf::from);
+    cfg.secret = match load_secret(std::env::var("BRISK_SECRET").ok(), &secret_file) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: secret {}: {e}", secret_file.display());
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    cfg.allowed_users
+        .extend(load_users(&conf.join("allowed-users")));
+    if !cfg.allowed_users.is_empty() {
+        eprintln!(
+            "tailnet logins allowed without the secret: {}",
+            cfg.allowed_users.join(", ")
+        );
+    }
     let l = match tokio::net::TcpListener::bind(cfg.listen).await {
         Ok(l) => l,
         Err(e) => {
@@ -22,9 +44,10 @@ async fn main() -> std::process::ExitCode {
     };
     println!("page\thttp://localhost:8443/?s={}", cfg.secret);
     let state = Arc::new(AppState::new(cfg));
+    state.hosts.refresh().await;
     state.clip.start_watch();
     state.files.clean_partials();
-    let app = router(state.clone());
+    let app = router(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
     let stop = async move {
         let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("SIGTERM handler");

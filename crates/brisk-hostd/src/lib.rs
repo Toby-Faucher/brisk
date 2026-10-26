@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod clipboard;
 pub mod config;
 pub mod files;
