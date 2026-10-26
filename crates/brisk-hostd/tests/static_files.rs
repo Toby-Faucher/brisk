@@ -39,6 +39,15 @@ fn fixture() -> (tempfile::TempDir, PathBuf) {
     symlink(t.path(), b.join("up")).unwrap();
     symlink(t.path().join("nowhere"), b.join("dangling.js")).unwrap();
     symlink(t.path().join("nowhere"), b.join("dangling")).unwrap();
+    symlink("loop.js", b.join("loop.js")).unwrap();
+    std::fs::create_dir_all(b.join("x/index.html/inner")).unwrap();
+    for f in ["pipe.js", "pipe"] {
+        let st = std::process::Command::new("mkfifo")
+            .arg(b.join(f))
+            .status()
+            .unwrap();
+        assert!(st.success());
+    }
     symlink("dist.1", t.path().join("dist")).unwrap();
     let dist = t.path().join("dist");
     (t, dist)
@@ -157,6 +166,33 @@ async fn nothing_outside_the_current_build_is_served() {
         let want = if name == "disk" { 404 } else { 200 };
         assert_eq!(r.status().as_u16(), want, "{name}");
         assert!(!text(r).await.contains("secret"), "{name}");
+    }
+}
+
+/// Not regular files: a FIFO must not block a reader, a directory named like a file must not fail
+/// mid-stream, and odd OS errors (too long, symlink loop) are 404s, not 500s in the journal.
+#[tokio::test]
+async fn fifos_directories_long_names_and_loops_are_404_quickly() {
+    let (_t, dist) = fixture();
+    let long = format!("/{}.js", "a".repeat(300));
+    for (name, app) in apps(&dist) {
+        for m in ["GET", "HEAD"] {
+            for p in ["/pipe.js", "/x/index.html", "/loop.js", &long] {
+                let r =
+                    tokio::time::timeout(std::time::Duration::from_secs(5), get(&app, m, p, &[]))
+                        .await
+                        .unwrap_or_else(|_| panic!("{name} {m} {p} hung"));
+                assert_eq!(r.status(), StatusCode::NOT_FOUND, "{name} {m} {p}");
+            }
+            // extensionless: not a page, so the root index (as for any unknown page)
+            let r = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                get(&app, m, "/pipe", &[]),
+            )
+            .await
+            .unwrap();
+            assert_eq!(r.status(), StatusCode::OK, "{name} {m} /pipe");
+        }
     }
 }
 

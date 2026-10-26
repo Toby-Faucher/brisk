@@ -9,8 +9,10 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncSeek, ReadBuf};
 use tower_http::services::ServeDir;
-use tower_http::services::fs::{Backend, Metadata as _, TokioBackend, TokioFile};
+use tower_http::services::fs::{Backend, File, Metadata as _};
 
 /// Where pages come from.
 #[derive(Clone)]
@@ -124,10 +126,19 @@ async fn serve_from<B: Backend>(root: PathBuf, b: B, rel: &Path, mut req: Reques
         .await;
     match res {
         Ok(r) => r.map(axum::body::Body::new),
+        // Anything a client can provoke with a path is a 404, not a 500 and a journal line.
         Err(e)
-            if e.kind() == io::ErrorKind::NotFound
-                || e.kind() == io::ErrorKind::PermissionDenied
-                || e.raw_os_error() == Some(libc::ENOTDIR) =>
+            if matches!(
+                e.kind(),
+                io::ErrorKind::NotFound
+                    | io::ErrorKind::PermissionDenied
+                    | io::ErrorKind::NotADirectory
+                    | io::ErrorKind::IsADirectory
+                    | io::ErrorKind::InvalidFilename
+            ) || matches!(
+                e.raw_os_error(),
+                Some(libc::ENOTDIR | libc::EISDIR | libc::ENAMETOOLONG | libc::ELOOP)
+            ) =>
         {
             StatusCode::NOT_FOUND.into_response()
         }
@@ -197,19 +208,72 @@ impl Contained {
 
 type Fut<T> = Pin<Box<dyn Future<Output = io::Result<T>> + Send>>;
 
+/// Only directories and regular files exist for ServeDir: a FIFO, socket or device is NotFound.
+fn plain(md: std::fs::Metadata) -> io::Result<std::fs::Metadata> {
+    if md.is_file() || md.is_dir() {
+        Ok(md)
+    } else {
+        Err(io::ErrorKind::NotFound.into())
+    }
+}
+
 impl Backend for Contained {
-    type File = TokioFile;
+    type File = DiskFile;
     type Metadata = std::fs::Metadata;
-    type OpenFuture = Fut<TokioFile>;
+    type OpenFuture = Fut<DiskFile>;
     type MetadataFuture = Fut<std::fs::Metadata>;
 
     fn open(&self, p: PathBuf) -> Self::OpenFuture {
         let me = self.clone();
-        Box::pin(async move { TokioBackend.open(me.inside(p).await?).await })
+        Box::pin(async move {
+            // O_NONBLOCK: a FIFO swapped in after the checks still cannot block the open;
+            // O_NOFOLLOW: the canonical path has no symlink left, so a new one is refused (ELOOP).
+            let f = tokio::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+                .open(me.inside(p).await?)
+                .await?;
+            // fstat of what was opened: only a regular file is read.
+            if !f.metadata().await?.is_file() {
+                return Err(io::ErrorKind::NotFound.into());
+            }
+            Ok(DiskFile(f))
+        })
     }
 
     fn metadata(&self, p: PathBuf) -> Self::MetadataFuture {
         let me = self.clone();
-        Box::pin(async move { tokio::fs::metadata(me.inside(p).await?).await })
+        Box::pin(async move { plain(tokio::fs::metadata(me.inside(p).await?).await?) })
+    }
+}
+
+/// tower-http's TokioFile cannot be built from our own open, hence this twin.
+pub struct DiskFile(tokio::fs::File);
+
+impl AsyncRead for DiskFile {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
+impl AsyncSeek for DiskFile {
+    fn start_seek(mut self: Pin<&mut Self>, pos: io::SeekFrom) -> io::Result<()> {
+        Pin::new(&mut self.0).start_seek(pos)
+    }
+    fn poll_complete(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<u64>> {
+        Pin::new(&mut self.0).poll_complete(cx)
+    }
+}
+
+impl File for DiskFile {
+    type Metadata = std::fs::Metadata;
+    type MetadataFuture<'a> =
+        Pin<Box<dyn Future<Output = io::Result<std::fs::Metadata>> + Send + 'a>>;
+    fn metadata(&self) -> Self::MetadataFuture<'_> {
+        Box::pin(self.0.metadata())
     }
 }

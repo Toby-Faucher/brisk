@@ -74,6 +74,9 @@ impl Mem {
                 if md.is_dir() {
                     m.insert(r.clone(), (None, t));
                     walk(root, &r, m);
+                } else if !md.is_file() {
+                    // FIFOs, sockets, devices: build.rs refuses them, the disk server 404s them.
+                    continue;
                 } else if let Ok(b) = std::fs::read(&real) {
                     m.insert(r, (Some(b.into()), t));
                 }
