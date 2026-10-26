@@ -2,9 +2,10 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
 use crate::steam::{self, GamesResult};
-use crate::stream::{StreamReq, Supervisor};
+use crate::stream::{Codec, Preset, StreamReq, Supervisor};
 use axum::extract::{DefaultBodyLimit, Path as UrlPath, Request, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
@@ -24,6 +25,7 @@ pub struct AppState {
     pub clip: Arc<Clipboard>,
     pub files: Files,
     pub quit: Quitter,
+    pub prefs: Prefs,
 }
 
 impl AppState {
@@ -38,6 +40,7 @@ impl AppState {
             games: Mutex::new(None),
             clip: Arc::new(Clipboard::new(Arc::new(WlBackend::default()))),
             files: Files::new(cfg.downloads_dir.clone()),
+            prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
             cfg,
             restarter: Restarter::new(runner, clock),
@@ -312,6 +315,67 @@ async fn file_put(
     }
 }
 
+async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(serde_json::json!({ "prefs": s.prefs.all() })).into_response()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrefsBody {
+    preset: Preset,
+    #[serde(default)]
+    codec: Codec,
+    width: Option<u32>,
+    height: Option<u32>,
+    fps: Option<u32>,
+    bitrate_kbps: Option<u32>,
+}
+
+/// Same ranges as `StreamReq`; custom fields are kept only for the custom preset. 400 for a bad
+/// body or for the Desktop app, which has no per-game quality.
+async fn prefs_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    b: axum::body::Bytes,
+) -> Response {
+    if id == s.cfg.app_id {
+        return err(StatusCode::BAD_REQUEST, "the Desktop has no per-game quality");
+    }
+    let b = match parse::<PrefsBody>(&b) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    let req = StreamReq {
+        preset: b.preset,
+        width: b.width,
+        height: b.height,
+        fps: b.fps,
+        bitrate_kbps: b.bitrate_kbps,
+        codec: b.codec,
+        appid: None,
+    };
+    if let Err(e) = req.flags() {
+        return err(StatusCode::BAD_REQUEST, &e);
+    }
+    let custom = b.preset == Preset::Custom;
+    let keep = |v: Option<u32>| v.filter(|_| custom);
+    let e = Entry {
+        preset: b.preset,
+        codec: b.codec,
+        width: keep(b.width),
+        height: keep(b.height),
+        fps: keep(b.fps),
+        bitrate_kbps: keep(b.bitrate_kbps),
+        updated: 0,
+    };
+    axum::Json(s.prefs.put(id, e)).into_response()
+}
+
+async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -> Response {
+    s.prefs.delete(id);
+    StatusCode::NO_CONTENT.into_response()
+}
+
 /// Mount API routes on `api` below; everything else falls through to `dist/`. The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
@@ -326,6 +390,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/install", post(install))
         .route("/quit", post(quit))
         .route("/sessions", get(sessions))
+        .route("/prefs", get(prefs_get))
+        .route("/prefs/{appid}", put(prefs_put).delete(prefs_delete))
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
         .route(
