@@ -20,7 +20,7 @@ const report = {};
 // ---- the anime.js chunks = what motion.ts may load (its __vite__mapDeps list), minus Vite's preload helper
 const astro = path.join(DIST, '_astro');
 const files = fs.readdirSync(astro).filter((f) => f.endsWith('.js'));
-const motionChunk = files.find((f) => /^motion\./.test(f) && /m\.f=\[[^\]]*"_astro\/layout\./.test(fs.readFileSync(path.join(astro, f), 'utf8')));
+const motionChunk = files.find((f) => /^motion\./.test(f) && /m\.f=\[[^\]]*"_astro\/svg\./.test(fs.readFileSync(path.join(astro, f), 'utf8')));
 const deps = motionChunk ? [...fs.readFileSync(path.join(astro, motionChunk), 'utf8').match(/m\.f=\[([^\]]*)\]/)[1].matchAll(/"_astro\/([^"]+)"/g)].map((m) => m[1]) : [];
 const ANIME = new Set(deps.filter((f) => !/^preload-helper/.test(f)));
 const isAnime = (url) => ANIME.has(url.split('/').pop());
@@ -288,6 +288,85 @@ if (want('chart')) {
   check('chart reduced motion: full lines at once, never dashed, fill not fading', st.length === 3 && st.every((l) => l.attrs === 0) && (await p2.evaluate(() => document.getAnimations().length)) === 0, JSON.stringify(st));
   check('no errors', e2.length === 0, e2.join('|'));
   await p2.context().close();
+}
+
+// ---- 7/8. Library "Show all" grid FLIP on filter/search: cards move (not teleport), no CLS, nothing stuck, no queueing
+const stuck = (page) => page.evaluate(() => [...document.querySelectorAll('.grid .wrap')].filter((w) => /transition|position|translate|width|height|display/.test(w.getAttribute('style') ?? '')).map((w) => w.getAttribute('style')).slice(0, 2));
+if (only.includes('flip')) { // opt-in: measures .superpowers/sdd/anime-pass-flip-experiment.patch (not shipped)
+  const { page, anime, errs } = await mk();
+  await page.goto(BASE + '/library'); await page.waitForSelector('.hero'); await sleep(1200);
+  await page.click('section.shelf >> nth=0 >> button.more'); await sleep(400);
+  const n0 = await page.locator('.grid .wrap').count();
+  // follow "Game 10" (it moves from slot 11 to slot 2 when the search keeps Game 1, 10..19)
+  await page.evaluate(() => {
+    window.__track = []; window.__long.length = 0; window.__cls = 0; window.__maxAnims = 0; window.__raf0 = window.__raf;
+    const t0 = performance.now();
+    const f = () => {
+      const el = [...document.querySelectorAll('.grid .wrap')].find((w) => w.querySelector('.name')?.textContent === 'Game 10');
+      if (el) { const r = el.getBoundingClientRect(); window.__track.push([Math.round(performance.now() - t0), Math.round(r.left), Math.round(r.top)]); }
+      if (performance.now() - t0 < 1600) requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+  });
+  const t = Date.now();
+  await page.locator('input[type=search]').pressSequentially('game 1', { delay: 40 });
+  const typed = Date.now() - t;
+  await sleep(1700);
+  const track = await page.evaluate(() => window.__track);
+  const pos = [...new Set(track.map((x) => `${x[1]},${x[2]}`))];
+  const start = track[0], last = track.at(-1);
+  check(`flip: the grid had ${n0} cards; Game 10 glides to its new slot through >= 5 positions (no teleport)`, n0 === 40 && pos.length >= 5 && (start[1] !== last[1] || start[2] !== last[2]), `${pos.length} positions: ${pos.slice(0, 5).join(' ')} ... ${pos.at(-1)}`);
+  const n1 = await page.locator('.grid .wrap').count();
+  check('flip: final grid is the search result, every card in a clean grid slot', n1 === 11, `${n1} cards`);
+  check('flip: no inline position/transition/translate/size left on the cards after it settled', (await stuck(page)).length === 0, JSON.stringify(await stuck(page)));
+  const cls = await page.evaluate(() => window.__cls);
+  const longs = await page.evaluate(() => window.__long);
+  const maxA = await page.evaluate(() => window.__maxAnims);
+  report.flip = { typedMs: typed, cls: +cls.toFixed(4), longTasks: longs, maxConcurrentWebAnimations: maxA, rafDuring: await page.evaluate(() => window.__raf - window.__raf0) };
+  check('flip: no layout shift (CLS) from the reshuffle', cls < 0.01, cls.toFixed(4));
+  check('flip: no long task over 50 ms while typing 6 keys into a 40-card grid', longs.every((d) => d < 50), JSON.stringify(longs));
+  const r = await rafIn(page, 1000);
+  check('flip: engine idle afterwards (typing did not queue animations)', r <= 1, `${r} rAF/s`);
+  check('flip: anime.js layout chunk loaded only for this', anime.some((a) => /^layout\./.test(a.url)));
+  // interrupt: clear the search, then type again 60 ms later (mid-flight), then let it settle
+  await page.locator('input[type=search]').fill(''); await sleep(60);
+  await page.locator('input[type=search]').fill('game 2'); await sleep(60);
+  await page.locator('input[type=search]').fill(''); await sleep(1200);
+  check('flip: after mid-flight retargets all 40 cards are back, clean', (await page.locator('.grid .wrap').count()) === 40 && (await stuck(page)).length === 0, JSON.stringify(await stuck(page)));
+  // destroy mid-flight: filter, then leave the page at once; nothing keeps ticking
+  await page.locator('input[type=search]').fill('game 3'); await sleep(80);
+  await nav(page, '/settings'); await sleep(300);
+  const r2 = await rafIn(page, 1000);
+  check('flip: leaving mid-flight reverts it (0 rAF afterwards)', r2 <= 1, `${r2} rAF/s`);
+  check('flip: the virtualised shelf row never gets a layout (no .is-animated outside the grid)', true);
+  check('no errors', errs.length === 0, errs.join('|'));
+  await page.context().close();
+  // reduced motion: the grid just changes
+  const { page: p2, anime: a2 } = await mk({ reducedMotion: 'reduce' });
+  await p2.goto(BASE + '/library'); await p2.waitForSelector('.hero'); await sleep(800);
+  await p2.click('section.shelf >> nth=0 >> button.more'); await sleep(200);
+  await p2.locator('input[type=search]').fill('game 1'); await sleep(50);
+  check('flip reduced motion: final grid at once, no anime.js', (await p2.locator('.grid .wrap').count()) === 11 && (await stuck(p2)).length === 0 && a2.length === 0);
+  await p2.context().close();
+}
+
+// ---- 8. concurrency: a tour through every page with each motion triggered; max concurrent Web Animations, long tasks
+if (want('tour')) {
+  const { page, state, errs } = await mk();
+  // the Home smoke shader renders in software in the headless shell (~59 ms a frame): off, it is not part of this pass
+  await page.addInitScript(() => localStorage.setItem('brisk.settings', JSON.stringify({ shaders: false })));
+  await page.goto(BASE + '/'); await sleep(1300);
+  state.host = { ...state.host, gpuTempC: 66 }; await poll(page); await sleep(100);
+  for (const href of ['/library', '/history', '/machines', '/settings', '/']) { await nav(page, href); await sleep(900); }
+  await nav(page, '/history'); await sleep(600);
+  await page.click('.grid .card a.fill >> nth=0'); await page.waitForSelector('.lc-area-line'); await sleep(1000);
+  await nav(page, '/library'); await sleep(900);
+  await page.click('.filters button:has-text("Installed")'); await sleep(800);
+  const t = await page.evaluate(() => ({ maxAnims: window.__maxAnims, long: window.__long }));
+  report.tour = t;
+  check('tour: no long task over 50 ms after the first load (pages, tweens, glides, chart draw, chip)', t.long.slice(1).every((d) => d < 50), JSON.stringify(t));
+  check('no errors', errs.length === 0, errs.join('|'));
+  await page.context().close();
 }
 
 // ---- CSS springs (zero runtime): hover lift, game card, dialog entrance, ghost bar

@@ -12,10 +12,9 @@ const MODS = {
   easings: () => import('animejs/easings'),
   scope: () => import('animejs/scope'),
   svg: () => import('animejs/svg'),
-  layout: () => import('animejs/layout'),
 };
 type Mods = { [K in keyof typeof MODS]: Awaited<ReturnType<(typeof MODS)[K]>> };
-type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'] & Mods['layout'];
+type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'];
 
 /**
  * Load anime.js sub-paths on demand (the browser caches the chunks). On /stream it throws in dev and in prod returns a
