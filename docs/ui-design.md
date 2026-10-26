@@ -34,7 +34,7 @@ Anti-goals (would make it a failure even if it technically works)
 ## 3. Constraints
 
 - Stack (Toby's decision): Astro + Svelte 5 + Bits UI (headless components, styled by us). Styling approach: whatever fits Bits UI (builder's call; plain CSS variables recommended, see section 7).
-- Browser: Chrome, and Firefox 158+ on desktop (WebTransport with `serverCertificateHashes`, WebCodecs; no HEVC and no Keyboard Lock on Firefox, both degrade). Firefox was checked for the handshake and pinning only, not a full stream. Desktop first; phone must be usable but is secondary.
+- Browser: Chrome. Firefox 158+ desktop kinda works (connects and streams, but about 100 ms latency and 30-40 fps, likely software decode; no HEVC, no Keyboard Lock). Desktop first; phone must be usable but is secondary.
 - The page is served and reached today as: bridge on bawn binds the tailnet IP for WebTransport; the static page is served on `127.0.0.1:8443` on bawn and reached with `ssh -N -L 8443:127.0.0.1:8443 bawn`. v1 should keep working with that, and may improve it (Tailscale serve) if the builder can do so without root surprises.
 - Security model: tailnet-only, no sign-in. The WebTransport session token and pinned certificate hash stay as they are (see `docs/m2-notes.md`).
 - Dark theme only (Toby's decision). Accent color is user-pickable from six swatches (mint, indigo, pink, orange, lime, sky); mint is the default.
