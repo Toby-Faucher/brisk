@@ -38,8 +38,41 @@
   animation. `.fade-in` (opacity, 420 ms) is added by class when data lands: Home host card and resume card content.
 - Library search/filter: the results (`.body`) cross-fade 0.3 -> 1 over 140 ms via WAAPI, at most once per 150 ms.
 - Also animates: Settings tab panels and the History list/detail swap (`.swap-in` / `.live`, 180 ms, only after a user action).
-- Does not animate: /stream, virtualised items when they mount while scrolling, tall blocks such as an open shelf grid,
-  the ghost bar, menus and dialogs, the sidebar and host pill.
+- Does not animate: /stream (except the ghost bar's CSS slide), virtualised items when they mount while scrolling, tall
+  blocks such as an open shelf grid, menus, the host pill.
+- Springs (CSS only, zero runtime): `web/scripts/gen-spring-tokens.mjs` solves three springs with anime.js offline and writes
+  `--spring-soft|snappy|settle` (CSS `linear()`) and `--spring-*-dur` (settling time, use it as the duration) into the
+  generated block at the end of tokens.css; `npm run springs:check` and `src/styles/tokens.test.ts` fail if it is stale.
+  soft (400/40, no overshoot, 90 % at 195 ms, capped at 450 ms): Card and game card hover lift. snappy (380/34, 0.4 %, 90 % at
+  169 ms, 700 ms): link-card press, glides. settle (150/19, 2 %, 90 % at 237 ms, 900 ms): ghost bar slide-in (it leaves
+  faster, 300 ms `--ease`), confirm dialog rise (`.rs`). These CSS springs are allowed on /stream; anime.js is not.
+- anime.js 4.5.0 (exact pin, MIT; a runtime dependency because `ui/motion.ts` loads it) is used only where CSS cannot do it,
+  all through `web/src/ui/motion.ts`, lazily by sub-path (`animejs/animation`, `/easings`, `/svg`, `/scope`), each on its first
+  real use: numbers that change after load (`count` attachment / `tweenNumber`: Home host temps and ring `--p`, Machines GPU/CPU,
+  Library widget installed count; first paint never animates; uptime is too coarse to roll; History has no polled numbers)
+  and the History chart line draw-in (`drawIn`, `createDrawable`, 700 ms `--dur-draw`, once per open, spread onto LayerChart's
+  line path through an attachment key; LayerChart's own `draw` prop redraws on every resize). The fill under it fades in
+  with native WAAPI (`fadeIn`). `scope()` / `motionScope` wrap `createScope` for future multi-part effects (reverted on destroy).
+- Glides (no library): `ui/motion-base.ts` `glide()` is native `Element.animate` on `translate` + `scale` of the selected
+  item's `::before` highlight (server-rendered, `transform-origin: 0 0`, `z-index: -1` inside the list's stacking context so
+  it passes under the neighbours). Sidebar: the previous active item's box lives in module state, so after a client
+  navigation the highlight glides from it across the Shell remount (not on first load, not onto /stream). Library filter
+  chips and Settings default-quality chips: `glideSwap` (measure, change, `flushSync`, FLIP). The Settings tab underline keeps
+  its CSS transition.
+- Not done: Library grid FLIP (`createLayout`): it works with the keyed list, but walks the whole subtree under its root and
+  cost 50-61 ms per change on the 40-card "Show all" grid (over the 50 ms long-task budget while typing). Patch and numbers:
+  `.superpowers/sdd/anime-pass-flip-experiment.patch`, `anime-check.mjs flip`.
+- Motion rules: (1) nothing from anime.js is imported, fetched or run on /stream or by anything it loads (Shell, Sidebar,
+  ghost bar, stats card, toasts, dialogs): the Shell imports only `motion-base.ts`, which has no library; `motion.ts` throws in
+  dev and never resolves in prod there. (2) Pin animejs exactly; never 5.x beta. (3) anime.js ignores reduced motion: every
+  helper checks it live and writes the end state; a switch mid-flight completes running tweens. (4) The Shell remounts on
+  every navigation: whatever a component starts is cancelled or reverted in its cleanup (a leaked loop ticks forever).
+  (5) Lazy only: dynamic `import()` on first need. (6) Compositor properties only for movement: `translate`, `scale`,
+  `opacity`; never anime's `x`/`y` in waapi (they go through a custom property and fail compositing). (7) No anime `onScroll`
+  (it holds a 60 Hz rAF loop alive) and no `loop: true`. (8) anime and Svelte never write the same thing on one element (the
+  ring's `--p` is no longer a `style:` binding; `count` writes Svelte's own text node and ends on Svelte's value).
+  (9) Nothing left behind: no `will-change`, no inline `transition`, no inline `--accent` on `<html>`. (10) Every lazy motion
+  path falls back to its end state when its chunk fails to load (a number shows the new value, a chart line shows in full).
 - Smooth scroll: `html { scroll-behavior: smooth }` (off while the Astro router is navigating, so scroll restore does not
   glide), `scroll-padding-top: 64px` for the sticky Settings strip, `overscroll-behavior-x: contain` on the shelf and the tab
   strip. No JS smooth-scroll library and no wheel hijacking (the shelf's vertical-wheel-to-sideways stays as it was).
@@ -47,7 +80,9 @@
 - Check: `node web/scripts/motion-check-2.mjs` (load entrance, library data arrival with a delayed /api/games, no re-fire, reduced
   motion, stream, seeked screenshots to `$OUT`) and `node web/scripts/motion-check.mjs` (page fade, tabs, scroll reveal), both
   against `astro preview` (ports 4422 / 4421, mocked /api). Home shows a pre-existing layout shift of about 0.02-0.06 when the
-  module widgets mount, with or without motion.
+  module widgets mount, with or without motion. anime.js pass: `node web/scripts/anime-check.mjs [graph stream count revert
+  reduce glide chart tour spring]` (port 4423; /stream import graph + network, tweens, revert on navigation via rAF counts,
+  reduced motion, glide seeked screenshots + Chrome trace, chart draw-in, long tasks). Unit tests: `web/src/ui/motion.test.ts`.
 
 ## Run
 - On bawn: `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched

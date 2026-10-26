@@ -41,7 +41,7 @@
 
 <style>
   .wrap { position: relative; }
-  .g { display: block; width: 100%; text-align: left; padding: 0; border: 0; background: none; cursor: pointer; transition: transform .3s var(--ease); border-radius: 16px; }
+  .g { display: block; width: 100%; text-align: left; padding: 0; border: 0; background: none; cursor: pointer; transition: transform var(--spring-soft-dur) var(--spring-soft); border-radius: 16px; }
   .g:hover, .g:focus-visible, .g.sel { transform: translateY(-5px) scale(1.02); }
   .g[aria-disabled='true'] { cursor: progress; }
   .name { display: block; margin-top: 8px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

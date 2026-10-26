@@ -52,6 +52,9 @@
 <style>
   /* Confirm dialogs (this one and Machines' restart). Mounted on every page, so global here. */
   :global(.rs) { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 20px; z-index: 41; display: grid; gap: 6px; }
+  /* CSS only (mounted on /stream too): a short spring rise on open; the global reduced-motion rule turns it off */
+  @media (prefers-reduced-motion: no-preference) { :global(.rs[data-state='open']) { animation: rs-in var(--spring-settle-dur) var(--spring-settle) backwards; } }
+  @keyframes -global-rs-in { from { opacity: 0; translate: 0 10px; } }
   :global(.rs-t) { font-size: 16px; font-weight: 650; }
   :global(.rs-a) { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 </style>

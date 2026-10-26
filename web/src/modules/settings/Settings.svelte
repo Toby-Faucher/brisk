@@ -5,6 +5,7 @@
   import type { Preset } from '../../state/api';
   import { host } from '../../state/host';
   import Card from '../../ui/Card.svelte';
+  import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
   import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
 
@@ -33,6 +34,7 @@
   let list = $state<HTMLElement | null>(null);
   let ind = $state({ x: 0, w: 0 });
   let live = $state(false);
+  let quality: HTMLElement | undefined = $state();
   function show(t: Tab) {
     tab = t;
     live = true;
@@ -93,9 +95,9 @@
       <div class="col">
         <Card cols={2}>
           <h4>Default quality</h4>
-          <div class="row" role="group" aria-label="Default quality">
+          <div class="row chips" role="group" aria-label="Default quality" bind:this={quality}>
             {#each PRESETS as p (p)}
-              <button class="fchip" aria-pressed={$settings.defaultPreset === p} onclick={() => set({ defaultPreset: p })}>{p}</button>
+              <button class="fchip" aria-pressed={$settings.defaultPreset === p} onclick={() => glideSwap(quality, '[aria-pressed="true"]', () => set({ defaultPreset: p }))}>{p}</button>
             {/each}
           </div>
         </Card>
@@ -157,8 +159,10 @@
   .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
   .opt select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 13px; }
   .opt input { accent-color: var(--accent); width: 18px; height: 18px; }
-  .fchip { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; text-transform: capitalize; }
-  .fchip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); color: var(--fg); }
+  .chips { isolation: isolate; } /* the gliding fill passes under the other chips */
+  .fchip { position: relative; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; text-transform: capitalize; transition: color .2s var(--ease); }
+  .fchip[aria-pressed='true'] { border-color: transparent; color: var(--fg); }
+  .fchip[aria-pressed='true']::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--accent) 20%, transparent); border: 1px solid var(--accent); transform-origin: 0 0; }
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 12px 0 0; font-size: 13px; }
   .kv dt { color: var(--muted); } .kv dd { margin: 0; }
   kbd { font-family: var(--mono); font-size: 12px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel2); }

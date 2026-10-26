@@ -3,11 +3,16 @@
   // No Tailwind: LayerChart reads CSS variables (core.css only declares its cascade layers); ours are set below.
   import 'layerchart/core.css';
   import { AreaChart } from 'layerchart/svg';
+  import { createAttachmentKey } from 'svelte/attachments';
+  import { drawIn, fadeIn } from '../../ui/motion';
   import { fmtClock, summarize, type ChartRow } from './history';
 
   let { rows }: { rows: ChartRow[] } = $props();
 
   const one = (v: number) => v.toFixed(1);
+  // LayerChart spreads these onto its <path>s: the line draws in once per open, then the fill fades in under it
+  const line = { [createAttachmentKey()]: drawIn };
+  const fill = { [createAttachmentKey()]: fadeIn(250) };
   const CHARTS = [
     { key: 'delay', label: 'Delay', unit: 'ms', color: 'var(--accent)', fmt: (v: number) => v.toFixed(0) },
     { key: 'fps', label: 'Frame rate', unit: 'fps', color: 'var(--c-stream)', fmt: (v: number) => v.toFixed(0) },
@@ -37,7 +42,7 @@
             xAxis: { format: fmtClock, ticks: 6, tickLabelProps: { dy: 4 } },
             // the baseline needs no "0", which sat on the x axis's first label
             yAxis: { format: (v: number) => (v ? c.fmt(v) : ''), ticks: 3, tickLabelProps: { dx: -4 } },
-            area: { fillOpacity: 0.18, line: { strokeWidth: 1.6 } },
+            area: { fillOpacity: 0.18, line: { strokeWidth: 1.6, ...line }, ...fill },
             tooltip: { header: { format: fmtClock }, item: { format: one } },
           }}
         />

@@ -7,12 +7,14 @@
     "build": "astro build",
     "test": "vitest run",
     "headless": "node scripts/headless.mjs",
-    "smoke": "node scripts/ui-smoke.mjs"
+    "smoke": "node scripts/ui-smoke.mjs",
+    "springs:check": "node scripts/gen-spring-tokens.mjs --check"
   },
   "dependencies": {
     "@astrojs/svelte": "^9.1.1",
     "@fontsource/geist": "^5.3.0",
     "@fontsource/geist-mono": "^5.3.0",
+    "animejs": "4.5.0",
     "astro": "^7.4.2",
     "bits-ui": "^2.20.2",
     "layerchart": "2.6.1",
