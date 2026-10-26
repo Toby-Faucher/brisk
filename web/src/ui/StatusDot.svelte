@@ -11,7 +11,7 @@
   $effect(() => {
     const s = state;
     if (s === 'off' && seen === null) return;
-    if (seen !== null && seen !== s) anim = ringPulse(halo);
+    if (seen !== null && seen !== s) (anim?.cancel(), (anim = ringPulse(halo)));
     seen = s;
   });
   onMount(() => () => anim?.cancel());

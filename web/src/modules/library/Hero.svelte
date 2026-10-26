@@ -35,7 +35,9 @@
   .txt { min-width: 0; }
   .lab { color: #c9d1e0; font-size: 14px; }
   h3 { margin: 2px 0 6px; font-size: 28px; letter-spacing: -.03em; position: relative; }
-  h3 :global(.split-fx) { position: absolute; inset: 0; }
+  h3 :global(.split-fx) { position: absolute; inset: 0; user-select: none; pointer-events: none; }
+  h3 :global(.split-fx .w) { display: inline-block; overflow: clip; }
+  h3 :global(.split-fx .wi) { display: inline-block; }
   .pchip { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; color: #fff; background: #000b; white-space: nowrap; }
   .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 </style>

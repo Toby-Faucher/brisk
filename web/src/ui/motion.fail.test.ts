@@ -4,13 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('animejs/animation', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });
-vi.mock('animejs/text', () => {
-  throw new Error('Failed to fetch dynamically imported module');
-});
 vi.mock('animejs/svg', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });
 vi.stubGlobal('location', { pathname: '/' });
+vi.stubGlobal('requestAnimationFrame', (f: () => void) => setTimeout(f, 0));
 vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {} }));
 vi.stubGlobal('document', { documentElement: {} });
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
@@ -34,10 +32,11 @@ describe('chunk load failure', () => {
     await settle();
     expect(text.data).toBe('3.6%');
   });
-  it('splitIn leaves the real title untouched and visible', async () => {
-    const real = { textContent: 'Portal 2', style: { opacity: '', removeProperty() {} }, getAttribute: () => '', removeAttribute() {} } as any;
-    const h = { firstElementChild: real, append: () => { throw new Error('no copy may be added'); } } as any;
+  it('splitIn: an error while building the copy leaves the real title visible (this document cannot create elements)', async () => {
+    const real = { textContent: 'Portal 2', style: { opacity: '', removeProperty() { real.style.opacity = ''; } }, getAttribute: () => '', removeAttribute() {} } as any;
+    const h = { firstElementChild: real, closest: () => null } as any;
     m.splitIn(h);
+    expect(real.style.opacity).toBe('0');
     await settle();
     expect(real.style.opacity).toBe('');
   });

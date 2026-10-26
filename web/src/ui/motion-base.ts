@@ -38,7 +38,7 @@ export const box = (el: Element): Box => {
  */
 export function ringPulse(ring: Element): Animation | null {
   if (onStreamRoute() || reducedMotion()) return null;
-  return ring.animate([{ scale: 1, opacity: 0.5 }, { scale: 2.2, opacity: 0 }], { duration: 700, easing: cssVar('--ease') });
+  return ring.animate([{ scale: 1.3, opacity: 0.6 }, { scale: 2.4, opacity: 0 }], { duration: 700, easing: cssVar('--ease') });
 }
 
 /**

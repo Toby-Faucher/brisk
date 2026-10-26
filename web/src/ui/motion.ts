@@ -12,10 +12,9 @@ const MODS = {
   easings: () => import('animejs/easings'),
   scope: () => import('animejs/scope'),
   svg: () => import('animejs/svg'),
-  text: () => import('animejs/text'),
 };
 type Mods = { [K in keyof typeof MODS]: Awaited<ReturnType<(typeof MODS)[K]>> };
-type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'] & Mods['text'];
+type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'];
 /** What `load(...names)` resolves to: the union of each named module's exports (distributes over K). */
 type Loaded<K extends keyof Mods> = Pick<Lib, (K extends keyof Mods ? keyof Mods[K] : never) & keyof Lib>;
 
@@ -191,50 +190,89 @@ export function drawIn(el: SVGGeometryElement) {
 }
 
 /**
+ * Cut `text` into clip-masked word wrappers inside `into` (`<span class="w"><span class="wi">word</span></span>`) and
+ * return the inner spans. `Intl.Segmenter` finds the words (CJK and emoji safe); whitespace stays plain text nodes,
+ * punctuation sticks to the word before it. Only createElement / textContent: the text is external data, never innerHTML.
+ */
+export function splitWords(text: string, into: Element): HTMLElement[] {
+  const words: HTMLElement[] = [];
+  let glued = false; // the last child is a word with no space after it yet
+  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)) {
+    if (/^\s+$/.test(segment)) {
+      into.append(document.createTextNode(segment));
+      glued = false;
+    } else if (glued && /^\p{P}+$/u.test(segment)) {
+      words[words.length - 1].textContent += segment;
+    } else {
+      const w = document.createElement('span');
+      const wi = document.createElement('span');
+      w.className = 'w';
+      wi.className = 'wi';
+      wi.textContent = segment;
+      w.append(wi);
+      into.append(w);
+      words.push(wi);
+      glued = true;
+    }
+  }
+  return words;
+}
+
+/**
  * Svelte attachment for a heading whose Svelte-owned text sits in its first child (`<h3 {@attach splitIn}><span>{name}</span></h3>`,
- * the heading `position: relative`): once the `splitText` chunk is loaded the words rise out of clip masks (`translate`
- * 100% -> 0, 500 ms, 45 ms apart, native Web Animations, so no inline style stays). The words are a split COPY laid over
- * the real text, so screen readers keep the one original node (the copy is aria-hidden, the real span only fades
- * out visually: opacity, not visibility) and layout cannot shift; when the last word lands the copy goes and the real text
- * shows again, which is also what a destroy, reduced motion or a chunk that fails to load gives (nothing changes until
- * the chunk is here, so a slow load never hides the title). The caller decides "once per page": the attachment itself
- * runs on every mount it is given to.
+ * the heading `position: relative`, `.split-fx .w { display: inline-block; overflow: clip }`): the words rise out of clip
+ * masks (`translate` 100% -> 0, 500 ms, 45 ms apart, native Web Animations, no library, no inline style left) once the
+ * hero around it has finished its own entrance (+ 120 ms), so nothing plays under a card that is still fading in. The words
+ * are a split COPY laid over the real text: screen readers keep the one original node (the copy is aria-hidden; the real
+ * span only fades out, opacity, so it stays in the accessibility tree) and layout cannot shift. When the last word lands
+ * the copy goes and the real text shows again; so it does on destroy, on reduced motion switching on, and on any error.
+ * The caller decides "once per page"; the attachment itself runs on every mount it is given to.
  */
 export function splitIn(h: HTMLElement) {
-  if (!motionAllowed()) return;
+  if (onStreamRoute() || reducedMotion()) return;
   const real = h.firstElementChild as HTMLElement | null;
   if (!real) return;
   let fx: HTMLElement | undefined;
-  let s: { revert(): unknown } | undefined;
-  let dead = false;
+  let done = false;
   const anims: Animation[] = [];
   const handle = { complete: () => clean() }; // reduced motion switched on mid-way
   const clean = () => {
-    if (dead && !s) return;
-    dead = true;
+    if (done) return;
+    done = true;
     live.delete(handle);
     anims.forEach((a) => a.cancel());
-    s?.revert();
     fx?.remove();
     real.style.removeProperty('opacity');
     if (!real.getAttribute('style')) real.removeAttribute('style');
   };
-  void load('text').then((lib) => {
-    if (dead || reducedMotion()) return;
-    fx = document.createElement('span');
-    fx.setAttribute('aria-hidden', 'true');
-    fx.className = 'split-fx';
-    fx.textContent = real.textContent;
-    h.append(fx);
-    const sp = (s = lib.splitText(fx, { words: { wrap: 'clip' }, accessible: false }));
-    const easing = cssVar('--ease');
-    for (const [i, w] of (sp.words as HTMLElement[]).entries()) anims.push(w.animate({ translate: ['0 100%', '0 0'] }, { duration: 500, delay: 60 + i * 45, easing, fill: 'backwards' }));
-    real.style.opacity = '0';
-    live.add(handle);
-    const last = anims.at(-1);
-    if (last) last.onfinish = clean;
-    else clean();
-  }).catch(() => dead || clean());
+  const start = () => {
+    if (done || reducedMotion()) return clean();
+    try {
+      fx = document.createElement('span');
+      fx.setAttribute('aria-hidden', 'true');
+      fx.className = 'split-fx';
+      h.append(fx);
+      const easing = cssVar('--ease');
+      for (const [i, w] of splitWords(real.textContent ?? '', fx).entries()) anims.push(w.animate({ translate: ['0 100%', '0 0'] }, { duration: 500, delay: 120 + i * 45, easing, fill: 'backwards' }));
+      const last = anims.at(-1);
+      if (last) last.onfinish = clean;
+      else clean();
+    } catch {
+      clean();
+    }
+  };
+  // The title is hidden from the start (the hero is not visible yet anyway) and shown again by clean().
+  real.style.opacity = '0';
+  live.add(handle);
+  const hero = h.closest('.hero');
+  let tries = 30; // frames to wait for the hero's entrance to be tagged (enter() in shell/reveal.ts), then start regardless
+  const wait = () => {
+    if (done) return;
+    if (hero && !hero.hasAttribute('data-enter') && tries-- > 0) return void requestAnimationFrame(wait);
+    const css = hero ? hero.getAnimations().filter((a) => a instanceof CSSAnimation) : [];
+    void Promise.allSettled(css.map((a) => a.finished)).then(start);
+  };
+  requestAnimationFrame(wait);
   return clean;
 }
 
@@ -260,14 +298,14 @@ export function swapIcon(svg: SVGSVGElement) {
   const settle = (on: boolean) => {
     stopAll();
     path?.setAttribute('d', on ? SPIN_D : home);
-    if (on && motionAllowed()) (spin = svg.animate({ rotate: ['0deg', '360deg'] }, { duration: 900, iterations: Infinity, easing: 'linear' })), live.add(handle);
+    if (on && !onStreamRoute() && !reducedMotion()) (spin = svg.animate({ rotate: ['0deg', '360deg'] }, { duration: 900, iterations: Infinity, easing: 'linear' })), live.add(handle);
   };
   return {
     to(on: boolean) {
       if (!path || on === state) return;
       const first = state === undefined;
       state = on;
-      if (first || !motionAllowed()) return settle(on);
+      if (first || onStreamRoute() || reducedMotion()) return settle(on);
       stopAll();
       const half = ms('--dur-tab', 180) / 2;
       const easing = cssVar('--ease');

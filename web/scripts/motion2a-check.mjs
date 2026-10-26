@@ -20,7 +20,7 @@ const check = (n, ok, x = '') => (ok || fails++, console.log(`${ok ? 'ok  ' : 'F
 // ---- anime.js chunks = what motion.ts may load (its __vite__mapDeps list), minus Vite's preload helper
 const astro = path.join(DIST, '_astro');
 const files = fs.readdirSync(astro).filter((f) => f.endsWith('.js'));
-const motionChunk = files.find((f) => /^motion\./.test(f) && /m\.f=\[[^\]]*"_astro\/text\./.test(fs.readFileSync(path.join(astro, f), 'utf8')));
+const motionChunk = files.find((f) => /^motion\./.test(f) && /m\.f=\[[^\]]*"_astro\/svg\./.test(fs.readFileSync(path.join(astro, f), 'utf8')));
 const deps = motionChunk ? [...fs.readFileSync(path.join(astro, motionChunk), 'utf8').match(/m\.f=\[([^\]]*)\]/)[1].matchAll(/"_astro\/([^"]+)"/g)].map((m) => m[1]) : [];
 const ANIME = new Set(deps.filter((f) => !/^preload-helper/.test(f)));
 const isAnime = (url) => ANIME.has(url.split('/').pop());
@@ -74,7 +74,7 @@ const rings = (page) => page.evaluate(() => document.getAnimations().filter((a) 
 
 // ---- 0. build: the import graph of the Stream page and chunk sizes
 if (want('graph')) {
-  check('build: motion chunk found and it lazy-loads the anime.js chunks (incl. text)', !!motionChunk && ANIME.size >= 4, `${motionChunk}: ${[...ANIME].join(' ')}`);
+  check('build: motion chunk found and it lazy-loads the anime.js chunks', !!motionChunk && ANIME.size >= 3, `${motionChunk}: ${[...ANIME].join(' ')}`);
   const html = fs.readFileSync(path.join(DIST, 'stream/index.html'), 'utf8');
   const entries = [...html.matchAll(/(?:component-url|renderer-url|src)="\/_astro\/([^"]+\.js)"/g)].map((m) => m[1]);
   const seen = new Set();
@@ -106,23 +106,25 @@ if (want('stream')) {
 
 // ---- #6 status dot ring
 if (want('ring')) {
-  const { page, anime, state, errs } = await mk();
+  const { page, anime, state, errs } = await mk({ deviceScaleFactor: 3 });
   await page.goto(BASE + '/machines'); await page.waitForSelector('.grid .dotw'); await sleep(900);
   check('ring: none on first paint', (await rings(page)).length === 0);
   check('ring: aria-hidden sibling, resting opacity 0', await page.evaluate(() => [...document.querySelectorAll('.halo')].length === 2 && [...document.querySelectorAll('.halo')].every((r) => r.getAttribute('aria-hidden') === 'true' && getComputedStyle(r).opacity === '0')));
-  state.host = { ...state.host, sunshine: 'busy' }; await poll(page); await sleep(120);
+  state.host = { ...state.host, sunshine: 'busy' }; await poll(page); await page.waitForFunction(() => document.querySelector('.grid .dot.busy') && document.querySelectorAll('.halo').length === 2 && document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).length === 2); await sleep(30);
   const r1 = await rings(page);
   check('ring: ready -> busy gives one ring on the pill and one on the card', r1.length === 2 && r1.some((r) => r.where === 'pill') && r1.some((r) => r.where === 'card'), JSON.stringify(r1));
   check('ring: scale + opacity only, 700 ms, no loop, --ease', r1.every((r) => r.props === 'opacity,scale' && r.dur === 700 && r.iter === 1 && /cubic-bezier/.test(r.ease)), JSON.stringify(r1[0]));
-  await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).forEach((a) => { a.pause(); a.currentTime = 280; }));
-  await shot(page, 'ring-mid-card', { x: 250, y: 60, width: 330, height: 60 });
-  await shot(page, 'ring-mid-pill', { x: 0, y: 820, width: 240, height: 80 });
+  for (const t of [80, 280]) {
+    await page.evaluate((t) => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).forEach((a) => { a.pause(); a.currentTime = t; }), t);
+    await shot(page, `ring-t${t}-card`, { x: 250, y: 60, width: 330, height: 60 });
+    await shot(page, `ring-t${t}-pill`, { x: 0, y: 820, width: 240, height: 80 });
+  }
   await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).forEach((a) => a.play()));
   await sleep(900);
   check('ring: gone after 700 ms, resting opacity 0 again, no inline style left', (await rings(page)).length === 0 && await page.evaluate(() => [...document.querySelectorAll('.halo')].every((r) => getComputedStyle(r).opacity === '0' && !r.getAttribute('style'))));
   await poll(page); await sleep(150);
   check('ring: same state polled again makes no ring', (await rings(page)).length === 0);
-  state.host = { ...state.host, sunshine: 'down' }; await poll(page); await sleep(100);
+  state.host = { ...state.host, sunshine: 'down' }; await poll(page); await page.waitForFunction(() => document.querySelector('.grid .dot.down') && document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).length === 2);
   check('ring: busy -> down rings again', (await rings(page)).length === 2);
   await sleep(900);
   check('ring: no anime.js needed (native animate)', anime.length === 0, anime.join());
@@ -135,7 +137,7 @@ if (want('ring')) {
   await page.context().close();
   const q = await mk({ reducedMotion: 'reduce' });
   await q.page.goto(BASE + '/machines'); await q.page.waitForSelector('.grid .dotw'); await sleep(700);
-  q.state.host = { ...q.state.host, sunshine: 'busy' }; await poll(q.page); await sleep(150);
+  q.state.host = { ...q.state.host, sunshine: 'busy' }; await poll(q.page); await q.page.waitForSelector('.grid .dot.busy'); await sleep(150);
   check('ring: reduced motion makes none; the dot state still changes', (await rings(q.page)).length === 0 && await q.page.evaluate(() => document.querySelector('.grid .dot').classList.contains('busy')));
   await q.page.context().close();
 }
@@ -209,18 +211,18 @@ if (want('split')) {
   await page.goto(BASE + '/library'); await page.waitForSelector('.hero h3 .split-fx', { timeout: 4000 });
   await sleep(100);
   const wa = await wordAnims(page);
-  check('split: one translate animation per word (2), 500 ms, 45 ms apart', wa.length === 2 && wa.every((a) => a.props === 'translate' && a.dur === 500) && wa[1].delay - wa[0].delay === 45, JSON.stringify(wa));
+  check('split: one translate animation per word (2), 500 ms, 45 ms apart, after a 120 ms beat', wa.length === 2 && wa.every((a) => a.props === 'translate' && a.dur === 500) && wa[0].delay === 120 && wa[1].delay - wa[0].delay === 45, JSON.stringify(wa));
   const mid = await page.evaluate(() => {
     const h = document.querySelector('.hero h3'), fx = h.querySelector('.split-fx'), real = h.firstElementChild;
     const r = h.getBoundingClientRect();
-    return { box: [r.width, r.height], fxHidden: fx.getAttribute('aria-hidden'), realOp: getComputedStyle(real).opacity, realVis: getComputedStyle(real).visibility, words: fx.querySelectorAll('[data-word]').length, clip: [...fx.children].every((c) => getComputedStyle(c).overflow.startsWith('clip')), text: h.textContent };
+    return { box: [r.width, r.height], fxHidden: fx.getAttribute('aria-hidden'), realOp: getComputedStyle(real).opacity, realVis: getComputedStyle(real).visibility, words: fx.querySelectorAll('.wi').length, clip: [...fx.children].every((c) => getComputedStyle(c).overflow.startsWith('clip')), text: h.textContent };
   });
   check('split: words are clipped by wrappers, copy is aria-hidden, the real text only fades (opacity, not visibility)', mid.words === 2 && mid.clip && mid.fxHidden === 'true' && mid.realOp === '0' && mid.realVis === 'visible', JSON.stringify(mid));
   const align = await page.evaluate(() => {
     const h = document.querySelector('.hero h3'), real = h.firstElementChild, rg = document.createRange();
     rg.selectNodeContents(real);
     const t = rg.getBoundingClientRect();
-    const w = [...h.querySelectorAll('.split-fx [data-word]')].map((x) => x.parentElement.getBoundingClientRect());
+    const w = [...h.querySelectorAll('.split-fx .wi')].map((x) => x.parentElement.getBoundingClientRect());
     return { dx: Math.abs(w[0].left - t.left), dr: Math.abs(w.at(-1).right - t.right), dh: Math.abs(w[0].bottom - t.bottom) };
   });
   check('split: the split copy lines up with the real text (it would otherwise jump when it ends)', align.dx < 1.5 && align.dr < 1.5, JSON.stringify(align));
@@ -230,7 +232,7 @@ if (want('split')) {
   const after = await page.evaluate(() => document.querySelector('.hero h3').outerHTML.replace(/ class="[^"]*"/g, ''));
   check('split: when it ends the heading is exactly the plain markup again (revert)', after === plain, after);
   check('split: no CLS from the title, no animation left, engine idle', (await page.evaluate(() => window.__cls)) < 0.001 && (await wordAnims(page)).length === 0 && (await rafIn(page, 800)) <= 2);
-  check('split: only the lazy text chunks were fetched (no animation/svg chunk)', anime.length > 0 && !anime.some((f) => /^(animation|svg|easings|scope)\./.test(f)), anime.join());
+  check('split: no anime.js chunk at all (in-house splitter, native animate)', anime.length === 0, anime.join());
   // once per page mount: data refresh and a search that clears the hero do not replay it
   state.games = games.map((g) => (g.appid === 1000 ? { ...g, playtimeMin: 120 } : g));
   await page.evaluate(() => { window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); });
@@ -268,19 +270,21 @@ if (want('split')) {
   if (!A.equals(B)) { fs.writeFileSync(path.join(OUT, 'split-diff-copy.png'), A); fs.writeFileSync(path.join(OUT, 'split-diff-real.png'), B); }
   await g.ctx.close();
 
-  // frames at one tenth speed
+  // frames: no global playback rate. The words are paused and seeked (the hero's entrance has finished by the time the copy exists)
   const f = await mk({ deviceScaleFactor: 3 });
-  await f.page.goto(BASE + '/library'); await f.page.waitForSelector('.hero h3'); await sleep(2000);
-  await f.page.reload(); await f.page.waitForSelector('.hero h3');
-  const cdp = await f.ctx.newCDPSession(f.page);
-  await cdp.send('Animation.enable'); await cdp.send('Animation.setPlaybackRate', { playbackRate: 0.1 });
-  await f.page.waitForSelector('.hero h3 .split-fx', { timeout: 4000 }).catch(() => {});
+  await f.page.goto(BASE + '/library'); await f.page.waitForSelector('.hero h3 .split-fx', { timeout: 5000 });
+  const heroOp = await f.page.evaluate(() => getComputedStyle(document.querySelector('.hero')).opacity);
+  check('split: the words start only after the hero has finished fading in', +heroOp > 0.99, heroOp);
+  await f.page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.split-fx')).forEach((a) => a.pause()));
   const b = await f.page.locator('.hero .txt').boundingBox();
   const clip = { x: b.x - 6, y: b.y - 6, width: Math.min(b.width, 520) + 12, height: b.height + 12 };
-  await shot(f.page, 'split-1', clip);
-  await sleep(1500); await shot(f.page, 'split-2', clip);
-  await sleep(1800); await shot(f.page, 'split-3', clip);
-  await sleep(3500); await shot(f.page, 'split-end', clip);
+  for (const t of [0, 200, 330, 470]) {
+    await f.page.evaluate((t) => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.split-fx')).forEach((a) => (a.currentTime = t)), t);
+    await sleep(60);
+    await shot(f.page, `split-t${t}`, clip);
+  }
+  await f.ctx.close();
+
   await f.ctx.close();
 }
 
@@ -382,7 +386,7 @@ if (want('reduce')) {
   check('reduced: busy play icon is the static ring at once, nothing animating on it, no chunk', (await heroPath(page)) === RING && (await svgAnims(page)).length === 0 && anime.length === 0);
   release();
   await page.waitForFunction((t) => document.querySelector('.hero .btn svg path').getAttribute('d') === t, TRI, { timeout: 3000 });
-  check('reduced: back to the triangle at once', true);
+  check('reduced: back to the triangle at once, still nothing animating', (await heroPath(page)) === TRI && (await svgAnims(page)).length === 0);
   check('no errors', errs.length === 0, errs.join('|'));
   await ctx.close();
 }
@@ -393,7 +397,7 @@ if (want('fail')) {
   await page.addInitScript(unh);
   await page.goto(BASE + '/library'); await page.waitForSelector('.hero h3'); await sleep(1500);
   const h = await page.evaluate(() => ({ html: document.querySelector('.hero h3').outerHTML.replace(/ class="[^"]*"/g, ''), op: getComputedStyle(document.querySelector('.hero h3 span')).opacity }));
-  check('fail: chunk aborted, the hero title is plain and visible (no copy, no hidden text)', anime.length > 0 && h.html === '<h3><span>Portal 2</span></h3>' && h.op === '1', JSON.stringify([anime.length, h]));
+  check('fail: with every anime chunk aborted the hero title still rises and ends plain and visible (no copy, no hidden text)', h.html === '<h3><span>Portal 2</span></h3>' && h.op === '1', JSON.stringify([anime.length, h]));
   let release; const st = await mk({ block: true }); // (the play swap and ring use no library; still fine with every chunk blocked)
   await st.page.goto(BASE + '/library'); await st.page.waitForSelector('.hero .btn svg path'); await sleep(800);
   st.state.hold = new Promise((r) => (release = r)); st.state.startStatus = 500;
@@ -440,7 +444,7 @@ if (want('path')) {
   await sleep(100);
   check('path: tab visible again -> running', (await pkts(page))[0]?.state === 'running');
   // relay
-  state.host = { ...state.host, path: 'relay', relay: 'ams-1' }; await poll(page); await sleep(300);
+  state.host = { ...state.host, path: 'relay', relay: 'ams-1' }; await poll(page); await page.waitForSelector('.cp.relay'); await sleep(100);
   const r = await cpInfo(page), pr = await pkts(page);
   check('path: relay = dashed line through a relay node, amber dot, slower (3.2 s), still ONE animation', r.cls.includes('relay') && r.lineStyle === 'dashed' && r.rnode && pr.length === 1 && pr[0].dur === 3200 && pr[0].inf && r.dot !== d.dot, JSON.stringify([r, pr]));
   check('path: relay words on the card (Relay · ams-1)', await page.evaluate(() => [...document.querySelectorAll('dt')].some((t) => t.textContent === 'Network' && t.nextElementSibling.textContent === 'Relay · ams-1')));
@@ -451,12 +455,12 @@ if (want('path')) {
     await shot(page, `path-relay-${n}-t${t}`, await page.locator('.cp').boundingBox().then((b) => ({ x: b.x - 6, y: b.y - 6, width: b.width + 12, height: b.height + 12 })));
   }
   // unknown path: static, dot hidden
-  state.host = { ...state.host, path: null, relay: null }; await poll(page); await sleep(300);
+  state.host = { ...state.host, path: null, relay: null }; await poll(page); await page.waitForSelector('.cp.none'); await sleep(100);
   const n = await cpInfo(page);
   check('path: null path = dim dashed line, no dot, no animation, same size', n.cls.includes('none') && n.dotOpacity === '0' && (await pkts(page)).length === 0 && n.box[1] === d.box[1] && n.box[2] === d.box[2], JSON.stringify(n));
   await shot(page, 'path-none', await page.locator('.cp').boundingBox().then((b) => ({ x: b.x - 6, y: b.y - 6, width: b.width + 12, height: b.height + 12 })));
   // trace: the dot is compositor-driven
-  state.host = { ...state.host, path: 'direct' }; await poll(page); await sleep(500);
+  state.host = { ...state.host, path: 'direct' }; await poll(page); await page.waitForSelector('.cp.direct'); await sleep(500);
   const done = await new Promise((res) => {
     let chunks = '';
     cdp.on('Tracing.tracingComplete', async ({ stream }) => { for (;;) { const rd = await cdp.send('IO.read', { handle: stream }); chunks += rd.data; if (rd.eof) break; } res(JSON.parse(chunks)); });

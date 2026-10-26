@@ -16,17 +16,6 @@ vi.mock('animejs/animation', () => ({
   },
 }));
 vi.mock('animejs/svg', () => ({ createDrawable: (el: unknown) => [el] }));
-const splits: any[] = [];
-vi.mock('animejs/text', () => ({
-  splitText: (el: any, p: any) => {
-    const s = { el, p, reverted: false, words: [mkWord(), mkWord()], revert() { s.reverted = true; } };
-    splits.push(s);
-    return s;
-  },
-}));
-function mkWord() {
-  return { animate: vi.fn(() => ({ cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } })) } as any;
-}
 vi.mock('animejs/easings', () => ({ cubicBezier: (...p: number[]) => Object.assign((t: number) => t, { p }) }));
 vi.mock('animejs/scope', () => ({
   createScope: () => {
@@ -43,7 +32,9 @@ const docListeners: [string, () => void][] = [];
 const vars: Record<string, string> = { '--ease': 'cubic-bezier(.2, .8, .2, 1)', '--dur-count': '600ms', '--spring-snappy-dur': '700ms', '--spring-snappy': 'linear(0, 1)' };
 vi.stubGlobal('location', { get pathname() { return path; } });
 vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f), removeEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.splice(mqListeners.indexOf(f), 1) }));
-vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl() });
+vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl(), createTextNode: (text: string) => ({ text }) });
+vi.stubGlobal('requestAnimationFrame', (f: () => void) => setTimeout(f, 0));
+vi.stubGlobal('CSSAnimation', class {});
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (n: string) => vars[n] ?? '' }));
 vi.stubGlobal('window', globalThis);
 
@@ -56,7 +47,7 @@ function el() {
 }
 const fmt = (v: number) => `${Math.round(v)} °C`;
 
-beforeEach(() => ((path = '/'), (reduce = false), (anims.length = 0), (scopes.length = 0), (splits.length = 0)));
+beforeEach(() => ((path = '/'), (reduce = false), (anims.length = 0), (scopes.length = 0)));
 afterEach(() => vi.unstubAllEnvs());
 
 describe('guards', () => {
@@ -420,11 +411,11 @@ describe('glideSwap', () => {
 });
 
 describe('ringPulse', () => {
-  it('one native ring, scale 1 -> 2.2 and opacity .5 -> 0 over 700 ms', () => {
+  it('one native ring, scale 1.3 -> 2.4 and opacity .6 -> 0 over 700 ms', () => {
     const e = el();
     expect(m.ringPulse(e)).not.toBeNull();
     const [kf, opt] = e.animate.mock.calls[0];
-    expect(kf).toEqual([{ scale: 1, opacity: 0.5 }, { scale: 2.2, opacity: 0 }]);
+    expect(kf).toEqual([{ scale: 1.3, opacity: 0.6 }, { scale: 2.4, opacity: 0 }]);
     expect(opt).toMatchObject({ duration: 700 });
     expect(opt.iterations).toBeUndefined(); // no loop
   });
@@ -517,55 +508,108 @@ describe('swapIcon (play <-> spinner)', () => {
     mqListeners.forEach((f) => f({ matches: true }));
     expect(t.anims[0].cancelled).toBe(true);
   });
+  it('on /stream it is quiet (no throw in dev): the end state at once, no animation', () => {
+    path = '/stream';
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    expect(() => ic.to(true)).not.toThrow();
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    expect(s.animate).not.toHaveBeenCalled();
+  });
 });
 
 function fakeEl() {
-  const e: any = { attrs: {} as Record<string, string>, removed: false, className: '', textContent: '', setAttribute(k: string, v: string) { e.attrs[k] = v; }, remove() { e.removed = true; } };
+  const e: any = {
+    children: [] as any[], attrs: {} as Record<string, string>, removed: false, className: '', textContent: '',
+    setAttribute(k: string, v: string) { e.attrs[k] = v; },
+    append(...x: any[]) { e.children.push(...x); },
+    remove() { e.removed = true; },
+    animate: vi.fn(() => ({ cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } })),
+  };
   return e;
 }
-function titleEl() {
-  const real: any = { textContent: 'Portal 2', style: { opacity: '', removeProperty: vi.fn(() => (real.style.opacity = '')) }, getAttribute: () => '', removeAttribute: vi.fn() };
-  const h: any = { real, firstElementChild: real, appended: [] as any[], append: (x: any) => h.appended.push(x) };
+const frames = async (n = 4) => { for (let i = 0; i < n; i++) await flush(); };
+/** A hero heading: `entrance` = the hero's CSS animations (their `finished` promises). */
+function titleEl(text = 'Portal 2', entrance: Promise<unknown>[] = []) {
+  const real: any = { textContent: text, style: { opacity: '', removeProperty: vi.fn(() => (real.style.opacity = '')) }, getAttribute: () => '', removeAttribute: vi.fn() };
+  const hero: any = { hasAttribute: () => true, getAnimations: () => entrance.map((finished) => Object.assign(new (globalThis as any).CSSAnimation(), { finished })) };
+  const h: any = { real, firstElementChild: real, appended: [] as any[], append: (x: any) => h.appended.push(x), closest: () => hero };
   return h;
 }
+const wordsOf = (fx: any) => fx.children.filter((c: any) => c.className === 'w').map((w: any) => w.children[0]);
+const plain = (fx: any) => fx.children.map((c: any) => (c.className === 'w' ? c.children[0].textContent : c.text)).join('');
+
+describe('splitWords', () => {
+  it('words in clip wrappers, spaces as plain text, punctuation glued to its word; text only', () => {
+    const fx = fakeEl();
+    const w = m.splitWords('Half-Life: Alyx, 2', fx);
+    expect(w.map((x) => x.textContent)).toEqual(['Half-', 'Life:', 'Alyx,', '2']);
+    expect(plain(fx)).toBe('Half-Life: Alyx, 2'); // nothing lost, nothing added
+    expect(fx.children.filter((c: any) => c.className === 'w').every((c: any) => c.children[0].className === 'wi')).toBe(true);
+  });
+  it('CJK, emoji and a name with markup characters survive as text (no HTML interpretation)', () => {
+    for (const t of ['ポータル２ 最終章', 'Doom 🔥🔥 Eternal', '<img src=x onerror=alert(1)> & "quotes"', '']) {
+      const fx = fakeEl();
+      m.splitWords(t, fx);
+      expect(plain(fx)).toBe(t);
+    }
+    const fx = fakeEl();
+    expect(m.splitWords('🔥 a', fx).length).toBeGreaterThanOrEqual(2); // the emoji is a word of its own, so it rises too
+  });
+});
 
 describe('splitIn (hero title)', () => {
-  it('changes nothing until the chunk lands, then words rise out of clip masks over a copy, and the copy goes when the last lands', async () => {
-    const h = titleEl();
+  it('hides the real text at once; words rise only after the hero entrance has finished, then the copy goes', async () => {
+    let end!: () => void;
+    const h = titleEl('Portal 2', [new Promise<void>((r) => (end = r))]);
     const off = m.splitIn(h)!;
-    expect(h.appended).toHaveLength(0);
-    expect(h.real.style.opacity).toBe('');
-    await flush();
+    expect(h.real.style.opacity).toBe('0');
+    await frames();
+    expect(h.appended).toHaveLength(0); // the hero is still entering
+    end();
+    await frames();
     const fx = h.appended[0];
     expect(fx.attrs['aria-hidden']).toBe('true'); // the real text node stays the one for screen readers
-    expect(fx.textContent).toBe('Portal 2');
-    expect(splits[0].p).toEqual({ words: { wrap: 'clip' }, accessible: false });
-    expect(h.real.style.opacity).toBe('0'); // opacity, not visibility: it stays in the accessibility tree
-    const [a, b] = splits[0].words;
+    expect(fx.className).toBe('split-fx');
+    expect(plain(fx)).toBe('Portal 2');
+    const [a, b] = wordsOf(fx);
     expect(a.animate.mock.calls[0][0]).toEqual({ translate: ['0 100%', '0 0'] });
-    expect(a.animate.mock.calls[0][1]).toMatchObject({ duration: 500, delay: 60, fill: 'backwards' });
-    expect(b.animate.mock.calls[0][1].delay).toBe(105); // 45 ms apart
-    const last = b.animate.mock.results[0].value;
-    last.onfinish();
+    expect(a.animate.mock.calls[0][1]).toMatchObject({ duration: 500, delay: 120, fill: 'backwards' });
+    expect(b.animate.mock.calls[0][1].delay).toBe(165); // 45 ms apart
+    b.animate.mock.results[0].value.onfinish();
     expect(fx.removed).toBe(true);
-    expect(splits[0].reverted).toBe(true);
     expect(h.real.style.opacity).toBe('');
     expect(h.real.removeAttribute).toHaveBeenCalledWith('style'); // no empty style attribute left
     off();
+    expect(h.real.removeAttribute).toHaveBeenCalledTimes(1); // clean runs once
   });
-  it('destroy before the chunk lands never touches the DOM; destroy mid-way cancels and restores', async () => {
+  it('a hero with no entrance left starts at once; two lines of words and a name change mid-way end on the real text', async () => {
+    const h = titleEl('A very long game name that wraps onto a second line');
+    m.splitIn(h);
+    await frames();
+    const fx = h.appended[0];
+    const w = wordsOf(fx);
+    expect(w.length).toBe(11);
+    expect(w[10].animate.mock.calls[0][1].delay).toBe(120 + 10 * 45);
+    h.real.textContent = 'Another name'; // Svelte updated the real node while the copy plays
+    w[10].animate.mock.results[0].value.onfinish();
+    expect(fx.removed).toBe(true);
+    expect(h.real.textContent).toBe('Another name');
+    expect(h.real.style.opacity).toBe('');
+  });
+  it('destroy before it starts or mid-way leaves the plain text and cancels everything', async () => {
     const h = titleEl();
     m.splitIn(h)!();
-    await flush();
+    await frames();
     expect(h.appended).toHaveLength(0);
-    expect(splits).toHaveLength(0);
+    expect(h.real.style.opacity).toBe('');
     const g = titleEl();
     const off = m.splitIn(g)!;
-    await flush();
+    await frames();
     off();
-    expect(splits[0].words.every((w: any) => w.animate.mock.results[0].value.cancelled)).toBe(true);
+    expect(wordsOf(g.appended[0]).every((w: any) => w.animate.mock.results[0].value.cancelled)).toBe(true);
     expect(g.appended[0].removed).toBe(true);
-    expect(splits[0].reverted).toBe(true);
     expect(g.real.style.opacity).toBe('');
   });
   it('reduced motion and an empty heading do nothing; switching to reduced motion mid-way ends it', async () => {
@@ -575,9 +619,10 @@ describe('splitIn (hero title)', () => {
     expect(m.splitIn({ firstElementChild: null } as any)).toBeUndefined();
     const h = titleEl();
     m.splitIn(h);
-    await flush();
-    mqListeners.forEach((f) => f({ matches: true }));
+    await frames();
+    [...mqListeners].forEach((f) => f({ matches: true }));
     expect(h.appended[0].removed).toBe(true);
     expect(h.real.style.opacity).toBe('');
   });
 });
+

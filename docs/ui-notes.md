@@ -66,7 +66,7 @@
 - Motion pass 2A (research/anime-feature-map.md #6 #5 #11 #15 #12; check: `node web/scripts/motion2a-check.mjs [graph stream ring
   morph split chips reduce fail path]`, port 4480, screenshots to `$OUT`; unit tests in `motion.test.ts` / `motion.fail.test.ts`):
   - Status-dot ring (`ui/StatusDot.svelte`, `ringPulse` in motion-base): host pill and Machines dot. When the state changes
-    (ready / busy / down) one aria-hidden sibling span `.halo` scales 1 -> 2.2 and fades .5 -> 0 over 700 ms (native
+    (ready / busy / down) one aria-hidden sibling span `.halo` scales 1.3 -> 2.4 and fades .6 -> 0 over 700 ms (native
     `Element.animate`, `--ease`, no loop). Not on first paint (an `off` before the first real state is "still loading"), not on
     reduced motion, and not on /stream even though the pill is mounted there (silent no-op, no timers, no library).
   - Play -> spinner (`PlayIcon.svelte`, `swapIcon`): the play icon of Hero, game card and Resume card turns out (-90 deg, fade),
@@ -75,19 +75,19 @@
     first frames (the pair has no matching structure), so it is a native swap (180 ms in two halves, nothing loaded, so no chunk
     to fail). Mute and chevrons were not done: the only mute toggle is the ghost bar's (/stream), and the chevrons never toggle.
     `Icon.svelte` itself is unchanged and `motion.ts` is not in the Stream chunk (38627 B before and after).
-  - Hero title (`splitIn`, lazy `animejs/text`, ~4.6 kB gzip, 10.1 kB with the helper chunks it shares with the animation chunk):
+  - Hero title (`splitIn` + `splitWords` in motion.ts, no library: anime's `splitText` cost 10.1 kB gzip plus a ResizeObserver and a 150 ms timer, so an in-house `Intl.Segmenter` splitter replaced it; createElement/textContent only, never innerHTML):
     `<h3 {@attach titleIn}><span>{game.name}</span></h3>`. The split words are a COPY (`.split-fx`, aria-hidden) laid over the
     real text, which only fades (opacity, so it stays in the accessibility tree) and keeps the layout; the words rise out of
-    clip masks (`translate` 100% -> 0, 500 ms, 45 ms apart, native). The copy is removed at the end (`revert()`), leaving the
+    clip masks (`translate` 100% -> 0, 500 ms, 45 ms apart, native), starting 120 ms after the hero's own entrance animation has finished (the real title is hidden meanwhile). The copy is removed at the end, leaving the
     exact original markup. Once per Library mount (`titled` flag in Library: a refresh or a search that re-mounts the hero does
     not replay it). The game name is the hero title; the "Continue where you left off" line above it is a small label and stays.
   - Drift result (`popIn`, `countUp`): after "Check drift" the Verdict chips pop in 60 ms apart (opacity + translate + scale,
-    native) and Offset / Min deadzone count up from 0 (`tweenNumber`, `--dur-count`). Only the result table: the stick dots,
+    native) and Offset, Noise and Min deadzone count up from 0 (`tweenNumber`, `--dur-count`). Only the result table: the stick dots,
     numbers, bars and mapping rows stay raw. A second run re-animates (the table is gone while it measures).
   - Connection path (`ConnPath.svelte`, `travel` in motion.ts): bawn -> laptop lane on the Machines card. Direct: solid line,
     steady dot (1.6 s); relay: dashed line through a relay node, amber, 3.2 s; unknown path: dim dashed line, no dot. The dot is
     ONE infinite native `translate` animation (percent of its own width: nothing measured), paused while the tab is hidden,
-    cancelled on destroy and when reduced motion switches on; Chrome trace: never `compositeFailed`. aria-hidden; the Network
+    cancelled on destroy and when reduced motion switches on (it does not restart when reduced motion is switched off live, nor does the spinner); Chrome trace: never `compositeFailed`. aria-hidden; the Network
     row beside it carries the words. (`GET /api/host` has no RTT, so no "2 ms" text.)
   - Rule reminder for new motion: motion-base stays library-free (the Shell imports it: every byte is on /stream), a lazy
     helper's chunk failing must end in the end state, and a name you add (`.halo`) must not collide with a selector another
