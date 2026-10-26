@@ -14,7 +14,7 @@
     <div class="lab">Continue where you left off</div>
     <h3>{game.name}</h3>
     <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total</div>
-    <button class="btn" disabled={busy} onclick={() => onpick(game)}><Icon name="play" size={14} /> {busy ? 'Starting…' : 'Resume'}</button>
+    <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><Icon name="play" size={14} /> {busy ? 'Starting…' : 'Resume'}</button>
   </div>
 </div>
 

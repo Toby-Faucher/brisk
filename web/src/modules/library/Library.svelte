@@ -9,35 +9,48 @@
   import Icon from '../../ui/Icon.svelte';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
-  import { filterGames, searchGames, shelves, type Filter } from './library';
+  import { cardClick, filterGames, searchGames, shelves, type Filter } from './library';
 
   const FILTERS: [Filter, string][] = [['all', 'All'], ['installed', 'Installed'], ['not-installed', 'Not installed'], ['recent', 'Recent']];
   let q = $state('');
   let f = $state<Filter>('all');
   let busy = $state<number | null>(null);
+  let selected = $state<number | null>(null); // the not-installed card showing its Install button
 
   const s = $derived(shelves(searchGames(filterGames($games?.games ?? [], f), q)));
   const hero = $derived(q.trim() ? null : s.hero);
 
   onMount(() => watchGames());
 
-  async function pick(g: Game) {
+  async function run(g: Game, verb: string, task: () => Promise<unknown>) {
     if (busy != null) return;
     busy = g.appid;
     try {
-      if (g.installed) {
-        await api.startStream({ preset: get(settings).defaultPreset, appid: g.appid });
-        await navigate('/stream');
-      } else {
-        await api.install(g.appid);
-        toast(`Installing ${g.name}. Steam will show progress`);
-      }
+      await task();
     } catch (e) {
-      toast(`Could not ${g.installed ? 'start' : 'install'} ${g.name}: ${(e as Error).message}`, { error: true });
+      toast(`Could not ${verb} ${g.name}: ${(e as Error).message}`, { error: true });
     } finally {
       busy = null;
     }
   }
+
+  function pick(g: Game) {
+    const c = cardClick(g, selected);
+    selected = c.selected;
+    if (c.action === 'play')
+      void run(g, 'start', async () => {
+        await api.startStream({ preset: get(settings).defaultPreset, appid: g.appid });
+        await navigate('/stream');
+      });
+  }
+
+  const install = (g: Game) =>
+    run(g, 'install', async () => {
+      await api.install(g.appid);
+      selected = null;
+      toast(`Installing ${g.name}. Steam will show progress`);
+      void refreshGames();
+    });
 </script>
 
 <div class="top">
@@ -67,8 +80,8 @@
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
     {#if hero}<Hero game={hero} busy={busy === hero.appid} onpick={pick} />{/if}
-    {#if s.installed.length}<Shelf title="Installed" games={s.installed} {busy} onpick={pick} />{/if}
-    {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} {busy} onpick={pick} />{/if}
+    {#if s.installed.length}<Shelf title="Installed" games={s.installed} {busy} {selected} onpick={pick} oninstall={install} />{/if}
+    {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
       <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p></div>
     {/if}

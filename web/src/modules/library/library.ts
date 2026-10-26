@@ -42,3 +42,19 @@ export function visibleRange(scrollLeft: number, width: number, stride: number, 
   const end = Math.min(total, Math.ceil((scrollLeft + width) / stride) + OVERSCAN, start + MAX_MOUNTED);
   return { start, end };
 }
+
+export const fmtSize = (b: number | null) => (b ? `${(b / 1e9).toFixed(b < 1e10 ? 1 : 0)} GB` : null);
+export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
+
+/** Installed cards play on one click; a not-installed card only toggles its Install button, it never installs by itself. */
+export function cardClick(g: Game, selected: number | null): { action: 'play' | 'select'; selected: number | null } {
+  if (g.installed) return { action: 'play', selected: null };
+  return { action: 'select', selected: selected === g.appid ? null : g.appid };
+}
+
+/** Pixels to scroll a shelf sideways for a vertical wheel, or null to leave the event to the page (shelf at that edge, or nothing to scroll). */
+export function wheelToX(dx: number, dy: number, scrollLeft: number, clientWidth: number, scrollWidth: number): number | null {
+  if (Math.abs(dy) <= Math.abs(dx)) return null;
+  if (dy < 0 ? scrollLeft <= 0 : scrollLeft + clientWidth >= scrollWidth - 1) return null;
+  return dy;
+}

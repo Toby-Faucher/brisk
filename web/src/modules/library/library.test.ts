@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { filterGames, searchGames, shelves, visibleRange } from './library';
+import { cardClick, filterGames, installLabel, searchGames, shelves, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', ...o });
@@ -62,5 +62,28 @@ describe('library', () => {
     expect(visibleRange(0, 1000, stride, 3)).toEqual({ start: 0, end: 3 });
     // a very wide window still caps the mounted cards
     expect(visibleRange(0, 10_000, stride, 139).end).toBe(20);
+  });
+
+  it('not_installed_click_selects_and_never_installs', () => {
+    const off = g(1, 'Rust', { sizeBytes: 12.4e9 });
+    const on = g(2, 'Hades II', { installed: true });
+    expect(cardClick(off, null)).toEqual({ action: 'select', selected: 1 });
+    expect(cardClick(off, 1)).toEqual({ action: 'select', selected: null }); // second click collapses
+    expect(cardClick(g(3, 'x'), 1)).toEqual({ action: 'select', selected: 3 }); // moves the selection
+    expect(cardClick(on, 1)).toEqual({ action: 'play', selected: null }); // installed stays one click
+    expect(installLabel(off)).toBe('Install 12 GB');
+    expect(installLabel(g(4, 'y', { sizeBytes: 3.21e9 }))).toBe('Install 3.2 GB');
+    expect(installLabel(g(5, 'z'))).toBe('Install');
+  });
+
+  it('wheel_maps_to_shelf_only_when_it_can_scroll', () => {
+    // vertical wheel over a shelf with room to move: scroll it sideways
+    expect(wheelToX(0, 100, 0, 1000, 3000)).toBe(100);
+    expect(wheelToX(0, -100, 500, 1000, 3000)).toBe(-100);
+    // at an edge, or a shelf that fits, or a mostly horizontal gesture: leave it to the page/browser
+    expect(wheelToX(0, -100, 0, 1000, 3000)).toBeNull();
+    expect(wheelToX(0, 100, 2000, 1000, 3000)).toBeNull();
+    expect(wheelToX(0, 100, 0, 1000, 1000)).toBeNull();
+    expect(wheelToX(80, 10, 0, 1000, 3000)).toBeNull();
   });
 });
