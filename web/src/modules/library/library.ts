@@ -14,7 +14,7 @@ export function filterGames(games: Game[], f: Filter, now = Date.now()): Game[] 
 }
 
 /** Lowercase, accents dropped, punctuation as single spaces: "Pokémon: Legends" -> "pokemon legends". */
-const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 /** Matches on a word start rank before plain substrings; ties (and an empty query) go most played first. */
 export function searchGames(games: Game[], q: string): Game[] {

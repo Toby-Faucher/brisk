@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionRec, SessionStats } from '../../state/api';
-import { chartRows, fmtClock, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows, summarize } from './history';
+import { chartRows, fmtClock, fmtWhen, filterSessions, listState, qualityLabel, sessionParam, sparkPath, statRows, summarize } from './history';
+
+describe('filterSessions', () => {
+  const l = [{ name: 'Pokémon Legends' }, { name: 'Hades II' }, { name: 'Celeste' }];
+  it('matches_names_case_and_accent_insensitively', () => {
+    expect(filterSessions(l, 'POKEMON')).toEqual([l[0]]);
+    expect(filterSessions(l, ' hades ')).toEqual([l[1]]);
+    expect(filterSessions(l, 'zzz')).toEqual([]);
+  });
+  it('keeps_everything_for_a_blank_query', () => {
+    expect(filterSessions(l, '')).toBe(l);
+    expect(filterSessions(l, '  ')).toBe(l);
+  });
+});
 
 const rec = (o: Partial<SessionRec> = {}): SessionRec => ({
   appid: 10,

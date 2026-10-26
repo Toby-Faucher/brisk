@@ -10,16 +10,18 @@
   import Tip from '../../ui/Tip.svelte';
   import { morph, skipMorph } from '../../ui/motion';
   import { DASH, fmtDuration } from '../home/home';
-  import { chartRows, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows } from './history';
+  import { chartRows, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows, filterSessions } from './history';
 
   type Detail = { session: SessionRec; series: SeriesPoint[] };
 
   let list = $state<(SessionRec & { spark?: number[] })[] | null>(null);
   let failed = $state(false);
+  let q = $state('');
   let swapped = $state(false); // list/detail swap fades only after a user action (first load: page-in)
   let selected = $state<number | null>(null);
   let details = $state<Record<number, Detail | 'none'>>({});
   const shown = $derived(listState(list, failed));
+  const visible = $derived(filterSessions(list ?? [], q));
   const detail = $derived(selected === null ? undefined : details[selected]); // only read while a session is selected
   const bad = new SvelteSet<string>(); // cover URLs that failed to load: the placeholder shows, in the list and the header
   const cover = (appid: number | null) => {
@@ -69,10 +71,8 @@
     swap(id);
   }
 
-  onMount(() => {
-    const unwatch = watchGames();
-    selected = sessionParam(location.search);
-    if (selected !== null) load(selected);
+  function fetchSessions() {
+    failed = false;
     api.sessions().then(
       (r) => {
         list = r.sessions;
@@ -80,10 +80,17 @@
       },
       () => (failed = true),
     );
-    // Back/forward between History's own entries is ours. They all carry the router's state, so it would refetch and
-    // swap the whole page for each (no morph, focus lost). Its preparation event is the hook it offers: a loader that
-    // never settles leaves that navigation pending (the next router navigation aborts it). Its popstate listener runs
-    // before ours (registered first), so this is set in time.
+  }
+
+  onMount(() => {
+    const unwatch = watchGames();
+    selected = sessionParam(location.search);
+    if (selected !== null) load(selected);
+    fetchSessions();
+    // Back/forward between History's own entries is ours. They all carry the router's state, so the router would
+    // fetch and swap the whole page for each (no morph, focus lost). Its preparation event is the hook it offers: a
+    // loader that never settles leaves that navigation pending (the next router navigation aborts it). The router's
+    // popstate listener was registered first, so it runs (and fires the event) before our `pop` does.
     const here = location.pathname;
     const keep = (e: TransitionBeforePreparationEvent) => e.navigationType === 'traverse' && e.to.pathname === here && (e.loader = () => new Promise<void>(() => {}));
     const pop = () => location.pathname === here && swap(sessionParam(location.search));
@@ -105,7 +112,7 @@
     {#if c}<img class="hcover" data-cover={selected} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="hcover" data-cover={selected}></div>{/if}
     <div class="dt">
       <div class="dn">
-        <h2 id="session-title" tabindex="-1">{s?.name ?? 'Session'}</h2>
+        <h2 id="session-title" tabindex="-1">{s?.name ?? (detail === 'none' ? 'Session' : 'Loading…')}</h2>
         {#if s?.stats?.gate}<!-- svelte-ignore a11y_no_noninteractive_tabindex (focusable so keyboard users get its Tip too) -->
         <span class="gate {s.stats.gate}" role="note" tabindex="0">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span><Tip label="M2 gate: bridge write p50 within 2 ms of the host's own" placement="bottom" />{/if}
       </div>
@@ -140,10 +147,14 @@
   </div>
 {:else}
   <div class:swap-in={swapped}>
-  <div class="top reveal"><h2>History</h2>{#if list?.length}<span class="lab">{list.length} sessions</span>{/if}</div>
+  <div class="top reveal"><h2>History</h2>{#if list?.length}<span class="lab">{list.length} sessions</span>
+    <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} onkeydown={(e) => e.key === 'Escape' && q && (e.preventDefault(), (q = ''))} placeholder="Search sessions" aria-label="Search sessions" /></label>{/if}</div>
   {#if shown === 'list'}
+    {#if !visible.length}
+      <div class="empty"><b>Nothing here</b><p class="lab">No session matches “{q.trim()}”.</p></div>
+    {/if}
     <div class="grid">
-      {#each list ?? [] as s (s.started)}
+      {#each visible as s (s.started)}
         {@const path = sparkPath(s.spark ?? [], 120, 28)}
         {@const c = cover(s.appid)}
         <Card cols={1}>
@@ -165,6 +176,7 @@
       <div class="lab">
         {shown === 'empty' ? 'No streams yet. Play something and it shows up here.' : shown === 'error' ? 'History is not available here. Brisk could not reach the host agent.' : 'Loading…'}
       </div>
+      {#if shown === 'error'}<button class="btn ghost" onclick={fetchSessions}>Try again</button>{/if}
     </Card>
   {/if}
   </div>
@@ -182,6 +194,10 @@
   .dt { min-width: 0; }
   .dn { display: flex; align-items: center; gap: 12px; }
   h2:focus { outline: none; } /* focused by script on open (where a keyboard user lands); not a control */
+  .search { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); min-width: 210px; }
+  .search:focus-within { border-color: #3a4152; }
+  .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; }
+  .empty { padding: 28px 2px; }
   .pad { padding: 16px 2px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding-top: 16px; }
   .fill { position: absolute; inset: 0; z-index: 1; }
