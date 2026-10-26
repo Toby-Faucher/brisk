@@ -113,8 +113,10 @@
   without and 200 with the secret over https, the certificate age and the Sunshine drop-in/binary/state.
   Tests: scripts/test-brisk-service.sh (all stubs).
 - Under systemd (`INVOCATION_ID` set) hostd's startup line is `page<TAB>http://localhost:8443/ (link:
-  scripts/brisk-service.sh link)`, without the secret, so the journal never holds it; `logs` also masks
-  any `?s=`/`&s=` value. brisk-up and manual runs still print the full link. brisk-up/brisk-down refuse
+  scripts/brisk-service.sh link)`, without the secret, so the journal never holds it. The bridge's
+  `page` line (its wt URL carries the session token, which grants stream and input) and any other bridge
+  line with `wt=` or the token are re-printed as `bridge<TAB>page <redacted>` (hostd still parses them for
+  GET/POST /api/stream). `logs` also masks any `?s=`/`&s=` and `?wt=`/`&wt=` value. brisk-up and manual runs still print the full link. brisk-up/brisk-down refuse
   while the unit is active or enabled.
 - A restart of the service ends hostd's `wl-copy`, so a clipboard set from the laptop is gone from bawn's
   clipboard after an update or restart.

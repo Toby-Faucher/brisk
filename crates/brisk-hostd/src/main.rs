@@ -42,10 +42,7 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    println!(
-        "{}",
-        page_line(&cfg.secret, std::env::var_os("INVOCATION_ID").is_some())
-    );
+    println!("{}", page_line(&cfg.secret, cfg.service));
     let state = Arc::new(AppState::new(cfg));
     state.hosts.refresh().await;
     state.clip.start_watch();

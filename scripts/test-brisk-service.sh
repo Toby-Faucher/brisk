@@ -46,7 +46,7 @@ sed -e 's#127.0.0.1:8443#127.0.0.1:9999#' -e 's#127.0.0.1:8481#127.0.0.1:8443#' 
 stub loginctl 'echo "Linger=${LINGER:-yes}"'
 # like `ss -Hltn sport = :8443`: only the :8443 listeners of SS_ADDR
 stub ss 'for a in ${SS_ADDR:-127.0.0.1:8443}; do case $a in *:8443) echo "LISTEN 0 1024 $a 0.0.0.0:*";; esac; done'
-stub journalctl 'echo "page	http://localhost:8443/?s=0123456789abcdef0123456789abcdef&x=1"'
+stub journalctl 'echo "page	http://localhost:8443/?s=0123456789abcdef0123456789abcdef&x=1"; echo "bridge	page	http://localhost:8443/?wt=https://100.64.0.9:4433/abcdef0123&hash=ab12"'
 stub curl 'a="$*"; case $a in
   *47989/serverinfo*) echo "<currentgame>${GAME:-0}</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>";;
   *api/stream*) echo "{\"state\":\"${STREAM:-idle}\"}";;
@@ -149,7 +149,8 @@ grep -q '0123456789abcdef0123' "$L" && fail "the secret appeared on a command li
 # link, logs, uninstall.
 "$B" link | grep -qx $'page\thttps://bawn.tail0.ts.net:8443/?s=0123456789abcdef0123456789abcdef' || fail "link"
 : > "$L"; out=$("$B" logs -f); grep -qx 'journalctl --user -u brisk-hostd.service --no-pager -f' "$L" || fail "logs"
-[ "$out" = $'page\thttp://localhost:8443/?s=<hidden>&x=1' ] || fail "logs did not hide the secret: $out"
+[ "$out" = $'page\thttp://localhost:8443/?s=<hidden>&x=1\nbridge\tpage\thttp://localhost:8443/?wt=<hidden>&hash=ab12' ] \
+  || fail "logs did not hide the secret and the session token: $out"
 : > "$L"; "$B" uninstall >/dev/null 2>&1 || fail "uninstall failed"
 [ -f "$U" ] && fail "unit left after uninstall"; grep -q 'disable --now brisk-hostd.service' "$L" || fail "not disabled"
 "$B" uninstall >/dev/null 2>&1 || fail "uninstall not idempotent"

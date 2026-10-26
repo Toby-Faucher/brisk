@@ -151,6 +151,8 @@ pub struct Supervisor {
     listen: Option<String>,
     app_id: u32,
     tls: PathBuf,
+    /// Service mode: bridge lines with the session token are not re-printed (see `bridge_line`).
+    pub quiet: bool,
     runner: Arc<dyn Runner>,
     pub sessions: Arc<Sessions>,
     shared: Arc<Mutex<Shared>>,
@@ -171,6 +173,7 @@ impl Supervisor {
             listen: cfg.bridge_listen.clone(),
             app_id: cfg.app_id,
             tls: cfg.tls_dir.clone(),
+            quiet: cfg.service,
             runner,
             sessions: Arc::new(Sessions::new(cfg.data_dir.join("sessions.jsonl"))),
             shared: Arc::new(Mutex::new(Shared {
@@ -284,6 +287,7 @@ impl Supervisor {
         );
         let mut launch = req.appid;
         let proc = self.proc_dir.clone();
+        let quiet = self.quiet;
         let report = Arc::new(Mutex::new(Report::default()));
         let rep = report.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
@@ -292,14 +296,18 @@ impl Supervisor {
             let mut lines = BufReader::new(out).lines();
             let mut page_tx = Some(page_tx);
             let mut eof = false;
+            let mut tok: Option<String> = None;
             // Ends on the child's exit, not on stdout EOF: a grandchild may hold the pipe open.
             loop {
                 tokio::select! {
                     l = lines.next_line(), if !eof => match l {
                         Ok(Some(l)) => {
                             if let Some(p) = l.strip_prefix("page\t") {
-                                if let (Some(tx), Some(wh)) = (page_tx.take(), parse_page(p)) {
-                                    let _ = tx.send(wh);
+                                if let Some(wh) = parse_page(p) {
+                                    tok = wh.0.rsplit('/').next().filter(|t| t.len() >= 8).map(String::from);
+                                    if let Some(tx) = page_tx.take() {
+                                        let _ = tx.send(wh);
+                                    }
                                 }
                             } else if l.starts_with("tap\tconnected") {
                                 if let Some(id) = launch.take() {
@@ -307,7 +315,7 @@ impl Supervisor {
                                 }
                             }
                             rep.lock().unwrap().line(&l);
-                            forward(l);
+                            forward(bridge_line(l, quiet, tok.as_deref()));
                         }
                         _ => eof = true,
                     },
@@ -319,7 +327,7 @@ impl Supervisor {
             let rest = async {
                 while let Ok(Some(l)) = lines.next_line().await {
                     rep.lock().unwrap().line(&l);
-                    forward(l);
+                    forward(bridge_line(l, quiet, tok.as_deref()));
                 }
             };
             if !eof {
@@ -632,6 +640,18 @@ fn forwarder<W: Write + Send + 'static>(mut w: W) -> SyncSender<String> {
         }
     });
     tx
+}
+
+/// What hostd re-prints of a bridge stdout line. `quiet` (service mode: stdout is the journal)
+/// keeps the session token out: the `page` line and anything carrying `?wt=` or the token
+/// itself (it grants stream and input for the session) become `page <redacted>`.
+pub fn bridge_line(l: String, quiet: bool, tok: Option<&str>) -> String {
+    let secret = l.starts_with("page\t") || l.contains("wt=") || tok.is_some_and(|t| l.contains(t));
+    if quiet && secret {
+        "page <redacted>".into()
+    } else {
+        l
+    }
 }
 
 fn forward(l: String) {

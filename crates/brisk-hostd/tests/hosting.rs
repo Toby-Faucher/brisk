@@ -447,6 +447,29 @@ async fn dist_symlink_is_followed_and_escapes_are_refused() {
 }
 
 #[test]
+fn bridge_lines_with_the_session_token_are_redacted_in_service_mode_only() {
+    use brisk_hostd::stream::bridge_line;
+    let page = "page\thttp://localhost:8443/?wt=https://100.64.0.9:4433/0123456789abcdef&hash=ab12"
+        .to_string();
+    let tok = Some("0123456789abcdef");
+    assert_eq!(
+        bridge_line(page.clone(), false, tok),
+        page,
+        "manual runs keep it"
+    );
+    assert_eq!(bridge_line(page, true, tok), "page <redacted>");
+    for l in [
+        "listening https://100.64.0.9:4433/0123456789abcdef",
+        "x ?wt=https://a/b",
+    ] {
+        assert_eq!(bridge_line(l.into(), true, tok), "page <redacted>", "{l}");
+    }
+    for l in ["tap\tconnected", "hash=ab12", "bridge_p50_us 812"] {
+        assert_eq!(bridge_line(l.into(), true, tok), l, "{l}");
+    }
+}
+
+#[test]
 fn service_page_line_has_no_secret() {
     use brisk_hostd::config::page_line;
     assert_eq!(

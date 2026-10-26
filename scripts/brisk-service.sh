@@ -144,7 +144,10 @@ cmd_status() {
 }
 
 # hostd never logs the secret under systemd; the filter is a second line of defence for transcripts.
-cmd_logs() { journalctl --user -u "$UNIT" --no-pager "${@:--n200}" | sed -u -E 's/([?&]s=)[^[:space:]&#]+/\1<hidden>/g'; }
+cmd_logs() {
+  journalctl --user -u "$UNIT" --no-pager "${@:--n200}" \
+    | sed -u -E -e 's/([?&]s=)[^[:space:]&#]+/\1<hidden>/g' -e 's/([?&]wt=)[^[:space:]&#]+/\1<hidden>/g'
+}
 
 # The links with the secret (for a browser that has none and no allowed tailnet login).
 cmd_link() {
