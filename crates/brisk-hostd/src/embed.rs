@@ -40,6 +40,7 @@ impl Mem {
                 }
             }
         }
+        // Set by build.rs (BRISK_EMBED_STAMP, SOURCE_DATE_EPOCH or build time).
         let stamp: u64 = env!("BRISK_EMBED_STAMP").parse().unwrap_or(0);
         let mut m = HashMap::new();
         add(&DIST, UNIX_EPOCH + Duration::from_secs(stamp), &mut m);

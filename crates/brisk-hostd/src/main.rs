@@ -70,7 +70,11 @@ async fn main() -> std::process::ExitCode {
                 );
                 return;
             }
-            notify::ready(&notify::status_text(st.cfg.listen, &st.stream.info()));
+            notify::ready(&notify::status_text(
+                st.cfg.listen,
+                &st.site,
+                &st.stream.info(),
+            ));
             if let Some(every) = notify::watchdog_every() {
                 notify::watchdog(st, every).await;
             }

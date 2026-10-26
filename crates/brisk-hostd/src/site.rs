@@ -36,6 +36,15 @@ impl Site {
         }
     }
 
+    /// `disk` or `embed`, for the startup log and the systemd status text.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Site::Disk(_) => "disk",
+            #[cfg(feature = "embed")]
+            Site::Mem(_) => "embed",
+        }
+    }
+
     /// `BRISK_STATIC`: disk (the default) or embed. With the embed feature, a missing `dist` also
     /// falls back to the embedded build unless disk was asked for.
     pub fn choose(dist: PathBuf, mode: Option<&str>) -> Site {
@@ -48,7 +57,17 @@ impl Site {
             }
         };
         #[cfg(feature = "embed")]
-        if embed || (matches!(mode, None | Some("")) && !dist.exists()) {
+        if embed {
+            return Site::Mem(Mem::embedded());
+        }
+        #[cfg(feature = "embed")]
+        if matches!(mode, None | Some("")) && !dist.exists() {
+            // Sticks for the process lifetime: an `update` swap is not seen until a restart.
+            eprintln!(
+                "WARNING: {} is missing: serving the build EMBEDDED in this binary until hostd \
+                 restarts (BRISK_STATIC=disk refuses the fallback)",
+                dist.display()
+            );
             return Site::Mem(Mem::embedded());
         }
         #[cfg(not(feature = "embed"))]

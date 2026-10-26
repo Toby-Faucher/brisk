@@ -39,9 +39,14 @@ pub fn watchdog_every() -> Option<Duration> {
         .map(|d| d / 4)
 }
 
-pub fn status_text(listen: SocketAddr, stream: &crate::stream::StreamInfo) -> String {
+pub fn status_text(
+    listen: SocketAddr,
+    site: &crate::site::Site,
+    stream: &crate::stream::StreamInfo,
+) -> String {
     format!(
-        "serving {listen}, stream {}",
+        "serving {listen}, static={}, stream {}",
+        site.kind(),
         format!("{:?}", stream.state).to_lowercase()
     )
 }
@@ -98,7 +103,11 @@ async fn alive(state: &AppState) -> Option<String> {
 
 fn locks_free(state: &AppState) -> Option<String> {
     let _games = state.games.try_lock().ok()?;
-    Some(status_text(state.cfg.listen, &state.stream.try_info()?))
+    Some(status_text(
+        state.cfg.listen,
+        &state.site,
+        &state.stream.try_info()?,
+    ))
 }
 
 /// Pings the watchdog every `every`, with the current status, but only while [`alive`] passes:
@@ -176,7 +185,7 @@ mod tests {
             if !enabled() {
                 assert_eq!(every, None, "watchdog without NOTIFY_SOCKET");
             }
-            ready(&status_text(st.cfg.listen, &st.stream.info()));
+            ready(&status_text(st.cfg.listen, &st.site, &st.stream.info()));
             if let Some(every) = every {
                 assert_eq!(every, Duration::from_millis(100));
                 let wd = tokio::spawn(watchdog(st.clone(), every));
@@ -198,7 +207,7 @@ mod tests {
         ]);
         assert!(st.success());
         let got = recv_all(&s);
-        let status = "STATUS=serving 127.0.0.1:8443, stream idle\n";
+        let status = "STATUS=serving 127.0.0.1:8443, static=disk, stream idle\n";
         assert_eq!(
             got.first().map(String::as_str),
             Some(&*format!("READY=1\n{status}"))
@@ -308,7 +317,7 @@ mod tests {
         let st = test_state(d.path());
         assert_eq!(
             alive(&st).await.as_deref(),
-            Some("serving 127.0.0.1:8443, stream idle")
+            Some("serving 127.0.0.1:8443, static=disk, stream idle")
         );
         let held = st.games.lock().unwrap();
         assert_eq!(locks_free(&st), None);

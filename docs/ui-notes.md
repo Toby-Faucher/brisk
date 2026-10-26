@@ -211,11 +211,13 @@ Static pages need no secret or login (only the Host check); /api/* is unchanged.
 | missing path with an extension (`/_astro/gone.js`, `/INDEX.HTML`, `/favicon.ico`) | 404, never index.html |
 | `..`, `.`, `%2e%2e`, encoded `/` `\` NUL (`%2f` `%5c` `%00`), a literal `\` or NUL, bad UTF-8 | 404 (before 2026-10-26 the encoded forms got index.html) |
 | a path whose real file is outside the current build (symlink out, `/up/...`), a dangling symlink with an extension | 404 |
+| a FIFO, socket or device with an extension, a directory named like a file (`x/index.html/`), a symlink loop, a name over 255 bytes | 404 (a FIFO without an extension is an unknown page: the index) |
 | method other than GET/HEAD | 404 (as before) |
-| `Range: bytes=a-b` | 206 + `Content-Range`; unsatisfiable 416; multi-range refused (416) |
-| `If-None-Match` = ETag, or `If-Modified-Since` >= Last-Modified | 304 (ETag is size + mtime, weak-ish but per build) |
+| `Range: bytes=a-b` | 206 + `Content-Range`; unsatisfiable 416; multi-range refused (416); `If-Range` is ignored by tower-http (a range is served even if the validator changed) |
+| `If-None-Match` matching the ETag (weak comparison, lists and `*` handled), or `If-Modified-Since` >= Last-Modified | 304 (the ETag is strong, no `W/`: size + mtime in ns) |
 | HEAD | headers and Content-Length, no body |
 | `Accept-Encoding: br` / `gzip` and a `<file>.br` / `.gz` sibling exists | the sibling, `Content-Encoding`, original Content-Type, `Vary: accept-encoding` (nothing compresses at build time yet) |
+| a `.br`/`.gz` sibling that is refused (escapes, FIFO) | 404 for the plain file too, for clients that accept that encoding: tower-http falls back to the plain file only on NotFound. Fail-closed on purpose |
 
 Headers on every static answer: `Cache-Control: public, max-age=31536000, immutable` for a 2xx/304 of a
 file with an extension under `_astro/` (Astro's hashed names; an extensionless miss there gets the index
@@ -230,7 +232,14 @@ ETag + Last-Modified, then 304 with the ETag; a JS chunk `Range: bytes=0-99` 206
 Containment: `web/dist` is canonicalized once per request (so a request never mixes two builds and the
 `update` symlink swap needs no restart; tests/hosting.rs swaps it between requests), and the backend
 canonicalizes every file it opens or stats, precompressed siblings included, refusing anything not inside
-that root; it opens the canonical path, so what is checked is what is read. Tests: tests/static_files.rs.
+that root. It then opens the canonical path by name with `O_NONBLOCK | O_NOFOLLOW` (a FIFO cannot block a
+thread, a final component turned into a symlink is ELOOP) and reads only if fstat says regular file;
+stat answers report only regular files and directories. Honest limit: canonicalize-then-open is two steps,
+so a writer with toby's uid swapping a directory component inside the build between them could redirect
+the open. Builds are not written after the swap and such a writer can read everything anyway: accepted.
+Cheap improvement when wanted: rustix with its `fs` feature, `openat2(root_fd, rel, RESOLVE_BENEATH |
+RESOLVE_NO_MAGICLINKS)` + fstat `is_file` and our own File wrapper (already there: `DiskFile`), which
+removes the race and the canonicalize. Tests: tests/static_files.rs.
 
 **Embedded build (optional, cargo feature `embed`)**: compiles the web build into the binary with
 `include_dir` 0.7.4 and serves it through the same `ServeDir` code (an in-memory tower-http `Backend`), so
@@ -239,12 +248,18 @@ the rules and headers above are identical; tests/static_files.rs runs every case
   `cargo build --release -p brisk-hostd --features embed` (copy just `target/release/brisk-hostd`).
   `BRISK_EMBED_DIR=<dir>` (absolute, or relative to the repo root) embeds another built dist. build.rs never
   runs npm; without an index.html it fails with "feature `embed`: ... has no index.html", and it refuses a
-  tree with a dangling symlink, a symlink out of it or a symlinked directory. Last-Modified of every
-  embedded file is the time build.rs ran (it reruns whenever the tree changes).
+  tree with a dangling symlink, a symlink out of it, a symlinked directory, or a FIFO/socket/device (any
+  non-directory must be a regular file, or include_dir would hang the compile). Last-Modified of every
+  embedded file is `BRISK_EMBED_STAMP`, else `SOURCE_DATE_EPOCH` (reproducible builds; set it per commit,
+  `git log -1 --format=%ct`, because the ETag is size + that time), else the time build.rs ran (it reruns
+  whenever the tree changes).
 - Runtime: `BRISK_STATIC=embed|disk`, default disk even when compiled in; embed when asked or when the
   dist dir is missing at startup (unless `BRISK_STATIC=disk`). hostd logs which on stderr ("static files
-  from disk: ..." / "static files embedded in the binary (N entries)"). Without the feature,
-  `BRISK_STATIC=embed` warns and uses disk.
+  from disk: ..." / "static files embedded in the binary (N entries)"); the missing-dist fallback adds a
+  `WARNING: ... serving the build EMBEDDED in this binary until hostd restarts` line, because it sticks
+  for the process lifetime (a later `update` swap is not seen). The systemd status text says which:
+  `serving 127.0.0.1:8443, static=disk|embed, stream idle` (`brisk-service.sh doctor` prints it).
+  Without the feature, `BRISK_STATIC=embed` warns and uses disk.
 - Size: +1.34 MiB on a 1.6 MB build (release hostd 8.34 MB disk-only, 9.74 MB with the embed of the
   2026-10-26 build). The embedded build is memory-mapped with the binary, no copy per request.
 - Not used by the service: deploy/brisk-hostd.service and `brisk-service.sh update` stay on disk mode,
