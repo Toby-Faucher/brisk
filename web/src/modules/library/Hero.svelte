@@ -9,7 +9,7 @@
   import { playLabel } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
-  let { game, busy, onpick }: { game: Game; busy: boolean; onpick: (g: Game) => void } = $props();
+  let { game, busy, onpick, titleIn }: { game: Game; busy: boolean; onpick: (g: Game) => void; titleIn?: (h: HTMLElement) => void | (() => void) } = $props();
   const saved = $derived($prefs[game.appid]);
   const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
 </script>
@@ -18,7 +18,7 @@
   <Cover {game} style="width:150px;flex:0 0 auto" />
   <div class="txt">
     <div class="lab">{game.running ? 'Running on the host' : 'Continue where you left off'}</div>
-    <h3>{game.name}</h3>
+    <h3 {@attach titleIn}><span>{game.name}</span></h3>
     <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}</div>
     <div class="acts">
       <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
@@ -34,7 +34,8 @@
   .hero { border-radius: 24px; padding: 22px; display: flex; gap: 22px; align-items: center; min-height: 200px; position: relative; overflow: hidden; border: 1px solid var(--line); }
   .txt { min-width: 0; }
   .lab { color: #c9d1e0; font-size: 14px; }
-  h3 { margin: 2px 0 6px; font-size: 28px; letter-spacing: -.03em; }
+  h3 { margin: 2px 0 6px; font-size: 28px; letter-spacing: -.03em; position: relative; }
+  h3 :global(.split-fx) { position: absolute; inset: 0; }
   .pchip { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; color: #fff; background: #000b; white-space: nowrap; }
   .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 </style>

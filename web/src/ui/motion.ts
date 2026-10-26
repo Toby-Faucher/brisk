@@ -190,6 +190,54 @@ export function drawIn(el: SVGGeometryElement) {
   };
 }
 
+/**
+ * Svelte attachment for a heading whose Svelte-owned text sits in its first child (`<h3 {@attach splitIn}><span>{name}</span></h3>`,
+ * the heading `position: relative`): once the `splitText` chunk is loaded the words rise out of clip masks (`translate`
+ * 100% -> 0, 500 ms, 45 ms apart, native Web Animations, so no inline style stays). The words are a split COPY laid over
+ * the real text, so screen readers keep the one original node (the copy is aria-hidden, the real span only fades
+ * out visually: opacity, not visibility) and layout cannot shift; when the last word lands the copy goes and the real text
+ * shows again, which is also what a destroy, reduced motion or a chunk that fails to load gives (nothing changes until
+ * the chunk is here, so a slow load never hides the title). The caller decides "once per page": the attachment itself
+ * runs on every mount it is given to.
+ */
+export function splitIn(h: HTMLElement) {
+  if (!motionAllowed()) return;
+  const real = h.firstElementChild as HTMLElement | null;
+  if (!real) return;
+  let fx: HTMLElement | undefined;
+  let s: { revert(): unknown } | undefined;
+  let dead = false;
+  const anims: Animation[] = [];
+  const handle = { complete: () => clean() }; // reduced motion switched on mid-way
+  const clean = () => {
+    if (dead && !s) return;
+    dead = true;
+    live.delete(handle);
+    anims.forEach((a) => a.cancel());
+    s?.revert();
+    fx?.remove();
+    real.style.removeProperty('opacity');
+    if (!real.getAttribute('style')) real.removeAttribute('style');
+  };
+  void load('text').then((lib) => {
+    if (dead || reducedMotion()) return;
+    fx = document.createElement('span');
+    fx.setAttribute('aria-hidden', 'true');
+    fx.className = 'split-fx';
+    fx.textContent = real.textContent;
+    h.append(fx);
+    const sp = (s = lib.splitText(fx, { words: { wrap: 'clip' }, accessible: false }));
+    const easing = cssVar('--ease');
+    for (const [i, w] of (sp.words as HTMLElement[]).entries()) anims.push(w.animate({ translate: ['0 100%', '0 0'] }, { duration: 500, delay: 60 + i * 45, easing, fill: 'backwards' }));
+    real.style.opacity = '0';
+    live.add(handle);
+    const last = anims.at(-1);
+    if (last) last.onfinish = clean;
+    else clean();
+  }).catch(() => dead || clean());
+  return clean;
+}
+
 /** A 270 degree ring (the spinner), one subpath like the play triangle. */
 export const SPIN_D = 'M12 4A8 8 0 1 1 4 12h3A5 5 0 1 0 12 7z';
 

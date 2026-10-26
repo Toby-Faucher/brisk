@@ -27,6 +27,13 @@ describe('chunk load failure', () => {
     await settle();
     expect(text.data).toBe('63 °C');
   });
+  it('splitIn leaves the real title untouched and visible', async () => {
+    const real = { textContent: 'Portal 2', style: { opacity: '', removeProperty() {} }, getAttribute: () => '', removeAttribute() {} } as any;
+    const h = { firstElementChild: real, append: () => { throw new Error('no copy may be added'); } } as any;
+    m.splitIn(h);
+    await settle();
+    expect(real.style.opacity).toBe('');
+  });
   it('drawIn shows the full line', async () => {
     const attrs: Record<string, string> = {};
     const p = { setAttribute: (k: string, v: string) => (attrs[k] = v), removeAttribute: (k: string) => delete attrs[k], style: { removeProperty: () => {} } } as any;

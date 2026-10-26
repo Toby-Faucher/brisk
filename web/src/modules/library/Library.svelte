@@ -7,7 +7,7 @@
   import { startGame, watchPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
-  import { glideSwap } from '../../ui/motion';
+  import { glideSwap, splitIn } from '../../ui/motion';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
   import { cardClick, filterGames, searchGames, shelves, type Filter } from './library';
@@ -27,6 +27,12 @@
   $effect(() => {
     if ($games && !arrived) (arrived = true), void tick().then(enter);
   });
+
+  // The hero title rises word by word once per page mount: not again when the hero remounts (search cleared, data refresh).
+  let titled = false;
+  const titleIn = (h: HTMLElement) => {
+    if (!titled) return (titled = true), splitIn(h);
+  };
 
   let body: HTMLElement | undefined = $state();
   let chips: HTMLElement | undefined = $state();
@@ -132,7 +138,7 @@
   {:else if !$games.games.length}
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
-    {#if hero}<Hero game={hero} busy={busy === hero.appid} onpick={pick} />{/if}
+    {#if hero}<Hero game={hero} busy={busy === hero.appid} onpick={pick} titleIn={titleIn} />{/if}
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
