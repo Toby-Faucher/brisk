@@ -8,7 +8,19 @@ t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 mkdir -p "$t/bin" "$t/home/.config/brisk/tls" "$t/run" "$t/d" "$t/root/target/release" "$t/root/web/src" "$t/root/web/dist" "$t/root/web/node_modules"
 L=$t/log
 stub() { printf '#!/bin/bash\necho "%s $*" >> "%s"\n%s\n' "$1" "$L" "$2" > "$t/bin/$1"; chmod +x "$t/bin/$1"; }
-stub systemctl 'case $2 in show) echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }";; is-active) exit "${SVC_ACTIVE:-3}";; is-enabled) exit "${SVC_ENABLED:-1}";; esac; exit 0'
+# is-active: SVC_ACTIVE until a start/restart in this run sets $T/state (the B wrapper clears it).
+# ACT_FAIL: a unit without the "# old" mark (the new one) fails to start; the old one starts.
+stub systemctl 'case $2 in
+  show) case "$*" in
+    *brisk-hostd*) printf "Type=%s\nSubState=%s\nStatusText=%s\nWatchdogUSec=%s\nActiveEnterTimestamp=%s\n" "${S_TYPE-notify}" "${S_SUB-running}" "${S_STATUS-serving 127.0.0.1:8443, stream idle}" "${S_WD-1min}" "${S_START:+@$S_START}";;
+    *) echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }";;
+  esac;;
+  is-active) [ -f "$T/state" ] && exit "$(cat "$T/state")"; exit "${SVC_ACTIVE:-3}";;
+  is-enabled) exit "${SVC_ENABLED:-1}";;
+  enable|start|restart) [ "$2" = enable ] && [ "$3" != --now ] && exit 0
+    if [ -n "${ACT_FAIL:-}" ] && ! grep -q "# old" "$U"; then echo 3 > "$T/state"; exit 1; fi
+    echo 0 > "$T/state";;
+esac; exit 0'
 stub tailscale 'case "$*" in
   "debug prefs") [ -n "${TS_OP:-}" ] && echo "  \"OperatorUser\": \"$(id -un)\",";;
   "serve status --json") cat "$T/serve-${TS_MAPPED:-}.json";;
@@ -48,6 +60,7 @@ stub loginctl 'echo "Linger=${LINGER:-yes}"'
 stub ss 'for a in ${SS_ADDR:-127.0.0.1:8443}; do case $a in *:8443) echo "LISTEN 0 1024 $a 0.0.0.0:*";; esac; done'
 stub journalctl 'echo "page	http://localhost:8443/?s=0123456789abcdef0123456789abcdef&x=1"; echo "bridge	page	http://localhost:8443/?wt=https://100.64.0.9:4433/abcdef0123&hash=ab12"'
 stub curl 'a="$*"; case $a in
+  *http://127.0.0.1:8443/api/host*) [ "${LOCAL:-up}" = up ] && echo -n 403;;
   *47989/serverinfo*) echo "<currentgame>${GAME:-0}</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>";;
   *api/stream*) [ "${STREAM:-idle}" = down ] || echo "{\"state\":\"${STREAM:-idle}\"}";;
   *"-H @"*) echo -n "${CODE_AUTH:-200}";;
@@ -68,7 +81,10 @@ printf '#!/bin/sh\necho "systemd-run $*" >> "%s"\nwhile [ "$1" != -c3 ]; do shif
 printf '#!/bin/sh\necho "sb $*" >> "%s"\n' "$L" > "$t/sb"
 chmod +x "$t"/bin/* "$t/sb"
 export T=$t PATH=$t/bin:$PATH HOME=$t/home XDG_RUNTIME_DIR=$t/run BRISK_SB=$t/sb SB_DROPIN_DIR=$t/d BRISK_ROOT=$t/root
-B=$s/brisk-service.sh U=$t/home/.config/systemd/user/brisk-hostd.service
+export U=$t/home/.config/systemd/user/brisk-hostd.service BRISK_UP_WAIT=2
+# Each run starts with no started/failed state (see the systemctl stub).
+printf '#!/bin/sh\nrm -f "%s/state"\nexec "%s" "$@"\n' "$t" "$s/brisk-service.sh" > "$t/bsvc"; chmod +x "$t/bsvc"
+B=$t/bsvc
 echo 0123456789abcdef0123456789abcdef > "$t/home/.config/brisk/secret"
 bad=0
 fail() { echo "FAIL: $*"; sed 's/^/    log: /' "$L" 2>/dev/null; bad=1; }
@@ -91,12 +107,51 @@ echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "install over a changed unit failed"
 grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "changed unit not restarted"
 : > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "unchanged unit restarted"
-echo '# old' >> "$U"
-: > "$L"; SVC_ACTIVE=0 STREAM=live "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted over a live stream"
-echo '# old' >> "$U"
-: > "$L"; SVC_ACTIVE=0 STREAM=down "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted with the API down"
+# a changed unit while a stream is live (or the API is silent): nothing written, no backup, no reload
+for e in STREAM=live STREAM=down; do
+  echo '# old' >> "$U"; old=$(cat "$U"); rm -f "$U.bak"
+  : > "$L"; out=$(env SVC_ACTIVE=0 "$e" "$B" install 2>&1) && fail "$e: install of a changed unit succeeded"
+  grep -q 'unit changed; not installed while' <<<"$out" || fail "$e: no 'not installed' message: $out"
+  [ "$(cat "$U")" = "$old" ] || fail "$e: unit file changed"
+  [ -e "$U.bak" ] && fail "$e: backup created"
+  grep -qE 'daemon-reload|restart|enable' "$L" && fail "$e: manager touched"
+done
+# same file but newer than the running process (an install that could not restart): restart when idle
+SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "idle install of the changed unit failed"
+touch -d '1 hour ago' "$U"; : > "$L"; SVC_ACTIVE=0 S_START=$(date +%s) "$B" install >/dev/null 2>&1
+grep -q restart "$L" && fail "restarted a service started after its unit"
+touch "$U"; s=$(( $(date +%s) - 60 ))
+: > "$L"; out=$(SVC_ACTIVE=0 S_START=$s STREAM=live "$B" install 2>&1) && fail "pending unit: install over a live stream succeeded"
+grep -q 'unit installed but service not restarted yet' <<<"$out" || fail "pending unit not reported: $out"
+grep -qE 'daemon-reload|restart' "$L" && fail "pending unit: manager touched over a live stream"
+: > "$L"; out=$(SVC_ACTIVE=0 S_START=$s "$B" install 2>&1) || fail "pending unit, idle: install failed: $out"
+grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "pending unit not restarted when idle"
 echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" install >/dev/null 2>&1; grep -q '^systemctl --user restart' "$L" || fail "FORCE=1 did not restart"
+
+# safe rollout: the previous unit is kept as .bak; a new unit that does not come up is rolled back.
+echo '# old' >> "$U"; old=$(cat "$U")
+: > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "install of a good new unit failed"
+[ "$(cat "$U.bak")" = "$old" ] || fail "previous unit not backed up"
+grep -q '# old' "$U" && fail "new unit not written"
+grep -q '^curl .*http://127.0.0.1:8443/api/host' "$L" || fail "did not wait for 8443 to answer"
+for e in ACT_FAIL=1 LOCAL=down; do
+  echo '# old' >> "$U"; old=$(cat "$U")
+  : > "$L"; out=$(env SVC_ACTIVE=0 "$e" "$B" install 2>&1) && fail "install succeeded with $e"
+  grep -q 'new unit failed; previous unit restored' <<<"$out" || fail "$e: no restore message: $out"
+  [ "$(cat "$U")" = "$old" ] || fail "$e: previous unit not restored"
+  [ "$(grep -c '^systemctl --user daemon-reload' "$L")" = 2 ] || fail "$e: restored unit not reloaded"
+  # a restart after the second reload, then the came_up check again
+  awk '/daemon-reload/ { n++ } n == 2 && /^systemctl --user restart / { r = 1 } r && /^curl .*8443\/api\/host/ { c = 1 } END { exit !c }' "$L" \
+    || fail "$e: restored unit not restarted and checked"
+done
+grep -q 'did not come up either' <<<"$out" || fail "LOCAL=down: restored unit's failure not reported: $out"
+# no backup (a first install that fails): says so, exits non-zero
+rm -f "$U" "$U.bak"
+out=$(ACT_FAIL=1 "$B" install 2>&1) && fail "a failing first install succeeded"
+grep -q 'no previous unit' <<<"$out" || fail "missing backup not reported: $out"
+grep -q '^systemctl --user disable --now brisk-hostd.service' "$L" || fail "failed first install left enabled"
+"$B" install >/dev/null 2>&1 || fail "reinstall after the failed first install"
 
 # serve-on/off: only ever the :8443 mapping; without operator rights a sudoq line, no call.
 want='tailscale serve --bg --https=8443 http://127.0.0.1:8443'
@@ -182,7 +237,8 @@ out=$(dr) || fail "doctor failed on a good setup: $out"
 out=$(dr "SS_ADDR=127.0.0.1:8443 100.64.0.9%tailscale0:443 100.64.0.9%tailscale0:8443 [fd7a:115c:a1e0::9]%tailscale0:8443") \
   || fail "doctor failed with tailscaled's tailscale0 listeners: $out"
 for e in SS_ADDR=0.0.0.0:8443 "SS_ADDR=127.0.0.1:8443 [::]:8443" "SS_ADDR=127.0.0.1:8443 *:8443" "SS_ADDR=127.0.0.1:8443 192.168.1.5:8443" \
-    SS_ADDR=100.64.0.9%tailscale0:8443 TS_MAPPED=wrong CODE_NOAUTH=200 CODE_AUTH=403 LINGER=no TS_MAPPED= SVC_ACTIVE=3; do
+    SS_ADDR=100.64.0.9%tailscale0:8443 TS_MAPPED=wrong CODE_NOAUTH=200 CODE_AUTH=403 LINGER=no TS_MAPPED= SVC_ACTIVE=3 \
+    S_TYPE=simple S_SUB=start-pre S_STATUS= S_WD=0 S_WD=30s; do
   out=$(dr "$e") && fail "doctor passed with $e"
   grep -q '^FAIL' <<<"$out" || fail "no FAIL line with $e"
 done

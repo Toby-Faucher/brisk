@@ -113,13 +113,21 @@
   the only way in from the tailnet, so nothing outside the tailnet can reach it.
 - Unit: deploy/brisk-hostd.service, installed by `scripts/brisk-service.sh install` into
   ~/.config/systemd/user (WantedBy=default.target; with linger it starts at boot without a login).
-  Restart=on-failure every 3 s (gives up after 10 starts in 2 min), TimeoutStopSec=20 (the bridge stop
+  Type=notify + NotifyAccess=main: hostd sends `READY=1` with `STATUS=serving 127.0.0.1:8443, stream idle`
+  only once its own HTTP probe of 127.0.0.1:8443 gets an answer (TimeoutStartSec=30 fails a start that
+  never gets there), `STOPPING=1` on SIGTERM before it stops the bridge, and with WatchdogSec=60 a
+  `WATCHDOG=1` (plus a fresh STATUS with the stream state) every 15 s (a quarter, so three missed pings
+  are tolerated), but only while a freshly spawned
+  tokio task runs and the library and stream state locks can be taken within 1 s: a wedged runtime or a
+  stuck lock stops the pings and systemd restarts hostd. Without NOTIFY_SOCKET (manual runs, brisk-up)
+  none of this runs (crates/brisk-hostd/src/notify.rs, `sd-notify` crate).
+  Restart=on-failure (also after a watchdog timeout) every 3 s (gives up after 10 starts in 2 min), TimeoutStopSec=20 (the bridge stop
   can take 12 s), KillMode=mixed (SIGTERM to hostd only, so it stops the bridge first; SIGKILL to anything
   left after 20 s), MemoryMax=1G, CPUWeight=50, Nice=5, Wants/After the Sunshine
   unit. Hardening is deliberately thin, each omission is commented in the unit: NoNewPrivileges would be
   inherited by a Steam that `steam steam://` cold-starts; ProtectSystem/ProtectHome/PrivateTmp/
-  PrivateUsers/ProtectProc need a user+mount namespace in a user unit, which Steam, games and `kill` on
-  processes outside it would inherit or cross; address-family limits would have to allow IPv4 and
+  PrivateUsers/ProtectProc need a user+mount namespace in a user unit, which Steam, games and quit
+  signals to processes outside it would inherit or cross; address-family limits would have to allow IPv4 and
   AF_UNIX (sway, Wayland, D-Bus, tailscaled) anyway. `BRISK_SPAWN_SCOPE=1` (set by the unit) puts each
   `steam steam://…` in its own `systemd-run --user --scope`, so a cold-started Steam and its games are
   not under the 1G cap or killed by a restart.
@@ -144,9 +152,18 @@
   canonicalizes `dist` per request and only serves files that canonicalize inside it (a symlink out of
   the build is a 404); a missing path with an extension is a 404, never index.html. `update` does not
   re-sync the unit file: after a change to deploy/brisk-hostd.service run `install` again (it restarts
-  the unit when the file changed). `install` = copy the unit, daemon-reload, enable --now, and a restart
-  if the unit changed while it ran (not over a live stream). `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
-  spaced restarts, refuses unless Sunshine is FREE). `doctor` checks linger, the unit, the listener
+  the unit when the file changed). `install` = copy the unit (the previous one is kept as
+  `brisk-hostd.service.bak`), daemon-reload, enable --now, and a restart if the unit changed while it ran
+  (not over a live stream: then a changed unit is not even written and the manager is not reloaded, so
+  the running hostd never gets the new unit's settings, e.g. a watchdog it would not ping; install exits
+  non-zero, run it again when idle). A unit file newer than the running process (same content) counts as
+  "installed but not restarted yet" and is restarted when idle. Whenever a changed unit was (re)started, `install` waits up to 45 s for
+  `is-active` and an HTTP answer on 127.0.0.1:8443 (403 is fine); otherwise it copies the .bak back,
+  daemon-reloads, restarts it, checks it the same way and exits non-zero with "new unit failed; previous
+  unit restored" (or "... did not come up either"). No .bak, as on a first install: the unit is disabled
+  (no restart loop at boot) and install exits non-zero. `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
+  spaced restarts, refuses unless Sunshine is FREE). `doctor` checks linger, the unit (enabled, active,
+  Type=notify, SubState running with a status text, watchdog 60 s), the listener
   (127.0.0.1:8443 required; tailscaled's own `…%tailscale0:8443` sockets in TUN mode are fine; 0.0.0.0, [::],
   * or any other address FAIL), the serve mapping (`<name>:8443` -> `http://127.0.0.1:8443` exactly), 403
   without and 200 with the secret over https, the certificate age and the Sunshine drop-in/binary/state.
@@ -157,6 +174,15 @@
   line with `wt=` or the token are re-printed as `bridge<TAB>page <redacted>` (hostd still parses them for
   GET/POST /api/stream). `logs` also masks any `?s=`/`&s=` and `?wt=`/`&wt=` value. brisk-up and manual runs still print the full link. brisk-up/brisk-down refuse
   while the unit is active or enabled.
+- Owned games (`GetOwnedGames`) are fetched in-process with `ureq` over rustls with the pure-Rust
+  `rustls-graviola` provider (no curl, no C or ring), certificates checked against the system roots
+  (/etc/ssl/certs, read by `rustls-platform-verifier`, so it works offline-installed on Arch and follows
+  `ca-certificates` updates). The key is read from its file per request and goes only into the query
+  string (`key=`, which is how Steam's Web API takes it); error text is reduced to a failure kind ("TLS
+  error", "HTTP 403", "i/o error (ConnectionRefused)"), because ureq's own messages can contain the URL.
+  Connect 5 s, total 15 s, no redirects, no proxy, 8 MiB body cap, https only (plain http only to
+  127.0.0.1/localhost, for the tests' mock). `cargo test -p brisk-hostd -- --ignored live_tls` checks the
+  stack against Steam's public keyless endpoint and that a self-signed certificate is refused.
 - A restart of the service ends hostd's `wl-copy`, so a clipboard set from the laptop is gone from bawn's
   clipboard after an update or restart.
 - Rollback: `git checkout <good commit> && scripts/brisk-service.sh update`; or back to the tunnel
@@ -231,19 +257,27 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
 - hostd (running.rs `Quitter`): 400 unless the appid is a known game, 409 if it is not running or a quit of it
   is already under way (one per game; other games are not held up). Steps: `swaymsg '[con_id=N] kill'` on every
   sway window whose pid is a descendant of the game's reaper (sway's polite close, like the X button); poll 10 s
-  for the reaper to exit; else `kill -TERM` to the reaper's descendants (not the reaper, never steam, the
+  for the reaper to exit; else SIGTERM to the reaper's descendants (not the reaper, never steam, the
   webhelper/Big Picture or another game's tree; the list is rescanned just before each signal); poll 10 s.
-  `force` skips the window close: `kill -TERM`, 3 s, `kill -KILL` to the same set, 3 s. A reaper with nothing left
+  `force` skips the window close: SIGTERM, 3 s, SIGKILL to the same set, 3 s. A reaper with nothing left
   under it gets the signals itself (never its parent, Steam) with 3 s waits. Answer
   `{state: "closed" | "still-running"}`; past 25 s it answers still-running and the quit carries on. The quit runs
-  in its own task, so a client hanging up does not stop it halfway. A failing `kill` (a pid already gone, EPERM,
-  no binary) is a stderr warning naming the appid and a pid count. Nothing touches the bridge or Sunshine, so the Desktop /
-  Big Picture stream keeps going.
+  in its own task, so a client hanging up does not stop it halfway. Nothing touches the bridge or Sunshine, so
+  the Desktop / Big Picture stream keeps going.
+- Signals go through pidfds (`rustix`, no `kill` process, no kill(2) by number): for each scanned pid hostd
+  calls `pidfd_open`, then re-reads `/proc/<pid>/stat` starttime and cmdline and compares them with the scan;
+  only a match is signalled, with `pidfd_send_signal` on that fd, so a pid recycled between scan and signal
+  is skipped (the ppid is not compared: helpers are reparented when run.sh exits mid-quit). ESRCH = already
+  gone (fine); EPERM and skipped pids are a stderr warning with counts; any other error (ENOSYS on a kernel
+  before 5.3) stops that round with an error and no fallback.
 - sway's close on an XWayland window sends WM_DELETE_WINDOW; for an X11 window without that protocol wlroots
   disconnects the X client instead (`xcb_kill_client`), which ends that client only, still one of the game's.
 - hostd must run as toby, never root: as euid 0 it logs a warning at startup and POST /api/quit answers 503.
-- Tests use a fake Runner (it gets the `swaymsg` and `kill` calls) over a fake /proc shaped on bawn's real tree;
+- Tests use a fake Runner (`swaymsg`) and a fake `Signaller` over a fake /proc shaped on bawn's real tree;
   nothing real is signalled (`cargo test -p brisk-hostd --test quit`; tokio time is paused, so no real waits).
+  They cover a recycled pid (not signalled), ESRCH, EPERM and no pidfd support. running.rs has real-process
+  tests: a `sleep 60` in its own process group SIGTERMed through the real pidfd Signaller, and refused
+  when its starttime does not match the scan.
 - [U] Not tried on bawn: whether Proton/XWayland games exit on sway's close (Pepper Grinder is native XWayland; a
   Proton game may show a "really quit?" prompt and fall through to SIGTERM), that Steam's overlay
   (gameoverlayui, a child of steam) and the Running badge clear by themselves once the reaper exits, that sway
@@ -437,8 +471,15 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
   (cargo-deny's `zstd-sys` needs a C compiler and free space in /tmp; the tool is not part of the product).
 - **Purity allowlist**: `scripts/check-pure-rust.sh` fails on any `*-sys`/`*_sys` crate or `cc`, `cmake`,
   `bindgen`, `pkg-config`, `vcpkg`, `cxx-build` in the x86_64-linux normal+build graph unless
-  `scripts/pure-rust-allow.txt` has a line `crate | reason | date`. It is empty today; read the header of that
-  file for why `libc`, `autocfg`, `windows-sys` and `linux-raw-sys` are (not) listed. `scripts/test-check-pure-rust.sh`
+  `scripts/pure-rust-allow.txt` has a line `crate | reason | date`. One entry today: `linux-raw-sys`
+  (rustix's syscall tables, pure Rust, no C; added 2026-10-26 with the pidfd work); read the header of that
+  file for why `libc`, `autocfg` and `windows-sys` are not listed. graviola (Steam HTTPS) passes without an
+  entry: its verified assembly is Rust `global_asm!`, no C compiler runs.
+- **New crates: 14-day rule.** Pin new dependencies exactly (`=x.y.z`) to the newest release at least 14
+  days old (crates.io publish date), including new transitive crates (`cargo update -p <crate> --precise`),
+  unless it is a security fix. 2026-10-26: ureq 3.4.2 (3.5.0 too new), rustls-graviola 0.4.0, graviola
+  0.4.1, rustls-platform-verifier 0.7.1, rustix 1.1.5, sd-notify 0.5.0; transitive ureq-proto 0.6.4,
+  rustls-native-certs 0.8.4, webpki-root-certs 1.0.9, combine 4.6.8, schannel 0.1.29 held back. `scripts/test-check-pure-rust.sh`
   proves the script with a stub `cargo`.
 
 ## [U]

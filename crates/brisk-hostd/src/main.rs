@@ -4,6 +4,7 @@
 
 use brisk_hostd::config::{Config, load_secret, load_users, page_line};
 use brisk_hostd::http::{AppState, router};
+use brisk_hostd::notify;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -48,6 +49,24 @@ async fn main() -> std::process::ExitCode {
     state.clip.start_watch();
     state.files.clean_partials();
     let app = router(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
+    // systemd (Type=notify): READY only once the router answers on the socket, then the watchdog.
+    // Manual runs (no NOTIFY_SOCKET) skip all of it.
+    let st = state.clone();
+    if notify::enabled() {
+        tokio::spawn(async move {
+            if !notify::serving(st.cfg.listen).await {
+                eprintln!(
+                    "error: {} bound but not answering; READY not sent",
+                    st.cfg.listen
+                );
+                return;
+            }
+            notify::ready(&notify::status_text(st.cfg.listen, &st.stream.info()));
+            if let Some(every) = notify::watchdog_every() {
+                notify::watchdog(st, every).await;
+            }
+        });
+    }
     let stop = async move {
         let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("SIGTERM handler");
@@ -55,6 +74,7 @@ async fn main() -> std::process::ExitCode {
             _ = tokio::signal::ctrl_c() => {}
             _ = term.recv() => {}
         }
+        notify::stopping();
         // Bridge first, so it cancels its Sunshine session before we go.
         state.stream.shutdown().await;
     };

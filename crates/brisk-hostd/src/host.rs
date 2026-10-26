@@ -59,9 +59,8 @@ impl Runner for RealRunner {
         if scoped {
             c.args(["--user", "--scope", "--quiet", "--collect", "--", prog]);
         }
-        let c = c
-            .args(args)
-            .envs(env.iter().map(|(k, v)| (k, v)))
+        c.args(args).envs(env.iter().map(|(k, v)| (k, v)));
+        let c = crate::notify::scrub(&mut c)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -78,8 +77,7 @@ impl Runner for RealRunner {
 
     fn run(&self, prog: &str, args: &[&str]) -> Option<String> {
         use std::io::Read;
-        let mut c = std::process::Command::new(prog)
-            .args(args)
+        let mut c = crate::notify::scrub(std::process::Command::new(prog).args(args))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())

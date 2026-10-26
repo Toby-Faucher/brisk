@@ -193,6 +193,11 @@ impl Supervisor {
         self.shared.lock().unwrap().view()
     }
 
+    /// `info` without blocking: `None` while the state lock is held (or poisoned).
+    pub fn try_info(&self) -> Option<StreamInfo> {
+        self.shared.try_lock().ok().map(|s| s.view())
+    }
+
     pub fn sessions(&self, n: usize) -> Vec<SessionRec> {
         self.sessions.latest(n)
     }
@@ -235,10 +240,14 @@ impl Supervisor {
         };
         let n = |v: u32| v.to_string();
         let mut cmd = tokio::process::Command::new(&self.bin);
-        // SAFETY: prctl is async-signal-safe; the bridge dies with hostd even on SIGKILL.
+        crate::notify::scrub(cmd.as_std_mut());
+        // SAFETY: the hook only makes one raw prctl syscall (rustix, no allocation or locks), which
+        // is async-signal-safe after fork; the bridge dies with hostd even on SIGKILL.
         unsafe {
             cmd.pre_exec(|| {
-                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                let _ = rustix::process::set_parent_process_death_signal(Some(
+                    rustix::process::Signal::TERM,
+                ));
                 Ok(())
             });
         }
@@ -442,7 +451,7 @@ impl Supervisor {
         if let Some(mut r) = slot.take() {
             // done is only set after the watcher reaped the child, so the pid is still ours here.
             if !*r.done.borrow() {
-                signal(r.pid, "TERM");
+                signal(r.pid, rustix::process::Signal::TERM);
             }
             if tokio::time::timeout(self.stop_wait, r.done.wait_for(|d| *d))
                 .await
@@ -452,7 +461,7 @@ impl Supervisor {
                     "warning: bridge {} ignored SIGTERM for {:?}, killing",
                     r.pid, self.stop_wait
                 );
-                signal(r.pid, "KILL");
+                signal(r.pid, rustix::process::Signal::KILL);
                 let _ = r.done.wait_for(|d| *d).await;
             }
             if let Some(rec) = &mut prev.1 {
@@ -588,11 +597,14 @@ pub fn ensure_cert(
     Ok((cert, key))
 }
 
-fn signal(pid: u32, sig: &str) {
-    let _ = std::process::Command::new("kill")
-        .args([format!("-{sig}"), pid.to_string()])
-        .stderr(std::process::Stdio::null())
-        .status();
+/// `pid` is our own unreaped child, so its number cannot have been reused.
+fn signal(pid: u32, sig: rustix::process::Signal) {
+    if let Some(p) = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+    {
+        let _ = rustix::process::kill_process(p, sig);
+    }
 }
 
 /// `http://localhost:8443/?wt=<url>&hash=<hex>` -> (url, hex), the URL unchanged.

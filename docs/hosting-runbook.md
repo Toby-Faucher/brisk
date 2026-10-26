@@ -58,6 +58,21 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
   mv -T web/dist.link web/dist`).
 - `update` does not re-sync the unit file. After changing deploy/brisk-hostd.service, run
   `scripts/brisk-service.sh install` again (daemon-reload, and a restart because the file changed).
+  `install` keeps the previous unit as `~/.config/systemd/user/brisk-hostd.service.bak` and, after
+  (re)starting a changed unit, waits up to 45 s for it to be active with 127.0.0.1:8443 answering. If it
+  is not, it puts the .bak back, daemon-reloads, restarts the old unit and exits non-zero ("new unit
+  failed; previous unit restored"); then read `scripts/brisk-service.sh logs`. While a stream is live
+  (or the API does not answer) `install` writes nothing, does not daemon-reload and exits non-zero:
+  run it again when idle (or FORCE=1). A failed first install (no .bak) disables the unit.
+- The unit is `Type=notify` with `WatchdogSec=60`: systemd counts hostd as started only after hostd
+  answers HTTP on 127.0.0.1:8443 itself (READY, 30 s start timeout), and restarts it when the watchdog
+  pings (every 15 s, so three may be missed) stop for 60 s (a wedged runtime or a stuck state lock). `systemctl --user status brisk-hostd`
+  shows hostd's status line (`serving 127.0.0.1:8443, stream idle|starting|live`); `doctor` checks
+  Type=notify, that status and the watchdog.
+- First deploy of the Type=notify unit (from the old Type=simple one) **[agent]**: when no stream is
+  live, `scripts/brisk-service.sh update` (new binary first, it still runs under the old unit) then
+  `scripts/brisk-service.sh install` (unit changed: restart, wait, restore on failure), then `doctor`.
+  Order matters: an old binary under the new unit never sends READY and would be rolled back.
 - Any restart (update, install with a changed unit) ends hostd's `wl-copy`: a clipboard sent from the
   laptop is no longer on bawn's clipboard afterwards.
 - The journal never holds the secret (hostd prints the page line without it under systemd); use
@@ -68,6 +83,9 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
 
 ## Rollback
 - Bad build: `git checkout <last good commit> && scripts/brisk-service.sh update`, later back to main.
+- Bad unit file: `install` restores the previous one by itself (see Everyday). By hand:
+  `cp ~/.config/systemd/user/brisk-hostd.service.bak ~/.config/systemd/user/brisk-hostd.service &&
+  systemctl --user daemon-reload && systemctl --user restart brisk-hostd.service`.
 - Back to the tunnel workflow:
   1. **[agent]** `scripts/brisk-service.sh uninstall` (stops and removes the unit; keeps the secret,
      certificate and allowed-users).

@@ -4,6 +4,7 @@ pub mod config;
 pub mod files;
 pub mod host;
 pub mod http;
+pub mod notify;
 pub mod prefs;
 pub mod running;
 pub mod sessions;

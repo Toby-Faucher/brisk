@@ -2,7 +2,8 @@
 # though their name ends in -sys / _sys or they are a C build tool (cc cmake bindgen pkg-config
 # vcpkg cxx-build). Format, one per line:   crate | reason it is acceptable | date added (YYYY-MM-DD)
 # Every line needs all three fields. Adding a line is a review decision: say why no pure-Rust
-# alternative exists and what C code it brings. The list is empty on purpose today (2026-10-26).
+# alternative exists and what C code it brings.
+linux-raw-sys | rustix's linux_raw backend: generated Linux syscall numbers, consts and structs in pure Rust; no C compiled, no native lib linked; needed by rustix (pidfd signalling in hostd) | 2026-10-26
 #
 # Not listed, and why they do not need to be:
 #  - libc: plain declarations of the OS ABI (no C is compiled); does not match the -sys rule.
@@ -10,5 +11,3 @@
 #  - windows-sys / windows_*: only reached for windows targets; the scan uses linux-gnu. The
 #    per-package `-i` checks in the script still cover every native target for cc, ring,
 #    aws-lc-sys and openssl-sys.
-#  - linux-raw-sys: would match -sys; not in today's graph (rustix is absent). If rustix lands
-#    (the pidfd item), add:  linux-raw-sys | raw Linux syscall numbers/structs, pure Rust, no C | <date>

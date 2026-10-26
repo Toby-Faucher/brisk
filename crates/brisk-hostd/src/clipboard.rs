@@ -143,10 +143,8 @@ fn wayland_env() -> Vec<(String, String)> {
     {
         return env;
     }
-    let run = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-        // SAFETY: getuid cannot fail.
-        format!("/run/user/{}", unsafe { libc::getuid() })
-    });
+    let run = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| format!("/run/user/{}", rustix::process::getuid().as_raw()));
     let sock = std::fs::read_dir(&run).ok().and_then(|d| {
         d.flatten()
             .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -163,8 +161,8 @@ fn wayland_env() -> Vec<(String, String)> {
 
 fn cmd(prog: &str, args: &[&str]) -> Command {
     let mut c = Command::new(prog);
-    c.args(args)
-        .envs(wayland_env())
+    c.args(args).envs(wayland_env());
+    crate::notify::scrub(&mut c)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -255,11 +253,14 @@ impl Backend for WlBackend {
             use std::os::unix::process::CommandExt;
             let mut c = cmd("wl-paste", &["--watch", "echo"]);
             c.stdout(Stdio::piped());
-            // SAFETY: prctl is async-signal-safe. The death signal follows the spawning thread,
-            // which is the watcher thread: it lives as long as hostd.
+            // SAFETY: the hook only makes one raw prctl syscall (rustix, no allocation or locks),
+            // which is async-signal-safe after fork. The death signal follows the spawning
+            // thread, which is the watcher thread: it lives as long as hostd.
             unsafe {
                 c.pre_exec(|| {
-                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                    let _ = rustix::process::set_parent_process_death_signal(Some(
+                        rustix::process::Signal::TERM,
+                    ));
                     Ok(())
                 });
             }
