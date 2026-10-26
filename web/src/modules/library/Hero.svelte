@@ -2,6 +2,7 @@
   import type { Game } from '../../state/api';
   import { prefs, prefsChip } from '../../state/prefs';
   import Icon from '../../ui/Icon.svelte';
+  import PlayIcon from '../../ui/PlayIcon.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover, { hue } from './Cover.svelte';
@@ -20,7 +21,7 @@
     <h3>{game.name}</h3>
     <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}</div>
     <div class="acts">
-      <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><Icon name="play" size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
+      <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
       {#if game.running}
         {@const q = $quitting.has(game.appid)}
         <button class="btn ghost" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={14} /> {q ? 'Quitting…' : 'Quit'}</button>

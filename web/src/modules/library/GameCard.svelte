@@ -2,6 +2,7 @@
   import type { Game } from '../../state/api';
   import { prefs, prefsChip } from '../../state/prefs';
   import Icon from '../../ui/Icon.svelte';
+  import PlayIcon from '../../ui/PlayIcon.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
@@ -26,7 +27,7 @@
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
       {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
       <span class="glow"></span>
-      {#if game.installed}<span class="btn play"><Icon name="play" size={13} /> {busy ? 'Starting…' : playLabel(game)}</span>{/if}
+      {#if game.installed}<span class="btn play"><PlayIcon {busy} size={13} /> {busy ? 'Starting…' : playLabel(game)}</span>{/if}
     </Cover>
     <span class="name">{game.name}</span>
     <span class="sub">{sub}</span>

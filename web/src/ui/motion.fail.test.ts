@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('animejs/animation', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });
+vi.mock('animejs/text', () => {
+  throw new Error('Failed to fetch dynamically imported module');
+});
 vi.mock('animejs/svg', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });

@@ -12,9 +12,10 @@ const MODS = {
   easings: () => import('animejs/easings'),
   scope: () => import('animejs/scope'),
   svg: () => import('animejs/svg'),
+  text: () => import('animejs/text'),
 };
 type Mods = { [K in keyof typeof MODS]: Awaited<ReturnType<(typeof MODS)[K]>> };
-type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'];
+type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'] & Mods['text'];
 /** What `load(...names)` resolves to: the union of each named module's exports (distributes over K). */
 type Loaded<K extends keyof Mods> = Pick<Lib, (K extends keyof Mods ? keyof Mods[K] : never) & keyof Lib>;
 
@@ -186,6 +187,55 @@ export function drawIn(el: SVGGeometryElement) {
     dead = true;
     if (a) live.delete(a), a.cancel();
     clean();
+  };
+}
+
+/** A 270 degree ring (the spinner), one subpath like the play triangle. */
+export const SPIN_D = 'M12 4A8 8 0 1 1 4 12h3A5 5 0 1 0 12 7z';
+
+/**
+ * Play triangle <-> spinner on a filled one-path icon (`svg` of `<Icon name="play">`), for a start in flight. Not an
+ * `svg.morphTo`: measured, triangle -> ring crosses itself in the first frames (the point-by-length interpolation
+ * pairs unrelated places on the two outlines), so it is a quick swap instead: the icon turns -90 deg and fades out, `d`
+ * changes, and it turns in from +90 deg (together `--dur-tab`, native `rotate` + `opacity`, nothing loaded). While
+ * `to(true)` holds, one compositor `rotate` turns the ring. The first call and reduced motion write the end state at
+ * once. Svelte renders the path once and never touches its `d`. `destroy()` cancels everything and restores `d`.
+ */
+export function swapIcon(svg: SVGSVGElement) {
+  const path = svg.querySelector('path');
+  const home = path?.getAttribute('d') ?? '';
+  let state: boolean | undefined;
+  let cur: Animation | undefined;
+  let spin: Animation | undefined;
+  const handle = { complete: () => stopAll() }; // a switch to reduced motion ends it where it stands
+  const stopAll = () => (cur?.cancel(), spin?.cancel(), (cur = spin = undefined), live.delete(handle));
+  const settle = (on: boolean) => {
+    stopAll();
+    path?.setAttribute('d', on ? SPIN_D : home);
+    if (on && motionAllowed()) (spin = svg.animate({ rotate: ['0deg', '360deg'] }, { duration: 900, iterations: Infinity, easing: 'linear' })), live.add(handle);
+  };
+  return {
+    to(on: boolean) {
+      if (!path || on === state) return;
+      const first = state === undefined;
+      state = on;
+      if (first || !motionAllowed()) return settle(on);
+      stopAll();
+      const half = ms('--dur-tab', 180) / 2;
+      const easing = cssVar('--ease');
+      const out = (cur = svg.animate({ opacity: [1, 0], rotate: ['0deg', '-90deg'] }, { duration: half, easing, fill: 'forwards' }));
+      live.add(handle);
+      out.onfinish = () => {
+        path.setAttribute('d', on ? SPIN_D : home);
+        const inn = (cur = svg.animate({ opacity: [0, 1], rotate: ['90deg', '0deg'] }, { duration: half, easing }));
+        out.cancel();
+        inn.onfinish = () => settle(on);
+      };
+    },
+    destroy() {
+      stopAll();
+      path?.setAttribute('d', home);
+    },
   };
 }
 

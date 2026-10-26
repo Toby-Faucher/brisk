@@ -31,7 +31,7 @@ const mqListeners: ((e: { matches: boolean }) => void)[] = [];
 const vars: Record<string, string> = { '--ease': 'cubic-bezier(.2, .8, .2, 1)', '--dur-count': '600ms', '--spring-snappy-dur': '700ms', '--spring-snappy': 'linear(0, 1)' };
 vi.stubGlobal('location', { get pathname() { return path; } });
 vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f) }));
-vi.stubGlobal('document', { documentElement: {} });
+vi.stubGlobal('document', { documentElement: {}, hidden: false });
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (n: string) => vars[n] ?? '' }));
 vi.stubGlobal('window', globalThis);
 
@@ -327,5 +327,85 @@ describe('ringPulse', () => {
     path = '/stream';
     expect(m.ringPulse(e)).toBeNull();
     expect(e.animate).not.toHaveBeenCalled();
+  });
+});
+
+function fakePath(d = '') {
+  const attrs: Record<string, string> = { d };
+  return { attrs, removed: false, setAttribute: (k: string, v: string) => (attrs[k] = v), getAttribute: (k: string) => attrs[k], remove() { this.removed = true; } } as any;
+}
+function iconSvg() {
+  const p = fakePath('M7 4.5v15l13-7.5z');
+  const anims: any[] = [];
+  const svg = {
+    p, anims, querySelector: () => p,
+    animate: vi.fn((kf: any, o: any) => { const a = { kf, o, cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } }; anims.push(a); return a; }),
+  } as any;
+  return svg;
+}
+
+describe('swapIcon (play <-> spinner)', () => {
+  const HOME = 'M7 4.5v15l13-7.5z';
+  it('first value is the end state; busy turns out, swaps d, turns in, then spins; not busy swaps back', () => {
+    vars['--dur-tab'] = '180ms';
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    expect(s.animate).not.toHaveBeenCalled();
+    ic.to(true);
+    const out = s.anims[0];
+    expect(out.kf).toEqual({ opacity: [1, 0], rotate: ['0deg', '-90deg'] });
+    expect(out.o.duration).toBe(90); // two halves of --dur-tab
+    expect(s.p.attrs.d).toBe(HOME); // untouched until the icon is invisible
+    out.onfinish();
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    expect(out.cancelled).toBe(true);
+    const inn = s.anims[1];
+    expect(inn.kf).toEqual({ opacity: [0, 1], rotate: ['90deg', '0deg'] });
+    inn.onfinish();
+    expect(s.anims[2].kf).toEqual({ rotate: ['0deg', '360deg'] });
+    expect(s.anims[2].o).toMatchObject({ iterations: Infinity, easing: 'linear' });
+    ic.to(false); // the start failed
+    expect(s.anims[2].cancelled).toBe(true);
+    s.anims[3].onfinish();
+    s.anims[4].onfinish();
+    expect(s.p.attrs.d).toBe(HOME);
+    expect(s.animate).toHaveBeenCalledTimes(5); // no spin on the way back
+  });
+  it('the same state again does nothing; destroy mid-swap cancels it and restores d', () => {
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    ic.to(false);
+    ic.to(true);
+    s.anims[0].onfinish();
+    ic.destroy();
+    expect(s.anims.every((a: any) => a.cancelled)).toBe(true);
+    expect(s.p.attrs.d).toBe(HOME);
+  });
+  it('first value busy: ring at once and spinning; destroy stops it', () => {
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(true);
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    expect(s.anims).toHaveLength(1);
+    ic.destroy();
+    expect(s.anims[0].cancelled).toBe(true);
+    expect(s.p.attrs.d).toBe(HOME);
+  });
+  it('reduced motion: ring at once, no animation; switching to it mid-spin stops the turning', () => {
+    reduce = true;
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    ic.to(true);
+    expect(s.animate).not.toHaveBeenCalled();
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    reduce = false;
+    const t = iconSvg();
+    const ic2 = m.swapIcon(t);
+    ic2.to(true);
+    mqListeners.forEach((f) => f({ matches: true }));
+    expect(t.anims[0].cancelled).toBe(true);
   });
 });
