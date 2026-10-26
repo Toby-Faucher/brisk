@@ -19,7 +19,7 @@
   );
 </script>
 
-<div class="wrap">
+<div class="wrap" data-appid={game.appid}>
   <!-- aria-disabled (not disabled) keeps focus on the card while its stream starts -->
   <button class="g" class:off={!game.installed} class:sel={selected} aria-disabled={busy} aria-expanded={game.installed ? undefined : selected} onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>

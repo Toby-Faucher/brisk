@@ -137,6 +137,102 @@ try {
       await ctx.close();
     }
   }
+
+  // ---- 3. Library view transition: chips and search, names only on the open grid, cost while typing
+  if (want('vt')) {
+    const spy = () => {
+      window.__vt = [];
+      window.__long = [];
+      window.__ev = [];
+      new PerformanceObserver((l) => window.__long.push(...l.getEntries().map((e) => e.duration))).observe({ type: 'longtask' });
+      new PerformanceObserver((l) => window.__ev.push(...l.getEntries().filter((e) => /key|input/.test(e.name)).map((e) => e.duration))).observe({ type: 'event', durationThreshold: 16 });
+      const orig = document.startViewTransition?.bind(document);
+      if (!orig || window.__noVT) return void delete Document.prototype.startViewTransition;
+      document.startViewTransition = (arg) => {
+        const vt = orig(arg);
+        const rec = { types: arg?.types, named: document.querySelectorAll('[style*="view-transition-name"]').length, anims: 0 };
+        window.__vt.push(rec);
+        vt.ready.then(() => (rec.anims = document.getAnimations().filter((a) => a.effect?.pseudoElement?.startsWith('::view-transition')).length), () => {});
+        return vt;
+      };
+    };
+    const vts = (page) => page.evaluate(() => window.__vt.map((x) => ({ ...x })));
+    const leftNames = (page) => page.evaluate(() => document.querySelectorAll('[style*="view-transition-name"]').length);
+    {
+      const { ctx, page, go, errs } = await mk({ init: spy });
+      await go('/library');
+      await page.getByRole('button', { name: 'Installed', exact: true }).click();
+      await sleep(80);
+      let v = await vts(page);
+      check('filter chip: one view transition of type library, animating', v.length === 1 && v[0].types?.[0] === 'library' && v[0].anims > 0, JSON.stringify(v));
+      check('filter chip: no names on shelf-row cards', v[0]?.named === 0);
+      await sleep(600);
+      check('filter chip: names removed after', (await leftNames(page)) === 0);
+      await page.getByRole('button', { name: 'All', exact: true }).click();
+      await sleep(600);
+      await page.getByRole('button', { name: 'Show all' }).first().click(); // Installed as a grid
+      await sleep(300);
+      await page.evaluate(() => (window.__vt.length = 0));
+      await page.getByRole('button', { name: 'Recent', exact: true }).click();
+      await sleep(60);
+      await page.screenshot({ path: `${OUT}/library-vt-mid.png` });
+      v = await vts(page);
+      const gridCards = await page.evaluate(() => document.querySelectorAll('.grid [data-appid]').length);
+      check('grid: on-screen grid cards named (vt-<appid>), at most 60', v.length === 1 && v[0].named > 0 && v[0].named <= 60, `named ${v[0]?.named}, grid now ${gridCards}`);
+      await sleep(600);
+      check('grid: names removed after', (await leftNames(page)) === 0);
+      await page.getByRole('button', { name: 'All', exact: true }).click();
+      await sleep(600);
+      await page.evaluate(() => (window.__vt.length = 0));
+      await page.getByLabel('Search games').pressSequentially('game 1', { delay: 80 });
+      await sleep(600);
+      v = await vts(page);
+      // search had one (result set changed, once per 300 ms) but the slowest key went from ~40 to 136-168 ms: dropped
+      check('search: plain swap, no view transition while typing', v.length === 0, `${v.length} for 6 keys`);
+      check('search: names removed after', (await leftNames(page)) === 0);
+      check('no page errors', errs.length === 0, errs.join(' | '));
+      await ctx.close();
+    }
+    {
+      const { ctx, page, go } = await mk({ init: spy, reducedMotion: 'reduce' });
+      await go('/library');
+      await page.getByRole('button', { name: 'Installed', exact: true }).click();
+      await sleep(100);
+      check('reduced motion: no view transition', (await vts(page)).length === 0);
+      await ctx.close();
+    }
+    // Typing cost with both grids open (worst case), with and without startViewTransition; 3 runs each, median.
+    // Also the filter chip click with both grids open: no long task.
+    const typing = async (noVT) => {
+      const { ctx, page, go } = await mk({ init: noVT ? () => { window.__noVT = 1; } : undefined });
+      await ctx.addInitScript(spy);
+      await go('/library');
+      for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Show all' }).first().click();
+      await sleep(400);
+      const t0 = await page.evaluate(() => ((window.__long.length = 0), (window.__ev.length = 0), performance.now()));
+      await page.getByLabel('Search games').pressSequentially('game 1', { delay: 80 });
+      await page.waitForFunction(() => document.querySelectorAll('[data-appid]').length && !document.querySelector('[style*="view-transition-name"]'));
+      await sleep(700);
+      const r = await page.evaluate((t0) => ({ long: Math.max(0, ...window.__long), ev: Math.max(0, ...window.__ev), evSum: window.__ev.reduce((a, b) => a + b, 0), n: window.__vt.length, cards: document.querySelectorAll('[data-appid]').length }), t0);
+      await page.getByLabel('Search games').fill('');
+      await sleep(400);
+      await page.evaluate(() => (window.__long.length = 0));
+      await page.getByRole('button', { name: 'Not installed', exact: true }).click();
+      await sleep(800);
+      r.chipLong = await page.evaluate(() => Math.max(0, ...window.__long));
+      await ctx.close();
+      return r;
+    };
+    const med = (a, k) => a.map((x) => x[k]).sort((x, y) => x - y)[1];
+    const runs = { on: [], off: [] };
+    for (let i = 0; i < 3; i++) runs.off.push(await typing(true)), runs.on.push(await typing(false));
+    const on = { long: med(runs.on, 'long'), ev: med(runs.on, 'ev'), evSum: med(runs.on, 'evSum'), chipLong: med(runs.on, 'chipLong') };
+    const off = { long: med(runs.off, 'long'), ev: med(runs.off, 'ev'), evSum: med(runs.off, 'evSum'), chipLong: med(runs.off, 'chipLong') };
+    console.log(`     typing "game 1" (6 keys, 80 ms apart, both grids open): with VT ${JSON.stringify(on)} vts=${runs.on.map((r) => r.n)} | without ${JSON.stringify(off)}`);
+    check('typing: no long task over 50 ms with view transitions', on.long < 50, `${on.long} ms`);
+    check('typing: slowest key event no slower than without (+8 ms jitter)', on.ev <= off.ev + 8, `${on.ev} vs ${off.ev} ms`);
+    check('filter chip with both grids open: no long task over 50 ms', on.chipLong < 50, `${on.chipLong} ms (plain swap ${off.chipLong} ms)`);
+  }
 } catch (e) {
   check('platform-check ran', false, e.stack ?? String(e));
 } finally {
