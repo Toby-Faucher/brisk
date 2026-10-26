@@ -478,6 +478,12 @@ async fn sunshine_restart_204_then_429_and_host_is_json() {
     );
     let r = app.clone().oneshot(post()).await.unwrap();
     assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+    let wait: u64 = r.headers()["retry-after"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=100).contains(&wait), "Retry-After {wait}");
     assert!(body(r).await.contains("error"));
     assert_eq!(*runner.0.lock().unwrap(), 1);
     let r = app

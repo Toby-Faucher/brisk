@@ -82,11 +82,13 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
         .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
     let g = steam::load_games_with(&s.cfg, refresh).await;
     *s.games.lock().unwrap() = Some(g.clone());
-    (
-        [(header::CONTENT_TYPE, "application/json")],
-        serde_json::to_vec(&g).unwrap_or_default(),
-    )
-        .into_response()
+    match serde_json::to_vec(&g) {
+        Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
+        Err(e) => {
+            eprintln!("games: serializing the cache failed: {e}");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "games unavailable")
+        }
+    }
 }
 
 async fn host_status(State(s): State<Arc<AppState>>) -> Response {
@@ -96,10 +98,14 @@ async fn host_status(State(s): State<Arc<AppState>>) -> Response {
 async fn sunshine_restart(State(s): State<Arc<AppState>>) -> Response {
     let (code, msg) = match s.restarter.restart().await {
         Ok(()) => return StatusCode::NO_CONTENT.into_response(),
-        Err(RestartError::TooSoon) => (
-            StatusCode::TOO_MANY_REQUESTS,
-            "Sunshine was restarted a moment ago",
-        ),
+        Err(RestartError::TooSoon(secs)) => {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(header::RETRY_AFTER, secs.to_string())],
+                axum::Json(serde_json::json!({ "error": "Sunshine was restarted a moment ago" })),
+            )
+                .into_response();
+        }
         Err(RestartError::Failed) => (StatusCode::INTERNAL_SERVER_ERROR, "restart failed"),
     };
     (code, axum::Json(serde_json::json!({ "error": msg }))).into_response()
@@ -248,11 +254,14 @@ async fn sessions(State(s): State<Arc<AppState>>) -> Response {
         .stream
         .sessions(100)
         .into_iter()
-        .map(|r| {
+        .filter_map(|r| {
             let spark = s.stream.sessions.spark(r.started, 24);
-            let mut v = serde_json::to_value(r).unwrap_or_default();
+            let id = r.started;
+            let mut v = serde_json::to_value(r)
+                .inspect_err(|e| eprintln!("sessions: skipping session {id}: {e}"))
+                .ok()?;
             v["spark"] = spark.into();
-            v
+            Some(v)
         })
         .collect();
     axum::Json(serde_json::json!({ "sessions": rows })).into_response()

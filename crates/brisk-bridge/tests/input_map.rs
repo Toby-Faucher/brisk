@@ -106,6 +106,7 @@ fn unknown_kind_is_counted_not_fatal() {
         &[KIND_KEY, 0x41, 1][..],    // short
         &[KIND_MOVE, 1, 0, 1][..],   // short
         &key(0x00, true, 0)[..],     // vk 0
+        &key(0xff, true, 0)[..],     // vk 0xff
         &key(0x41, true, 0x10)[..],  // modifier bit Sunshine does not know
         &[KIND_KEY, 0x41, 2, 0][..], // down neither 0 nor 1
         &button(6, true)[..],        // button out of 1..=5
@@ -113,7 +114,7 @@ fn unknown_kind_is_counted_not_fatal() {
     ] {
         q.on_message(bad);
     }
-    assert_eq!(q.stats.bad, 9);
+    assert_eq!(q.stats.bad, 10);
     assert_eq!(q.pop(), None, "nothing bad reaches Sunshine");
     q.on_message(&key(0x42, true, 0));
     assert_eq!(q.pop(), Some(k(0x42, true)), "still working after bad ones");
