@@ -12,7 +12,7 @@
 //! Annex B bytes: headerType 0x01, frame_processing_latency u16 LE (0.1 ms), frameType u8
 //! (2 = IDR), lastPayloadLen u16 LE, 2 reserved.
 //!
-//! With `SS_ENC_VIDEO` each datagram is a 32-byte prefix (iv[12], frameNumber u32 LE, tag[16])
+//! With `SS_ENC_VIDEO` each datagram is a 32-byte prefix (iv\[12\], frameNumber u32 LE, tag\[16\])
 //! followed by the AES-128-GCM ciphertext (no AAD) of the plain packet; [`VideoCipher::open`]
 //! turns it back into a plain packet.
 

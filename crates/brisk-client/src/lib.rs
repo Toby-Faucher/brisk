@@ -14,17 +14,21 @@ use brisk_proto::{http::HttpError, input::InputError, pair::PairError, tap::TapE
 /// What went wrong, by kind; the strings are context for people, the variant is for callers.
 #[derive(Debug)]
 pub enum Error {
+    /// Local file or socket I/O (identity files, recorder output, tap and UDP sockets).
     Io(std::io::Error),
     /// Sunshine refused with an HTTP or XML status (a complete reply: nothing was started).
     Http(HttpError),
+    /// The pairing handshake (`brisk_proto::pair`) failed: bad PIN, tampered reply, wrong order.
     Pair(PairError),
+    /// TLS to Sunshine failed (session layer; includes a server cert that is not the pinned one).
     Tls(rustls::Error),
+    /// A tap message did not parse (tap layer, from `brisk_proto::tap::parse_tap`).
     Tap(TapError),
-    /// An input event the wire format cannot carry.
+    /// An input event the wire format cannot carry (control layer).
     Input(InputError),
     /// Malformed or unexpected bytes from the host (HTTP framing, RTSP, control, certificates).
     Protocol(String),
-    /// No answer within the deadline.
+    /// No answer within the deadline (session, RTSP, control and stream layers).
     Timeout(String),
     /// The host already runs something we will not cancel.
     Busy(String),
@@ -32,13 +36,13 @@ pub enum Error {
     Session(String),
     /// Local state: not paired, no identity, bad local files or arguments.
     Setup(String),
-    /// The other end went away (tap EOF, control session dropped).
+    /// The other end went away (tap EOF in the tap layer, control session dropped in the control layer).
     Closed(&'static str),
-    /// `brisk-probe stream` gate failures.
+    /// `brisk-probe stream` gate failures (the probe's checks over the stream counters).
     Gate(Vec<String>),
-    /// `context: error`.
+    /// `context: error`; added by [`Error::context`] by whichever layer wraps a lower error.
     Context(String, Box<Error>),
-    /// An error, then what the cleanup after it did (`first; then`).
+    /// An error, then what the cleanup after it did (`first; then`); built by [`Error::then`].
     Then(Box<Error>, Box<Error>),
 }
 
