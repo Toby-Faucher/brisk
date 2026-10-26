@@ -71,7 +71,10 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   `DELETE` is idempotent (204). Capped at 500 entries, oldest `updated` dropped. All need the secret.
 - Not done: Ctrl+K "Launch <game>" only starts the game on the host (`/api/launch`, no stream), so it has no quality to
   apply; the saved quality is used when the game is then opened from Library or Resume. A saved HEVC on a browser
-  without HEVC decode is not downgraded.
+  without HEVC decode starts in H.264 for that start (toast "This browser cannot decode HEVC, starting in H.264");
+  the saved entry stays.
+- Saving: Forget waits for a save still in flight, then DELETEs, and that save's answer is dropped, so Forget
+  cannot be undone by a late PUT. A pending change is flushed on `pagehide` too (the PUT uses fetch `keepalive`).
 - [U] Not tried on hardware: saved quality across a real Library -> stream -> quality change -> Disconnect -> Library round trip.
 
 ## Clipboard and file drop

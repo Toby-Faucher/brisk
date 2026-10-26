@@ -90,9 +90,9 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   return r;
 }
 
-async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, keepalive = false): Promise<T> {
   const headers = auth(body === undefined ? {} : { 'content-type': 'application/json' });
-  const r = await send(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const r = await send(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), keepalive });
   return (r.status === 204 ? undefined : await r.json()) as T;
 }
 
@@ -137,7 +137,7 @@ export const api = {
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
   prefs: () => call<{ prefs: PrefsMap }>('GET', '/api/prefs'),
-  putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b),
+  putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
   sessions: () => call<{ sessions: SessionRec[] }>('GET', '/api/sessions'),
   getClipboard,

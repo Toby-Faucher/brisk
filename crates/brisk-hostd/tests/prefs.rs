@@ -79,12 +79,13 @@ async fn validation_table() {
         json!({"preset":"custom","codec":"h264","bitrateKbps":150001}),
         json!({"preset":"custom","codec":"h264","width":-1}),
         json!("nope"),
+        json!({"preset":"fast","codec":"h264","colour":"red"}), // unknown field
     ];
     for b in bad {
         assert_eq!(t.put("100", b.clone()).await, StatusCode::BAD_REQUEST, "{b}");
     }
     // appid must be a u32, and never the Desktop app
-    for id in ["abc", "-1", "4294967296", "870779643"] {
+    for id in ["abc", "-1", "0", "4294967296", "870779643"] {
         assert_eq!(t.put(id, json!({"preset":"fast","codec":"h264"})).await, StatusCode::BAD_REQUEST, "{id}");
     }
     assert_eq!(t.all().await.as_object().unwrap().len(), 1); // only the accepted appid 100
@@ -111,6 +112,33 @@ async fn put_get_delete_roundtrip() {
     assert_eq!(t.call("DELETE", "/api/prefs/8", true, None).await.0, StatusCode::NO_CONTENT); // idempotent
     assert!(t.all().await.get("8").is_none());
     assert!(t.all().await.get("7").is_some());
+}
+
+#[tokio::test]
+async fn named_preset_ignores_out_of_range_custom_numbers() {
+    let t = t();
+    let b = json!({"preset":"balanced","codec":"h264","width":99999,"fps":1,"bitrateKbps":5});
+    assert_eq!(t.put("3", b).await, StatusCode::OK);
+    let e = t.all().await["3"].clone();
+    assert!(e.get("width").is_none() && e.get("fps").is_none() && e.get("bitrateKbps").is_none());
+}
+
+#[tokio::test]
+async fn concurrent_puts_all_land_and_the_file_stays_valid() {
+    let t = Arc::new(t());
+    let mut js = vec![];
+    for i in 1..=40u32 {
+        let t = t.clone();
+        js.push(tokio::spawn(async move {
+            t.put(&i.to_string(), json!({"preset":"fast","codec":"h264"})).await
+        }));
+    }
+    for j in js {
+        assert_eq!(j.await.unwrap(), StatusCode::OK);
+    }
+    assert_eq!(t.all().await.as_object().unwrap().len(), 40);
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
+    assert_eq!(on_disk.as_object().unwrap().len(), 40);
 }
 
 #[tokio::test]

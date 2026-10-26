@@ -42,7 +42,7 @@
     selected = c.selected;
     if (c.action === 'play')
       void run(g, 'start', async () => {
-        await startGame(g.appid);
+        await startGame(g.appid, toast);
         await navigate('/stream');
       });
   }

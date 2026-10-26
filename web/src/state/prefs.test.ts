@@ -110,30 +110,93 @@ describe('prefSaver', () => {
   });
 });
 
+describe('forget vs an in-flight save', () => {
+  it('forget waits for the PUT, then DELETEs, and the late PUT does not re-add the game', async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const put = vi.fn(async () => {
+      order.push('put-start');
+      await new Promise<void>((r) => (release = r));
+      order.push('put-end');
+      return P();
+    });
+    const s = prefSaver({ put, onSaved: (id, p) => prefs.update((m) => ({ ...m, [id]: p })) });
+    s.save(5, { preset: 'fast', codec: 'h264' });
+    s.flush(); // PUT is now in flight
+    const del = vi.fn(async () => void order.push('delete'));
+    const forgot = forgetPrefs(5, { del, cancel: s.cancel, settled: s.settled });
+    await Promise.resolve();
+    expect(del).not.toHaveBeenCalled(); // still waiting for the PUT
+    release();
+    await forgot;
+    expect(order).toEqual(['put-start', 'put-end', 'delete']);
+    expect(get(prefs)['5']).toBeUndefined();
+  });
+});
+
 describe('forgetPrefs', () => {
   it('deletes on hostd, then drops it from the store; keeps it if hostd fails', async () => {
     prefs.set({ '5': P(), '6': P() });
     const del = vi.fn(async () => {});
     const cancel = vi.fn();
-    await forgetPrefs(5, { del, cancel });
+    await forgetPrefs(5, { del, cancel, settled: async () => {} });
     expect(del).toHaveBeenCalledWith(5);
     expect(cancel).toHaveBeenCalledWith(5);
     expect(Object.keys(get(prefs))).toEqual(['6']);
-    await expect(forgetPrefs(6, { del: async () => Promise.reject(new Error('x')), cancel })).rejects.toThrow('x');
+    await expect(forgetPrefs(6, { del: async () => Promise.reject(new Error('x')), cancel, settled: async () => {} })).rejects.toThrow('x');
     expect(Object.keys(get(prefs))).toEqual(['6']);
   });
 });
 
 describe('startGame (Library, Resume card, Stream Start)', () => {
+  const rig = (hevc = true) => {
+    const startStream = vi.fn(async (_r: StreamReq) => ({}) as never);
+    const notify = vi.fn();
+    return { startStream, notify, d: { startStream, defaultPreset: () => 'fast' as const, hevcOk: async () => hevc } };
+  };
   it('starts with that game\'s saved quality, else the default preset', async () => {
     prefs.set({ '10': P({ preset: 'crisp', codec: 'hevc' }) });
-    const startStream = vi.fn(async (_r: StreamReq) => ({}) as never);
-    await startGame(10, { startStream, defaultPreset: () => 'fast' });
+    const { startStream, notify, d } = rig();
+    await startGame(10, notify, d);
     expect(startStream).toHaveBeenLastCalledWith({ preset: 'crisp', codec: 'hevc', appid: 10 });
-    await startGame(11, { startStream, defaultPreset: () => 'fast' });
+    await startGame(11, notify, d);
     expect(startStream).toHaveBeenLastCalledWith({ preset: 'fast', codec: 'h264', appid: 11 });
-    await startGame(undefined, { startStream, defaultPreset: () => 'balanced' });
-    expect(startStream).toHaveBeenLastCalledWith({ preset: 'balanced', codec: 'h264' }); // Desktop: no appid
+    await startGame(undefined, notify, d);
+    expect(startStream).toHaveBeenLastCalledWith({ preset: 'fast', codec: 'h264' }); // Desktop: no appid
+    expect(notify).not.toHaveBeenCalled();
+  });
+  it('a saved HEVC falls back to H.264 with a notice when the browser cannot decode it; the entry stays', async () => {
+    prefs.set({ '10': P({ preset: 'crisp', codec: 'hevc' }) });
+    const { startStream, notify, d } = rig(false);
+    await startGame(10, notify, d);
+    expect(startStream).toHaveBeenLastCalledWith({ preset: 'crisp', codec: 'h264', appid: 10 });
+    expect(notify).toHaveBeenCalledWith('This browser cannot decode HEVC, starting in H.264');
+    expect(get(prefs)['10'].codec).toBe('hevc');
+  });
+});
+
+describe('watchPrefs failure', () => {
+  it('a failed fetch is retried on the next focus, not held off for a minute', async () => {
+    vi.resetModules();
+    const m = await import('./prefs');
+    const f = vi.fn(async () => new Response('no', { status: 500 }));
+    vi.stubGlobal('fetch', f);
+    const win = new EventTarget();
+    const stop = m.watchPrefs(win);
+    await new Promise((r) => setTimeout(r));
+    win.dispatchEvent(new Event('focus'));
+    expect(f).toHaveBeenCalledTimes(2);
+    stop();
+  });
+});
+
+describe('putPrefs', () => {
+  it('uses keepalive so a save can finish while the page unloads', async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify(P())));
+    vi.stubGlobal('fetch', f);
+    const { api } = await import('./api');
+    await api.putPrefs(1, { preset: 'fast', codec: 'h264' });
+    expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].keepalive).toBe(true);
   });
 });
 
