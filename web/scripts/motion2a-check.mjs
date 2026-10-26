@@ -283,6 +283,95 @@ if (want('split')) {
   await f.ctx.close();
 }
 
+// ---- #15 controller drift result chips
+async function padPage(opts = {}) {
+  const c = await mk(opts);
+  // one steady pad that drifts a little: left 3.6 % (Minor), right 8.9 % (Drift); the page needs focus to poll
+  await c.ctx.addInitScript(() => {
+    const pad = { id: 'Xbox 360 Controller (STANDARD GAMEPAD Vendor: 045e Product: 028e)', index: 0, connected: true, mapping: 'standard', timestamp: 1, axes: [0.035, -0.01, 0.08, 0.04], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
+    navigator.getGamepads = () => [pad, null, null, null];
+    document.hasFocus = () => true;
+    // from the moment a result table is inserted: per frame the offset/noise/min-deadzone texts, the chips' opacity and their animations
+    window.__s = []; window.__chipAnims = [];
+    new MutationObserver(() => {
+      if (!document.querySelector('.tbl .vchip')) return void (window.__sampling = false);
+      if (window.__sampling) return;
+      window.__sampling = true; window.__s = []; window.__chipAnims = [];
+      const t0 = performance.now();
+      const f = () => {
+        if (!document.querySelector('.tbl .vchip')) return;
+        const rows = [...document.querySelectorAll('.block:has(.vchip) tbody tr')];
+        window.__s.push([Math.round(performance.now() - t0), rows.map((tr) => [tr.children[2].textContent, tr.children[3].textContent, tr.children[5].textContent].join('/')).join(' ; '), [...document.querySelectorAll('.vchip')].map((c) => getComputedStyle(c).opacity).join()]);
+        if (!window.__chipAnims.length) window.__chipAnims = document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('vchip')).map((a) => ({ props: [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join(), delay: a.effect.getTiming().delay, dur: a.effect.getTiming().duration }));
+        if (typeof window.__freeze === 'number') document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('vchip')).forEach((a) => (a.pause(), (a.currentTime = window.__freeze)));
+        if (performance.now() - t0 < 1300) requestAnimationFrame(f);
+      };
+      f();
+    }).observe(document, { subtree: true, childList: true });
+  });
+  await c.page.goto(BASE + '/settings#controller'); await c.page.waitForSelector('text=Check drift');
+  await sleep(500);
+  return c;
+}
+const runDrift = async (page) => { await page.click('button:has-text("Check drift")'); await page.waitForSelector('.tbl .vchip', { timeout: 6000 }); };
+const driftCells = (page) => page.evaluate(() => [...document.querySelectorAll('.block:has(.vchip) tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent.trim()).join(' | ')));
+if (want('chips')) {
+  const ref = await padPage({ reducedMotion: 'reduce' });
+  await runDrift(ref.page); await sleep(900);
+  const final = await driftCells(ref.page);
+  check('chips: reduced motion => no animation on the result, values final at once', (await ref.page.evaluate(() => document.getAnimations().filter((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition) && !a.effect?.target?.closest?.('aside')).length)) === 0 && ref.anime.length === 0, `${ref.anime.length} chunks; ${final.join(' // ')}`);
+  await ref.ctx.close();
+
+  const { page, anime, errs, ctx } = await padPage();
+  check('chips: nothing of the library before the measurement', anime.length === 0, anime.join());
+  await page.click('button:has-text("Check drift")');
+  await sleep(1000);
+  const live = await page.evaluate(() => ({ cx: document.querySelector('.sticks .dot').getAttribute('cx'), cy: document.querySelector('.sticks .dot').getAttribute('cy'), nums: document.querySelector('.stick .nums').textContent.replace(/\s+/g, ' ') }));
+  check('chips: live stick dot shows the raw axis values while measuring', live.cx === '0.035' && live.cy === '-0.01', JSON.stringify(live));
+  await page.waitForSelector('.tbl .vchip', { timeout: 6000 });
+  await sleep(50); const chipAnims = await page.evaluate(() => window.__chipAnims);
+  check('chips: two verdict chips pop with opacity + scale + translate, 60 ms apart', chipAnims.length === 2 && chipAnims.every((a) => a.props === 'opacity,scale,translate') && chipAnims[1].delay - chipAnims[0].delay === 60, JSON.stringify(chipAnims));
+  await sleep(1300);
+  const s = await page.evaluate(() => window.__s);
+  const lefts = [...new Set(s.map((x) => x[1].split(' ; ')[0].split('/')[0]))];
+  check('chips: the offset counts up from 0.0% through intermediate values', lefts[0] === '0.0%' && lefts.length >= 4, lefts.join(' '));
+  check('chips: opacity ramps for the first chip, then the second one', s.some((x) => { const o = x[2].split(',').map(Number); return o[0] > 0.2 && o[0] < 1 && o[1] < o[0]; }), s.filter((x, i) => i % 6 === 0).map((x) => x[2]).join(' '));
+  const end = await driftCells(page);
+  check('chips: values end exactly on the same text as without motion', JSON.stringify(end) === JSON.stringify(final), end.join(' // '));
+  check('chips: nothing left animating on the result', (await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.tbl')).length)) === 0);
+  const noLive = await page.evaluate(() => document.getAnimations().filter((a) => !(a instanceof CSSAnimation) && a.effect?.target?.closest?.('.sticks, .live')).map((a) => a.constructor.name + ':' + (a.animationName ?? a.transitionProperty ?? 'waapi') + '@' + a.effect.target.tagName + '.' + a.effect.target.getAttribute('class')));
+  check('chips: no animation ever on the live view (sticks, diagram, bars)', noLive.length === 0, JSON.stringify(noLive));
+  // rerun: a second measurement re-animates cleanly
+  const before = anime.length;
+  await page.click('button:has-text("Check drift")');
+  check('chips: rerun clears the old result at once', (await page.locator('.tbl .vchip').count()) === 0);
+  await page.waitForSelector('.tbl .vchip', { timeout: 6000 });
+  await sleep(1450);
+  const again = await page.evaluate(() => ({ chips: window.__chipAnims.length, first: window.__s[0]?.[1].split(' ; ')[0].split('/')[0], values: [...new Set(window.__s.map((x) => x[1].split(' ; ')[1].split('/')[0]))].join(' ') }));
+  check('chips: second measurement animates again (chips popping, number counting up from 0.0%)', again.chips === 2 && again.first === '0.0%' && again.values.split(' ').length >= 3, JSON.stringify(again));
+  check('chips: second result ends on the same final values', JSON.stringify(await driftCells(page)) === JSON.stringify(final));
+  // leave mid-count
+  await page.click('button:has-text("Check drift")'); await page.waitForSelector('.tbl .vchip', { timeout: 6000 });
+  await nav(page, '/library'); await sleep(400);
+  const rafAway = await rafIn(page, 700);
+  check('chips: leaving mid-count leaves no rAF on the next page', rafAway <= 2, `${rafAway} rAF in 700 ms`);
+  check('no errors', errs.length === 0, errs.join('|'));
+  console.log(`info chips: ${anime.length - before >= 0 ? [...new Set(anime)].join(' ') : ''}`);
+  await ctx.close();
+
+  // frames: the chips frozen at 40 / 130 / 400 ms of their animation (the count-up is a JS tween: its mid values are in the first frame)
+  const f = await padPage({ deviceScaleFactor: 2 });
+  await f.page.evaluate(() => (window.__freeze = 40));
+  await f.page.click('button:has-text("Check drift")');
+  await f.page.waitForSelector('.tbl .vchip', { timeout: 8000 });
+  await f.page.evaluate(() => document.querySelector('.tbl').scrollIntoView({ block: 'center' }));
+  const tb = async () => { const b = await f.page.locator('.block:has(.vchip)').boundingBox(); return { x: b.x, y: b.y, width: Math.min(b.width, 760), height: Math.min(b.height, 300) }; };
+  await shot(f.page, 'chips-1-t40', await tb());
+  await f.page.evaluate(() => (window.__freeze = 130)); await sleep(60); await shot(f.page, 'chips-2-t130', await tb());
+  await f.page.evaluate(() => (window.__freeze = 400)); await sleep(60); await shot(f.page, 'chips-3-end', await tb());
+  await f.ctx.close();
+}
+
 await browser.close();
 console.log(fails ? `${fails} FAILED` : 'all ok');
 process.exit(fails ? 1 : 0);

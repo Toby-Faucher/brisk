@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { padName, type PadLike } from '../../lib/gamepad';
   import Card from '../../ui/Card.svelte';
+  import { countUp, popIn } from '../../ui/motion';
   import PadDiagram from './PadDiagram.svelte';
   import {
     DEFAULT_DEADZONE, DriftCheck, PollRate, RangeTest, Trail, mappingRows, padChoices, padView, type DriftResult, type PadView, type StickDrift,
@@ -43,6 +44,8 @@
   const cur = () => pads().find((g) => g && g.connected && g.index === sel) ?? null;
   const pct = (v: number, d = 0) => (v * 100).toFixed(d);
   const sgn = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(2);
+  const fmt1 = (v: number) => `${v.toFixed(1)}%`;
+  const fmtPct = (v: number) => `${Math.round(v)}%`;
 
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
@@ -232,8 +235,9 @@
         <table class="tbl mono">
           <thead><tr><th>Stick</th><th>Mean x, y</th><th>Offset</th><th>Noise p-p</th><th>Verdict</th><th>Min deadzone</th></tr></thead>
           <tbody>
-            {#each driftSticks as [n, d] (n)}
-              <tr><td>{n}</td><td>{d.meanX.toFixed(1)}%, {d.meanY.toFixed(1)}%</td><td>{d.offset.toFixed(1)}%</td><td>{d.noise.toFixed(1)}%</td><td class={d.verdict}>{d.verdict}</td><td>{d.suggested}%</td></tr>
+            <!-- the result only: the chips pop in one after another and the numbers count up; the live readings above are raw -->
+            {#each driftSticks as [n, d], i (n)}
+              <tr><td>{n}</td><td>{d.meanX.toFixed(1)}%, {d.meanY.toFixed(1)}%</td><td {@attach countUp(d.offset, fmt1)}>{fmt1(d.offset)}</td><td {@attach countUp(d.noise, fmt1)}>{fmt1(d.noise)}</td><td><span class="vchip {d.verdict}" {@attach popIn(i * 60)}>{d.verdict}</span></td><td {@attach countUp(d.suggested, fmtPct)}>{fmtPct(d.suggested)}</td></tr>
             {/each}
           </tbody>
         </table>
@@ -313,6 +317,7 @@
   .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
   .tbl td { padding: 3px 8px 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
   .tbl tr.hit td { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+  .vchip { display: inline-block; padding: 1px 9px; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); }
   .OK { color: var(--ok); }
   .Minor { color: var(--warn); }
   .Drift { color: var(--bad); }

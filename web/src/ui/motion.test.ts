@@ -293,6 +293,55 @@ describe('fadeIn', () => {
   });
 });
 
+describe('popIn + countUp (result chips)', () => {
+  it('chips pop with opacity, translate and scale only, delayed per chip, cancelled on destroy; none under reduced motion', () => {
+    const cancel = vi.fn();
+    const e = { animate: vi.fn(() => ({ cancel })) } as any;
+    const off = m.popIn(60)(e)!;
+    const [kf, o] = e.animate.mock.calls[0];
+    expect(Object.keys(kf).sort()).toEqual(['opacity', 'scale', 'translate']);
+    expect(o).toMatchObject({ delay: 60, fill: 'backwards' });
+    off();
+    expect(cancel).toHaveBeenCalled();
+    reduce = true;
+    const f = { animate: vi.fn() } as any;
+    expect(m.popIn()(f)).toBeUndefined();
+    expect(f.animate).not.toHaveBeenCalled();
+  });
+  it('a result number counts up from 0 to exactly its value and keeps it when its element is torn down', async () => {
+    const e = el();
+    const off = m.countUp(3.46, (v) => `${v.toFixed(1)}%`)(e)!;
+    expect(e.text.data).toBe('0.0%');
+    await flush();
+    anims[0].obj.v = 1.2; anims[0].p.onUpdate();
+    expect(e.text.data).toBe('1.2%');
+    anims[0].complete();
+    expect(e.text.data).toBe('3.5%');
+    off();
+    expect(e.text.data).toBe('3.5%');
+  });
+  it('a result of 0, a non-number and reduced motion write the end value at once; teardown mid-count settles on it', async () => {
+    const e = el();
+    m.countUp(0, (v) => `${v.toFixed(1)}%`)(e);
+    expect(anims).toHaveLength(0);
+    expect(m.countUp(Number.NaN, String)(e)).toBeUndefined();
+    reduce = true;
+    const f = el();
+    m.countUp(5, (v) => `${v}%`)(f);
+    await flush();
+    expect(anims).toHaveLength(0);
+    expect(f.text.data).toBe('5%');
+    reduce = false;
+    const g = el();
+    const off = m.countUp(5, (v) => `${Math.round(v)}%`)(g)!;
+    await flush();
+    anims[0].obj.v = 2; anims[0].p.onUpdate();
+    off();
+    expect(anims[0].cancelled).toBe(true);
+    expect(g.text.data).toBe('5%');
+  });
+});
+
 describe('glideSwap', () => {
   const chip = (x: number, w: number) => ({ getBoundingClientRect: () => ({ left: x, top: 0, width: w, height: 20 }), animate: vi.fn() }) as any;
   it("glides the new selection's ::before from the old one, after the change", () => {

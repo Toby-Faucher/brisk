@@ -293,3 +293,21 @@ export const fadeIn = (delay = 0) => (el: Element) => {
   const a = el.animate({ opacity: [0, 1] }, { duration: ms('--dur-enter', 420), delay, easing: cssVar('--ease'), fill: 'backwards' });
   return () => a.cancel();
 };
+
+/** Svelte attachment: a result chip pops in when it mounts: opacity + `translate` + `scale` (native, compositor), `delay` ms in. */
+export const popIn = (delay = 0) => (el: Element) => {
+  if (!motionAllowed()) return;
+  const a = el.animate({ opacity: [0, 1], translate: ['0 6px', '0 0'], scale: [0.9, 1] }, { duration: 240, delay, easing: cssVar('--ease'), fill: 'backwards' });
+  return () => a.cancel();
+};
+
+/**
+ * Svelte attachment: a result number counts up from 0 to `value` when it mounts (`tweenNumber`). Only for numbers measured
+ * once and then fixed, never for a live reading. Svelte still renders the same text, so both agree at rest; with a chunk that
+ * fails to load or under reduced motion the end value is simply there.
+ */
+export const countUp = (value: number, format: (v: number) => string) => (el: HTMLElement) => {
+  if (!Number.isFinite(value)) return;
+  const t = tweenNumber(el, value, { from: 0, format });
+  return () => (t.cancel(), setText(el, format(value)));
+};

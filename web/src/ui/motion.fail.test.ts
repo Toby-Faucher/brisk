@@ -27,6 +27,13 @@ describe('chunk load failure', () => {
     await settle();
     expect(text.data).toBe('63 °C');
   });
+  it('countUp ends on the measured value', async () => {
+    const text = { nodeType: 3, data: '', nextSibling: null };
+    m.countUp(3.6, (v) => `${v.toFixed(1)}%`)({ firstChild: text } as any);
+    expect(text.data).toBe('0.0%');
+    await settle();
+    expect(text.data).toBe('3.6%');
+  });
   it('splitIn leaves the real title untouched and visible', async () => {
     const real = { textContent: 'Portal 2', style: { opacity: '', removeProperty() {} }, getAttribute: () => '', removeAttribute() {} } as any;
     const h = { firstElementChild: real, append: () => { throw new Error('no copy may be added'); } } as any;
