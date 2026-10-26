@@ -28,10 +28,13 @@ vi.mock('animejs/scope', () => ({
 let path = '/';
 let reduce = false;
 const mqListeners: ((e: { matches: boolean }) => void)[] = [];
+const docListeners: [string, () => void][] = [];
 const vars: Record<string, string> = { '--ease': 'cubic-bezier(.2, .8, .2, 1)', '--dur-count': '600ms', '--spring-snappy-dur': '700ms', '--spring-snappy': 'linear(0, 1)' };
 vi.stubGlobal('location', { get pathname() { return path; } });
-vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f) }));
-vi.stubGlobal('document', { documentElement: {} });
+vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f), removeEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.splice(mqListeners.indexOf(f), 1) }));
+vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl(), createTextNode: (text: string) => ({ text }) });
+vi.stubGlobal('requestAnimationFrame', (f: () => void) => setTimeout(f, 0));
+vi.stubGlobal('CSSAnimation', class {});
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (n: string) => vars[n] ?? '' }));
 vi.stubGlobal('window', globalThis);
 
@@ -282,6 +285,103 @@ describe('fadeIn', () => {
   });
 });
 
+describe('popIn + countUp (result chips)', () => {
+  it('chips pop with opacity, translate and scale only, delayed per chip, cancelled on destroy; none under reduced motion', () => {
+    const cancel = vi.fn();
+    const e = { animate: vi.fn(() => ({ cancel })) } as any;
+    const off = m.popIn(60)(e)!;
+    const [kf, o] = e.animate.mock.calls[0];
+    expect(Object.keys(kf).sort()).toEqual(['opacity', 'scale', 'translate']);
+    expect(o).toMatchObject({ delay: 60, fill: 'backwards' });
+    off();
+    expect(cancel).toHaveBeenCalled();
+    reduce = true;
+    const f = { animate: vi.fn() } as any;
+    expect(m.popIn()(f)).toBeUndefined();
+    expect(f.animate).not.toHaveBeenCalled();
+  });
+  it('a result number counts up from 0 to exactly its value and keeps it when its element is torn down', async () => {
+    const e = el();
+    const off = m.countUp(3.46, (v) => `${v.toFixed(1)}%`)(e)!;
+    expect(e.text.data).toBe('0.0%');
+    await flush();
+    anims[0].obj.v = 1.2; anims[0].p.onUpdate();
+    expect(e.text.data).toBe('1.2%');
+    anims[0].complete();
+    expect(e.text.data).toBe('3.5%');
+    off();
+    expect(e.text.data).toBe('3.5%');
+  });
+  it('a result of 0, a non-number and reduced motion write the end value at once; teardown mid-count settles on it', async () => {
+    const e = el();
+    m.countUp(0, (v) => `${v.toFixed(1)}%`)(e);
+    expect(anims).toHaveLength(0);
+    expect(m.countUp(Number.NaN, String)(e)).toBeUndefined();
+    reduce = true;
+    const f = el();
+    m.countUp(5, (v) => `${v}%`)(f);
+    await flush();
+    expect(anims).toHaveLength(0);
+    expect(f.text.data).toBe('5%');
+    reduce = false;
+    const g = el();
+    const off = m.countUp(5, (v) => `${Math.round(v)}%`)(g)!;
+    await flush();
+    anims[0].obj.v = 2; anims[0].p.onUpdate();
+    off();
+    expect(anims[0].cancelled).toBe(true);
+    expect(g.text.data).toBe('5%');
+  });
+});
+
+describe('travel (connection path dot)', () => {
+  const dot = () => {
+    const a = { cancelled: false, paused: false, pause() { a.paused = true; }, play() { a.paused = false; }, cancel() { a.cancelled = true; } };
+    return { a, animate: vi.fn(() => a) } as any;
+  };
+  afterEach(() => { (document as any).hidden = false; docListeners.length = 0; });
+  it('one infinite linear translate loop, nothing else', () => {
+    const e = dot();
+    const stop = m.travel(e, 1600)!;
+    const [kf, o] = e.animate.mock.calls[0];
+    expect(Object.keys(kf).sort()).toEqual(['opacity', 'translate']);
+    expect(kf.translate).toEqual(['-100% 0', '0 0']);
+    expect(o).toEqual({ duration: 1600, iterations: Infinity, easing: 'linear' });
+    expect(e.animate).toHaveBeenCalledTimes(1);
+    stop();
+    expect(e.a.cancelled).toBe(true);
+    expect(docListeners).toHaveLength(0); // listeners removed again
+  });
+  it('is paused while the tab is hidden and plays again when it is back; starts paused if hidden', () => {
+    const e = dot();
+    const stop = m.travel(e, 1600)!;
+    (document as any).hidden = true;
+    docListeners.forEach(([, f]) => f());
+    expect(e.a.paused).toBe(true);
+    (document as any).hidden = false;
+    docListeners.forEach(([, f]) => f());
+    expect(e.a.paused).toBe(false);
+    stop();
+    (document as any).hidden = true;
+    const h = dot();
+    m.travel(h, 1600);
+    expect(h.a.paused).toBe(true);
+  });
+  it('nothing under reduced motion or on /stream; switching to reduced motion stops it', () => {
+    reduce = true;
+    const e = dot();
+    expect(m.travel(e, 1600)).toBeNull();
+    reduce = false;
+    path = '/stream';
+    expect(m.travel(e, 1600)).toBeNull();
+    expect(e.animate).not.toHaveBeenCalled();
+    path = '/machines';
+    m.travel(e, 1600);
+    [...mqListeners].forEach((f) => f({ matches: true }));
+    expect(e.a.cancelled).toBe(true);
+  });
+});
+
 describe('glideSwap', () => {
   const chip = (x: number, w: number) => ({ getBoundingClientRect: () => ({ left: x, top: 0, width: w, height: 20 }), animate: vi.fn() }) as any;
   it("glides the new selection's ::before from the old one, after the change", () => {
@@ -309,3 +409,220 @@ describe('glideSwap', () => {
     expect(m.glide(e, { x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 40, w: 10, h: 10 })).toBeNull();
   });
 });
+
+describe('ringPulse', () => {
+  it('one native ring, scale 1.3 -> 2.4 and opacity .6 -> 0 over 700 ms', () => {
+    const e = el();
+    expect(m.ringPulse(e)).not.toBeNull();
+    const [kf, opt] = e.animate.mock.calls[0];
+    expect(kf).toEqual([{ scale: 1.3, opacity: 0.6 }, { scale: 2.4, opacity: 0 }]);
+    expect(opt).toMatchObject({ duration: 700 });
+    expect(opt.iterations).toBeUndefined(); // no loop
+  });
+  it('nothing under reduced motion and, quietly even in dev, on /stream', () => {
+    const e = el();
+    reduce = true;
+    expect(m.ringPulse(e)).toBeNull();
+    reduce = false;
+    path = '/stream';
+    expect(m.ringPulse(e)).toBeNull();
+    expect(e.animate).not.toHaveBeenCalled();
+  });
+});
+
+function fakePath(d = '') {
+  const attrs: Record<string, string> = { d };
+  return { attrs, removed: false, setAttribute: (k: string, v: string) => (attrs[k] = v), getAttribute: (k: string) => attrs[k], remove() { this.removed = true; } } as any;
+}
+function iconSvg() {
+  const p = fakePath('M7 4.5v15l13-7.5z');
+  const anims: any[] = [];
+  const svg = {
+    p, anims, querySelector: () => p,
+    animate: vi.fn((kf: any, o: any) => { const a = { kf, o, cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } }; anims.push(a); return a; }),
+  } as any;
+  return svg;
+}
+
+describe('swapIcon (play <-> spinner)', () => {
+  const HOME = 'M7 4.5v15l13-7.5z';
+  it('first value is the end state; busy turns out, swaps d, turns in, then spins; not busy swaps back', () => {
+    vars['--dur-tab'] = '180ms';
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    expect(s.animate).not.toHaveBeenCalled();
+    ic.to(true);
+    const out = s.anims[0];
+    expect(out.kf).toEqual({ opacity: [1, 0], rotate: ['0deg', '-90deg'] });
+    expect(out.o.duration).toBe(90); // two halves of --dur-tab
+    expect(s.p.attrs.d).toBe(HOME); // untouched until the icon is invisible
+    out.onfinish();
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    expect(out.cancelled).toBe(true);
+    const inn = s.anims[1];
+    expect(inn.kf).toEqual({ opacity: [0, 1], rotate: ['90deg', '0deg'] });
+    inn.onfinish();
+    expect(s.anims[2].kf).toEqual({ rotate: ['0deg', '360deg'] });
+    expect(s.anims[2].o).toMatchObject({ iterations: Infinity, easing: 'linear' });
+    ic.to(false); // the start failed
+    expect(s.anims[2].cancelled).toBe(true);
+    s.anims[3].onfinish();
+    s.anims[4].onfinish();
+    expect(s.p.attrs.d).toBe(HOME);
+    expect(s.animate).toHaveBeenCalledTimes(5); // no spin on the way back
+  });
+  it('the same state again does nothing; destroy mid-swap cancels it and restores d', () => {
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    ic.to(false);
+    ic.to(true);
+    s.anims[0].onfinish();
+    ic.destroy();
+    expect(s.anims.every((a: any) => a.cancelled)).toBe(true);
+    expect(s.p.attrs.d).toBe(HOME);
+  });
+  it('first value busy: ring at once and spinning; destroy stops it', () => {
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(true);
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    expect(s.anims).toHaveLength(1);
+    ic.destroy();
+    expect(s.anims[0].cancelled).toBe(true);
+    expect(s.p.attrs.d).toBe(HOME);
+  });
+  it('reduced motion: ring at once, no animation; switching to it mid-spin stops the turning', () => {
+    reduce = true;
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    ic.to(true);
+    expect(s.animate).not.toHaveBeenCalled();
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    reduce = false;
+    const t = iconSvg();
+    const ic2 = m.swapIcon(t);
+    ic2.to(true);
+    mqListeners.forEach((f) => f({ matches: true }));
+    expect(t.anims[0].cancelled).toBe(true);
+  });
+  it('on /stream it is quiet (no throw in dev): the end state at once, no animation', () => {
+    path = '/stream';
+    const s = iconSvg();
+    const ic = m.swapIcon(s);
+    ic.to(false);
+    expect(() => ic.to(true)).not.toThrow();
+    expect(s.p.attrs.d).toBe(m.SPIN_D);
+    expect(s.animate).not.toHaveBeenCalled();
+  });
+});
+
+function fakeEl() {
+  const e: any = {
+    children: [] as any[], attrs: {} as Record<string, string>, removed: false, className: '', textContent: '',
+    setAttribute(k: string, v: string) { e.attrs[k] = v; },
+    append(...x: any[]) { e.children.push(...x); },
+    remove() { e.removed = true; },
+    animate: vi.fn(() => ({ cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } })),
+  };
+  return e;
+}
+const frames = async (n = 4) => { for (let i = 0; i < n; i++) await flush(); };
+/** A hero heading: `entrance` = the hero's CSS animations (their `finished` promises). */
+function titleEl(text = 'Portal 2', entrance: Promise<unknown>[] = []) {
+  const real: any = { textContent: text, style: { opacity: '', removeProperty: vi.fn(() => (real.style.opacity = '')) }, getAttribute: () => '', removeAttribute: vi.fn() };
+  const hero: any = { hasAttribute: () => true, getAnimations: () => entrance.map((finished) => Object.assign(new (globalThis as any).CSSAnimation(), { finished })) };
+  const h: any = { real, firstElementChild: real, appended: [] as any[], append: (x: any) => h.appended.push(x), closest: () => hero };
+  return h;
+}
+const wordsOf = (fx: any) => fx.children.filter((c: any) => c.className === 'w').map((w: any) => w.children[0]);
+const plain = (fx: any) => fx.children.map((c: any) => (c.className === 'w' ? c.children[0].textContent : c.text)).join('');
+
+describe('splitWords', () => {
+  it('words in clip wrappers, spaces as plain text, punctuation glued to its word; text only', () => {
+    const fx = fakeEl();
+    const w = m.splitWords('Half-Life: Alyx, 2', fx);
+    expect(w.map((x) => x.textContent)).toEqual(['Half-', 'Life:', 'Alyx,', '2']);
+    expect(plain(fx)).toBe('Half-Life: Alyx, 2'); // nothing lost, nothing added
+    expect(fx.children.filter((c: any) => c.className === 'w').every((c: any) => c.children[0].className === 'wi')).toBe(true);
+  });
+  it('CJK, emoji and a name with markup characters survive as text (no HTML interpretation)', () => {
+    for (const t of ['ポータル２ 最終章', 'Doom 🔥🔥 Eternal', '<img src=x onerror=alert(1)> & "quotes"', '']) {
+      const fx = fakeEl();
+      m.splitWords(t, fx);
+      expect(plain(fx)).toBe(t);
+    }
+    const fx = fakeEl();
+    expect(m.splitWords('🔥 a', fx).length).toBeGreaterThanOrEqual(2); // the emoji is a word of its own, so it rises too
+  });
+});
+
+describe('splitIn (hero title)', () => {
+  it('hides the real text at once; words rise only after the hero entrance has finished, then the copy goes', async () => {
+    let end!: () => void;
+    const h = titleEl('Portal 2', [new Promise<void>((r) => (end = r))]);
+    const off = m.splitIn(h)!;
+    expect(h.real.style.opacity).toBe('0');
+    await frames();
+    expect(h.appended).toHaveLength(0); // the hero is still entering
+    end();
+    await frames();
+    const fx = h.appended[0];
+    expect(fx.attrs['aria-hidden']).toBe('true'); // the real text node stays the one for screen readers
+    expect(fx.className).toBe('split-fx');
+    expect(plain(fx)).toBe('Portal 2');
+    const [a, b] = wordsOf(fx);
+    expect(a.animate.mock.calls[0][0]).toEqual({ translate: ['0 100%', '0 0'] });
+    expect(a.animate.mock.calls[0][1]).toMatchObject({ duration: 500, delay: 120, fill: 'backwards' });
+    expect(b.animate.mock.calls[0][1].delay).toBe(165); // 45 ms apart
+    b.animate.mock.results[0].value.onfinish();
+    expect(fx.removed).toBe(true);
+    expect(h.real.style.opacity).toBe('');
+    expect(h.real.removeAttribute).toHaveBeenCalledWith('style'); // no empty style attribute left
+    off();
+    expect(h.real.removeAttribute).toHaveBeenCalledTimes(1); // clean runs once
+  });
+  it('a hero with no entrance left starts at once; two lines of words and a name change mid-way end on the real text', async () => {
+    const h = titleEl('A very long game name that wraps onto a second line');
+    m.splitIn(h);
+    await frames();
+    const fx = h.appended[0];
+    const w = wordsOf(fx);
+    expect(w.length).toBe(11);
+    expect(w[10].animate.mock.calls[0][1].delay).toBe(120 + 10 * 45);
+    h.real.textContent = 'Another name'; // Svelte updated the real node while the copy plays
+    w[10].animate.mock.results[0].value.onfinish();
+    expect(fx.removed).toBe(true);
+    expect(h.real.textContent).toBe('Another name');
+    expect(h.real.style.opacity).toBe('');
+  });
+  it('destroy before it starts or mid-way leaves the plain text and cancels everything', async () => {
+    const h = titleEl();
+    m.splitIn(h)!();
+    await frames();
+    expect(h.appended).toHaveLength(0);
+    expect(h.real.style.opacity).toBe('');
+    const g = titleEl();
+    const off = m.splitIn(g)!;
+    await frames();
+    off();
+    expect(wordsOf(g.appended[0]).every((w: any) => w.animate.mock.results[0].value.cancelled)).toBe(true);
+    expect(g.appended[0].removed).toBe(true);
+    expect(g.real.style.opacity).toBe('');
+  });
+  it('reduced motion and an empty heading do nothing; switching to reduced motion mid-way ends it', async () => {
+    reduce = true;
+    expect(m.splitIn(titleEl())).toBeUndefined();
+    reduce = false;
+    expect(m.splitIn({ firstElementChild: null } as any)).toBeUndefined();
+    const h = titleEl();
+    m.splitIn(h);
+    await frames();
+    [...mqListeners].forEach((f) => f({ matches: true }));
+    expect(h.appended[0].removed).toBe(true);
+    expect(h.real.style.opacity).toBe('');
+  });
+});
+

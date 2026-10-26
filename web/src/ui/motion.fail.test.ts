@@ -8,6 +8,7 @@ vi.mock('animejs/svg', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });
 vi.stubGlobal('location', { pathname: '/' });
+vi.stubGlobal('requestAnimationFrame', (f: () => void) => setTimeout(f, 0));
 vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {} }));
 vi.stubGlobal('document', { documentElement: {} });
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
@@ -23,6 +24,21 @@ describe('chunk load failure', () => {
     expect(text.data).toBe('45 °C');
     await settle();
     expect(text.data).toBe('63 °C');
+  });
+  it('countUp ends on the measured value', async () => {
+    const text = { nodeType: 3, data: '', nextSibling: null };
+    m.countUp(3.6, (v) => `${v.toFixed(1)}%`)({ firstChild: text } as any);
+    expect(text.data).toBe('0.0%');
+    await settle();
+    expect(text.data).toBe('3.6%');
+  });
+  it('splitIn: an error while building the copy leaves the real title visible (this document cannot create elements)', async () => {
+    const real = { textContent: 'Portal 2', style: { opacity: '', removeProperty() { real.style.opacity = ''; } }, getAttribute: () => '', removeAttribute() {} } as any;
+    const h = { firstElementChild: real, closest: () => null } as any;
+    m.splitIn(h);
+    expect(real.style.opacity).toBe('0');
+    await settle();
+    expect(real.style.opacity).toBe('');
   });
   it('drawIn shows the full line', async () => {
     const attrs: Record<string, string> = {};

@@ -189,9 +189,188 @@ export function drawIn(el: SVGGeometryElement) {
   };
 }
 
+/**
+ * Cut `text` into clip-masked word wrappers inside `into` (`<span class="w"><span class="wi">word</span></span>`) and
+ * return the inner spans. `Intl.Segmenter` finds the words (CJK and emoji safe); whitespace stays plain text nodes,
+ * punctuation sticks to the word before it. Only createElement / textContent: the text is external data, never innerHTML.
+ */
+export function splitWords(text: string, into: Element): HTMLElement[] {
+  const words: HTMLElement[] = [];
+  let glued = false; // the last child is a word with no space after it yet
+  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)) {
+    if (/^\s+$/.test(segment)) {
+      into.append(document.createTextNode(segment));
+      glued = false;
+    } else if (glued && /^\p{P}+$/u.test(segment)) {
+      words[words.length - 1].textContent += segment;
+    } else {
+      const w = document.createElement('span');
+      const wi = document.createElement('span');
+      w.className = 'w';
+      wi.className = 'wi';
+      wi.textContent = segment;
+      w.append(wi);
+      into.append(w);
+      words.push(wi);
+      glued = true;
+    }
+  }
+  return words;
+}
+
+/**
+ * Svelte attachment for a heading whose Svelte-owned text sits in its first child (`<h3 {@attach splitIn}><span>{name}</span></h3>`,
+ * the heading `position: relative`, `.split-fx .w { display: inline-block; overflow: clip }`): the words rise out of clip
+ * masks (`translate` 100% -> 0, 500 ms, 45 ms apart, native Web Animations, no library, no inline style left) once the
+ * hero around it has finished its own entrance (+ 120 ms), so nothing plays under a card that is still fading in. The words
+ * are a split COPY laid over the real text: screen readers keep the one original node (the copy is aria-hidden; the real
+ * span only fades out, opacity, so it stays in the accessibility tree) and layout cannot shift. When the last word lands
+ * the copy goes and the real text shows again; so it does on destroy, on reduced motion switching on, and on any error.
+ * The caller decides "once per page"; the attachment itself runs on every mount it is given to.
+ */
+export function splitIn(h: HTMLElement) {
+  if (onStreamRoute() || reducedMotion()) return;
+  const real = h.firstElementChild as HTMLElement | null;
+  if (!real) return;
+  let fx: HTMLElement | undefined;
+  let done = false;
+  const anims: Animation[] = [];
+  const handle = { complete: () => clean() }; // reduced motion switched on mid-way
+  const clean = () => {
+    if (done) return;
+    done = true;
+    live.delete(handle);
+    anims.forEach((a) => a.cancel());
+    fx?.remove();
+    real.style.removeProperty('opacity');
+    if (!real.getAttribute('style')) real.removeAttribute('style');
+  };
+  const start = () => {
+    if (done || reducedMotion()) return clean();
+    try {
+      fx = document.createElement('span');
+      fx.setAttribute('aria-hidden', 'true');
+      fx.className = 'split-fx';
+      h.append(fx);
+      const easing = cssVar('--ease');
+      for (const [i, w] of splitWords(real.textContent ?? '', fx).entries()) anims.push(w.animate({ translate: ['0 100%', '0 0'] }, { duration: 500, delay: 120 + i * 45, easing, fill: 'backwards' }));
+      const last = anims.at(-1);
+      if (last) last.onfinish = clean;
+      else clean();
+    } catch {
+      clean();
+    }
+  };
+  // The title is hidden from the start (the hero is not visible yet anyway) and shown again by clean().
+  real.style.opacity = '0';
+  live.add(handle);
+  const hero = h.closest('.hero');
+  let tries = 30; // frames to wait for the hero's entrance to be tagged (enter() in shell/reveal.ts), then start regardless
+  const wait = () => {
+    if (done) return;
+    if (hero && !hero.hasAttribute('data-enter') && tries-- > 0) return void requestAnimationFrame(wait);
+    const css = hero ? hero.getAnimations().filter((a) => a instanceof CSSAnimation) : [];
+    void Promise.allSettled(css.map((a) => a.finished)).then(start);
+  };
+  requestAnimationFrame(wait);
+  return clean;
+}
+
+/** A 270 degree ring (the spinner), one subpath like the play triangle. */
+export const SPIN_D = 'M12 4A8 8 0 1 1 4 12h3A5 5 0 1 0 12 7z';
+
+/**
+ * Play triangle <-> spinner on a filled one-path icon (`svg` of `<Icon name="play">`), for a start in flight. Not an
+ * `svg.morphTo`: measured, triangle -> ring crosses itself in the first frames (the point-by-length interpolation
+ * pairs unrelated places on the two outlines), so it is a quick swap instead: the icon turns -90 deg and fades out, `d`
+ * changes, and it turns in from +90 deg (together `--dur-tab`, native `rotate` + `opacity`, nothing loaded). While
+ * `to(true)` holds, one compositor `rotate` turns the ring. The first call and reduced motion write the end state at
+ * once. Svelte renders the path once and never touches its `d`. `destroy()` cancels everything and restores `d`.
+ */
+export function swapIcon(svg: SVGSVGElement) {
+  const path = svg.querySelector('path');
+  const home = path?.getAttribute('d') ?? '';
+  let state: boolean | undefined;
+  let cur: Animation | undefined;
+  let spin: Animation | undefined;
+  const handle = { complete: () => stopAll() }; // a switch to reduced motion ends it where it stands
+  const stopAll = () => (cur?.cancel(), spin?.cancel(), (cur = spin = undefined), live.delete(handle));
+  const settle = (on: boolean) => {
+    stopAll();
+    path?.setAttribute('d', on ? SPIN_D : home);
+    if (on && !onStreamRoute() && !reducedMotion()) (spin = svg.animate({ rotate: ['0deg', '360deg'] }, { duration: 900, iterations: Infinity, easing: 'linear' })), live.add(handle);
+  };
+  return {
+    to(on: boolean) {
+      if (!path || on === state) return;
+      const first = state === undefined;
+      state = on;
+      if (first || onStreamRoute() || reducedMotion()) return settle(on);
+      stopAll();
+      const half = ms('--dur-tab', 180) / 2;
+      const easing = cssVar('--ease');
+      const out = (cur = svg.animate({ opacity: [1, 0], rotate: ['0deg', '-90deg'] }, { duration: half, easing, fill: 'forwards' }));
+      live.add(handle);
+      out.onfinish = () => {
+        path.setAttribute('d', on ? SPIN_D : home);
+        const inn = (cur = svg.animate({ opacity: [0, 1], rotate: ['90deg', '0deg'] }, { duration: half, easing }));
+        out.cancel();
+        inn.onfinish = () => settle(on);
+      };
+    },
+    destroy() {
+      stopAll();
+      path?.setAttribute('d', home);
+    },
+  };
+}
+
 /** Svelte attachment: fade an element in once it mounts (native Web Animations, nothing loaded), after `delay` ms. */
 export const fadeIn = (delay = 0) => (el: Element) => {
   if (!motionAllowed()) return;
   const a = el.animate({ opacity: [0, 1] }, { duration: ms('--dur-enter', 420), delay, easing: cssVar('--ease'), fill: 'backwards' });
   return () => a.cancel();
 };
+
+/** Svelte attachment: a result chip pops in when it mounts: opacity + `translate` + `scale` (native, compositor), `delay` ms in. */
+export const popIn = (delay = 0) => (el: Element) => {
+  if (!motionAllowed()) return;
+  const a = el.animate({ opacity: [0, 1], translate: ['0 6px', '0 0'], scale: [0.9, 1] }, { duration: 240, delay, easing: cssVar('--ease'), fill: 'backwards' });
+  return () => a.cancel();
+};
+
+/**
+ * Svelte attachment: a result number counts up from 0 to `value` when it mounts (`tweenNumber`). Only for numbers measured
+ * once and then fixed, never for a live reading. Svelte still renders the same text, so both agree at rest; with a chunk that
+ * fails to load or under reduced motion the end value is simply there.
+ */
+export const countUp = (value: number, format: (v: number) => string) => (el: HTMLElement) => {
+  if (!Number.isFinite(value)) return;
+  const t = tweenNumber(el, value, { from: 0, format });
+  return () => (t.cancel(), setText(el, format(value)));
+};
+
+
+/**
+ * A packet dot travelling along a lane forever (`el` is as wide as the lane with the dot at its right edge, inside an
+ * `overflow: hidden` lane): ONE native compositor animation of `translate` (percent of its own width, so nothing is
+ * measured and a resize needs nothing), paused while the tab is hidden, ended by reduced motion switching on. Returns
+ * the stop function, or null when nothing runs (reduced motion, /stream); the caller calls it on destroy.
+ */
+export function travel(el: Element, ms: number): (() => void) | null {
+  if (onStreamRoute() || reducedMotion()) return null;
+  const a = el.animate({ translate: ['-100% 0', '0 0'], opacity: [1, 1] }, { duration: ms, iterations: Infinity, easing: 'linear' });
+  const mq = matchMedia(REDUCE);
+  const sync = () => (document.hidden ? a.pause() : a.play());
+  const stop = () => {
+    a.cancel();
+    document.removeEventListener('visibilitychange', sync);
+    mq.removeEventListener('change', onMq);
+  };
+  const onMq = (e: { matches: boolean }) => e.matches && stop();
+  sync();
+  document.addEventListener('visibilitychange', sync);
+  mq.addEventListener('change', onMq);
+  return stop;
+}
+

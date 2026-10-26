@@ -6,6 +6,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import PlayIcon from '../../ui/PlayIcon.svelte';
   import { playLabel } from '../library/library';
   import { DASH, fmtAgo, pickResume } from './home';
 
@@ -35,7 +36,7 @@
       <b>{g?.name ?? DASH}</b>
       <div class="lab">{g ? (g.running ? 'Running' : `Played ${fmtAgo(g.lastPlayed! * 1000)}`) : 'Last game is not available here'}</div>
     </div>
-    <button class="btn" disabled={!g || busy} onclick={play}><Icon name="play" size={14} /> {g ? playLabel(g) : 'Play'}</button>
+    <button class="btn" disabled={!g || busy} onclick={play}><PlayIcon {busy} size={14} /> {g ? playLabel(g) : 'Play'}</button>
   </div>
 </Card>
 

@@ -9,6 +9,8 @@
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import StatusDot from '../../ui/StatusDot.svelte';
+  import ConnPath from './ConnPath.svelte';
   import { count } from '../../ui/motion';
   import { DASH, fmtTemp, fmtUptime } from '../home/home';
   import { machinesFrom, restartError } from './machines';
@@ -58,8 +60,9 @@
   {#each machines as m (m.id)}
     {@const i = m.info}
     <Card cols={2} rows={2}>
-      <h4><Icon name="host" color="var(--c-host)" size={16} /> {i.name} <span class="dot {i.sunshine}"></span></h4>
+      <h4><Icon name="host" color="var(--c-host)" size={16} /> {i.name} <StatusDot state={i.sunshine} /></h4>
       <div class="big">{i.sunshine === 'down' ? 'Sunshine is down' : 'Online'}</div>
+      <ConnPath path={i.path} />
       <dl>
         <dt>Sunshine</dt><dd>{SUN[i.sunshine]}</dd>
         <dt>Uptime</dt><dd>{fmtUptime(i.uptimeS)}</dd>
@@ -118,8 +121,4 @@
   .apps span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sm { padding: 4px 10px; font-size: 13px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
-  .dot.ready { background: var(--ok); }
-  .dot.busy { background: var(--warn); }
-  .dot.down { background: var(--bad); }
 </style>

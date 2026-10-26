@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { host, pollHost } from '../state/host';
   import Icon from '../ui/Icon.svelte';
+  import StatusDot from '../ui/StatusDot.svelte';
 
   onMount(() => pollHost()); // every 10 s while visible; cleaned up on each remount
   const label = { ready: 'Sunshine ready', busy: 'Streaming', down: 'Sunshine down' } as const;
@@ -10,7 +11,7 @@
 <a class="pill" href="/machines" title={$host ? label[$host.sunshine] : 'Host not reachable'}>
   <Icon name="host" color={$host ? 'var(--ok)' : 'var(--muted)'} />
   <span class="name">{$host?.name ?? '–'}</span>
-  <span class="dot {$host?.sunshine ?? 'off'}"></span>
+  <StatusDot state={$host?.sunshine ?? 'off'} />
 </a>
 
 <style>
