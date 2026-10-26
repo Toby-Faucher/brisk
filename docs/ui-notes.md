@@ -50,13 +50,99 @@
   module widgets mount, with or without motion.
 
 ## Run
-- On bawn: `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched
-  Sunshine, makes a 13-day certificate if needed, runs `target/release/brisk-hostd` in the foreground).
-  It prints `page<TAB>http://localhost:8443/?s=<secret>`; the secret is new every run.
+- Normal: hostd runs as a systemd user service and the laptop opens https://bawn.tail674625.ts.net:8443
+  (see Hosting below and docs/hosting-runbook.md).
+- By hand (dev path, only while the service is not active; brisk-up and brisk-down refuse otherwise):
+  `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched Sunshine, runs
+  `target/release/brisk-hostd` in the foreground). It prints `page<TAB>http://localhost:8443/?s=<secret>`;
+  the secret lives in `~/.config/brisk/secret`, so the link stays the same across runs.
 - On the laptop: `ssh -N -L 8443:127.0.0.1:8443 bawn`, then open that URL in Chrome.
 - Stop: Ctrl-C (hostd stops its bridge first), then `scripts/brisk-down.sh` (restores stock Sunshine).
 
-## API (hostd, 127.0.0.1:8443 only; Host header checked; every /api request, GET included, needs the `x-brisk-secret` header, because GET /api/stream carries the bridge URL and session token; static pages and assets do not)
+## Hosting
+```
+ laptop Chrome ──https://bawn.tail674625.ts.net:8443──▶ tailscaled on bawn (tailscale serve, TLS,
+   │                                                     adds Tailscale-User-Login/-Name)
+   │                                                         │ http://127.0.0.1:8443 (loopback)
+   │                                                         ▼
+   │                                    brisk-hostd.service (systemd --user, toby, linger)
+   │                                     page + /api, Host allowlist, secret or tailnet login
+   │                                         │ spawns at each stream start (own cgroup)
+   │                                         ▼
+   └──WebTransport https://<tailscale IP>:4433──▶ brisk-bridge ──▶ patched Sunshine (drop-in,
+                (cert hash pinned, 13-day cert)                     permanent; plain RTP w/o bridge)
+```
+- The root address https://bawn.tail674625.ts.net is Toby's `orch` (127.0.0.1:8481). Brisk only ever
+  touches the :8443 mapping (`tailscale serve --bg --https=8443 http://127.0.0.1:8443` and
+  `tailscale serve --https=8443 off`). hostd itself still binds 127.0.0.1:8443 only; tailscale serve is
+  the only way in from the tailnet, so nothing outside the tailnet can reach it.
+- Unit: deploy/brisk-hostd.service, installed by `scripts/brisk-service.sh install` into
+  ~/.config/systemd/user (WantedBy=default.target; with linger it starts at boot without a login).
+  Restart=on-failure every 3 s (gives up after 10 starts in 2 min), TimeoutStopSec=20 (the bridge stop
+  can take 12 s), KillMode=control-group, MemoryMax=1G, CPUWeight=50, Nice=5, Wants/After the Sunshine
+  unit. Hardening is deliberately thin, each omission is commented in the unit: NoNewPrivileges would be
+  inherited by a Steam that `steam steam://` cold-starts; ProtectSystem/ProtectHome/PrivateTmp/
+  PrivateUsers/ProtectProc need a user+mount namespace in a user unit, which Steam, games and `kill` on
+  processes outside it would inherit or cross; address-family limits would have to allow IPv4 and
+  AF_UNIX (sway, Wayland, D-Bus, tailscaled) anyway. `BRISK_SPAWN_SCOPE=1` (set by the unit) puts each
+  `steam steam://…` in its own `systemd-run --user --scope`, so a cold-started Steam and its games are
+  not under the 1G cap or killed by a restart.
+- Self-managed at each stream start (no shell script needed): the bridge address is `tailscale ip -4`
+  :4433 unless `BRISK_LISTEN` is set (0.0.0.0 refused; tailscale down = a clear 500 "tailscale gave no
+  IPv4 address"), and `~/.config/brisk/tls/bridge.pem` + `bridge.key.pem` (ECDSA P-256, 13 days, 0600)
+  are made with openssl when missing or older than 10 days. Both happen before an old bridge is stopped,
+  so a failure leaves a running stream alone. A new pair is written to `.bridge*.new` (0600 before
+  openssl writes) and renamed over the old one; a failed openssl leaves the old pair.
+- Scripts: `scripts/brisk-service.sh install | update | status | logs [-f] | link | uninstall |
+  serve-on | serve-off | sunshine-permanent | doctor` (never sudo; a root step is printed as the
+  `sudoq run ...` line). `update` = capped release build of hostd + bridge, `npm ci` only when the lock
+  changed, `npm run build` only when web sources are newer than web/dist, then a restart, refused while
+  a stream is live (FORCE=1 ends it). `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
+  spaced restarts, refuses unless Sunshine is FREE). `doctor` checks linger, the unit, the loopback-only
+  listener, the serve mapping, 403 without and 200 with the secret over https, the certificate age and
+  the Sunshine drop-in/binary/state. Tests: scripts/test-brisk-service.sh (all stubs).
+- Rollback: `git checkout <good commit> && scripts/brisk-service.sh update`; or back to the tunnel
+  workflow: `scripts/brisk-service.sh uninstall`, `serve-off`, then brisk-up/brisk-down as before.
+- Root steps (Toby, via sudoq): only `tailscale serve --bg --https=8443 http://127.0.0.1:8443` (and its
+  `off`), because toby is not the tailscale operator. Alternative once: `tailscale set --operator=toby`,
+  after which brisk-service.sh runs serve itself. Linger is already on; setcap for patched Sunshine is
+  already done (sunshine-brisk.sh install asks via sudoq if it ever is not).
+- Troubleshooting: `scripts/brisk-service.sh doctor` first. Page shows "bawn doesn't know this browser":
+  open the link from `scripts/brisk-service.sh link` once (the page keeps the secret in localStorage) or
+  allow the login. Unit restarting: `logs` (a manual brisk-up holding 8443 = "bind ... address in use").
+  Streams fail with "tailscale gave no IPv4": tailscale is down on bawn. 403 on every request through
+  https but fine on localhost: the Host header is not allowed (hostd learns the ts.net name from
+  `tailscale status --json` at startup and again, at most every 30 s, when an unknown *.ts.net name
+  arrives; or set `BRISK_ALLOWED_HOSTS`).
+
+### Auth model and its limits
+- Host header (DNS rebinding): exactly `localhost:8443`, `127.0.0.1:8443`, `BRISK_ALLOWED_HOSTS`
+  (comma list) and this machine's `Self.DNSName` from `tailscale status --json`, with :8443 and without
+  a port. Anything else is 403 before any route runs, the secret does not help.
+- Every /api request needs one of: the `x-brisk-secret` header (128 random bits, `~/.config/brisk/secret`,
+  0600, made once; `BRISK_SECRET` overrides for tests; `BRISK_SECRET_FILE` moves it), or a tailnet login:
+  the peer is loopback, `Tailscale-User-Login` is in `BRISK_ALLOWED_USERS` (comma list) or
+  `~/.config/brisk/allowed-users` (one per line, `#` comments; ignored unless 0600/0644 and a regular
+  file; read at startup, so restart after editing), and the request carries `x-brisk-csrf` (the page
+  always sends it). The allowlist is empty by default: feature off, secret required as before.
+- Why `x-brisk-csrf`: tailscale serve attaches the laptop's identity to every request from the laptop,
+  including one a hostile web page makes cross-site (a `text/plain` POST needs no preflight). A custom
+  header forces a CORS preflight, which hostd never answers with CORS headers, so only same-origin pages
+  can send it.
+- The limit, honestly: tailscaled is not the only thing that can connect from loopback. Any local process
+  on bawn can open 127.0.0.1:8443 and send `Tailscale-User-Login: <allowed login>` itself. That is the
+  same trust level as being able to read `~/.config/brisk/secret` as toby (any process running as toby
+  can do both), but it is weaker than the secret against other local users: on a multi-user box any
+  user could spoof the header. bawn has one user, so it is acceptable there; do not enable the
+  allowlist on a shared machine. [U] that tailscale serve strips client-sent `Tailscale-User-*` headers
+  before adding its own and keeps the Host header (not checked on bawn yet; the doctor's 403 check and
+  the runbook's spoof test cover it).
+- Page: works with no secret (the tailnet login path); a captured `?s=` is kept in sessionStorage and
+  localStorage (try/catch), so a bookmark of the bare URL keeps working. Any 403 sets the `denied` store
+  (web/src/state/api.ts) and the Shell replaces the page with "Open this page from the link that
+  includes ?s=… or ask hostd to allow your login"; the next successful call clears it.
+
+## API (hostd, 127.0.0.1:8443 only; Host header checked; every /api request, GET included, needs the `x-brisk-secret` header or an allowed tailnet login (see Hosting), because GET /api/stream carries the bridge URL and session token; static pages and assets do not)
 - GET /api/games, GET /api/host, GET /api/sessions (last 100, no series), GET /api/sessions/<started>,
   PUT /api/sessions/<started>/series (see Session history)
 - GET/POST/DELETE /api/stream (state / start / stop the bridge)
@@ -66,8 +152,9 @@
 - GET/POST /api/clipboard, PUT /api/files/<name> (see Clipboard and file drop)
 - anything else: the static page from `web/dist`
 
-Guard: the Host header must be `localhost:8443` or `127.0.0.1:8443` (DNS rebinding). There is no Origin check; that is
-safe because the secret is required and hostd sends no CORS headers, so other origins cannot read or send it.
+Guard: the Host header must be on the allowlist (`localhost:8443`, `127.0.0.1:8443`, the tailnet name; DNS rebinding).
+There is no Origin check; that is safe because the secret (or the `x-brisk-csrf` header, for a tailnet login) is
+required and hostd sends no CORS headers, so other origins cannot read or send them.
 Disconnect (ghost bar) stops the host stream (DELETE /api/stream); leaving the Stream page only detaches the viewer and
 the bridge keeps running. The game itself keeps running on bawn: GET /api/games marks it `running` (its Steam reaper,
 `SteamLaunch AppId=<id>`, is in /proc), the page says Resume, and POST /api/stream with its appid skips
@@ -254,13 +341,15 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   has no HEVC decoder: the HEVC MP4 loads with duration 3 s but 0x0 video; ffmpeg decodes it clean).
 
 ## Env vars
-BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),
+BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; default the tailscale IPv4:4433, asked at each stream start),
 BRISK_DIST, BRISK_DATA_DIR, BRISK_BRIDGE_BIN, BRISK_STEAM_DIR, BRISK_STEAM_KEY_FILE
-(`~/.config/brisk/steam-api-key`, never printed or committed), BRISK_STEAM_API_BASE.
+(`~/.config/brisk/steam-api-key`, never printed or committed), BRISK_STEAM_API_BASE, BRISK_SECRET_FILE
+(default `~/.config/brisk/secret`), BRISK_SECRET (tests), BRISK_TLS_DIR (default `~/.config/brisk/tls`),
+BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its own systemd-run scope; set by the unit).
 
 ## [U]
 `[U]` in code comments marks an unverified assumption about bawn (for example the graphical
-environment taken from a running steam process, or the 127.0.0.1 default for BRISK_LISTEN).
+environment taken from a running steam process).
 
 ## Shaders
 - Background smoke only (Home, accent colour, drifts on its own). No pointer interaction and no card shaders; cards only lift and brighten their border on hover. Off on /stream, when the shaders setting is off, and without WebGL2 (CSS gradient instead). Toby's steer, 2026-10-25.
