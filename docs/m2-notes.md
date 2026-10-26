@@ -101,6 +101,9 @@ so the page can show `bridge_write - capture` without any clock sync. The page s
 streams back: `0x01` = "my decoder needs a key frame" (gap, decoder error, decode queue > 2). While
 it waits, every dropped frame asks again (throttled to one ask per 100 ms): an ask can be lost, or
 the IDR it brought can be dropped for a backed-up queue, and Sunshine sends no periodic IDR.
+`0x02` = "send a key frame when you can" (the page's replay buffer, every 10 s while it is on): the bridge
+requests an IDR at most once a second for it (`Pacer::refresh_key`, apart from the want-key limiter) and
+drops nothing: the decoder is fine, unlike `0x01`, which drops every delta until the IDR arrives.
 
 Drop policy (`session.rs::Pacer`, tests in `tests/backpressure.rs`): more than 3 unacknowledged frame
 streams = behind: reset them all, drop until the next IDR, request an IDR (at most every 100 ms,

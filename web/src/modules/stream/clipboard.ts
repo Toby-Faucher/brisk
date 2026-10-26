@@ -83,6 +83,20 @@ export class ClipSync {
     });
   }
 
+  /** This page itself wrote the laptop clipboard (a screenshot): `written` resolves to what it
+   *  wrote, or null if it did not. Adopted as synced, so it is not sent to the host. */
+  adopt(written: Promise<Clip | null>) {
+    return this.serial(async () => {
+      const c = await written.catch(() => null);
+      if (!c) return;
+      this.last = await clipHash(c);
+      try {
+        const back = await this.d.local.read(); // Chrome may re-encode the PNG
+        if (back) this.last = await clipHash(back);
+      } catch {}
+    });
+  }
+
   private serial(f: () => Promise<void>): Promise<void> {
     const p = this.chain.then(f, f);
     this.chain = p.catch(() => {});

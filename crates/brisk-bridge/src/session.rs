@@ -34,6 +34,8 @@ pub const IDR_EVERY_NS: u64 = 100_000_000;
 /// While the browser acknowledges nothing (a dead or frozen tab), the gap between IDR requests
 /// doubles up to this, so Sunshine is not made to encode an IDR 10 times a second for nobody.
 pub const IDR_MAX_GAP_NS: u64 = 2_000_000_000;
+/// At most one refresh IDR ([`MSG_REFRESH_KEY`]) per this many ns, apart from the want-key limiter.
+pub const REFRESH_EVERY_NS: u64 = 1_000_000_000;
 
 /// What to do with one tap frame.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -52,6 +54,8 @@ pub struct PacerStats {
     pub dropped: u64,
     pub reset: u64,
     pub idr_requests: u64,
+    /// IDRs requested for [`MSG_REFRESH_KEY`] (nothing dropped for them).
+    pub refreshes: u64,
 }
 
 impl std::ops::AddAssign for PacerStats {
@@ -60,6 +64,7 @@ impl std::ops::AddAssign for PacerStats {
         self.dropped += o.dropped;
         self.reset += o.reset;
         self.idr_requests += o.idr_requests;
+        self.refreshes += o.refreshes;
     }
 }
 
@@ -72,6 +77,7 @@ pub struct Pacer {
     idr_gap_ns: u64,
     /// A frame was acknowledged since the last IDR request.
     acked: bool,
+    last_refresh_ns: Option<u64>,
     pub stats: PacerStats,
 }
 
@@ -89,6 +95,7 @@ impl Pacer {
             last_idr_ns: None,
             idr_gap_ns: IDR_EVERY_NS,
             acked: false,
+            last_refresh_ns: None,
             stats: PacerStats::default(),
         }
     }
@@ -126,6 +133,20 @@ impl Pacer {
     pub fn want_key(&mut self, now_ns: u64) -> bool {
         self.want_key = true;
         self.idr_due(now_ns)
+    }
+
+    /// The browser wants a fresh key frame but its decoder is fine (the replay buffer): request
+    /// one, at most every [`REFRESH_EVERY_NS`]; frames keep flowing. Returns whether to request now.
+    pub fn refresh_key(&mut self, now_ns: u64) -> bool {
+        if self
+            .last_refresh_ns
+            .is_some_and(|t| now_ns.saturating_sub(t) < REFRESH_EVERY_NS)
+        {
+            return false;
+        }
+        self.last_refresh_ns = Some(now_ns);
+        self.stats.refreshes += 1;
+        true
     }
 
     pub fn in_flight(&self) -> usize {
@@ -201,6 +222,9 @@ pub const FLAG_IDR: u8 = 1;
 pub const HEADER_LEN: usize = 21;
 /// Browser message (a one-byte uni stream): "my decoder needs a key frame".
 pub const MSG_WANT_KEY: u8 = 1;
+/// Browser message: "send a key frame when you can" (the page's replay buffer wants one every
+/// 10 s). An IDR request behind its own 1 s limit; nothing is dropped for it.
+pub const MSG_REFRESH_KEY: u8 = 2;
 
 /// The per-frame stream header. `frame_idx` is the tap's index truncated to 32 bits.
 pub fn frame_header(idx: u64, flags: u8, capture_ns: u64, bridge_ns: u64) -> [u8; HEADER_LEN] {
@@ -463,8 +487,8 @@ impl std::fmt::Display for Report {
         s += self.pacer_now;
         writeln!(
             f,
-            "browser_leg\tsent {} dropped {} reset {} idr_requests {}",
-            s.sent, s.dropped, s.reset, s.idr_requests
+            "browser_leg\tsent {} dropped {} reset {} idr_requests {} refreshes {}",
+            s.sent, s.dropped, s.reset, s.idr_requests, s.refreshes
         )?;
         for (name, h) in [
             ("bridge_write-capture", &self.bridge_capture),
@@ -633,7 +657,10 @@ pub async fn forward(
             }
             Ev::Msg(m) => {
                 let v = viewer.as_mut().expect("a message comes from a viewer");
-                if m[..] == [MSG_WANT_KEY] && v.pacer.want_key(monotonic_ns()) {
+                let now = monotonic_ns();
+                if (m[..] == [MSG_WANT_KEY] && v.pacer.want_key(now))
+                    || (m[..] == [MSG_REFRESH_KEY] && v.pacer.refresh_key(now))
+                {
                     request_idr(ctl).await?;
                 }
             }

@@ -43,6 +43,29 @@ function rig(over: Partial<ClipDeps> = {}) {
 const text = (t: string): Clip => ({ kind: 'text', text: t });
 
 describe('ClipSync', () => {
+  it('own_screenshot_is_adopted_not_sent_to_the_host', async () => {
+    const r = rig();
+    const png = new Blob([Uint8Array.of(0x89, 0x50, 0x4e, 0x47)], { type: 'image/png' });
+    const shot: Clip = { kind: 'image', blob: png };
+    r.st.local = shot; // the page wrote it (screenshot)
+    const adopted = r.sync.adopt(Promise.resolve(shot));
+    await r.sync.focus(); // the focus that follows: queued after the adopt
+    await adopted;
+    expect(r.posts).toEqual([]);
+    // A real copy afterwards still goes.
+    r.st.local = text('later');
+    await r.sync.focus();
+    expect(r.posts).toEqual([text('later')]);
+  });
+
+  it('adopt_of_a_failed_clipboard_write_changes_nothing', async () => {
+    const r = rig();
+    r.st.local = text('mine');
+    await r.sync.adopt(Promise.resolve(null));
+    await r.sync.focus();
+    expect(r.posts).toEqual([text('mine')]);
+  });
+
   it('laptop_copy_is_sent_once', async () => {
     const r = rig();
     r.st.local = text('hello');

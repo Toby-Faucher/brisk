@@ -10,6 +10,9 @@ describe('hotkey', () => {
     expect(hotkey(k('KeyS', { ctrlKey: true }))).toBeNull(); // Ctrl+S goes to the game
     expect(hotkey(k('KeyR', { ctrlKey: true, altKey: true, shiftKey: true }))).toBeNull();
     expect(hotkey(k('KeyT', { ctrlKey: true, altKey: true }))).toBeNull();
+    // AltGr (Windows reports Ctrl+Alt with it): a typed character, not our shortcut.
+    expect(hotkey({ ...k('KeyS', { ctrlKey: true, altKey: true }), getModifierState: (m: string) => m === 'AltGraph' })).toBeNull();
+    expect(hotkey({ ...k('KeyS', { ctrlKey: true, altKey: true }), getModifierState: () => false })).toBe('shot');
   });
 });
 

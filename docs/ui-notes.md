@@ -113,45 +113,51 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
 ## Screenshot and replay clip
 - All in the browser, nothing on the host: files download to the laptop (`a[download]`) as
   `brisk-<game or desktop>-<YYYYMMDD-HHMMSS>.png|.mp4` (local time; the game name slugged). Nothing shows on
-  screen while playing except the toast ("Saved <name> · copied", "Saved <name> · 29 s · 148.2 MB").
+  screen while playing except the toast ("Saved <name> · copied", "Saved <name> · 30 s · 148.2 MB").
 - Ghost bar: Screenshot, and "Save last N s" (N from Settings; disabled when Off). Hotkeys Ctrl+Alt+S
-  (screenshot) and Ctrl+Alt+R (clip) are caught on `window` in the capture phase
-  (Stream.svelte), so input.ts (window, bubble phase) never sees them and they never reach the game; their
-  keyup is swallowed too. The Ctrl and Alt presses before them do reach the game. Chrome has no Ctrl+Alt+S/R
-  shortcut on Linux, Windows or macOS (Shift or Meta held = not ours: GNOME's Ctrl+Alt+Shift+R recorder is
-  untouched). On Windows Ctrl+Alt is also AltGr, so on a layout where AltGr+S types a letter (Polish: ś)
-  that letter cannot be typed into the game.
+  (screenshot) and Ctrl+Alt+R (clip) are caught on `window` in the capture phase (`reserveHotkeys`,
+  capture.ts), so input.ts (window, bubble phase) never sees them and they never reach the game; their keyup
+  is swallowed too. The Ctrl and Alt presses before them do reach the game. Chrome has no Ctrl+Alt+S/R
+  shortcut on Linux, Windows or macOS. Shift, Meta or AltGr held = not ours (GNOME's Ctrl+Alt+Shift+R
+  recorder is untouched; on Windows, where AltGr reports Ctrl+Alt, an AltGr+S character such as Polish ś
+  still goes to the game).
 - Screenshot: `canvas.toBlob('image/png')` of the video canvas, which is the stream's native size (video.ts
-  sizes it to each frame) and holds the last drawn frame (frames are drawn on arrival). Also written to the
-  laptop clipboard as PNG when Chrome allows it (ClipboardItem with the PNG promise, inside the key/click
-  gesture). With clipboard sync on, that image then also syncs to bawn like any copy.
-- Replay buffer (Settings: Off / 15 / 30 / 60 s, default 30, key `replaySeconds`; read at each connect):
-  web/src/modules/stream/replay.ts. video.ts hands every access unit that goes to the decoder (Annex B,
-  key flag, the frame header's bridge_ns) and audio.ts every parsed Opus packet (ts_48k) to one optional
-  callback each, by reference (no copy, no await; when Off no callback is passed). The ring evicts by
-  arrival time (older than N s, then through to the next key frame: deltas without their IDR are useless)
-  and by bytes (160 MiB for video + audio + 64 B per entry, oldest first). One ring per connection, cleared on
-  disconnect, reconnect, quality change and leaving /stream. Sunshine sends no periodic IDR, so while replay
-  is on the page asks the bridge for a key frame (`0x01`) whenever none came for 5 s: the clip starts at
-  one, so it is N-5..N s long. Cost: one IDR every 5 s (a burst of a few hundred KB at Crisp).
-- Clip: from the first key frame at or after now - N s (else the earliest) whose SPS/PPS(/VPS) equal the
-  newest key frame's (a resolution change mid-buffer clips only the last config); video times from
-  bridge_ns. Audio: packets overlapping that video, placed by their own ts_48k (no drift, u32 wrap and
-  reordering handled), mapped to the video clock by the least-queued packet and frame (min arrival - send
-  of each); gaps (lost, or a silent host that stops sending) are filled with 1-byte Opus packets (the TOC
-  only = a lost frame: the decoder conceals, then silence). Opus pre-skip is 120 (libopus lookahead in
-  RESTRICTED_LOWDELAY, 2.5 ms). Muxed in a Worker (clip-worker.ts, mp4.ts) with mediabunny 1.61.4
-  (MPL-2.0; mp4-muxer is deprecated in its favour): given Annex B and no description it builds the avcC /
-  hvcC from the key frame's in-band parameter sets and rewrites the NAL units length-prefixed. Packets go
-  to the worker in 8 MB batches (one copy each, then transferred) with a yield between batches.
-- Checks: `npm test` (replay.test.ts: ring eviction, key frame choice, config change, audio gaps, and a
-  mux of the ffmpeg fixtures in fixtures/ (gen.sh) probed with ffprobe and decoded by ffmpeg, both codecs).
-  `node scripts/clip-check.mjs [x.mp4 ...]`: headless Chrome screenshot of the latest frame, a Crisp-size
-  ring (155 MB) clipped while a 60 fps canvas loop runs (no long task over 50 ms; clip() about 20 ms, the rest
-  in the worker), and MP4s played in a `<video>`.
-- [U] Not tried with a real stream: clip A/V sync on bawn, the IDR-every-5-s cost at Crisp, Chrome's
-  download prompt and clipboard permission while pointer-locked/fullscreen, and HEVC clip playback (headless
-  Chromium has no HEVC decoder: the HEVC MP4 loads with duration 3 s but 0x0 video; ffmpeg decodes it clean).
+  sizes it to each frame) and holds the last drawn frame (frames are drawn on arrival). Downloaded as soon as
+  the PNG is ready; also written to the laptop clipboard when Chrome allows it (ClipboardItem with the PNG
+  promise, inside the key/click gesture). ClipSync adopts that image (`adopt`), so clipboard sync does not
+  send it to bawn.
+- Replay buffer (Settings: Off / 15 / 30 / 60 s, default Off until measured at Crisp, key `replaySeconds`;
+  read at each connect): web/src/modules/stream/replay.ts. video.ts hands every access unit that goes to the
+  decoder (Annex B, key flag, the frame header) and audio.ts every parsed Opus packet (ts_48k) to one optional
+  callback each, by reference (no copy, no await; when Off no callback is passed). Video times are capture_ns,
+  or bridge_ns when the tap left it 0. The ring keeps N s plus up to one key interval: the front GOP goes only
+  once the next key frame is at or before now - N s, so the latest key frame is never evicted. Byte cap 160 MiB,
+  counting each entry's whole buffer (what it keeps alive) + 64 B, oldest first; with one GOP left its newest
+  delta goes and recording pauses until the next key frame. One ring per connection, cleared and killed on
+  disconnect, reconnect, quality change and leaving /stream.
+- Sunshine sends no periodic IDR, so while replay is on (never when Off) the page sends `0x02`
+  (MSG_REFRESH_KEY, docs/m2-notes.md) every 10 s without a key frame: the bridge asks for an IDR, at most once
+  a second, and drops nothing (unlike `0x01`, which drops deltas until the IDR). Cost: one IDR per 10 s.
+- Clip (in the worker, clip-worker.ts): from the last key frame at or before now - N s (else the earliest)
+  among those whose SPS/PPS(/VPS) equal the newest key frame's (a resolution change mid-buffer clips only the
+  last config), so a clip is N to N+10 s. Audio: packets overlapping that video, placed by their own ts_48k (no
+  drift, u32 wrap and reordering handled), mapped to the video clock by the least-queued packet and frame (min
+  arrival - send of each); gaps (lost, or a silent host that stops sending) are filled with 1-byte Opus packets
+  (the TOC only = a lost frame: the decoder conceals, then silence). Opus pre-skip 120 (libopus lookahead in
+  RESTRICTED_LOWDELAY, 2.5 ms). Muxed with mediabunny 1.61.4 (MPL-2.0; mp4-muxer is deprecated in its favour):
+  given Annex B and no description it builds the avcC (with the High-profile chroma/bit-depth fields) / hvcC
+  from the key frame's in-band parameter sets and rewrites the NAL units length-prefixed; moov at the end,
+  written to Blob parts, each packet dropped once written. The main thread only snapshots the ring (0.1 ms)
+  and posts it in 2 MB batches (one copy each, transferred, a yield between batches); 30 s timeout.
+- Checks: `npm test` (replay.test.ts: ring eviction and retention, key frame choice, config change, audio
+  gaps, and a mux of the ffmpeg fixtures in fixtures/ (gen.sh: H.264 Baseline and High, HEVC, Opus) probed
+  with ffprobe and decoded by ffmpeg). `node scripts/clip-check.mjs [x.mp4 ...]`: headless Chrome screenshot
+  of the latest frame, a Crisp-size ring (155 MB) clipped while a 60 fps canvas loop runs (no long task over
+  50 ms; Chrome RSS +400 MB at the peak: the copy in the worker, the MP4 parts, the Blob), the hotkeys against
+  input.ts with real key events, and MP4s played in a `<video>`.
+- [U] Not tried with a real stream: clip A/V sync on bawn, the refresh-IDR cost at Crisp, Chrome's download
+  prompt and clipboard permission while pointer-locked/fullscreen, and HEVC clip playback (headless Chromium
+  has no HEVC decoder: the HEVC MP4 loads with duration 3 s but 0x0 video; ffmpeg decodes it clean).
 
 ## Env vars
 BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),

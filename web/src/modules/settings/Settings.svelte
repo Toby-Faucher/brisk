@@ -44,7 +44,7 @@
         {#each REPLAY_SECONDS as n (n)}<option value={n}>{n ? `${n} s` : 'Off'}</option>{/each}
       </select>
     </label>
-    <p class="note">Held in this browser's memory only (at most 160 MB), dropped when the stream disconnects or changes quality. While on, the page asks the host for a key frame every 5 s. Applies from the next connect.</p>
+    <p class="note">Held in this browser's memory only (at most 160 MB), dropped when the stream disconnects or changes quality. While on, the page asks the host for a key frame every 10 s. Applies from the next connect.</p>
   </Card>
   <Card cols={2}>
     <h4>Default quality</h4>

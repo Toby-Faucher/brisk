@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,6 +57,7 @@ function feed(r: Replay, aus: { data: Uint8Array; key: boolean }[], opus: Uint8A
 
 const h264 = accessUnits(fx('h264.h264'), false); // 180 frames 320x180, then 60 frames 256x144
 const hevc = accessUnits(fx('hevc.hevc'), true);
+const high = accessUnits(fx('high.h264'), false); // High profile, 3 s
 const opus = oggPackets(fx('opus.ogg'));
 
 describe('fixtures', () => {
@@ -71,27 +72,37 @@ describe('fixtures', () => {
 });
 
 describe('Replay ring', () => {
-  it('disabled_keeps_nothing', () => {
+  it('disabled_keeps_nothing_and_never_asks_for_a_key_frame', () => {
     const r = new Replay(0);
     feed(r, h264, opus);
     expect(r.bytes).toBe(0);
     expect(r.frames).toBe(0);
     expect(r.clip()).toBeNull();
-    expect(r.wantKey(1e9)).toBe(false);
+    expect(r.refreshDue(1e9)).toBe(false);
   });
 
-  it('evicts_by_time_through_to_a_key_frame', () => {
+  it('evicts_by_time_but_keeps_the_last_key_frame_at_or_before_now_minus_n', () => {
     const r = new Replay(1);
     const now = feed(r, h264.slice(0, 180), opus);
-    // keys at frames 0, 60, 120: cutoff 1.98 s leaves frames from 120 on
-    expect(r.frames).toBe(60);
+    // keys at 0, 1, 2 s; now 2.98 s, cutoff 1.98 s: the GOP at 0 goes, the one at 1 s stays
+    expect(r.frames).toBe(120);
     const c = r.clip(now)!;
     expect(c.video[0].key).toBe(true);
-    expect(c.video.length).toBe(60);
-    expect(c.seconds).toBeCloseTo(1, 1);
+    expect(c.video.length).toBe(120);
+    expect(c.seconds).toBeGreaterThanOrEqual(1); // at least N s
+    expect(c.seconds).toBeCloseTo(2, 1);
   });
 
-  it('evicts_by_bytes_and_never_exceeds_the_cap', () => {
+  it('never_evicts_the_only_key_frame', () => {
+    // A refresh that never came: one key frame, then 4 s of deltas with N = 1 s.
+    const r = new Replay(1);
+    r.video(h264[0].data, true, 0n, 0);
+    for (let i = 1; i < 240; i++) r.video(h264[(i % 59) + 1].data, false, BigInt(Math.round(i * FRAME_MS * 1e6)), i * FRAME_MS);
+    expect(r.frames).toBe(240);
+    expect(r.clip(240 * FRAME_MS)!.video.length).toBe(240);
+  });
+
+  it('evicts_by_bytes_counting_whole_buffers_and_never_exceeds_the_cap', () => {
     const cap = 60_000; // about 1.4 GOPs of the fixture
     const r = new Replay(60, cap);
     let max = 0;
@@ -102,42 +113,65 @@ describe('Replay ring', () => {
     expect(max).toBeLessThanOrEqual(cap);
     expect(r.frames).toBeGreaterThan(0);
     expect(r.clip(180 * FRAME_MS)!.video[0].key).toBe(true);
+    // A small view of a big buffer counts as the buffer it keeps alive.
+    const big = new Replay(60, 1 << 20);
+    big.video(new Uint8Array(new ArrayBuffer(4 << 20), 0, 100).fill(0), true, 0n, 0);
+    expect(big.bytes).toBeGreaterThan(4 << 20);
   });
 
-  it('memory_dropped_on_clear', () => {
+  it('one_gop_over_the_cap_pauses_until_the_next_key_frame', () => {
+    const r = new Replay(60, 30_000); // under one GOP (~42 KB)
+    for (let i = 0; i < 61; i++) r.video(h264[i].data, h264[i].key, BigInt(i * 16_666_667), i * FRAME_MS);
+    expect(r.bytes).toBeLessThanOrEqual(30_000);
+    const c = r.clip(61 * FRAME_MS)!;
+    expect(c.video[0].key).toBe(true); // the newest key frame (frame 60) on its own, or the cut GOP
+  });
+
+  it('clear_drops_memory_and_kills_the_ring', () => {
     const r = new Replay(30);
     feed(r, h264, opus);
     expect(r.bytes).toBeGreaterThan(100_000);
     r.clear();
     expect(r.bytes).toBe(0);
     expect(r.clip()).toBeNull();
+    r.video(h264[0].data, true, 0n, 0); // a late frame of the closed connection
+    expect(r.frames).toBe(0);
+    expect(r.refreshDue(1e9)).toBe(false);
   });
 
   it('nothing_to_save_without_a_key_frame', () => {
     expect(selectClip([], [], 0)).toBeNull();
     const deltas = h264.slice(1, 30).map((f, i) => ({ data: f.data, key: false, ns: i * 1e7, at: i }));
     expect(selectClip(deltas, [], 0)).toBeNull();
+    const r = new Replay(30);
+    for (const f of h264.slice(1, 30)) r.video(f.data, false, 0n, 0);
+    expect(r.snapshot(0)).toBeNull();
   });
 
-  it('asks_for_a_key_frame_every_5_s', () => {
+  it('asks_for_a_refresh_every_10_s_while_on', () => {
+    expect(KEY_EVERY_MS).toBe(10_000);
     const r = new Replay(30);
-    r.video(h264[0].data, true, 0n, 1000);
-    expect(r.wantKey(1000 + KEY_EVERY_MS - 1)).toBe(false);
-    expect(r.wantKey(1000 + KEY_EVERY_MS)).toBe(true);
+    expect(r.refreshDue(0)).toBe(true); // nothing yet
+    expect(r.refreshDue(KEY_EVERY_MS - 1)).toBe(false); // asked: not again for 10 s
+    r.video(h264[0].data, true, 0n, 5000);
+    expect(r.refreshDue(5000 + KEY_EVERY_MS - 1)).toBe(false);
+    expect(r.refreshDue(5000 + KEY_EVERY_MS)).toBe(true);
   });
 });
 
 describe('selectClip', () => {
   const ring = (aus: { data: Uint8Array; key: boolean }[]) => aus.map((f, i) => ({ data: f.data, key: f.key, ns: (i * FRAME_MS - 7) * 1e6, at: i * FRAME_MS }));
 
-  it('first_key_frame_at_or_after_now_minus_n', () => {
-    const c = selectClip(ring(h264.slice(0, 180)), [], 0.5 * 1000)!; // keys at 0, 1, 2 s: picks 1 s
-    expect(c.video.length).toBe(120);
+  it('last_key_frame_at_or_before_now_minus_n', () => {
+    expect(selectClip(ring(h264.slice(0, 180)), [], 1.5 * 1000)!.video.length).toBe(120); // keys at 0, 1, 2 s: picks 1 s
+    expect(selectClip(ring(h264.slice(0, 180)), [], 1.01 * 1000)!.video.length).toBe(120);
+    const c = selectClip(ring(h264.slice(0, 180)), [], 0.5 * 1000)!;
+    expect(c.video.length).toBe(180);
     expect(c.video[0].t).toBe(0);
   });
 
   it('else_the_earliest_key_frame', () => {
-    const c = selectClip(ring(h264.slice(0, 150)), [], 2.4 * 1000)!; // no key after 2.4 s
+    const c = selectClip(ring(h264.slice(0, 150)), [], -100)!; // every key is after now - N
     expect(c.video.length).toBe(150);
   });
 
@@ -165,25 +199,38 @@ describe('selectClip', () => {
 const ff = existsSync('/usr/bin/ffprobe') && existsSync('/usr/bin/ffmpeg');
 describe.skipIf(!ff)('muxClip (ffprobe / ffmpeg)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'brisk-clip-'));
-  for (const [name, aus, w, h] of [['h264', h264.slice(0, 180), 320, 180], ['hevc', hevc, 320, 180]] as const) {
+  for (const [name, aus, w, h] of [['h264', h264.slice(0, 180), 320, 180], ['high', high, 320, 180], ['hevc', hevc, 320, 180]] as const) {
     it(`${name}_with_opus_probes_and_decodes_clean`, async () => {
       const r = new Replay(60);
       const now = feed(r, aus, opus, new Set([300, 301, 302]));
       const c = r.clip(now)!;
-      const mp4 = new Uint8Array(await muxClip(c, w, h));
+      const mp4 = new Uint8Array(await (await muxClip(c, w, h)).arrayBuffer());
       const f = join(dir, `${name}.mp4`);
       writeFileSync(f, mp4);
       if (process.env.BRISK_CLIP_OUT) writeFileSync(join(process.env.BRISK_CLIP_OUT, `${name}.mp4`), mp4); // for scripts/clip-check.mjs
       const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', f]).toString());
       const [vs, as] = probe.streams;
-      expect(vs.codec_name).toBe(name);
+      expect(vs.codec_name).toBe(name === 'high' ? 'h264' : name);
       expect([vs.width, vs.height]).toEqual([w, h]);
       expect(Number(vs.nb_frames)).toBe(aus.length);
       expect(as.codec_name).toBe('opus');
       expect(as.channels).toBe(2);
       expect(Number(probe.format.duration)).toBeCloseTo(3, 1);
-      const err = execFileSync('ffmpeg', ['-v', 'error', '-i', f, '-f', 'null', '-'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
-      expect(err).toBe('');
+      const dec = spawnSync('ffmpeg', ['-v', 'error', '-i', f, '-f', 'null', '-']);
+      expect([dec.status, dec.stderr.toString()]).toEqual([0, '']);
+      if (name === 'high') {
+        // avcC of a High (100) profile stream carries the ISO 14496-15 extension: chroma_format, bit depths.
+        const b = mp4.subarray(Buffer.from(mp4).indexOf('avcC') + 4);
+        expect(b[1]).toBe(100);
+        let o = 6;
+        const nSps = b[5] & 0x1f;
+        for (let k = 0; k < nSps; k++) o += 2 + ((b[o] << 8) | b[o + 1]);
+        const nPps = b[o++];
+        for (let k = 0; k < nPps; k++) o += 2 + ((b[o] << 8) | b[o + 1]);
+        expect(o + 4).toBeLessThanOrEqual((mp4[Buffer.from(mp4).indexOf('avcC') - 2] << 8 | mp4[Buffer.from(mp4).indexOf('avcC') - 1]) - 8);
+        expect([b[o] & 0xfc, b[o] & 3, b[o + 1] & 0xf8, b[o + 1] & 7, b[o + 2] & 0xf8, b[o + 2] & 7]).toEqual([0xfc, 1, 0xf8, 0, 0xf8, 0]); // 4:2:0, 8-bit
+        expect(vs.profile).toBe('High');
+      }
       // pre-skip 120 in dOps
       const i = Buffer.from(mp4).indexOf('dOps');
       expect(mp4[i + 6] << 8 | mp4[i + 7]).toBe(120);

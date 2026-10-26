@@ -2,7 +2,7 @@
 //! more than [`MAX_BEHIND`] unacked streams means the browser is behind, so the old streams are
 //! reset and frames are dropped until the next IDR, which is requested at most every 100 ms.
 
-use brisk_bridge::session::{Pacer, IDR_EVERY_NS, IDR_MAX_GAP_NS, MAX_BEHIND};
+use brisk_bridge::session::{Pacer, IDR_EVERY_NS, IDR_MAX_GAP_NS, MAX_BEHIND, REFRESH_EVERY_NS};
 
 const MS: u64 = 1_000_000;
 
@@ -153,4 +153,33 @@ fn idr_requests_back_off_while_the_browser_acks_nothing() {
     assert!(!p.want_key(240 * MS), "still backed off");
     p.on_done(4, true);
     assert!(p.want_key(250 * MS), "an ack resets the gap to 100 ms");
+}
+
+#[test]
+fn refresh_key_requests_an_idr_without_dropping_anything() {
+    let mut p = Pacer::new();
+    assert!(p.on_frame(0, true, 0).send);
+    p.on_done(0, true);
+    assert!(p.refresh_key(10 * MS), "a refresh asks for an IDR");
+    // The decoder is fine: deltas keep flowing while the IDR is on its way.
+    for i in 1..=3 {
+        let d = p.on_frame(i, false, (10 + i * 16) * MS);
+        assert!(d.send && !d.request_idr, "frame {i}");
+        p.on_done(i, true);
+    }
+    assert_eq!(p.stats.dropped, 0);
+    assert_eq!(p.stats.refreshes, 1);
+    assert_eq!(p.stats.idr_requests, 0, "the want-key counter is untouched");
+    // Rate limit: at most one per REFRESH_EVERY_NS, independent of the want-key limiter.
+    assert!(!p.refresh_key(10 * MS + REFRESH_EVERY_NS - 1));
+    assert!(p.refresh_key(10 * MS + REFRESH_EVERY_NS));
+    assert!(
+        p.want_key(10 * MS + REFRESH_EVERY_NS),
+        "want-key has its own limiter"
+    );
+    assert!(
+        !p.on_frame(4, false, 2_000 * MS).send,
+        "want-key still drops until the IDR"
+    );
+    assert!(REFRESH_EVERY_NS >= 1_000 * MS);
 }

@@ -9,6 +9,9 @@ export const HEADER_LEN = 21;
 export const FLAG_IDR = 1;
 /// Bridge message: "my decoder needs a key frame".
 export const MSG_WANT_KEY = 1;
+/// Bridge message: "send a key frame when you can" (replay buffer, every 10 s while on). The
+/// bridge asks Sunshine for an IDR at most once a second for it and drops nothing.
+export const MSG_REFRESH_KEY = 2;
 /// Largest frame accepted (the tap's own cap is 4 MiB).
 const MAX_FRAME = HEADER_LEN + (4 << 20);
 const US_PER_FRAME = 1e6 / 60;

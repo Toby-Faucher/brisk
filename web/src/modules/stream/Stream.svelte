@@ -16,7 +16,7 @@
   import { StreamSession, pollLive } from './session';
   import { holdEsc, type Hold } from './ghostbar';
   import { ClipSync, browserClipboard, uploadQueue, type Upload } from './clipboard';
-  import { download, fileName, hotkey, muxInWorker, screenshot } from './capture';
+  import { clipInWorker, download, fileName, reserveHotkeys, screenshot } from './capture';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
 
@@ -124,10 +124,12 @@
     const c = $canvasEl;
     if (!c || !c.width) return toast('Nothing on screen yet');
     const name = fileName(gameOrNull(), 'png');
+    const { png, copied } = screenshot(c);
+    // Our own clipboard write is not a laptop copy: ClipSync must not send it to the host.
+    void clip.adopt(copied.then((ok) => (ok ? png.then((blob) => ({ kind: 'image' as const, blob })) : null)));
     try {
-      const { blob, copied } = await screenshot(c);
-      download(blob, name);
-      toast(`Saved ${name}${copied ? ' · copied' : ''}`);
+      download(await png, name); // not waiting for the clipboard
+      toast(`Saved ${name}${(await copied) ? ' · copied' : ''}`);
     } catch (e) {
       toast(`Couldn't take the screenshot: ${(e as Error).message}`, { error: true });
     }
@@ -138,16 +140,17 @@
     if (!$settings.replaySeconds) return toast('Replay buffer is off: turn it on in Settings');
     if (saving) return toast('Already saving a clip…');
     const c = $canvasEl;
-    const clip = session.clip();
-    if (!clip || !c?.width) return toast('Nothing to save yet');
+    const snap = session.replay();
+    if (!snap || !c?.width) return toast('Nothing to save yet');
     saving = true;
     const name = fileName(gameOrNull(), 'mp4');
     try {
-      const blob = await muxInWorker(clip, c.width, c.height);
+      const { blob, seconds } = await clipInWorker(snap, c.width, c.height);
       download(blob, name);
-      toast(`Saved ${name} · ${Math.round(clip.seconds)} s · ${(blob.size / 1e6).toFixed(1)} MB`, { ms: 5000 });
+      toast(`Saved ${name} · ${Math.round(seconds)} s · ${(blob.size / 1e6).toFixed(1)} MB`, { ms: 5000 });
     } catch (e) {
-      toast(`Couldn't save the clip: ${(e as Error).message}`, { error: true });
+      const m = (e as Error).message;
+      toast(m === 'nothing to save yet' ? 'Nothing to save yet' : `Couldn't save the clip: ${m}`, { error: m !== 'nothing to save yet' });
     } finally {
       saving = false;
     }
@@ -230,19 +233,7 @@
       hold = esc.release(performance.now());
     };
     // Reserved hotkeys, in the capture phase so input.ts (window, bubble phase) never sees them.
-    const swallowed = new Set<string>();
-    const hot = (e: KeyboardEvent) => {
-      if (page !== 'session') return;
-      const k = e.type === 'keydown' ? hotkey(e) : null;
-      if (!k && !(e.type === 'keyup' && swallowed.delete(e.code))) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (!k) return;
-      swallowed.add(e.code);
-      if (!e.repeat) void (k === 'shot' ? shot() : saveReplay());
-    };
-    window.addEventListener('keydown', hot, true);
-    window.addEventListener('keyup', hot, true);
+    const unhot = reserveHotkeys(window, () => page === 'session', (k) => void (k === 'shot' ? shot() : saveReplay()));
     let hinted = false;
     const cap = () => {
       captured = !!document.pointerLockElement || document.activeElement?.id === 'video';
@@ -317,8 +308,7 @@
       document.removeEventListener('pointerlockchange', clipFocus);
       off();
       cancelAnimationFrame(raf);
-      window.removeEventListener('keydown', hot, true);
-      window.removeEventListener('keyup', hot, true);
+      unhot();
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
       document.removeEventListener('pointerlockchange', cap);

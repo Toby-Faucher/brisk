@@ -2,15 +2,18 @@
 //  1. screenshot(): a desynchronized 2D canvas, frames drawn from VideoFrames as video.ts does;
 //     the PNG is the stream's native size and shows the latest frame.
 //  2. a Replay ring at Crisp size (30 s at ~40 Mbps from the H.264 fixture padded with filler NAL
-//     units, plus 30 s of Opus): clip() and muxInWorker() while a 60 fps canvas loop runs; reports
-//     long tasks (> 50 ms) and the longest main-thread gap; the MP4 plays in a <video>.
+//     units, plus 30 s of Opus): snapshot() and clipInWorker() while a 60 fps canvas loop runs;
+//     reports long tasks (> 50 ms), the longest main-thread gap and the peak RSS of all Chrome
+//     processes over the baseline (worker + Blob); the MP4 plays in a <video>.
+//  4. hotkeys: input.ts attach() and reserveHotkeys() on a real page with real (CDP) key events:
+//     Ctrl+Alt+S / Ctrl+Alt+R reach our handler and never the input sender; plain S does.
 //  3. the fixture clip muxed in the worker is written to $OUT/chrome-h264.mp4 (ffprobe it), and
 //     MP4s given as arguments are loaded in a <video> (duration, size, error).
 //
 //   OUT=/some/dir node scripts/clip-check.mjs [file.mp4 ...]
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -20,8 +23,9 @@ const root = mkdtempSync(join(tmpdir(), 'brisk-clip-root-'));
 const fs = (p) => `/@fs${join(web, p)}`;
 writeFileSync(join(root, 'index.html'), `<!doctype html><body><script type="module">
 import { Replay } from '${fs('src/modules/stream/replay.ts')}';
-import { muxInWorker, screenshot } from '${fs('src/modules/stream/capture.ts')}';
-window.Replay = Replay; window.muxInWorker = muxInWorker; window.screenshot = screenshot; window.ready = true;
+import { clipInWorker, reserveHotkeys, screenshot } from '${fs('src/modules/stream/capture.ts')}';
+import { attach } from '${fs('src/lib/input.ts')}';
+Object.assign(window, { Replay, clipInWorker, reserveHotkeys, screenshot, attach, ready: true });
 </script></body>`);
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { port: 0, fs: { allow: [web, root] } } });
 await server.listen();
@@ -57,7 +61,9 @@ try {
         f.close();
         if (i < colors.length - 1) await new Promise((r) => setTimeout(r, 5));
       }
-      const { blob, copied } = await screenshot(c); // right after the last draw, no frame wait
+      const { png, copied: cp } = screenshot(c); // right after the last draw, no frame wait
+      const blob = await png;
+      const copied = await cp;
       const bmp = await createImageBitmap(blob);
       const o = new OffscreenCanvas(1, 1).getContext('2d');
       o.drawImage(bmp, -960, -540);
@@ -70,6 +76,22 @@ try {
   // 2 + 3. replay ring at Crisp size, clip while a 60 fps draw loop runs
   const h264 = [...readFileSync(join(web, 'src/modules/stream/fixtures/h264.h264'))];
   const ogg = [...readFileSync(join(web, 'src/modules/stream/fixtures/opus.ogg'))];
+  const mem = { base: 0, peak: 0 };
+  const rss = () => {
+    let kb = 0;
+    for (const pid of readdirSync('/proc').filter((d) => /^\d+$/.test(d))) {
+      try {
+        if (!readFileSync(`/proc/${pid}/cmdline`, 'latin1').includes('chrome-headless-shell')) continue;
+        kb += Number(/VmRSS:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/status`, 'latin1'))?.[1] ?? 0);
+      } catch {}
+    }
+    return kb;
+  };
+  let memTimer;
+  await page.exposeFunction('memMark', () => {
+    mem.base = mem.peak = rss();
+    memTimer = setInterval(() => (mem.peak = Math.max(mem.peak, rss())), 20);
+  });
   const res = await page.evaluate(async ({ h264, ogg }) => {
     const es = Uint8Array.from(h264);
     const aud = [];
@@ -144,10 +166,11 @@ try {
     await new Promise((r) => setTimeout(r, 200));
     maxGap = 0;
     const s0 = performance.now();
-    const clip = big.clip();
+    const snap = big.snapshot();
     const selectMs = performance.now() - s0;
     const m0 = performance.now();
-    const blob = await window.muxInWorker(clip, 320, 180);
+    window.memMark?.('start');
+    const { blob, seconds } = await window.clipInWorker(snap, 320, 180);
     const muxMs = performance.now() - m0;
     await new Promise((r) => setTimeout(r, 100));
     drawing = false;
@@ -160,16 +183,46 @@ try {
     });
 
     // the plain fixture, muxed in the worker, returned for ffprobe
-    const small = make(180, 0).clip();
-    const sb = new Uint8Array(await (await window.muxInWorker(small, 320, 180)).arrayBuffer());
-    return { ringMB, frames: clip.video.length, audio: clip.audio.length, clipMB: blob.size / 1e6, seconds: clip.seconds, selectMs, muxMs, longs, maxGap, meta, small: [...sb] };
+    const small = make(180, 0).snapshot();
+    const sb = new Uint8Array(await (await window.clipInWorker(small, 320, 180)).blob.arrayBuffer());
+    return { ringMB, frames: snap.v.length, audio: snap.a.length, clipMB: blob.size / 1e6, seconds, selectMs, muxMs, longs, maxGap, meta, small: [...sb], heapMB: performance.memory?.usedJSHeapSize / 1e6 };
   }, { h264, ogg });
-  console.log(`ring ${res.ringMB.toFixed(1)} MB; clip ${res.frames} frames + ${res.audio} Opus packets = ${res.clipMB.toFixed(1)} MB, ${res.seconds.toFixed(2)} s; clip() ${res.selectMs.toFixed(1)} ms; worker mux ${res.muxMs.toFixed(0)} ms; long tasks ${JSON.stringify(res.longs)}; longest rAF gap ${res.maxGap.toFixed(1)} ms`);
+  clearInterval(memTimer);
+  console.log(`ring ${res.ringMB.toFixed(1)} MB (${res.frames} frames + ${res.audio} Opus packets); clip ${res.clipMB.toFixed(1)} MB, ${res.seconds.toFixed(2)} s; snapshot() ${res.selectMs.toFixed(1)} ms; worker select+mux ${res.muxMs.toFixed(0)} ms; long tasks ${JSON.stringify(res.longs)}; longest rAF gap ${res.maxGap.toFixed(1)} ms`);
+  console.log(`memory: Chrome RSS baseline ${(mem.base / 1024).toFixed(0)} MB, peak ${(mem.peak / 1024).toFixed(0)} MB (+${((mem.peak - mem.base) / 1024).toFixed(0)} MB while clipping); page JS heap after ${res.heapMB?.toFixed(0)} MB`);
   check(res.ringMB <= 160 * 1.048576 + 1 && res.ringMB > 140, `ring at Crisp size stays under 160 MiB (${res.ringMB.toFixed(1)} MB)`);
   check(res.longs.every((d) => d <= 50), 'no main-thread long task over 50 ms while clipping');
-  check(res.meta.duration >= 28 && !res.meta.error, `Crisp-size clip plays in <video>: ${JSON.stringify(res.meta)}`);
+  check(res.selectMs < 5, `snapshot() on the main thread under 5 ms (${res.selectMs.toFixed(2)} ms)`);
+  check(res.meta.duration >= 30 && !res.meta.error, `Crisp-size clip plays in <video>: ${JSON.stringify(res.meta)}`);
   writeFileSync(join(out, 'chrome-h264.mp4'), Uint8Array.from(res.small));
   console.log(`wrote ${join(out, 'chrome-h264.mp4')}`);
+
+  // 4. hotkeys vs input.ts
+  await page.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.id = 'kb';
+    c.tabIndex = 0;
+    document.body.append(c);
+    window.sent = [];
+    window.ours = [];
+    const s = new Proxy({}, { get: (_, k) => (...a) => window.sent.push([k, ...a]) });
+    window.attach(s, { canvas: c, doc: document, win: window }, new Promise(() => {}));
+    window.reserveHotkeys(window, () => true, (k) => window.ours.push(k));
+    c.focus();
+  });
+  for (const k of ['KeyS', 'KeyR']) {
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Alt');
+    await page.keyboard.press(k);
+    await page.keyboard.up('Alt');
+    await page.keyboard.up('Control');
+  }
+  await page.keyboard.press('KeyS');
+  const kb = await page.evaluate(() => ({ sent: window.sent.filter((x) => x[0] === 'key').map((x) => [x[1], x[2]]), ours: window.ours }));
+  const vkS = 0x53, vkR = 0x52;
+  const sCount = kb.sent.filter(([vk]) => vk === vkS).length;
+  check(JSON.stringify(kb.ours) === '["shot","clip"]', `Ctrl+Alt+S / Ctrl+Alt+R reach the handler (${JSON.stringify(kb.ours)})`);
+  check(sCount === 2 && !kb.sent.some(([vk]) => vk === vkR), `the game never sees them: only the plain S down/up went to input.ts (keys sent ${JSON.stringify(kb.sent)})`);
 
   for (const f of process.argv.slice(2)) {
     const bytes = [...readFileSync(f)];

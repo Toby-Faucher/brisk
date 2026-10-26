@@ -222,21 +222,42 @@ describe('StreamSession', () => {
     function replayDeps(seconds: number) {
       const taps: ((au: Uint8Array, h: any, at: number) => void)[] = [];
       const audioTaps: unknown[] = [];
+      const unis: number[][] = [];
       const f = fakeDeps({
         replaySeconds: () => seconds,
         startVideo: (_t, _c, onDecode) => (onDecode && taps.push(onDecode), { stats: { framesPresented: 0 } as any, done: new Promise(() => {}) }),
         startAudio: async (_t, _c, _o, onPacket) => (audioTaps.push(onPacket), {}),
       });
-      return { f, taps, audioTaps };
+      const open = f.deps.open;
+      f.deps.open = (u, h) => {
+        const t = open(u, h) as any;
+        t.createUnidirectionalStream = async () => {
+          const got: number[] = [];
+          unis.push(got);
+          return { getWriter: () => ({ write: async (b: Uint8Array) => void got.push(...b), close: async () => {} }) };
+        };
+        return t;
+      };
+      return { f, taps, audioTaps, unis };
     }
 
-    it('off_passes_no_callbacks_and_has_no_clip', async () => {
-      const { f, taps, audioTaps } = replayDeps(0);
+    it('off_passes_no_callbacks_has_no_clip_and_never_sends_refresh', async () => {
+      const { f, taps, audioTaps, unis } = replayDeps(0);
       const s = new StreamSession(f.deps);
       await s.connect(LIVE);
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(taps).toHaveLength(0);
       expect(audioTaps).toEqual([undefined]);
-      expect(s.clip()).toBeNull();
+      expect(s.replay()).toBeNull();
+      expect(unis).toEqual([]);
+    });
+
+    it('on_sends_refresh_key_every_10_s_never_want_key', async () => {
+      const { f, unis } = replayDeps(30);
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      await vi.advanceTimersByTimeAsync(25_000);
+      expect(unis).toEqual([[2], [2], [2]]); // at ~0.5 s, 10.5 s, 20.5 s: MSG_REFRESH_KEY, not 1 (MSG_WANT_KEY)
     });
 
     it('records_while_live_and_drops_on_quality_change_and_disconnect', async () => {
@@ -245,16 +266,19 @@ describe('StreamSession', () => {
       const s = new StreamSession(f.deps);
       await s.connect(LIVE);
       const now = performance.now();
-      taps[0](KEY, { idr: true, bridgeNs: 1n }, now);
-      expect(s.clip()?.video).toHaveLength(1);
+      taps[0](KEY, { idr: true, captureNs: 0n, bridgeNs: 1n }, now);
+      expect(s.replay()?.v).toHaveLength(1);
+      expect(s.replay()?.v[0].ns).toBe(1); // capture_ns 0: the bridge write time
+      taps[0](KEY, { idr: true, captureNs: 5n, bridgeNs: 9n }, now);
+      expect(s.replay()?.v[1].ns).toBe(5); // capture time preferred
       await s.changeQuality({ preset: 'crisp' });
-      expect(s.clip()).toBeNull(); // a new connection, a new (empty) ring
-      taps[0](KEY, { idr: true, bridgeNs: 2n }, now); // the old connection's late frame goes nowhere
-      expect(s.clip()).toBeNull();
-      taps[1](KEY, { idr: true, bridgeNs: 3n }, performance.now());
-      expect(s.clip()?.video).toHaveLength(1);
+      expect(s.replay()).toBeNull(); // a new connection, a new (empty) ring
+      taps[0](KEY, { idr: true, captureNs: 0n, bridgeNs: 2n }, now); // the old connection's late frame goes nowhere
+      expect(s.replay()).toBeNull();
+      taps[1](KEY, { idr: true, captureNs: 0n, bridgeNs: 3n }, performance.now());
+      expect(s.replay()?.v).toHaveLength(1);
       s.disconnect();
-      expect(s.clip()).toBeNull();
+      expect(s.replay()).toBeNull();
     });
   });
 });

@@ -1,26 +1,31 @@
-// Muxes a replay clip off the main thread. Messages: {begin: Clip without packets, width, height},
-// then batches {video?, audio?}, then {end: true}; answers {blob} or {error}.
+// Chooses and muxes a replay clip off the main thread. Messages: {begin: {from, width, height}},
+// then batches {v?, a?} of ring entries (replay.ts V / A), then {end: true}; answers
+// {blob, seconds} or {error}.
 import { muxClip } from './mp4';
-import type { Clip } from './replay';
+import { selectClip, type A, type V } from './replay';
 
-let clip: Clip | null = null;
-let size = { width: 0, height: 0 };
+let v: V[] = [];
+let a: A[] = [];
+let begin: { from: number; width: number; height: number } | null = null;
 
 self.onmessage = async (e: MessageEvent) => {
   const m = e.data;
   if (m.begin) {
-    clip = { ...m.begin, video: [], audio: [] };
-    size = { width: m.width, height: m.height };
-  } else if (clip && !m.end) {
-    if (m.video) clip.video.push(...m.video);
-    if (m.audio) clip.audio.push(...m.audio);
-  } else if (clip) {
+    begin = m.begin;
+    v = [];
+    a = [];
+  } else if (!m.end) {
+    if (m.v) v.push(...m.v);
+    if (m.a) a.push(...m.a);
+  } else if (begin) {
+    const clip = selectClip(v, a, begin.from);
+    v = a = []; // the clip holds what it uses; the rest can go
+    if (!clip) return void self.postMessage({ error: 'nothing to save yet' });
+    const seconds = clip.seconds;
     try {
-      const buf = await muxClip(clip, size.width, size.height);
-      self.postMessage({ blob: new Blob([buf], { type: 'video/mp4' }) });
+      self.postMessage({ blob: await muxClip(clip, begin.width, begin.height), seconds });
     } catch (err) {
       self.postMessage({ error: String((err as Error)?.message ?? err) });
     }
-    clip = null;
   }
 };
