@@ -16,7 +16,10 @@
 Guard: the Host header must be `localhost:8443` or `127.0.0.1:8443` (DNS rebinding). There is no Origin check; that is
 safe because the secret is required and hostd sends no CORS headers, so other origins cannot read or send it.
 Disconnect (ghost bar) stops the host stream (DELETE /api/stream); leaving the Stream page only detaches the viewer and
-the bridge keeps running.
+the bridge keeps running. The game itself keeps running on bawn: GET /api/games marks it `running` (its Steam reaper,
+`SteamLaunch AppId=<id>`, is in /proc), the page says Resume, and POST /api/stream with its appid skips
+`steam://rungameid`. Either way, once the tap connects hostd polls up to 60 s for a sway window in the reaper's process
+tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no sway is only logged.
 
 ## Env vars
 BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),

@@ -7,6 +7,8 @@ export type Game = {
   lastPlayed: number | null /* unix s */;
   playtimeMin: number;
   cover: string;
+  /** Steam is running it on the host now: Play streams it without relaunching. */
+  running: boolean;
 };
 export type HostInfo = {
   name: string;

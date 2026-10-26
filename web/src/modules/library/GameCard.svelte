@@ -3,22 +3,22 @@
   import Icon from '../../ui/Icon.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
-  import { fmtSize, installLabel } from './library';
+  import { badgeLabel, fmtSize, installLabel, playLabel } from './library';
 
   let { game, busy = false, selected = false, onpick, oninstall }: { game: Game; busy?: boolean; selected?: boolean; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');
   const sub = $derived(game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
-  const label = $derived(game.installed ? `Play ${game.name}, ${played.toLowerCase()}` : `${game.name}, not installed${size ? `, ${size}` : ''}`);
+  const label = $derived(game.installed ? (game.running ? `Resume ${game.name}, running on the host` : `Play ${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`);
 </script>
 
 <div class="wrap">
   <!-- aria-disabled (not disabled) keeps focus on the card while its stream starts -->
   <button class="g" class:off={!game.installed} class:sel={selected} aria-disabled={busy} aria-expanded={game.installed ? undefined : selected} onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
-      <span class="badge" class:off={!game.installed}><i></i>{game.installed ? 'Installed' : (size ?? 'Not installed')}</span>
+      <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
       <span class="glow"></span>
-      {#if game.installed}<span class="btn play"><Icon name="play" size={13} /> {busy ? 'Starting…' : 'Play'}</span>{/if}
+      {#if game.installed}<span class="btn play"><Icon name="play" size={13} /> {busy ? 'Starting…' : playLabel(game)}</span>{/if}
     </Cover>
     <span class="name">{game.name}</span>
     <span class="sub">{sub}</span>
@@ -38,6 +38,7 @@
   .badge { position: absolute; left: 10px; top: 10px; z-index: 2; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #0009; backdrop-filter: blur(6px); display: flex; gap: 6px; align-items: center; }
   .badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   .badge.off i { background: var(--muted); }
+  .badge.run i { background: var(--accent); }
   .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; background: radial-gradient(80% 60% at 50% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%); pointer-events: none; z-index: 1; }
   .play { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(12px); opacity: 0; transition: all .35s var(--ease); z-index: 3; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }
   .g:hover .glow, .g:hover .play, .g:focus-visible .glow, .g:focus-visible .play, .g[aria-disabled='true'] .play, .sel .glow { opacity: 1; }

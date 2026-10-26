@@ -125,6 +125,7 @@ struct Running {
 
 pub struct Supervisor {
     bin: PathBuf,
+    proc_dir: PathBuf,
     listen: String,
     app_id: u32,
     cert: PathBuf,
@@ -149,6 +150,7 @@ impl Supervisor {
             .join(".config/brisk/tls");
         Supervisor {
             bin: cfg.bridge_bin.clone(),
+            proc_dir: cfg.proc_dir.clone(),
             listen: cfg.bridge_listen.clone(),
             app_id: cfg.app_id,
             cert: tls.join("bridge.pem"),
@@ -256,6 +258,7 @@ impl Supervisor {
             self.runner.clone(),
         );
         let mut launch = req.appid;
+        let proc = self.proc_dir.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
         // the tap connects, and on exit flips to idle unless a request already took over.
         tokio::spawn(async move {
@@ -273,8 +276,7 @@ impl Supervisor {
                                 }
                             } else if l.starts_with("tap\tconnected") {
                                 if let Some(id) = launch.take() {
-                                    let r = runner.clone();
-                                    tokio::task::spawn_blocking(move || steam(&*r, "rungameid", id));
+                                    tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), id));
                                 }
                             }
                             forward(l);
@@ -424,6 +426,23 @@ fn hostname() -> String {
         .map_or_else(|_| "bawn".into(), |s| s.trim().to_string())
 }
 
+/// A running game is only brought to the front: `rungameid` on it does nothing useful and leaves
+/// its window small on the desktop. Then waits up to a minute for the window to fullscreen it.
+async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, id: u32) {
+    let (r, p) = (runner.clone(), proc.clone());
+    let env = tokio::task::spawn_blocking(move || {
+        if crate::running::running_appids(&p).contains(&id) {
+            eprintln!("info: game {id} is already running; streaming it without relaunch");
+        } else {
+            steam(&*r, "rungameid", id);
+        }
+        graphical_env()
+    })
+    .await
+    .unwrap_or_default();
+    crate::running::focus_game(runner, proc, env, id, Duration::from_secs(60)).await;
+}
+
 /// `appid` is a u32 validated by the caller, so the URL cannot carry anything else. Detached:
 /// true once steam is running (it hands the URL to the running client and exits).
 fn steam(runner: &dyn Runner, verb: &str, id: u32) -> bool {
@@ -451,7 +470,7 @@ fn forward(l: String) {
     let _ = TX.get_or_init(|| forwarder(std::io::stdout())).try_send(l);
 }
 
-/// `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`/`DISPLAY` of the desktop session, read from one of our own
+/// `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`/`DISPLAY`/`SWAYSOCK` of the desktop session, read from one of our own
 /// `sway` or `steam` processes. [U] On bawn sway's environ is not readable (non-dumpable), so the
 /// running steam client is what answers; with neither found hostd's own env is used.
 fn graphical_env() -> Vec<(String, String)> {
@@ -470,7 +489,9 @@ fn graphical_env() -> Vec<(String, String)> {
         let vars: Vec<(String, String)> = env
             .split(|b| *b == 0)
             .filter_map(|v| std::str::from_utf8(v).ok()?.split_once('='))
-            .filter(|(k, _)| ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY"].contains(k))
+            .filter(|(k, _)| {
+                ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY", "SWAYSOCK"].contains(k)
+            })
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         if vars.iter().any(|(k, _)| k == "WAYLAND_DISPLAY") {

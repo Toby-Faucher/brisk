@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
 import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, pickResume } from './home';
 
-const g = (appid: number, installed: boolean, lastPlayed: number | null): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, cover: '' });
+const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, cover: '', running });
 
 describe('home', () => {
   it('resume_picks_most_recent_played_installed_game', () => {
     expect(pickResume([g(1, true, 100), g(2, false, 900), g(3, true, 500), g(4, true, null)])?.appid).toBe(3);
     expect(pickResume([g(1, true, null), g(2, false, 5)])).toBeNull();
     expect(pickResume([])).toBeNull();
+  });
+
+  it('resume_prefers_the_running_game', () => {
+    expect(pickResume([g(1, true, 900), g(2, true, 100, true), g(3, true, 500)])?.appid).toBe(2);
   });
 
   it('dash_for_null_values', () => {

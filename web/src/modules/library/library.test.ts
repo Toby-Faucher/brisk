@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { cardClick, filterGames, installLabel, searchGames, shelves, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterGames, installLabel, playLabel, searchGames, shelves, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', running: false, ...o });
 
 describe('library', () => {
   it('search_folds_diacritics', () => {
@@ -85,5 +85,14 @@ describe('library', () => {
     expect(wheelToX(0, 100, 2000, 1000, 3000)).toBeNull();
     expect(wheelToX(0, 100, 0, 1000, 1000)).toBeNull();
     expect(wheelToX(80, 10, 0, 1000, 3000)).toBeNull();
+  });
+
+  it('running_game_resumes_and_is_badged', () => {
+    expect(playLabel(g(1, 'a', { installed: true, running: true }))).toBe('Resume');
+    expect(playLabel(g(1, 'a', { installed: true }))).toBe('Play');
+    expect(badgeLabel(g(1, 'a', { installed: true, running: true }))).toBe('Running');
+    expect(badgeLabel(g(1, 'a', { installed: true }))).toBe('Installed');
+    expect(badgeLabel(g(1, 'a', { sizeBytes: 2e9 }))).toBe('2.0 GB');
+    expect(badgeLabel(g(1, 'a'))).toBe('Not installed');
   });
 });

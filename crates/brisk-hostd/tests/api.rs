@@ -498,13 +498,53 @@ async fn sunshine_restart_204_then_429_and_host_is_json() {
 
 // ---- Task 4: stream supervisor, launch, install, sessions. Never real steam or bridge. ----
 
+const SWAY_TREE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/sway-tree.json");
+
+/// A fake `/proc`: `(pid, ppid, argv)` per process, as `<pid>/stat` and NUL-separated `<pid>/cmdline`.
+fn fake_procs(root: &Path, procs: &[(u32, u32, &[&str])]) {
+    for (pid, ppid, argv) in procs {
+        let d = root.join(pid.to_string());
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("cmdline"), argv.join("\0") + "\0").unwrap();
+        // comm with a space and a paren, as real ones can have
+        std::fs::write(
+            d.join("stat"),
+            format!("{pid} (a b) c) S {ppid} 1 1 0 -1 0"),
+        )
+        .unwrap();
+    }
+}
+
+/// Steam (400) launched game 10 through its reaper (500); 502 owns the game window in sway-tree.json.
+fn game_10_running(root: &Path) {
+    fake_procs(
+        root,
+        &[
+            (400, 1, &["steam"]),
+            (
+                500,
+                400,
+                &["/steam/reaper", "SteamLaunch", "AppId=10", "--", "proton"],
+            ),
+            (501, 500, &["srt-bwrap"]),
+            (502, 501, &["Mewgenics.exe"]),
+        ],
+    );
+}
+
 const FAKE_BRIDGE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-bridge.sh");
 
 /// `run` is slow on purpose: steam commands must use the detached `spawn`, never wait.
 struct Calls(std::sync::Mutex<Vec<String>>);
 impl brisk_hostd::host::Runner for Calls {
     fn run(&self, p: &str, a: &[&str]) -> Option<String> {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        if p == "swaymsg" {
+            if a.ends_with(&["-t", "get_tree"]) {
+                return Some(std::fs::read_to_string(SWAY_TREE).unwrap());
+            }
+        } else {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
         self.0
             .lock()
             .unwrap()
@@ -527,6 +567,7 @@ impl brisk_hostd::host::Clock for Clock0 {
 }
 
 struct Rig {
+    proc: PathBuf,
     app: axum::Router,
     state: Arc<AppState>,
     runner: Arc<Calls>,
@@ -559,6 +600,7 @@ fn rig(mode: &str) -> Rig {
     cfg.steam_dir = d.path().join("nosteam");
     cfg.steam_key_file = d.path().join("nokey");
     cfg.steam_api_base = "http://127.0.0.1:1".into();
+    cfg.proc_dir = d.path().join("proc");
     let data = cfg.data_dir.clone();
     let runner = Arc::new(Calls(Default::default()));
     let st = AppState::with_host(cfg, runner.clone(), Arc::new(Clock0));
@@ -571,11 +613,13 @@ fn rig(mode: &str) -> Rig {
             last_played: None,
             playtime_min: 0,
             cover: String::new(),
+            running: false,
         }],
         owned_available: true,
     });
     let state = Arc::new(st);
     Rig {
+        proc: d.path().join("proc"),
         app: router(state.clone()),
         state,
         runner,
@@ -608,6 +652,16 @@ impl Rig {
             .unwrap_or_default()
             .lines()
             .map(String::from)
+            .collect()
+    }
+    fn sway_cmds(&self) -> Vec<String> {
+        self.runner
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("run swaymsg"))
+            .cloned()
             .collect()
     }
     fn steam_calls(&self) -> Vec<String> {
@@ -1050,4 +1104,78 @@ async fn steam_tools_are_not_games() {
         .unwrap()
         .iter()
         .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710));
+}
+
+#[tokio::test]
+async fn running_game_streams_without_relaunch_and_fullscreens_its_window() {
+    let r = rig("");
+    game_10_running(&r.proc);
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced","appid":10}"#)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(
+        eventually(|| r
+            .sway_cmds()
+            .iter()
+            .any(|c| c.ends_with("[con_id=16] focus, fullscreen enable")))
+        .await,
+        "{:?}",
+        r.sway_cmds()
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        r.steam_calls().is_empty(),
+        "relaunched: {:?}",
+        r.steam_calls()
+    );
+    // Only the game's window: never Big Picture (steam, the reaper's parent).
+    assert_eq!(r.sway_cmds().len(), 1, "{:?}", r.sway_cmds());
+}
+
+#[tokio::test]
+async fn fresh_launch_fullscreens_the_window_once_it_appears() {
+    let r = rig("");
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced","appid":10}"#)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(eventually(|| r.steam_calls().len() == 1).await);
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert!(
+        r.sway_cmds().is_empty(),
+        "no game window yet: {:?}",
+        r.sway_cmds()
+    );
+    game_10_running(&r.proc); // steam started it a little later
+    assert!(
+        eventually(|| r
+            .sway_cmds()
+            .iter()
+            .any(|c| c.ends_with("[con_id=16] focus, fullscreen enable")))
+        .await,
+        "{:?}",
+        r.sway_cmds()
+    );
+}
+
+#[tokio::test]
+async fn games_marks_running_game() {
+    let mut s = steam("http://127.0.0.1:1", None);
+    let p = s.cfg.data_dir.join("proc");
+    fake_procs(
+        &p,
+        &[
+            (
+                500,
+                1,
+                &["/steam/reaper", "SteamLaunch", "AppId=620", "--", "x"],
+            ),
+            (7, 1, &["AppId=1091500"]),
+        ],
+    );
+    s.cfg.proc_dir = p;
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    assert_eq!(find(&v, 620)["running"], true);
+    assert_eq!(find(&v, 1091500)["running"], false);
 }
