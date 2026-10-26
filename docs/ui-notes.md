@@ -482,6 +482,35 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
   rustls-native-certs 0.8.4, webpki-root-certs 1.0.9, combine 4.6.8, schannel 0.1.29 held back. `scripts/test-check-pure-rust.sh`
   proves the script with a stub `cargo`.
 
+## Fuzzing and property tests
+Every parser of bytes Brisk did not produce (network, tap, browser, Sunshine HTTP/RTSP/SDP, control,
+input, audio) is listed with its trust level and coverage in `docs/fuzz-inventory.md`, which also
+records what this found (two bugs fixed, two behaviours described and left).
+- **Property tests** (proptest =1.12.0, dev-dependency, `default-features = false, features = ["std"]`:
+  no fork/timeout, inputs are kept small instead) run with everything else: `cargo nextest run --workspace`.
+  Files: brisk-proto `tests/prop_parsers.rs` (any input, no panic, peak heap under 16 B per input byte
+  + 64 KiB, measured by a counting `#[global_allocator]` in that test binary) and `tests/prop_roundtrip.rs`
+  (round trips, Reed-Solomon under random loss, AES wrappers), brisk-bridge `tests/prop_input.rs` and
+  `tests/prop_audio.rs`, and `#[cfg(test)]` modules in brisk-client `session.rs`, `tap.rs`, `rtsp.rs`.
+  Default 256 cases per property (about 1.5 s added to the suite); longer local runs:
+  `PROPTEST_CASES=5000 cargo nextest run -p brisk-proto` (or `-p brisk-bridge`). A failure prints
+  the shrunk input and writes `tests/<file>.proptest-regressions`; commit that file only for a real bug.
+- **cargo-fuzz** (0.13.2, `cargo install --locked cargo-fuzz`, nightly: `rustup toolchain install
+  nightly --profile minimal`) in `fuzz/`, eight targets: `rtsp`, `rtp_fec`, `control_enet`, `input`,
+  `http_sdp`, `tap`, `audio`, `bridge_input` (list: `cargo +nightly fuzz list`). Run from `fuzz/`:
+  `cargo +nightly fuzz run <target> corpus/<target> seeds/<target> -- -max_total_time=300 -rss_limit_mb=1024`
+  (on bawn wrap it in `capped` and keep `CARGO_TARGET_DIR`/`TMPDIR` off the small /tmp: the
+  ASan build of libFuzzer needs a few hundred MB). Stateful targets split the input into datagrams
+  (`len u16 LE` + bytes, `fuzz_targets/common.rs`). `fuzz/seeds/` holds small hand-built valid
+  samples (committed, about 5 KB); the generated `fuzz/corpus/`, `fuzz/artifacts/` (crash inputs)
+  and `fuzz/target/` are git-ignored. Reproduce a crash: `cargo +nightly fuzz run <target> artifacts/<target>/crash-...`.
+  Every real crash gets a minimal unit test in the crate first, then the fix.
+- **Purity exception**: libfuzzer-sys compiles libFuzzer (C++, via `cc`) and needs nightly, which
+  the pure-Rust rule forbids for the product. So `fuzz/` is its own workspace (empty `[workspace]`
+  table, own `Cargo.lock`), not a member of the root workspace: the product build,
+  `scripts/brisk-service.sh update`, `scripts/check-pure-rust.sh` and `cargo deny check` all read
+  the root workspace graph and never see it. Never add `fuzz` to the root `members`.
+
 ## [U]
 `[U]` in code comments marks an unverified assumption about bawn (for example the graphical
 environment taken from a running steam process).
