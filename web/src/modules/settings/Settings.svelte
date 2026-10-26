@@ -32,8 +32,10 @@
   let tab = $state<Tab>('general');
   let list = $state<HTMLElement | null>(null);
   let ind = $state({ x: 0, w: 0 });
+  let live = $state(false);
   function show(t: Tab) {
     tab = t;
+    live = true;
     try { localStorage.setItem(TAB_KEY, t); } catch {}
     if (location.hash !== hashFor(t)) history.replaceState(history.state, '', hashFor(t));
   }
@@ -46,7 +48,7 @@
     let stored: string | null = null;
     try { stored = localStorage.getItem(TAB_KEY); } catch {}
     tab = initialTab(location.hash, stored);
-    const onHash = () => { const t = parseHash(location.hash); if (t) tab = t; };
+    const onHash = () => { const t = parseHash(location.hash); if (t) (tab = t, live = true); };
     window.addEventListener('hashchange', onHash);
     window.addEventListener('popstate', onHash);
     window.addEventListener('resize', measure);
@@ -60,7 +62,9 @@
 </script>
 
 <div class="top"><h2>Settings</h2></div>
-<div class="st">
+<div class="st" class:live>
+  <!-- `live` turns on the panel fade only after a user tab change, so first load animates once (page-in) -->
+
   <Tabs.Root value={tab} onValueChange={(v) => show(v as Tab)}>
     <Tabs.List class="strip" aria-label="Settings sections" bind:ref={list}>
       {#each TABS as t (t)}<Tabs.Trigger value={t} class="tab">{LABEL[t]}</Tabs.Trigger>{/each}
@@ -136,11 +140,13 @@
 <style>
   .top { padding: 0 2px 10px; }
   h2 { font-size: 18px; letter-spacing: -.02em; }
-  .st :global(.strip) { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .st :global(.strip) { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; background: var(--bg); border-bottom: 1px solid var(--line); }
   .st :global(.strip::-webkit-scrollbar) { display: none; }
   .st :global(.tab) { flex: none; padding: 10px 14px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; border-radius: 10px 10px 0 0; transition: color .2s; }
   .st :global(.tab:hover), .st :global(.tab[aria-selected='true']) { color: var(--fg); }
   .st :global(.tab:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .live :global([role='tabpanel']) { animation: rise-in var(--dur-tab) var(--ease) backwards; }
+  @media (prefers-reduced-motion: reduce) { .live :global([role='tabpanel']) { animation: none; } }
   .ind { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); transition: transform .25s var(--ease), width .25s var(--ease); }
   @media (prefers-reduced-motion: reduce) { .ind, .st :global(.tab) { transition: none; } }
   .col { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding-top: 16px; }

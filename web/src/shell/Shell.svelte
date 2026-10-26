@@ -13,7 +13,7 @@
 
 <div class="app">
   <Sidebar {path} />
-  <main>{@render children?.()}</main>
+  <main class:page-in={!/^\/stream/.test(path)}>{@render children?.()}</main>
 </div>
 <Toasts />
 <CommandMenu />

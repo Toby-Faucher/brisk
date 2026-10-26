@@ -28,7 +28,7 @@ Non-goals for v1
 
 Anti-goals (would make it a failure even if it technically works)
 - Anything "not easy to digest": clutter, too many controls on screen, unclear states.
-- Any shader or animation cost on the stream screen (it would undo the latency work).
+- Any shader or animation cost on the stream screen (it would undo the latency work). The page-enter, tab and scroll-reveal motion (docs/ui-notes.md, Motion) therefore never runs on /stream.
 - A look that feels like old-school Moonlight / moonlight-web / Steam Link.
 
 ## 3. Constraints

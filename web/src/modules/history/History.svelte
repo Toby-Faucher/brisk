@@ -11,6 +11,7 @@
 
   let list = $state<(SessionRec & { spark?: number[] })[] | null>(null);
   let failed = $state(false);
+  let swapped = $state(false); // list/detail swap fades only after a user action (first load: page-in)
   let selected = $state<number | null>(null);
   let details = $state<Record<number, Detail | 'none'>>({});
   const shown = $derived(listState(list, failed));
@@ -32,7 +33,8 @@
     selected = id;
     if (id !== null) load(id);
     if (push) history.pushState(null, '', id === null ? '/history' : `/history?session=${id}`);
-    window.scrollTo(0, 0);
+    swapped = true;
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
   onMount(() => {
@@ -46,7 +48,7 @@
       () => (failed = true),
     );
     // Our entries carry no state, so Astro's router leaves them to us.
-    const pop = () => (selected = sessionParam(location.search));
+    const pop = () => ((selected = sessionParam(location.search)), (swapped = true));
     window.addEventListener('popstate', pop);
     return () => (window.removeEventListener('popstate', pop), unwatch());
   });
@@ -54,6 +56,7 @@
 
 {#if selected !== null}
   {@const s = detail && detail !== 'none' ? detail.session : list?.find((r) => r.started === selected)}
+  <div class:swap-in={swapped}>
   <div class="top">
     <button class="btn ghost back" onclick={() => open(null)}><Icon name="chev" size={14} /> History</button>
     {#if s}
@@ -89,7 +92,9 @@
       <p class="lab">No report for this session.</p>
     {/if}
   {/if}
+  </div>
 {:else}
+  <div class:swap-in={swapped}>
   <div class="top"><h2>History</h2>{#if list?.length}<span class="lab">{list.length} sessions</span>{/if}</div>
   {#if shown === 'list'}
     <div class="grid">
@@ -117,6 +122,7 @@
       </div>
     </Card>
   {/if}
+  </div>
 {/if}
 
 <style>
