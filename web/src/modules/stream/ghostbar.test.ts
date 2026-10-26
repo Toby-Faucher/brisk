@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeReveal, holdEsc } from './ghostbar';
+import { advancedReq, edgeReveal, holdEsc } from './ghostbar';
 
 describe('edgeReveal', () => {
   it('reveals_at_top_edge', () => {
@@ -42,5 +42,14 @@ describe('holdEsc', () => {
     h.release(900);
     h.press(1000); // a new hold starts over
     expect(h.tick(1500).fired).toBe(false);
+  });
+});
+
+describe('advancedReq', () => {
+  it('turns the Advanced panel into a custom StreamReq with its codec', () => {
+    expect(advancedReq({ res: '2560x1440', fps: 120, bitrateKbps: 30000, codec: 'hevc' })).toEqual({
+      preset: 'custom', width: 2560, height: 1440, fps: 120, bitrateKbps: 30000, codec: 'hevc',
+    });
+    expect(advancedReq({ res: '1920x1080', fps: 60, bitrateKbps: 20000, codec: 'h264' }).codec).toBe('h264');
   });
 });

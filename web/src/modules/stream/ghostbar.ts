@@ -1,4 +1,6 @@
-// Pure logic of the Stream page's ghost bar: when the pill shows, and the hold-Esc release.
+// Pure logic of the Stream page's ghost bar: when the pill shows, the hold-Esc release, and the
+// Advanced quality request.
+import type { Codec, StreamReq } from '../../state/api';
 export const EDGE_PX = 4;
 export const HIDE_MS = 600;
 export const HOLD_MS = 800;
@@ -24,4 +26,12 @@ export function holdEsc() {
     release: (_t: number) => ((start = null), at(0)),
     tick: at,
   };
+}
+
+export type Advanced = { res: string; fps: number; bitrateKbps: number; codec: Codec };
+
+/** The Advanced panel's custom-quality request (`res` is `WxH`). */
+export function advancedReq(a: Advanced): StreamReq {
+  const [width, height] = a.res.split('x').map(Number);
+  return { preset: 'custom', width, height, fps: a.fps, bitrateKbps: a.bitrateKbps, codec: a.codec };
 }

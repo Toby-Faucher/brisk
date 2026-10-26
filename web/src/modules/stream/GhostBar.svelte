@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import type { Preset, StreamReq } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
-  import { EDGE_PX, HIDE_MS, edgeReveal } from './ghostbar';
+  import { hevcSupported } from '../../lib/video';
+  import { EDGE_PX, HIDE_MS, advancedReq, edgeReveal, type Advanced } from './ghostbar';
 
   let {
     host,
@@ -40,7 +41,8 @@
   let advanced = $state(false);
   let vol = $state(70);
   let muted = $state(false);
-  let adv = $state({ res: '1920x1080', fps: 60, bitrateKbps: 20000 });
+  let adv = $state<Advanced>({ res: '1920x1080', fps: 60, bitrateKbps: 20000, codec: 'h264' });
+  let hevcOk = $state(false);
 
   // Pointer state for edgeReveal: last y, whether it is on the bar, when it left the bar or edge.
   let y = 999;
@@ -60,6 +62,7 @@
   };
 
   onMount(() => {
+    void hevcSupported().then((ok) => (hevcOk = ok));
     const move = (e: MouseEvent) => {
       if (document.pointerLockElement) return; // playing: the bar stays away
       y = e.clientY;
@@ -94,10 +97,9 @@
     if (p !== preset) onquality({ preset: p });
   };
   const applyAdvanced = () => {
-    const [width, height] = adv.res.split('x').map(Number);
     menu = null;
     update();
-    onquality({ preset: 'custom', width, height, fps: adv.fps, bitrateKbps: adv.bitrateKbps });
+    onquality(advancedReq(adv));
   };
   const current = $derived(PRESETS.find((p) => p.id === preset));
 </script>
@@ -151,7 +153,7 @@
         {/each}
         <button class="chip" aria-pressed={advanced || preset === 'custom'} aria-expanded={advanced} onclick={() => (advanced = !advanced)}>Advanced…</button>
       </div>
-      <p class="mono muted line">1080p · 60 fps · H.264 · {current ? `${current.mbps} Mbps` : 'custom'}</p>
+      <p class="mono muted line">{current ? `1080p · 60 fps · H.264 · ${current.mbps} Mbps` : 'custom'}</p>
       {#if advanced}
         <div class="adv">
           <label>Resolution
@@ -172,7 +174,10 @@
             <input type="number" min="1000" max="150000" step="1000" bind:value={adv.bitrateKbps} />
           </label>
           <label>Codec
-            <select disabled><option>H.264 (HEVC soon)</option></select>
+            <select bind:value={adv.codec}>
+              <option value="h264">H.264</option>
+              <option value="hevc" disabled={!hevcOk}>{hevcOk ? 'HEVC' : 'HEVC (not supported on this browser)'}</option>
+            </select>
           </label>
           <button class="btn sm" onclick={applyAdvanced}>Apply</button>
         </div>
@@ -209,6 +214,5 @@
   .adv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: end; }
   .adv label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
   .adv select, .adv input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 12.5px; }
-  .adv select:disabled { opacity: .55; }
   .btn.sm { padding: 6px 12px; font-size: 12.5px; border-radius: 9px; justify-content: center; }
 </style>
