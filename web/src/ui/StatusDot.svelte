@@ -36,6 +36,7 @@
   .halo { background: var(--ring); }
   /* the previous state's dot (same look as .dot in base.css), laid over the new one while it fades out */
   .was { --was: var(--ok); background: var(--was); box-shadow: 0 0 0 3px color-mix(in srgb, var(--was) 25%, transparent); }
-  .was[data-s='busy'] { --was: var(--warn); }
-  .was:is([data-s='down'], [data-s='off']) { --was: var(--bad); }
+  /* data-s is set from script, which the compiler cannot see */
+  .was:global([data-s='busy']) { --was: var(--warn); }
+  .was:global(:is([data-s='down'], [data-s='off'])) { --was: var(--bad); }
 </style>
