@@ -396,7 +396,7 @@
   {:else if page === 'unsupported'}
     <div class="center glass card">
       <h3>This browser can't stream</h3>
-      <p class="muted">Brisk needs WebTransport and WebCodecs: use Chrome on http://localhost.</p>
+      <p class="muted">Brisk needs WebTransport and WebCodecs: use a current Chrome or Firefox (desktop) on http://localhost.</p>
     </div>
   {/if}
   {#if dropping}
