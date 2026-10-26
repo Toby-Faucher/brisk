@@ -106,7 +106,8 @@ impl ControlMsg {
     pub fn input(ev: &InputEvent) -> Result<Vec<ControlMsg>, InputError> {
         let channel = match ev {
             InputEvent::Key { .. } => channel::KEYBOARD,
-            InputEvent::Gamepad { index, .. } => channel::GAMEPAD_BASE + index,
+            // Wrapping: an index >= 16 is rejected by encode_input below; it must not panic first.
+            InputEvent::Gamepad { index, .. } => channel::GAMEPAD_BASE.wrapping_add(*index),
             _ => channel::MOUSE,
         };
         Ok(encode_input(ev)?

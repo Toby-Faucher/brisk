@@ -215,3 +215,24 @@ fn rtsp_setup_control_fixture_gives_port_and_connect_data() {
     let (_, d) = brisk_proto::enet::EnetPeer::connect(cd, 1, 0);
     assert_eq!(d[48..52], cd.to_be_bytes());
 }
+
+/// Fuzz find (fuzz/ target `input`): `GAMEPAD_BASE + index` overflowed u8 (a debug panic) before
+/// encode_input could reject the index.
+#[test]
+fn control_input_gamepad_index_out_of_range_errors_not_panics() {
+    let ev = InputEvent::Gamepad {
+        index: 0xf0,
+        active_mask: 0,
+        buttons: 0,
+        lt: 0,
+        rt: 0,
+        lx: 0,
+        ly: 0,
+        rx: 0,
+        ry: 0,
+    };
+    assert_eq!(
+        ControlMsg::input(&ev),
+        Err(brisk_proto::input::InputError::GamepadIndex(0xf0))
+    );
+}
