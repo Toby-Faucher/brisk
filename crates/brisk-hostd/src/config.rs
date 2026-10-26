@@ -16,6 +16,8 @@ pub struct Config {
     pub bridge_listen: String,
     pub app_id: u32,
     pub secret: String,
+    /// File drop target, created on the first upload.
+    pub downloads_dir: PathBuf,
     /// Where running games are looked up; tests point it at a fake.
     pub proc_dir: PathBuf,
 }
@@ -49,6 +51,7 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(870779643),
             secret: s.iter().map(|b| format!("{b:02x}")).collect(),
+            downloads_dir: home.join("Downloads/brisk"),
             proc_dir: "/proc".into(),
         }
     }

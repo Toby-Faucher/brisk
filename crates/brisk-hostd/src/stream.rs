@@ -473,7 +473,7 @@ fn forward(l: String) {
 /// `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`/`DISPLAY`/`SWAYSOCK` of the desktop session, read from one of our own
 /// `sway` or `steam` processes. [U] On bawn sway's environ is not readable (non-dumpable), so the
 /// running steam client is what answers; with neither found hostd's own env is used.
-fn graphical_env() -> Vec<(String, String)> {
+pub(crate) fn graphical_env() -> Vec<(String, String)> {
     let Ok(dir) = std::fs::read_dir("/proc") else {
         return vec![];
     };

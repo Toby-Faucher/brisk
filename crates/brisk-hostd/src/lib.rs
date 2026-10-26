@@ -1,4 +1,6 @@
+pub mod clipboard;
 pub mod config;
+pub mod files;
 pub mod host;
 pub mod http;
 pub mod running;

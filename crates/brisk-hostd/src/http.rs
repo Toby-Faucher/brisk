@@ -1,12 +1,14 @@
+use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
+use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::steam::{self, GamesResult};
 use crate::stream::{StreamReq, Supervisor};
-use axum::extract::{Request, State};
+use axum::extract::{DefaultBodyLimit, Path as UrlPath, Request, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
@@ -18,6 +20,8 @@ pub struct AppState {
     pub games: Mutex<Option<GamesResult>>,
     pub restarter: Restarter,
     pub stream: Supervisor,
+    pub clip: Arc<Clipboard>,
+    pub files: Files,
 }
 
 impl AppState {
@@ -30,6 +34,8 @@ impl AppState {
         AppState {
             stream: Supervisor::new(&cfg, runner.clone()),
             games: Mutex::new(None),
+            clip: Arc::new(Clipboard::new(Arc::new(WlBackend::default()))),
+            files: Files::new(cfg.downloads_dir.clone()),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -190,6 +196,83 @@ async fn sessions(State(s): State<Arc<AppState>>) -> Response {
     axum::Json(serde_json::json!({ "sessions": s.stream.sessions(20) })).into_response()
 }
 
+/// No `since`: 204 with only the seq (the page starts from it without writing anything). Newer
+/// text is JSON, a newer image the PNG itself; `x-brisk-seq` is on every answer.
+async fn clip_get(State(s): State<Arc<AppState>>, req: Request) -> Response {
+    let since = req.uri().query().and_then(|q| {
+        q.split('&')
+            .find_map(|p| p.strip_prefix("since=")?.parse().ok())
+    });
+    let (seq, c) = s.clip.since(since);
+    let h = [("x-brisk-seq", seq.to_string())];
+    match c {
+        None => (StatusCode::NO_CONTENT, h).into_response(),
+        Some(c) if c.kind == Kind::Text => {
+            let text = String::from_utf8_lossy(&c.data);
+            (
+                h,
+                axum::Json(serde_json::json!({ "seq": seq, "kind": "text", "text": text })),
+            )
+                .into_response()
+        }
+        Some(c) => (h, [(header::CONTENT_TYPE, "image/png")], c.data).into_response(),
+    }
+}
+
+/// `text/plain` (UTF-8) or `image/png` body becomes bawn's clipboard.
+async fn clip_post(State(s): State<Arc<AppState>>, req: Request) -> Response {
+    let ct = req
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let kind = if ct.starts_with("text/plain") {
+        Kind::Text
+    } else if ct == "image/png" {
+        Kind::Image
+    } else {
+        return err(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "only text/plain and image/png",
+        );
+    };
+    let data = match axum::body::to_bytes(req.into_body(), clipboard::MAX).await {
+        Ok(b) => b,
+        Err(_) => return err(StatusCode::PAYLOAD_TOO_LARGE, "clipboard is over 16 MiB"),
+    };
+    let valid = match kind {
+        Kind::Text => std::str::from_utf8(&data).is_ok(),
+        Kind::Image => data.starts_with(b"\x89PNG\r\n\x1a\n"),
+    };
+    if !valid {
+        return err(StatusCode::BAD_REQUEST, "not UTF-8 text or a PNG");
+    }
+    let s2 = s.clone();
+    match tokio::task::spawn_blocking(move || s2.clip.set(Clip { kind, data })).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        _ => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "couldn't set bawn's clipboard",
+        ),
+    }
+}
+
+/// Reply `{path, size}`; see files.rs.
+async fn file_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(name): UrlPath<String>,
+    req: Request,
+) -> Response {
+    let len = req
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok()?.parse().ok());
+    match s.files.upload(&name, len, req.into_body()).await {
+        Ok((p, size)) => axum::Json(serde_json::json!({ "path": p, "size": size })).into_response(),
+        Err((code, msg)) => err(code, &msg),
+    }
+}
+
 /// Mount API routes on `api` below; everything else falls through to `dist/`. The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
@@ -202,7 +285,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/launch", post(launch))
         .route("/install", post(install))
-        .route("/sessions", get(sessions));
+        .route("/sessions", get(sessions))
+        .route("/clipboard", get(clip_get).post(clip_post))
+        // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
+        .route(
+            "/files/{name}",
+            put(file_put).layer(DefaultBodyLimit::disable()),
+        );
     Router::new()
         .nest("/api", api.fallback(|| async { StatusCode::NOT_FOUND }))
         .fallback(static_file)

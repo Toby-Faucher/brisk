@@ -22,6 +22,7 @@ async fn main() -> std::process::ExitCode {
     };
     println!("page\thttp://localhost:8443/?s={}", cfg.secret);
     let state = Arc::new(AppState::new(cfg));
+    state.clip.start_watch();
     let app = router(state.clone());
     let stop = async move {
         let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
