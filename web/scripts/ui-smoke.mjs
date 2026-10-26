@@ -118,6 +118,10 @@ try {
     await sleep(250);
   }
   check("stream state reaches 'live'", live?.state === 'live', live?.state);
+  const bridgeLog = fs.readFileSync(`${work}/bridge.log`, 'utf8');
+  check('default codec is H.264 (--codec h264)', live?.codec === 'h264' && bridgeLog.includes('--codec h264'), `${live?.codec}; ${bridgeLog.trim()}`);
+  const bad = await page.evaluate(async (sec) => (await fetch('/api/stream', { method: 'POST', headers: { 'x-brisk-secret': sec, 'content-type': 'application/json' }, body: '{"preset":"custom","codec":"av1"}' })).status, secret);
+  check('unknown codec is 400', bad === 400, String(bad));
   await sleep(1000);
   const steamLog = fs.existsSync(`${work}/steam.log`) ? fs.readFileSync(`${work}/steam.log`, 'utf8') : '';
   check('steam://rungameid/620 sent after the tap', steamLog.includes('steam://rungameid/620'), steamLog.trim());
