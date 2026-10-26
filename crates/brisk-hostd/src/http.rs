@@ -226,15 +226,15 @@ async fn clip_post(State(s): State<Arc<AppState>>, req: Request) -> Response {
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let kind = if ct.starts_with("text/plain") {
-        Kind::Text
-    } else if ct == "image/png" {
-        Kind::Image
-    } else {
-        return err(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "only text/plain and image/png",
-        );
+    let kind = match ct.split(';').next().unwrap_or("").trim() {
+        "text/plain" => Kind::Text,
+        "image/png" => Kind::Image,
+        _ => {
+            return err(
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "only text/plain and image/png",
+            )
+        }
     };
     let data = match axum::body::to_bytes(req.into_body(), clipboard::MAX).await {
         Ok(b) => b,

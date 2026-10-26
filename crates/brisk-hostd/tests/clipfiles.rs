@@ -23,6 +23,7 @@ struct Fake {
     tx: Mutex<mpsc::Sender<()>>,
     rx: Mutex<mpsc::Receiver<()>>,
     waits: AtomicUsize,
+    fail: std::sync::atomic::AtomicBool,
 }
 
 impl Fake {
@@ -34,6 +35,7 @@ impl Fake {
             tx: Mutex::new(tx),
             rx: Mutex::new(rx),
             waits: AtomicUsize::new(0),
+            fail: Default::default(),
         })
     }
     fn external(&self, c: Clip) {
@@ -47,6 +49,9 @@ impl Backend for Fake {
         self.now.lock().unwrap().clone()
     }
     fn write(&self, c: &Clip) -> bool {
+        if self.fail.load(Ordering::SeqCst) {
+            return false; // like a wl-copy that exited at once
+        }
         self.writes.lock().unwrap().push(c.clone());
         self.external(c.clone());
         true
@@ -194,6 +199,13 @@ fn sanitize_table() {
         ("\0", None),
         ("café ☕.png", Some("café ☕.png")),
         ("foo..bar", Some("foo..bar")),
+        (". ..", None),
+        (" . x", Some("x")),
+        ("x. ", Some("x.")),
+        ("%2e%2e", Some("%2e%2e")), // a literal name here: hostd gets it URL-decoded (see the PUT test)
+        ("\u{202e}gnp.exe", Some("gnp.exe")),
+        ("a\u{200b}b\u{2066}c\u{feff}.txt", Some("abc.txt")),
+        ("\u{200f}\u{202a}", None),
     ];
     for (raw, want) in cases {
         assert_eq!(sanitize(raw).as_deref(), *want, "{raw:?}");
@@ -235,6 +247,12 @@ async fn upload_saves_and_dedupes() {
         t.dl.join("evil.sh").to_str().unwrap()
     );
     assert_eq!(t.put("..", "x").await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(t.put("%2e%2e", "x").await.0, StatusCode::BAD_REQUEST);
+    // Private: 0600 files in a 0700 directory it created.
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&p), 0o600);
+    assert_eq!(mode(&t.dl), 0o700);
     assert_eq!(t.files(), ["evil.sh", "hello (1).txt", "hello.txt"]);
 }
 
@@ -260,6 +278,44 @@ async fn upload_over_8_gib_is_413_and_no_space_is_507() {
         .insert("content-length", "2000".parse().unwrap());
     assert_eq!(t.send(r).await.status(), StatusCode::INSUFFICIENT_STORAGE);
     assert!(t.files().is_empty(), "{:?}", t.files());
+}
+
+static FREE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+
+#[tokio::test]
+async fn disk_filling_up_mid_upload_is_507_and_cleaned() {
+    use futures_util::StreamExt;
+    let t = t_with(|s| s.files.free = |_| Some(FREE.load(Ordering::SeqCst)));
+    // Chunked (no Content-Length): only the in-loop check can catch it.
+    let chunks = futures_util::stream::iter(0..4).map(|i| {
+        if i == 1 {
+            FREE.store(1 << 20, Ordering::SeqCst);
+        }
+        Ok::<_, std::io::Error>(Bytes::from(vec![0u8; 40 << 20]))
+    });
+    let (st, _) = t.put("fill.bin", Body::from_stream(chunks)).await;
+    assert_eq!(st, StatusCode::INSUFFICIENT_STORAGE);
+    assert!(t.files().is_empty(), "{:?}", t.files());
+}
+
+#[test]
+fn leftover_partials_are_removed_at_startup() {
+    let d = tempfile::tempdir().unwrap();
+    for n in [
+        ".a.txt.0123456789abcdef.part",
+        "keep.part",
+        ".keep",
+        "x.txt",
+    ] {
+        std::fs::write(d.path().join(n), "x").unwrap();
+    }
+    brisk_hostd::files::Files::new(d.path().to_path_buf()).clean_partials();
+    let mut left: Vec<_> = std::fs::read_dir(d.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    left.sort();
+    assert_eq!(left, [".keep", "keep.part", "x.txt"]);
 }
 
 #[tokio::test]
@@ -369,6 +425,31 @@ async fn bawn_changes_bump_seq_and_are_served() {
 }
 
 #[tokio::test]
+async fn failed_clipboard_write_is_500_and_keeps_the_old_state() {
+    let t = t();
+    t.settle(0).await;
+    let w = t.fake.waits.load(Ordering::SeqCst);
+    t.fake.external(text("old"));
+    t.settle(w).await;
+    let (_, s1, _, _) = t.clip(None).await;
+    t.fake.fail.store(true, Ordering::SeqCst);
+    let r = t
+        .send(req(
+            "POST",
+            "/api/clipboard",
+            Some("text/plain"),
+            Body::from("new"),
+        ))
+        .await;
+    assert_eq!(r.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    // A change event for the unchanged clipboard is still no change.
+    let w = t.fake.waits.load(Ordering::SeqCst);
+    t.fake.external(text("old"));
+    t.settle(w).await;
+    assert_eq!(t.clip(Some(s1)).await.0, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
 async fn post_sets_clipboard_without_echo() {
     let t = t();
     t.settle(0).await;
@@ -424,6 +505,10 @@ async fn post_refuses_other_types_bad_png_and_oversize() {
         t.send(post("text/html", b"<b>".to_vec())).await.status(),
         StatusCode::UNSUPPORTED_MEDIA_TYPE
     );
+    for ct in ["image/pngx", "text/plainish"] {
+        let r = t.send(post(ct, PNG.to_vec())).await;
+        assert_eq!(r.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE, "{ct}");
+    }
     assert_eq!(
         t.send(post("image/png", b"not a png".to_vec()))
             .await

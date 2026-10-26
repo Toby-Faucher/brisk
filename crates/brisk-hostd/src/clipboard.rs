@@ -105,13 +105,21 @@ impl Clipboard {
 
     /// Sets the clipboard from the page. The hash is recorded first, so the watcher seeing our own
     /// write is no change and the page does not get it back. Blocking.
+    /// On failure the previous hash and clip are restored.
     pub fn set(&self, c: Clip) -> bool {
-        {
+        let prev = {
             let mut s = self.cur.lock().unwrap();
+            let prev = (s.hash, s.clip.clone());
             s.hash = Some(hash(&c));
             s.clip = Some(c.clone());
+            prev
+        };
+        let ok = self.backend.write(&c);
+        if !ok {
+            let mut s = self.cur.lock().unwrap();
+            (s.hash, s.clip) = prev;
         }
-        self.backend.write(&c)
+        ok
     }
 }
 
@@ -212,10 +220,18 @@ impl Backend for WlBackend {
             return false;
         };
         // wl-copy reads all of stdin before it takes the selection; dropping stdin ends it.
-        let ok = new
+        let fed = new
             .stdin
             .take()
             .is_some_and(|mut i| i.write_all(&c.data).is_ok());
+        // shortcut: a wl-copy that cannot take the selection (no session) exits at once; one still
+        // running after 50 ms is taken as the owner. A slower failure is not seen.
+        std::thread::sleep(Duration::from_millis(50));
+        if !fed || !matches!(new.try_wait(), Ok(None)) {
+            let _ = new.kill();
+            let _ = new.wait();
+            return false;
+        }
         // The previous wl-copy exits once the new one owns the selection; killing it first would
         // empty the clipboard for a moment (a spurious change). Give it a second, then kill.
         if let Some(mut old) = slot.replace(new) {
@@ -226,7 +242,7 @@ impl Backend for WlBackend {
             let _ = old.kill();
             let _ = old.wait();
         }
-        ok
+        true
     }
 
     fn wait_change(&self) {

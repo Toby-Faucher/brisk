@@ -14,13 +14,28 @@ pub const MAX_UPLOAD: u64 = 8 << 30;
 const MAX_NAME: usize = 200;
 /// Left free on the disk after an upload.
 const RESERVE: u64 = 256 << 20;
+/// Free space is checked again after every this many bytes written.
+const CHECK_EVERY: u64 = 64 << 20;
 
-/// The basename only, no control characters, no leading dots, at most 200 bytes (the extension is
-/// kept). None if nothing is left.
+/// Bidi overrides/isolates and zero-width characters: they make `gnp.exe` look like `exe.png`.
+fn invisible(c: char) -> bool {
+    matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
+}
+
+/// The basename only, no control or invisible characters, no leading dots or spaces, at most 200
+/// bytes (the extension is kept). None if nothing is left, or for `.` and `..`.
 pub fn sanitize(raw: &str) -> Option<String> {
     let base = raw.rsplit(['/', '\\']).next().unwrap_or("");
-    let s: String = base.chars().filter(|c| !c.is_control()).collect();
-    let s = s.trim().trim_start_matches('.').trim();
+    if base == "." || base == ".." {
+        return None;
+    }
+    let s: String = base
+        .chars()
+        .filter(|&c| !c.is_control() && !invisible(c))
+        .collect();
+    let s = s
+        .trim_start_matches(|c: char| c == '.' || c.is_whitespace())
+        .trim_end();
     if s.is_empty() {
         return None;
     }
@@ -94,6 +109,17 @@ impl Files {
         }
     }
 
+    /// Removes `.*.part` left by a hostd that died mid-upload (run at startup).
+    pub fn clean_partials(&self) {
+        for e in std::fs::read_dir(&self.dir).into_iter().flatten().flatten() {
+            let n = e.file_name();
+            let n = n.to_string_lossy();
+            if n.starts_with('.') && n.ends_with(".part") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+
     /// Saves `body` as `raw_name`; returns the final path and size.
     pub async fn upload(
         &self,
@@ -114,14 +140,25 @@ impl Files {
                 &format!("couldn't save the file: {e}"),
             ),
         };
-        tokio::fs::create_dir_all(&self.dir).await.map_err(io)?;
-        if let (Some(l), Some(f)) = (len, (self.free)(&self.dir)) {
-            if l.saturating_add(RESERVE) > f {
-                return Err(fail(
-                    StatusCode::INSUFFICIENT_STORAGE,
-                    "not enough free disk space on bawn",
-                ));
-            }
+        // 0700 only applies to directories it creates; an existing one keeps its mode.
+        tokio::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&self.dir)
+            .await
+            .map_err(io)?;
+        let no_space = || {
+            fail(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "not enough free disk space on bawn",
+            )
+        };
+        // Checked up front with a Content-Length, then again while writing (chunked bodies,
+        // several uploads at once, anything else filling the disk).
+        let short =
+            |need: u64| (self.free)(&self.dir).is_some_and(|f| need.saturating_add(RESERVE) > f);
+        if short(len.unwrap_or(0)) {
+            return Err(no_space());
         }
         if !self.active.lock().unwrap().insert(name.clone()) {
             return Err(fail(
@@ -137,8 +174,15 @@ impl Files {
             name,
             tmp,
         };
-        let mut f = tokio::fs::File::create_new(&g.tmp).await.map_err(io)?;
+        let mut f = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&g.tmp)
+            .await
+            .map_err(io)?;
         let mut size = 0u64;
+        let mut checked = 0u64;
         while let Some(fr) = body.frame().await {
             let fr = fr.map_err(|_| fail(StatusCode::BAD_REQUEST, "upload interrupted"))?;
             if let Ok(d) = fr.into_data() {
@@ -147,6 +191,12 @@ impl Files {
                     return Err(too_big());
                 }
                 f.write_all(&d).await.map_err(io)?;
+                if size - checked >= CHECK_EVERY {
+                    checked = size;
+                    if short(0) {
+                        return Err(no_space());
+                    }
+                }
             }
         }
         if len.is_some_and(|l| size != l) {
