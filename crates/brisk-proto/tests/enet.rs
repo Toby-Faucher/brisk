@@ -129,7 +129,9 @@ fn enet_send_reliable_and_unreliable_layout() {
     let d = p.send(3, true, b"abc", 0x10).unwrap();
     assert_eq!(
         d,
-        vec![0xA0, 0x07, 0x00, 0x10, 0x86, 3, 0, 1, 0, 3, b'a', b'b', b'c']
+        vec![
+            0xA0, 0x07, 0x00, 0x10, 0x86, 3, 0, 1, 0, 3, b'a', b'b', b'c'
+        ]
     );
     let d = p.send(3, false, b"z", 0x11).unwrap();
     assert_eq!(d, vec![0x20, 0x07, 0x07, 3, 0, 1, 0, 1, 0, 1, b'z']);

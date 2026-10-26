@@ -3,8 +3,8 @@
 //! Phase N's `on_*` takes the hex field of the server's reply to phase N and returns the
 //! query params of phase N+1. Any error poisons the session (like Sunshine's `fail_pair`).
 
-use aes::cipher::{generic_array::GenericArray, BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit, generic_array::GenericArray};
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
@@ -12,8 +12,8 @@ use rsa::signature::{SignatureEncoding, Signer, Verifier};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
-use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
+use x509_cert::der::{DecodePem, Encode};
 
 /// Sent as `devicename` in phase 1; Sunshine requires the param.
 const DEVICE_NAME: &str = "brisk";

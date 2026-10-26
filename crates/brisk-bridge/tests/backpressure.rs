@@ -2,7 +2,7 @@
 //! more than [`MAX_BEHIND`] unacked streams means the browser is behind, so the old streams are
 //! reset and frames are dropped until the next IDR, which is requested at most every 100 ms.
 
-use brisk_bridge::session::{Pacer, IDR_EVERY_NS, IDR_MAX_GAP_NS, MAX_BEHIND, REFRESH_EVERY_NS};
+use brisk_bridge::session::{IDR_EVERY_NS, IDR_MAX_GAP_NS, MAX_BEHIND, Pacer, REFRESH_EVERY_NS};
 
 const MS: u64 = 1_000_000;
 
@@ -83,7 +83,7 @@ fn idr_requested_at_most_every_100ms() {
     );
     assert!(p.on_frame(5, true, 110 * MS).send);
     p.on_done(5, true); // the browser is keeping up again
-                        // The browser asks too: same limiter.
+    // The browser asks too: same limiter.
     assert!(!p.want_key(150 * MS));
     assert!(
         !p.on_frame(6, false, 160 * MS).send,
@@ -181,5 +181,5 @@ fn refresh_key_requests_an_idr_without_dropping_anything() {
         !p.on_frame(4, false, 2_000 * MS).send,
         "want-key still drops until the IDR"
     );
-    assert!(REFRESH_EVERY_NS >= 1_000 * MS);
+    const { assert!(REFRESH_EVERY_NS >= 1_000 * MS) };
 }

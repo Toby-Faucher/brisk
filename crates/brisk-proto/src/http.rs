@@ -1,8 +1,8 @@
 //! GameStream HTTP(S) XML layer, client side: query builders and response parsers.
 //! Shapes mirror Sunshine `src/nvhttp.cpp` (`serverinfo`, `applist`, `launch`, `cancel`).
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 /// Responses larger than this are rejected, never truncated.
 pub const MAX_BODY: usize = 64 * 1024;

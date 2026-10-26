@@ -32,7 +32,7 @@ fn control_wire_layout_matches_stream_cpp() {
     let mut c = Control::new(KEY);
     c.encode(&ControlMsg::Ping).unwrap(); // seq 0
     let w = c.encode(&ControlMsg::IdrRequest).unwrap(); // seq 1
-                                                        // 0x0001 LE, length = seq(4) + tag(16) + V2 header(4) + payload(2) = 26, seq 1 LE.
+    // 0x0001 LE, length = seq(4) + tag(16) + V2 header(4) + payload(2) = 26, seq 1 LE.
     assert_eq!(w[..8], [0x01, 0x00, 26, 0x00, 1, 0, 0, 0]);
     assert_eq!(w.len(), 4 + 26);
     // Independent decrypt: IV = seq LE, zeros, 'C','C'; tag then ciphertext.

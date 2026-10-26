@@ -17,12 +17,12 @@
 //! `encode_audio` (as brisk-proto/tests/audio.rs). Packet *contents* are synthetic, not H.264.
 #![allow(dead_code)]
 
-use aes::cipher::{generic_array::GenericArray, BlockEncrypt};
 use aes::Aes128;
+use aes::cipher::{BlockEncrypt, generic_array::GenericArray};
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce, Tag};
 use brisk_client::control::AvPing;
-use brisk_proto::audio::{encode_parity, PT_AUDIO, PT_FEC};
+use brisk_proto::audio::{PT_AUDIO, PT_FEC, encode_parity};
 use brisk_proto::fec::rs_encode;
 use rusty_enet as enet;
 use std::net::{SocketAddr, UdpSocket};

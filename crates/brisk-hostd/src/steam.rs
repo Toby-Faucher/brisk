@@ -159,16 +159,16 @@ fn library_dirs(steam_dir: &Path) -> Vec<PathBuf> {
     let main = steam_dir.join("steamapps");
     let mut dirs = vec![main.clone()];
     let text = std::fs::read_to_string(main.join("libraryfolders.vdf")).unwrap_or_default();
-    if let Some(top) = parse_vdf(&text) {
-        if let Some(V::M(folders)) = get(&top, "libraryfolders") {
-            for (_, f) in folders {
-                if let V::M(f) = f {
-                    if let Some(p) = get_s(f, "path") {
-                        let d = Path::new(p).join("steamapps");
-                        if !dirs.contains(&d) {
-                            dirs.push(d);
-                        }
-                    }
+    if let Some(top) = parse_vdf(&text)
+        && let Some(V::M(folders)) = get(&top, "libraryfolders")
+    {
+        for (_, f) in folders {
+            if let V::M(f) = f
+                && let Some(p) = get_s(f, "path")
+            {
+                let d = Path::new(p).join("steamapps");
+                if !dirs.contains(&d) {
+                    dirs.push(d);
                 }
             }
         }
@@ -303,10 +303,11 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
         .await
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok());
-    if let Some(c) = &cache {
-        if !refresh && now().saturating_sub(c.fetched) < OWNED_TTL_S {
-            return (c.games.clone(), true);
-        }
+    if let Some(c) = &cache
+        && !refresh
+        && now().saturating_sub(c.fetched) < OWNED_TTL_S
+    {
+        return (c.games.clone(), true);
     }
     match fetch_owned(cfg).await {
         Some(games) => {

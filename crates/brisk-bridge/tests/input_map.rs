@@ -6,11 +6,11 @@ mod common;
 use std::sync::Arc;
 
 use brisk_bridge::input::{
-    frame, read_stream, send_loop, serve, InputQueue, Shared, HOLD_TIMEOUT, KIND_BUTTON,
-    KIND_HEARTBEAT, KIND_KEY, KIND_MOVE, KIND_SCROLL, MAX_PENDING,
+    HOLD_TIMEOUT, InputQueue, KIND_BUTTON, KIND_HEARTBEAT, KIND_KEY, KIND_MOVE, KIND_SCROLL,
+    MAX_PENDING, Shared, frame, read_stream, send_loop, serve,
 };
 use brisk_client::Error;
-use brisk_proto::input::{encode_input, InputEvent};
+use brisk_proto::input::{InputEvent, encode_input};
 use common::*;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;

@@ -5,9 +5,9 @@ use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::auth::Hosts;
-use brisk_hostd::config::{list, load_secret, load_users, load_users_as, Config};
+use brisk_hostd::config::{Config, list, load_secret, load_users, load_users_as};
 use brisk_hostd::host::{Clock, Runner};
-use brisk_hostd::http::{router, AppState};
+use brisk_hostd::http::{AppState, router};
 use brisk_hostd::stream::{ensure_cert, resolve_listen};
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -497,19 +497,25 @@ fn listen_is_the_tailscale_ip_or_brisk_listen_never_all_interfaces() {
         resolve_listen(&*fake, Some("100.64.0.1:5000")).unwrap(),
         "100.64.0.1:5000"
     );
-    assert!(resolve_listen(&*fake, Some("0.0.0.0:4433"))
-        .unwrap_err()
-        .contains("all interfaces"));
-    assert!(resolve_listen(&*fake, Some("bawn:4433"))
-        .unwrap_err()
-        .contains("IPv4:PORT"));
+    assert!(
+        resolve_listen(&*fake, Some("0.0.0.0:4433"))
+            .unwrap_err()
+            .contains("all interfaces")
+    );
+    assert!(
+        resolve_listen(&*fake, Some("bawn:4433"))
+            .unwrap_err()
+            .contains("IPv4:PORT")
+    );
     let down = Arc::new(Fake {
         ip: None,
         ..Arc::into_inner(Fake::new(None)).unwrap()
     });
-    assert!(resolve_listen(&*down, None)
-        .unwrap_err()
-        .contains("tailscale"));
+    assert!(
+        resolve_listen(&*down, None)
+            .unwrap_err()
+            .contains("tailscale")
+    );
 }
 
 fn age(p: &Path, days: f64) {

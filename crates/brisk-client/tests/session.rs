@@ -1,12 +1,12 @@
 //! Pairing, serverinfo and applist against a local fake Sunshine (127.0.0.1, ephemeral ports).
 //! The fake mirrors nvhttp.cpp's four pairing phases as pair_vectors.rs does; no real host is contacted.
 
-use brisk_client::identity::{load_or_create_identity, Identity, ServerCert};
+use brisk_client::identity::{Identity, ServerCert, load_or_create_identity};
 use brisk_client::recorder::Recorder;
 use brisk_client::session::Session;
 use brisk_proto::pair::*;
-use brisk_proto::rtsp::{parse_request, RtspCipher};
-use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO, SS_ENC_CONTROL_V2};
+use brisk_proto::rtsp::{RtspCipher, parse_request};
+use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, SS_ENC_CONTROL_V2, StreamConfig};
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
 use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
@@ -22,8 +22,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
+use x509_cert::der::{DecodePem, Encode};
 
 mod common;
 
@@ -118,7 +118,14 @@ impl Fake {
         match path {
             "/serverinfo" => xml(&format!(
                 "<hostname>fake</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>FAKE0123</uniqueid><HttpsPort>{}</HttpsPort><ServerCodecModeSupport>259</ServerCodecModeSupport><PairStatus>{}</PairStatus><currentgame>{}</currentgame><state>{}</state>",
-                self.tls_port, authed as u8, game, if busy {"SUNSHINE_SERVER_BUSY"} else {"SUNSHINE_SERVER_FREE"}
+                self.tls_port,
+                authed as u8,
+                game,
+                if busy {
+                    "SUNSHINE_SERVER_BUSY"
+                } else {
+                    "SUNSHINE_SERVER_FREE"
+                }
             )),
             "/launch" if authed => {
                 let mode = *self.mode.lock().unwrap();
@@ -129,10 +136,13 @@ impl Fake {
                 match mode {
                     "launch-empty-400" => {
                         // Worst case: our app id is "running", so a wrongful cancel_if_ours would send /cancel.
-                        self.game.store(q["appid"].parse().unwrap(), Ordering::SeqCst);
+                        self.game
+                            .store(q["appid"].parse().unwrap(), Ordering::SeqCst);
                         return EMPTY_400.into();
                     }
-                    "launch-drop-ours" => self.game.store(q["appid"].parse().unwrap(), Ordering::SeqCst),
+                    "launch-drop-ours" => self
+                        .game
+                        .store(q["appid"].parse().unwrap(), Ordering::SeqCst),
                     "launch-drop-other" => self.game.store(77, Ordering::SeqCst),
                     _ => {}
                 }
@@ -140,14 +150,18 @@ impl Fake {
                     return String::new();
                 }
                 if mode == "launch-fail" {
-                    return r#"<root status_code="503" status_message="fake launch failure"/>"#.into();
+                    return r#"<root status_code="503" status_message="fake launch failure"/>"#
+                        .into();
                 }
                 let key: [u8; 16] = unhex(&q["rikey"]).unwrap().try_into().unwrap();
                 st.rikeys.push(key);
                 let enc = q["corever"] == "1" && mode != "plain";
                 self.rtsp.lock().unwrap().cipher = enc.then(|| RtspCipher::host(key));
                 let scheme = if enc { "rtspenc" } else { "rtsp" };
-                xml(&format!("<sessionUrl0>{scheme}://127.0.0.1:{}</sessionUrl0><gamesession>1</gamesession>", self.rtsp_port))
+                xml(&format!(
+                    "<sessionUrl0>{scheme}://127.0.0.1:{}</sessionUrl0><gamesession>1</gamesession>",
+                    self.rtsp_port
+                ))
             }
             "/cancel" if authed => {
                 self.cancel_reqs.fetch_add(1, Ordering::SeqCst);
@@ -159,35 +173,68 @@ impl Fake {
                 self.rtsp.lock().unwrap().cancels += 1;
                 xml("<cancel>1</cancel>")
             }
-            "/applist" if authed => xml("<App><AppTitle>Desktop</AppTitle><ID>1</ID></App><App><AppTitle>Steam Big Picture</AppTitle><ID>2</ID></App>"),
+            "/applist" if authed => xml(
+                "<App><AppTitle>Desktop</AppTitle><ID>1</ID></App><App><AppTitle>Steam Big Picture</AppTitle><ID>2</ID></App>",
+            ),
             "/pair" if q.get("phrase").map(String::as_str) == Some("getservercert") => {
                 let salt: [u8; 16] = unhex(&q["salt"]).unwrap().try_into().unwrap();
                 st.key = derive_aes_key(salt, &self.pin).aes_key;
                 st.client_pem = String::from_utf8(unhex(&q["clientcert"]).unwrap()).unwrap();
-                xml(&format!("<paired>1</paired><plaincert>{}</plaincert>", hex(self.ident.cert_pem.as_bytes())))
+                xml(&format!(
+                    "<paired>1</paired><plaincert>{}</plaincert>",
+                    hex(self.ident.cert_pem.as_bytes())
+                ))
             }
             "/pair" if q.get("phrase").map(String::as_str) == Some("pairchallenge") => {
-                if authed { xml("<paired>1</paired>") } else { UNAUTHORIZED.into() }
+                if authed {
+                    xml("<paired>1</paired>")
+                } else {
+                    UNAUTHORIZED.into()
+                }
             }
             "/pair" if q.contains_key("clientchallenge") => {
-                let challenge = aes_ecb_decrypt(&key, &unhex(&q["clientchallenge"]).unwrap()).unwrap();
-                let h = Sha256::new().chain_update(&challenge).chain_update(cert_sig(&self.ident.cert_pem)).chain_update(SERVER_SECRET).finalize();
+                let challenge =
+                    aes_ecb_decrypt(&key, &unhex(&q["clientchallenge"]).unwrap()).unwrap();
+                let h = Sha256::new()
+                    .chain_update(&challenge)
+                    .chain_update(cert_sig(&self.ident.cert_pem))
+                    .chain_update(SERVER_SECRET)
+                    .finalize();
                 let resp = ecb(&key, &[h.as_slice(), &SERVER_CHALLENGE].concat());
-                xml(&format!("<paired>1</paired><challengeresponse>{}</challengeresponse>", hex(&resp)))
+                xml(&format!(
+                    "<paired>1</paired><challengeresponse>{}</challengeresponse>",
+                    hex(&resp)
+                ))
             }
             "/pair" if q.contains_key("serverchallengeresp") => {
-                st.clienthash = aes_ecb_decrypt(&key, &unhex(&q["serverchallengeresp"]).unwrap()).unwrap();
-                let sk = SigningKey::<Sha256>::new(rsa::RsaPrivateKey::from_pkcs8_pem(&self.ident.key_pem).unwrap());
+                st.clienthash =
+                    aes_ecb_decrypt(&key, &unhex(&q["serverchallengeresp"]).unwrap()).unwrap();
+                let sk = SigningKey::<Sha256>::new(
+                    rsa::RsaPrivateKey::from_pkcs8_pem(&self.ident.key_pem).unwrap(),
+                );
                 let ps = [&SERVER_SECRET[..], &sk.sign(&SERVER_SECRET).to_vec()].concat();
-                xml(&format!("<paired>1</paired><pairingsecret>{}</pairingsecret>", hex(&ps)))
+                xml(&format!(
+                    "<paired>1</paired><pairingsecret>{}</pairingsecret>",
+                    hex(&ps)
+                ))
             }
             "/pair" if q.contains_key("clientpairingsecret") => {
                 let cps = unhex(&q["clientpairingsecret"]).unwrap();
                 let (secret, sig) = cps.split_at(16);
-                let h = Sha256::new().chain_update(SERVER_CHALLENGE).chain_update(cert_sig(&st.client_pem)).chain_update(secret).finalize();
+                let h = Sha256::new()
+                    .chain_update(SERVER_CHALLENGE)
+                    .chain_update(cert_sig(&st.client_pem))
+                    .chain_update(secret)
+                    .finalize();
                 let c = Certificate::from_pem(&st.client_pem).unwrap();
-                let pk = rsa::RsaPublicKey::from_public_key_der(&c.tbs_certificate.subject_public_key_info.to_der().unwrap()).unwrap();
-                let ok = h.as_slice() == st.clienthash && VerifyingKey::<Sha256>::new(pk).verify(secret, &Signature::try_from(sig).unwrap()).is_ok();
+                let pk = rsa::RsaPublicKey::from_public_key_der(
+                    &c.tbs_certificate.subject_public_key_info.to_der().unwrap(),
+                )
+                .unwrap();
+                let ok = h.as_slice() == st.clienthash
+                    && VerifyingKey::<Sha256>::new(pk)
+                        .verify(secret, &Signature::try_from(sig).unwrap())
+                        .is_ok();
                 if ok {
                     st.authorized = Some(pem_der(&st.client_pem));
                 }
@@ -349,7 +396,9 @@ async fn serve_rtsp(mut s: TcpStream, f: &Fake) {
                 } else {
                     "X-SS-Ping-Payload: 0123456789ABCDEF".to_string()
                 };
-                extra = format!("Session: DEADBEEFCAFE;timeout = 90\r\nTransport: server_port={port}\r\n{id}\r\n");
+                extra = format!(
+                    "Session: DEADBEEFCAFE;timeout = 90\r\nTransport: server_port={port}\r\n{id}\r\n"
+                );
                 "200 OK"
             }
         }
@@ -758,12 +807,15 @@ async fn launch_ok(mode: &'static str, scheme: &str) {
         .collect();
     assert_eq!(got, want);
     // Session from the audio SETUP is echoed on every later request.
-    assert!(st.seen[3..]
-        .iter()
-        .all(|(_, _, s)| s.as_deref() == Some("DEADBEEFCAFE")));
-    assert!(st
-        .announced
-        .contains("a=x-ss-general.encryptionEnabled:1 \r\n"));
+    assert!(
+        st.seen[3..]
+            .iter()
+            .all(|(_, _, s)| s.as_deref() == Some("DEADBEEFCAFE"))
+    );
+    assert!(
+        st.announced
+            .contains("a=x-ss-general.encryptionEnabled:1 \r\n")
+    );
 }
 
 /// Fake decrypts every request with the rikey from the launch query; all 7 requests got through.
@@ -1221,7 +1273,7 @@ fn meta_field(json: &str, k: &str) -> u64 {
 /// `--record-samples`: the files the brisk-proto replay tests read, replayed the same way.
 #[tokio::test]
 async fn stream_records_replayable_samples() {
-    use brisk_proto::audio::{parse_audio_packet, PT_FEC};
+    use brisk_proto::audio::{PT_FEC, parse_audio_packet};
     use brisk_proto::rtp::parse_video_packet;
     let dir = tempfile::tempdir().unwrap();
     let (r, cancels, _) = stream_run(Default::default(), secs(1), Some(dir.path())).await;
@@ -1255,9 +1307,11 @@ async fn stream_records_replayable_samples() {
     let a = dir.path().join("audio");
     let key = std::fs::read_to_string(a.join("rikey.hex")).unwrap();
     assert_eq!(key, "52494b45592d30313233343536373839 454b4952\n");
-    assert!(std::fs::read_to_string(a.join("README.md"))
-        .unwrap()
-        .contains("ONE streaming session"));
+    assert!(
+        std::fs::read_to_string(a.join("README.md"))
+            .unwrap()
+            .contains("ONE streaming session")
+    );
     let audio = bins("audio");
     assert_eq!(audio.len(), 100);
     let mut data = 0;

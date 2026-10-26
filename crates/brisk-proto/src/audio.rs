@@ -13,8 +13,8 @@
 //! happens before decryption. Sunshine replaces nanors' parity matrix with [`PARITY`].
 
 use crate::fec::{rs_decode_matrix, rs_encode_matrix};
-use aes::cipher::{generic_array::GenericArray, BlockDecrypt, KeyInit};
 use aes::Aes128;
+use aes::cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray};
 
 pub const RTP_HEADER: usize = 12;
 pub const FEC_HEADER: usize = 12;

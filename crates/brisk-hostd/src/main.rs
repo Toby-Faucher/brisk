@@ -2,8 +2,8 @@
 //! `ssh -N -L 8443:127.0.0.1:8443 bawn` or through `tailscale serve` (docs/ui-notes.md, Hosting).
 //!   brisk-hostd [DIST_DIR]      (default ./web/dist, or BRISK_DIST)
 
-use brisk_hostd::config::{load_secret, load_users, page_line, Config};
-use brisk_hostd::http::{router, AppState};
+use brisk_hostd::config::{Config, load_secret, load_users, page_line};
+use brisk_hostd::http::{AppState, router};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -3,12 +3,12 @@
 
 use crate::identity::{Identity, ServerCert};
 use crate::recorder::Recorder;
-use crate::rtsp::{handshake, LaunchKey, StreamPorts};
+use crate::rtsp::{LaunchKey, StreamPorts, handshake};
 use brisk_proto::http::{
-    cancel_query, check_status, launch_query, parse_applist, parse_field, parse_launch,
-    parse_serverinfo, App, LaunchOpts, LaunchReply, ServerInfo, MAX_BODY,
+    App, LaunchOpts, LaunchReply, MAX_BODY, ServerInfo, cancel_query, check_status, launch_query,
+    parse_applist, parse_field, parse_launch, parse_serverinfo,
 };
-use brisk_proto::pair::{unhex, PairError, PairingClient, Rng};
+use brisk_proto::pair::{PairError, PairingClient, Rng, unhex};
 use brisk_proto::sdp::StreamConfig;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
@@ -271,12 +271,14 @@ impl Session {
                             Ok(i) => i.current_game.to_string(),
                             Err(_) => "unknown".into(),
                         };
-                        return Err(crate::Error::Busy(format!("server busy: an app/session is already running (currentgame={game}); not cancelling it ({e})")));
+                        return Err(crate::Error::Busy(format!(
+                            "server busy: an app/session is already running (currentgame={game}); not cancelling it ({e})"
+                        )));
                     }
                     crate::Error::Http(Status { .. }) => {
                         return Err(crate::Error::Session(format!(
                             "launch rejected: {e}; nothing to cancel"
-                        )))
+                        )));
                     }
                     _ => {}
                 }
@@ -673,11 +675,13 @@ mod tests {
         let ok = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello trailing";
         assert_eq!(body(ok, false).unwrap(), "hello");
         assert!(body(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort", false).is_err());
-        assert!(body(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello",
-            false
-        )
-        .is_err());
+        assert!(
+            body(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello",
+                false
+            )
+            .is_err()
+        );
         assert!(body(b"HTTP/1.1 404 Not Found\r\n\r\n", false).is_err());
         assert!(body(b"HTTP/1.1 200 OK\r\nContent", false).is_err());
         assert!(body(b"HTTP/1.1 200 OK\r\n\r\nhi", true).is_err());

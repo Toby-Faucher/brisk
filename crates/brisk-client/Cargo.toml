@@ -24,3 +24,6 @@ aes-gcm = "0.10.3"
 # Independent ENet 1.3 implementation (pure Rust) for the fake Sunshine control server in tests.
 rusty_enet = "=0.4.0"
 tempfile = "3"
+
+[lints]
+workspace = true

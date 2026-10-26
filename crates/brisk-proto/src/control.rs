@@ -9,7 +9,7 @@
 //! `'C','C'` (client to host) or `'H','C'` (host to client) in bytes 10..11
 //! (stream.cpp `encode_control` / `IDX_ENCRYPTED` handler). Each direction counts from 0.
 
-use crate::input::{encode_input, InputError, InputEvent};
+use crate::input::{InputError, InputEvent, encode_input};
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce, Tag};
 

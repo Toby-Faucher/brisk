@@ -1,5 +1,5 @@
-use aes::cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit};
 use aes::Aes128;
+use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use brisk_proto::audio::*;
 
 const KEY: [u8; 16] = *b"0123456789abcdef";

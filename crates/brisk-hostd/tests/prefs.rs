@@ -1,9 +1,9 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::config::Config;
-use brisk_hostd::http::{router, AppState};
-use brisk_hostd::prefs::{Entry, Prefs, MAX_ENTRIES};
-use serde_json::{json, Value};
+use brisk_hostd::http::{AppState, router};
+use brisk_hostd::prefs::{Entry, MAX_ENTRIES, Prefs};
+use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -31,19 +31,32 @@ fn t() -> T {
 }
 
 impl T {
-    async fn call(&self, m: &str, u: &str, secret: bool, body: Option<Value>) -> (StatusCode, Value) {
-        let mut r = Request::builder().method(m).uri(u).header("host", "localhost:8443");
+    async fn call(
+        &self,
+        m: &str,
+        u: &str,
+        secret: bool,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut r = Request::builder()
+            .method(m)
+            .uri(u)
+            .header("host", "localhost:8443");
         if secret {
             r = r.header("x-brisk-secret", SECRET);
         }
         let b = body.map_or(Body::empty(), |v| Body::from(v.to_string()));
         let res = self.app.clone().oneshot(r.body(b).unwrap()).await.unwrap();
         let st = res.status();
-        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
+        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
+            .await
+            .unwrap();
         (st, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
     }
     async fn put(&self, id: &str, v: Value) -> StatusCode {
-        self.call("PUT", &format!("/api/prefs/{id}"), true, Some(v)).await.0
+        self.call("PUT", &format!("/api/prefs/{id}"), true, Some(v))
+            .await
+            .0
     }
     async fn all(&self) -> Value {
         self.call("GET", "/api/prefs", true, None).await.1["prefs"].clone()
@@ -82,11 +95,19 @@ async fn validation_table() {
         json!({"preset":"fast","codec":"h264","colour":"red"}), // unknown field
     ];
     for b in bad {
-        assert_eq!(t.put("100", b.clone()).await, StatusCode::BAD_REQUEST, "{b}");
+        assert_eq!(
+            t.put("100", b.clone()).await,
+            StatusCode::BAD_REQUEST,
+            "{b}"
+        );
     }
     // appid must be a u32, and never the Desktop app
     for id in ["abc", "-1", "0", "4294967296", "870779643"] {
-        assert_eq!(t.put(id, json!({"preset":"fast","codec":"h264"})).await, StatusCode::BAD_REQUEST, "{id}");
+        assert_eq!(
+            t.put(id, json!({"preset":"fast","codec":"h264"})).await,
+            StatusCode::BAD_REQUEST,
+            "{id}"
+        );
     }
     assert_eq!(t.all().await.as_object().unwrap().len(), 1); // only the accepted appid 100
 }
@@ -97,7 +118,8 @@ async fn put_get_delete_roundtrip() {
     assert_eq!(t.all().await, json!({}));
     // custom fields are kept; a named preset drops them
     t.put("7", json!({"preset":"custom","codec":"hevc","width":2560,"height":1440,"fps":120,"bitrateKbps":50000})).await;
-    t.put("8", json!({"preset":"crisp","codec":"h264","width":2560})).await;
+    t.put("8", json!({"preset":"crisp","codec":"h264","width":2560}))
+        .await;
     let all = t.all().await;
     assert_eq!(all["7"]["preset"], "custom");
     assert_eq!(all["7"]["codec"], "hevc");
@@ -108,8 +130,14 @@ async fn put_get_delete_roundtrip() {
     // last write wins
     t.put("8", json!({"preset":"fast","codec":"hevc"})).await;
     assert_eq!(t.all().await["8"]["preset"], "fast");
-    assert_eq!(t.call("DELETE", "/api/prefs/8", true, None).await.0, StatusCode::NO_CONTENT);
-    assert_eq!(t.call("DELETE", "/api/prefs/8", true, None).await.0, StatusCode::NO_CONTENT); // idempotent
+    assert_eq!(
+        t.call("DELETE", "/api/prefs/8", true, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        t.call("DELETE", "/api/prefs/8", true, None).await.0,
+        StatusCode::NO_CONTENT
+    ); // idempotent
     assert!(t.all().await.get("8").is_none());
     assert!(t.all().await.get("7").is_some());
 }
@@ -130,7 +158,8 @@ async fn concurrent_puts_all_land_and_the_file_stays_valid() {
     for i in 1..=40u32 {
         let t = t.clone();
         js.push(tokio::spawn(async move {
-            t.put(&i.to_string(), json!({"preset":"fast","codec":"h264"})).await
+            t.put(&i.to_string(), json!({"preset":"fast","codec":"h264"}))
+                .await
         }));
     }
     for j in js {
@@ -144,8 +173,14 @@ async fn concurrent_puts_all_land_and_the_file_stays_valid() {
 #[tokio::test]
 async fn needs_the_secret() {
     let t = t();
-    for (m, u) in [("GET", "/api/prefs"), ("PUT", "/api/prefs/1"), ("DELETE", "/api/prefs/1")] {
-        let (st, _) = t.call(m, u, false, Some(json!({"preset":"fast","codec":"h264"}))).await;
+    for (m, u) in [
+        ("GET", "/api/prefs"),
+        ("PUT", "/api/prefs/1"),
+        ("DELETE", "/api/prefs/1"),
+    ] {
+        let (st, _) = t
+            .call(m, u, false, Some(json!({"preset":"fast","codec":"h264"})))
+            .await;
         assert_eq!(st, StatusCode::FORBIDDEN, "{m} {u}");
     }
     assert!(!t.file().exists());
@@ -158,7 +193,10 @@ async fn file_is_0600_atomic_and_survives_restart() {
     let mode = std::fs::metadata(t.file()).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
     // no temp leftovers
-    let names: Vec<_> = std::fs::read_dir(t.dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    let names: Vec<_> = std::fs::read_dir(t.dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
     assert_eq!(names, vec![std::ffi::OsString::from("prefs.json")]);
     // a new process reads it back
     let t2 = t_in(t.dir);
@@ -171,7 +209,10 @@ async fn corrupt_or_missing_file_starts_empty_and_recovers() {
     std::fs::write(d.path().join("prefs.json"), "{ not json").unwrap();
     let t = t_in(d);
     assert_eq!(t.all().await, json!({}));
-    assert_eq!(t.put("9", json!({"preset":"fast","codec":"h264"})).await, StatusCode::OK);
+    assert_eq!(
+        t.put("9", json!({"preset":"fast","codec":"h264"})).await,
+        StatusCode::OK
+    );
     let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
     assert_eq!(on_disk["9"]["preset"], "fast");
 }

@@ -5,7 +5,7 @@
 //! running as our own uid (`SO_PEERCRED`) whose first frame carries our session's connect data.
 
 use brisk_proto::sdp::Codec;
-use brisk_proto::tap::{parse_tap, TapError, TapHeader, HEADER_LEN, MAX_PAYLOAD};
+use brisk_proto::tap::{HEADER_LEN, MAX_PAYLOAD, TapError, TapHeader, parse_tap};
 use bytes::{Bytes, BytesMut};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::io;
@@ -13,11 +13,11 @@ use std::mem::MaybeUninit;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt};
 use std::path::{Path, PathBuf};
-use tokio::io::unix::AsyncFd;
 use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
 
 use crate::control::Stats;
-use crate::stream::{percentiles, FPS, IDR_DEADLINE};
+use crate::stream::{FPS, IDR_DEADLINE, percentiles};
 
 /// Largest message: the biggest header `header_len` can describe plus the payload cap.
 const MAX_MESSAGE: usize = u16::MAX as usize + MAX_PAYLOAD;
@@ -244,7 +244,7 @@ impl TapConn {
                 let len = s.recv_with_flags(&mut [], libc::MSG_PEEK | libc::MSG_TRUNC)?;
                 let mut m = BytesMut::with_capacity(len.min(MAX_MESSAGE));
                 let n = s.recv(m.spare_capacity_mut())?; // an oversize message is cut here
-                                                         // SAFETY: recv initialised the first `n` bytes.
+                // SAFETY: recv initialised the first `n` bytes.
                 unsafe { m.set_len(n) };
                 Ok((m, len))
             })

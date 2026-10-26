@@ -741,11 +741,13 @@ mod tests {
             .unwrap();
         assert_eq!(hdr, plain_header);
         let mut wrong_pn = body.to_vec();
-        assert!(client
-            .remote
-            .packet
-            .decrypt_in_place(2, hdr, &mut wrong_pn)
-            .is_err());
+        assert!(
+            client
+                .remote
+                .packet
+                .decrypt_in_place(2, hdr, &mut wrong_pn)
+                .is_err()
+        );
         let plain = client.remote.packet.decrypt_in_place(1, hdr, body).unwrap();
         assert_eq!(plain, plain_payload);
     }

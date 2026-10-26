@@ -4,11 +4,11 @@
 
 use crate::config::Config;
 use crate::host::Runner;
-use crate::sessions::{now_ms, Report, SessionRec, Sessions};
+use crate::sessions::{Report, SessionRec, Sessions, now_ms};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -219,10 +219,8 @@ impl Supervisor {
         let quality_change = req.appid.is_none() && prev.state == State::Live;
         let appid = req.appid.or(prev.appid.filter(|_| quality_change));
         let mut rec = prev_rec;
-        if !quality_change {
-            if let Some(r) = rec.take() {
-                self.sessions.close(r);
-            }
+        if !quality_change && let Some(r) = rec.take() {
+            self.sessions.close(r);
         }
         let epoch = {
             let mut s = self.shared.lock().unwrap();
@@ -309,11 +307,10 @@ impl Supervisor {
                                         let _ = tx.send(wh);
                                     }
                                 }
-                            } else if l.starts_with("tap\tconnected") {
-                                if let Some(id) = launch.take() {
+                            } else if l.starts_with("tap\tconnected")
+                                && let Some(id) = launch.take() {
                                     tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), id));
                                 }
-                            }
                             rep.lock().unwrap().line(&l);
                             forward(bridge_line(l, quiet, tok.as_deref()));
                         }
@@ -571,18 +568,17 @@ pub fn ensure_cert(
         .and_then(|_| std::fs::rename(&tc, &cert))
         .map_err(|e| fail(e.to_string()))?;
     // One mtime for the pair, whatever order openssl wrote them in (see `fresh` above).
-    if let Some(c) = mtime(&cert) {
-        if let Err(e) = std::fs::File::options()
+    if let Some(c) = mtime(&cert)
+        && let Err(e) = std::fs::File::options()
             .write(true)
             .open(&key)
             .and_then(|f| f.set_modified(c))
-        {
-            // Harmless but noisy: the next start sees a mismatched pair and renews once more.
-            eprintln!(
-                "warning: couldn't align {}'s mtime with the cert: {e}",
-                key.display()
-            );
-        }
+    {
+        // Harmless but noisy: the next start sees a mismatched pair and renews once more.
+        eprintln!(
+            "warning: couldn't align {}'s mtime with the cert: {e}",
+            key.display()
+        );
     }
     eprintln!(
         "new bridge certificate {} ({CERT_DAYS} days)",

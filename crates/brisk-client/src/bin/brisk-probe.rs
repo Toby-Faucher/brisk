@@ -22,15 +22,15 @@
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
 use brisk_client::control::{ControlSession, Stats};
-use brisk_client::identity::{load_identity, load_or_create_identity, ServerCert};
+use brisk_client::identity::{ServerCert, load_identity, load_or_create_identity};
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
-use brisk_client::stream::{media_setup, stream, stream_tap, Outcome};
-use brisk_client::tap::{tap_path, TapListener};
+use brisk_client::stream::{Outcome, media_setup, stream, stream_tap};
+use brisk_client::tap::{TapListener, tap_path};
 use brisk_client::{Error, StderrLog, SystemRng};
 use brisk_proto::pair::Rng;
-use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO};
+use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, StreamConfig};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -109,10 +109,10 @@ fn parse_args() -> Result<Args, String> {
         10
     });
     check_secs(cmd.as_deref() == Some("stream"), secs)?;
-    if let Some(p) = &pin {
-        if p.len() != 4 || !p.bytes().all(|b| b.is_ascii_digit()) {
-            return Err("--pin must be 4 digits".into());
-        }
+    if let Some(p) = &pin
+        && (p.len() != 4 || !p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err("--pin must be 4 digits".into());
     }
     let config = config
         .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(|d| PathBuf::from(d).join("brisk")))
@@ -375,7 +375,7 @@ async fn run_control(
 /// Resolves on Ctrl-C, SIGTERM or SIGHUP with the signal's name. The handlers are installed
 /// before this returns, so a signal right after cannot kill the process before the cancel.
 fn interrupted() -> std::io::Result<impl std::future::Future<Output = &'static str>> {
-    use tokio::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{SignalKind, signal};
     let mut term = signal(SignalKind::terminate())?;
     let mut hup = signal(SignalKind::hangup())?;
     let mut int = signal(SignalKind::interrupt())?;
@@ -478,11 +478,13 @@ mod tests {
         for (flag, name) in [("-TERM", "SIGTERM"), ("-HUP", "SIGHUP")] {
             let stop = interrupted().unwrap();
             let pid = std::process::id().to_string();
-            assert!(std::process::Command::new("kill")
-                .args([flag, &pid])
-                .status()
-                .unwrap()
-                .success());
+            assert!(
+                std::process::Command::new("kill")
+                    .args([flag, &pid])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
             let got = tokio::time::timeout(std::time::Duration::from_secs(5), stop).await;
             assert_eq!(got, Ok(name));
         }

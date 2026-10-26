@@ -79,9 +79,11 @@ impl Clipboard {
     pub fn start_watch(self: &Arc<Self>) {
         self.watch.call_once(|| {
             let me = self.clone();
-            std::thread::spawn(move || loop {
-                me.observe(me.backend.read());
-                me.backend.wait_change();
+            std::thread::spawn(move || {
+                loop {
+                    me.observe(me.backend.read());
+                    me.backend.wait_change();
+                }
             });
         });
     }
@@ -141,9 +143,10 @@ fn wayland_env() -> Vec<(String, String)> {
     {
         return env;
     }
-    // SAFETY: getuid cannot fail.
-    let run = std::env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::getuid() }));
+    let run = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+        // SAFETY: getuid cannot fail.
+        format!("/run/user/{}", unsafe { libc::getuid() })
+    });
     let sock = std::fs::read_dir(&run).ok().and_then(|d| {
         d.flatten()
             .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -181,10 +184,10 @@ fn paste(args: &[&str]) -> Option<Vec<u8>> {
 }
 
 fn reap(slot: &mut Option<Child>) {
-    if let Some(c) = slot.as_mut() {
-        if !matches!(c.try_wait(), Ok(None)) {
-            *slot = None;
-        }
+    if let Some(c) = slot.as_mut()
+        && !matches!(c.try_wait(), Ok(None))
+    {
+        *slot = None;
     }
 }
 

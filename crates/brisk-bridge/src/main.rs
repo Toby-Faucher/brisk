@@ -10,17 +10,17 @@
 //! certificate hash. --secs stops after N seconds (default: until SIGINT/SIGTERM/SIGHUP or the
 //! host ends the session). At exit it prints the latency report and the M2 gate.
 
-use brisk_bridge::session::{forward, AudioRx, Report};
+use brisk_bridge::session::{AudioRx, Report, forward};
 use brisk_bridge::{input, wt};
 use brisk_client::control::ControlSession;
-use brisk_client::identity::{load_identity, ServerCert};
+use brisk_client::identity::{ServerCert, load_identity};
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
-use brisk_client::stream::{media_setup, race, StreamRx};
-use brisk_client::tap::{tap_path, TapListener};
+use brisk_client::stream::{StreamRx, media_setup, race};
+use brisk_client::tap::{TapListener, tap_path};
 use brisk_client::{Error, StderrLog, SystemRng};
 use brisk_proto::pair::Rng;
-use brisk_proto::sdp::{Codec, StreamConfig, SS_ENC_AUDIO};
+use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, StreamConfig};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use sha2::{Digest, Sha256};
@@ -126,7 +126,7 @@ fn hex(b: &[u8]) -> String {
 /// a signal during it is handled (once the session runs) instead of killing the process before
 /// the cancel.
 fn interrupted() -> std::io::Result<impl std::future::Future<Output = &'static str>> {
-    use tokio::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{SignalKind, signal};
     let (mut t, mut h, mut i) = (
         signal(SignalKind::terminate())?,
         signal(SignalKind::hangup())?,

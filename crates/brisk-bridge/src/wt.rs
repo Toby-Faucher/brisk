@@ -15,10 +15,10 @@ use bytes::Bytes;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use subtle::ConstantTimeEq;
 use tokio::io::AsyncReadExt;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{Semaphore, mpsc};
 use web_transport_proto::{ConnectRequest, ConnectResponse, Settings, StreamUni, VarInt};
 
-use crate::quic_crypto::{endpoint_config, server_config, ServerCrypto};
+use crate::quic_crypto::{ServerCrypto, endpoint_config, server_config};
 
 pub const ALPN: &[u8] = b"h3";
 /// Largest browser-to-bridge message (a uni stream); longer ones are dropped.
@@ -123,8 +123,9 @@ impl Acceptor {
         i: quinn::Incoming,
     ) -> Option<
         impl std::future::Future<Output = Result<(Session, mpsc::Receiver<Bytes>), Error>>
-            + Send
-            + 'static + use<>,
+        + Send
+        + 'static
+        + use<>,
     > {
         let permit = match self.pending.clone().try_acquire_owned() {
             Ok(p) if ep.open_connections() < MAX_CONNECTIONS => p,

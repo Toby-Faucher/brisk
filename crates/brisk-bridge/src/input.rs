@@ -24,7 +24,7 @@ use brisk_client::Error;
 use brisk_proto::control::ControlMsg;
 use brisk_proto::input::{InputEvent, MAX_MOUSE_DELTA};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{watch, Notify};
+use tokio::sync::{Notify, watch};
 
 use crate::wt;
 
@@ -310,11 +310,11 @@ impl InputQueue {
             return self.detach(index);
         }
         let own = with_mask(&e, bit);
-        if let Some((p, by)) = &mut self.pads[index as usize] {
-            if *p == own {
-                *by = self.from; // the page's resend of a state already queued or sent
-                return;
-            }
+        if let Some((p, by)) = &mut self.pads[index as usize]
+            && *p == own
+        {
+            *by = self.from; // the page's resend of a state already queued or sent
+            return;
         }
         let out = with_mask(&e, self.mask() | bit);
         // Sticks and triggers: latest wins over this pad's newest queued state, if that has the

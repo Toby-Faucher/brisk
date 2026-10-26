@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use brisk_bridge::quic_crypto::{endpoint_config, provider, ClientCrypto};
+use brisk_bridge::quic_crypto::{ClientCrypto, endpoint_config, provider};
 use brisk_bridge::wt::{self, Acceptor};
 use bytes::Bytes;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};

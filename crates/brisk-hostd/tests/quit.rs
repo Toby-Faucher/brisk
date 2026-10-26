@@ -5,7 +5,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::config::Config;
-use brisk_hostd::http::{router, AppState};
+use brisk_hostd::http::{AppState, router};
 use brisk_hostd::steam::{Game, GamesResult};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -457,9 +457,11 @@ async fn a_second_quit_of_the_same_game_while_one_runs_is_409() {
 async fn a_client_that_hangs_up_does_not_stop_the_quit() {
     let r = rig(Exits::OnTerm);
     let call = r.app.clone().oneshot(req(r#"{"appid":10}"#, Some(SECRET)));
-    assert!(tokio::time::timeout(Duration::from_millis(100), call)
-        .await
-        .is_err());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), call)
+            .await
+            .is_err()
+    );
     // the windows were asked to close; SIGTERM follows after 10 s with nobody listening
     for _ in 0..300 {
         if !r.alive(502) {

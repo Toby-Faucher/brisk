@@ -5,10 +5,10 @@ use axum::response::Response;
 use brisk_hostd::clipboard::{Backend, Clip, Clipboard, Kind, MAX};
 use brisk_hostd::config::Config;
 use brisk_hostd::files::{candidate, sanitize};
-use brisk_hostd::http::{router, AppState};
+use brisk_hostd::http::{AppState, router};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tower::ServiceExt;
 

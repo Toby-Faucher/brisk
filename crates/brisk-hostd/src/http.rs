@@ -1,19 +1,19 @@
-use crate::auth::{tailnet_ok, Hosts};
+use crate::auth::{Hosts, tailnet_ok};
 use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
-use crate::sessions::{valid_point, Point, SeriesError, MAX_POINTS};
+use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
 use crate::steam::{self, GamesResult};
 use crate::stream::{Codec, Preset, StreamReq, Supervisor};
+use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
-use axum::http::{header, Method, StatusCode};
+use axum::http::{Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
-use axum::Router;
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::{Component, Path};
@@ -231,7 +231,7 @@ async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response 
             return err(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "hostd runs as root; quit is off",
-            )
+            );
         }
         Ok(Err(_)) => return err(StatusCode::INTERNAL_SERVER_ERROR, "quit failed"),
         Err(_) => Quit::StillRunning,
@@ -334,7 +334,7 @@ async fn clip_post(State(s): State<Arc<AppState>>, req: Request) -> Response {
             return err(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "only text/plain and image/png",
-            )
+            );
         }
     };
     let data = match axum::body::to_bytes(req.into_body(), clipboard::MAX).await {
@@ -532,7 +532,7 @@ async fn static_file(State(s): State<Arc<AppState>>, req: Request) -> Response {
     let path = match inside(&path) {
         Some(p) => p,
         None if Path::new(rel).extension().is_some() || path.exists() => {
-            return StatusCode::NOT_FOUND.into_response()
+            return StatusCode::NOT_FOUND.into_response();
         }
         None => match inside(&dist.join("index.html")) {
             Some(p) => p,

@@ -11,3 +11,13 @@ version = "0.0.0"
 opt-level = 3
 [profile.dev.package.rsa]
 opt-level = 3
+
+# Conservative on purpose: println!/eprintln! are deliberate in bridge/hostd, so no print lints.
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+undocumented_unsafe_blocks = "warn"

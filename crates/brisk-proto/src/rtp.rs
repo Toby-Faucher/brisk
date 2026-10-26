@@ -16,7 +16,7 @@
 //! followed by the AES-128-GCM ciphertext (no AAD) of the plain packet; [`VideoCipher::open`]
 //! turns it back into a plain packet.
 
-use crate::fec::{rs_decode, MAX_SHARDS};
+use crate::fec::{MAX_SHARDS, rs_decode};
 use crate::sdp::SS_ENC_VIDEO;
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce, Tag};

@@ -9,8 +9,8 @@
 //! session otherwise (stream.cpp:2092-2163). moonlight sends `SS_PING` every 500 ms
 //! (VideoStream.c:55-82, AudioStream.c:38-64); the ping's source port becomes the media peer.
 
-use brisk_proto::control::{channel, Control, ControlMsg};
-use brisk_proto::enet::{EnetEvent, EnetPeer, PeerState, MAX_DATAGRAM};
+use brisk_proto::control::{Control, ControlMsg, channel};
+use brisk_proto::enet::{EnetEvent, EnetPeer, MAX_DATAGRAM, PeerState};
 use brisk_proto::input::InputEvent;
 use std::collections::{BTreeMap, HashSet};
 use std::net::SocketAddr;

@@ -74,9 +74,11 @@ fn mouse_move_clamps_to_i16() {
     assert_eq!(d(&v[0]), (32767, -32768));
     assert_eq!(d(&v[1]), (7233, -32768));
     assert_eq!(d(&v[2]), (0, -4464));
-    assert!(encode_input(&InputEvent::MouseMoveRel { dx: 0, dy: 0 })
-        .unwrap()
-        .is_empty());
+    assert!(
+        encode_input(&InputEvent::MouseMoveRel { dx: 0, dy: 0 })
+            .unwrap()
+            .is_empty()
+    );
     // Untrusted huge deltas are clamped to +-8 * 32767: at most 8 packets, never a queue flood.
     let v = encode_input(&InputEvent::MouseMoveRel {
         dx: i32::MIN,
@@ -128,9 +130,11 @@ fn scroll_bytes() {
         one(InputEvent::Scroll { amount: -120 }),
         [0, 0, 0, 10, 0x0A, 0, 0, 0, 0xFF, 0x88, 0xFF, 0x88, 0, 0]
     );
-    assert!(encode_input(&InputEvent::Scroll { amount: 0 })
-        .unwrap()
-        .is_empty());
+    assert!(
+        encode_input(&InputEvent::Scroll { amount: 0 })
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(one(InputEvent::Scroll { amount: i16::MIN }).len(), 14);
 }
 

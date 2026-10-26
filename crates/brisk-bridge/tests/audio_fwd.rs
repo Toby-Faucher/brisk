@@ -7,10 +7,10 @@ mod common;
 use std::time::Duration;
 
 use brisk_bridge::session::{
-    audio_datagram, send_audio, AudioRx, AudioStats, AUDIO_HEADER_LEN, REORDER_HOLD_NS,
+    AUDIO_HEADER_LEN, AudioRx, AudioStats, REORDER_HOLD_NS, audio_datagram, send_audio,
 };
 use brisk_bridge::wt::AUDIO_SEND_BUFFER;
-use brisk_proto::audio::{encode_parity, parse_audio_packet, OpusFrame, PT_AUDIO, PT_FEC};
+use brisk_proto::audio::{OpusFrame, PT_AUDIO, PT_FEC, encode_parity, parse_audio_packet};
 use brisk_proto::sdp::SS_ENC_AUDIO;
 use common::*;
 use tokio::time::timeout;
@@ -357,7 +357,7 @@ fn holding_never_spans_more_than_one_block() {
     assert_eq!(seqs(&rx.push(&b[0], 0)), vec![0]);
     assert!(rx.push(&b[2], 0).is_empty());
     assert!(rx.push(&b[3], 0).is_empty()); // 1 missing, no parity yet
-                                           // The next block's first packet: 1's parity was sent before it, so give up at once.
+    // The next block's first packet: 1's parity was sent before it, so give up at once.
     assert_eq!(seqs(&rx.push(&n[0], 0)), vec![2, 3, 4]);
     assert_eq!(rx.stats.skipped, 1);
     assert_eq!(rx.deadline(), None);

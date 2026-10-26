@@ -1,7 +1,7 @@
 //! Tap listener against a local fake Sunshine tap (a real AF_UNIX SOCK_SEQPACKET peer in this
 //! process, writing messages as the patch's `brisk_tap_send` does).
 
-use brisk_client::tap::{monotonic_ns, TapListener};
+use brisk_client::tap::{TapListener, monotonic_ns};
 use brisk_proto::sdp::Codec;
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::os::unix::fs::PermissionsExt;
@@ -91,9 +91,9 @@ async fn listener_rejects_foreign_uid() {
     let t = tempfile::tempdir().unwrap();
     let path = t.path().join("tap.sock");
     // Pretend we run as another user, so this process's own peer is the foreign one.
-    let l = TapListener::bind(&path)
-        .unwrap()
-        .expect_uid(unsafe { libc::getuid() } + 1);
+    // SAFETY: getuid cannot fail.
+    let uid = unsafe { libc::getuid() };
+    let l = TapListener::bind(&path).unwrap().expect_uid(uid + 1);
     let p = peer(&path);
     p.send(&msg(1, CD, 1, 1, 0, ANNEXB)).unwrap();
     let r = tokio::time::timeout(Duration::from_millis(300), l.accept(CD, Codec::H264)).await;

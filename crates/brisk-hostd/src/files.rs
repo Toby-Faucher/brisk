@@ -68,8 +68,9 @@ pub fn disk_free(p: &Path) -> Option<u64> {
     let c = std::ffi::CString::new(p.as_os_str().as_bytes()).ok()?;
     // SAFETY: statvfs fills the zeroed struct; c is a valid NUL-terminated path.
     let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
-    (unsafe { libc::statvfs(c.as_ptr(), &mut s) } == 0)
-        .then(|| s.f_bavail as u64 * s.f_frsize as u64)
+    // SAFETY: as above, `c` is a valid NUL-terminated path and `s` a valid out-pointer.
+    let ok = unsafe { libc::statvfs(c.as_ptr(), &mut s) } == 0;
+    ok.then(|| s.f_bavail as u64 * s.f_frsize as u64)
 }
 
 pub struct Files {

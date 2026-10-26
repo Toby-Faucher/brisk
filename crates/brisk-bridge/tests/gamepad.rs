@@ -6,13 +6,13 @@ mod common;
 use std::sync::Arc;
 
 use brisk_bridge::input::{
-    frame, read_stream, rumble_frame, send_loop, serve, write_rumble, InputQueue, Shared,
-    HOLD_TIMEOUT, KIND_GAMEPAD, KIND_GAMEPAD_GONE, KIND_HEARTBEAT, KIND_KEY, KIND_RUMBLE, MAX_PADS,
-    MAX_PENDING,
+    HOLD_TIMEOUT, InputQueue, KIND_GAMEPAD, KIND_GAMEPAD_GONE, KIND_HEARTBEAT, KIND_KEY,
+    KIND_RUMBLE, MAX_PADS, MAX_PENDING, Shared, frame, read_stream, rumble_frame, send_loop, serve,
+    write_rumble,
 };
 use brisk_client::Error;
 use brisk_proto::control::ControlMsg;
-use brisk_proto::input::{encode_input, InputEvent};
+use brisk_proto::input::{InputEvent, encode_input};
 use common::*;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

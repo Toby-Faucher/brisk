@@ -5,9 +5,9 @@
 
 use crate::control::{AvPing, ControlSession, Stats};
 use crate::rtsp::StreamPorts;
-use crate::tap::{monotonic_ns, TapConn, TapListener, TapRx, TapSummary};
+use crate::tap::{TapConn, TapListener, TapRx, TapSummary, monotonic_ns};
 use brisk_proto::audio::{AudioCipher, AudioFec, PT_AUDIO};
-use brisk_proto::rtp::{parse_video_packet, AssembledFrame, FrameAssembler, VideoCipher};
+use brisk_proto::rtp::{AssembledFrame, FrameAssembler, VideoCipher, parse_video_packet};
 use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, SS_ENC_VIDEO};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -355,22 +355,30 @@ impl StreamRx {
             return self.video_errors += 1;
         };
         self.vloss.see(p.seq);
-        if let Some(s) = &mut self.samples {
-            if s.video < VIDEO_SAMPLES_MAX && (s.video < VIDEO_SAMPLES || self.idr_frames == 0) {
-                let base = s.dir.join(format!("video/{:03}", s.video));
-                let meta = format!(
-                    "{{\"seq\":{},\"frame_idx\":{},\"shard_idx\":{},\"data_shards\":{},\"parity_shards\":{},\"fec_block\":{},\"last_fec_block\":{},\"is_parity\":{}}}\n",
-                    p.seq, p.frame_idx, p.shard_idx, p.data_shards, p.parity_shards, p.fec_block, p.last_fec_block, p.is_parity
-                );
-                // shortcut: a failed sample write is reported and recording stops; the stream goes on.
-                if let Err(e) = std::fs::write(base.with_extension("bin"), d)
-                    .and_then(|()| std::fs::write(base.with_extension("meta.json"), meta))
-                {
-                    tracing::warn!("record-samples: {e}");
-                    s.video = VIDEO_SAMPLES_MAX;
-                }
-                s.video += 1;
+        if let Some(s) = &mut self.samples
+            && s.video < VIDEO_SAMPLES_MAX
+            && (s.video < VIDEO_SAMPLES || self.idr_frames == 0)
+        {
+            let base = s.dir.join(format!("video/{:03}", s.video));
+            let meta = format!(
+                "{{\"seq\":{},\"frame_idx\":{},\"shard_idx\":{},\"data_shards\":{},\"parity_shards\":{},\"fec_block\":{},\"last_fec_block\":{},\"is_parity\":{}}}\n",
+                p.seq,
+                p.frame_idx,
+                p.shard_idx,
+                p.data_shards,
+                p.parity_shards,
+                p.fec_block,
+                p.last_fec_block,
+                p.is_parity
+            );
+            // shortcut: a failed sample write is reported and recording stops; the stream goes on.
+            if let Err(e) = std::fs::write(base.with_extension("bin"), d)
+                .and_then(|()| std::fs::write(base.with_extension("meta.json"), meta))
+            {
+                tracing::warn!("record-samples: {e}");
+                s.video = VIDEO_SAMPLES_MAX;
             }
+            s.video += 1;
         }
         for f in self.asm.push(p) {
             self.on_frame(f, at);
@@ -392,15 +400,15 @@ impl StreamRx {
     }
 
     fn on_audio(&mut self, d: &[u8]) {
-        if let Some(s) = &mut self.samples {
-            if s.audio < AUDIO_SAMPLES {
-                let p = s.dir.join(format!("audio/{:03}.bin", s.audio));
-                if let Err(e) = std::fs::write(p, d) {
-                    tracing::warn!("record-samples: {e}");
-                    s.audio = AUDIO_SAMPLES;
-                }
-                s.audio += 1;
+        if let Some(s) = &mut self.samples
+            && s.audio < AUDIO_SAMPLES
+        {
+            let p = s.dir.join(format!("audio/{:03}.bin", s.audio));
+            if let Err(e) = std::fs::write(p, d) {
+                tracing::warn!("record-samples: {e}");
+                s.audio = AUDIO_SAMPLES;
             }
+            s.audio += 1;
         }
         if d.len() >= 4 && d[1] & 0x7f == PT_AUDIO {
             self.aloss.see(u16::from_be_bytes([d[2], d[3]]));

@@ -39,9 +39,11 @@ fn applist_two_apps() {
             }
         ]
     );
-    assert!(parse_applist(r#"<root status_code="200"/>"#)
-        .unwrap()
-        .is_empty());
+    assert!(
+        parse_applist(r#"<root status_code="200"/>"#)
+            .unwrap()
+            .is_empty()
+    );
     assert!(parse_applist(r#"<root status_code="200"><App><ID>1</ID></App></root>"#).is_err());
 }
 

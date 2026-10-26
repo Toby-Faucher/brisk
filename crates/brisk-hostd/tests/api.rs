@@ -2,7 +2,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::Response;
 use brisk_hostd::config::Config;
-use brisk_hostd::http::{router, AppState};
+use brisk_hostd::http::{AppState, router};
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -756,10 +756,12 @@ async fn service_mode_still_returns_wt_and_hash() {
         .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
         .await;
     assert_eq!(st, StatusCode::OK, "{v}");
-    assert!(v["wt"]
-        .as_str()
-        .unwrap()
-        .starts_with("https://100.64.0.1:4433/tok"));
+    assert!(
+        v["wt"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://100.64.0.1:4433/tok")
+    );
     assert_eq!(v["hash"], "ab12cd");
     r.call("DELETE", "/api/stream", "").await;
 }
@@ -900,10 +902,12 @@ async fn bridge_exit_before_page_line_is_an_error_and_idle() {
     assert!(st.is_server_error(), "{st}");
     assert!(v["error"].as_str().is_some_and(|e| !e.is_empty()), "{v}");
     assert_eq!(r.call("GET", "/api/stream", "").await.1["state"], "idle");
-    assert!(r.call("GET", "/api/sessions", "").await.1["sessions"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        r.call("GET", "/api/sessions", "").await.1["sessions"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -1174,21 +1178,25 @@ async fn steam_tools_are_not_games() {
     // With the owned list: installed apps missing from it are dropped.
     let s = steam(&mock_steam(200).await, Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
-    assert!(v["games"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710));
+    assert!(
+        v["games"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710)
+    );
     // Without it: dropped by name prefix, real games stay.
     let s = steam(&mock_steam(500).await, Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
     assert_eq!(v["games"].as_array().unwrap().len(), 3);
-    assert!(v["games"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710));
+    assert!(
+        v["games"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710)
+    );
 }
 
 #[tokio::test]

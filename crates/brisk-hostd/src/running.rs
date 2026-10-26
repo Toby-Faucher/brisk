@@ -141,7 +141,10 @@ fn sway_sock(env: &[(String, String)]) -> Vec<String> {
         .iter()
         .find(|(k, _)| k == "XDG_RUNTIME_DIR")
         .map(|(_, v)| v.clone())
-        .unwrap_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }));
+        .unwrap_or_else(|| {
+            // SAFETY: getuid cannot fail.
+            format!("/run/user/{}", unsafe { libc::getuid() })
+        });
     std::fs::read_dir(run)
         .into_iter()
         .flatten()

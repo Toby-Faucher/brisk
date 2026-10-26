@@ -1,13 +1,13 @@
 //! Vectors from Sunshine tests/unit/test_http_pairing.cpp (lines 50-95, 166-189), verbatim.
 
 use brisk_proto::pair::*;
+use rsa::RsaPublicKey;
 use rsa::pkcs1v15::{Signature, VerifyingKey};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::signature::Verifier;
-use rsa::RsaPublicKey;
 use sha2::{Digest, Sha256};
-use x509_cert::der::{DecodePem, Encode};
 use x509_cert::Certificate;
+use x509_cert::der::{DecodePem, Encode};
 
 /// AES-128-ECB of whole blocks (own copy: brisk_proto's is crate-private).
 fn ecb(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
@@ -305,10 +305,11 @@ fn empty_and_garbage_inputs_error_not_panic() {
     assert!(aes_ecb_decrypt(&key, &[0u8; 15]).is_err());
     let mut c = client();
     c.getservercert(salt(), PIN);
-    assert!(c
-        .on_servercert(&hex(
+    assert!(
+        c.on_servercert(&hex(
             b"-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
         ))
-        .is_err());
+        .is_err()
+    );
     assert!(PairingClient::new("junk", PRIVATE_KEY, "1", Box::new(QueueRng(vec![]))).is_err());
 }

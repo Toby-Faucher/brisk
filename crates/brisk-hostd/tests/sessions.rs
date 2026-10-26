@@ -2,9 +2,9 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::config::Config;
-use brisk_hostd::http::{router, AppState};
+use brisk_hostd::http::{AppState, router};
 use brisk_hostd::sessions::{MAX_POINTS, MAX_SERIES};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -127,7 +127,7 @@ async fn list_rows_carry_a_24_point_spark() {
     let spark: Vec<f64> = serde_json::from_value(rows[1]["spark"].clone()).unwrap();
     assert_eq!(spark.len(), 24);
     assert_eq!((spark[0], spark[23]), (2.0, 117.0)); // means of 0..=4 and 115..=119
-                                                     // GET of one session is unchanged: no spark there
+    // GET of one session is unchanged: no spark there
     assert!(t.get(1000).await.1["session"].get("spark").is_none());
 }
 

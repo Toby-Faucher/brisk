@@ -12,13 +12,13 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
+use x509_cert::Certificate;
 use x509_cert::builder::{Builder, CertificateBuilder, Profile};
 use x509_cert::der::{DecodePem, EncodePem};
 use x509_cert::name::Name;
 use x509_cert::serial_number::SerialNumber;
 use x509_cert::spki::{DecodePublicKey, EncodePublicKey, SubjectPublicKeyInfoOwned};
 use x509_cert::time::Validity;
-use x509_cert::Certificate;
 
 const CERT: &str = "client.pem";
 const KEY: &str = "client.key";

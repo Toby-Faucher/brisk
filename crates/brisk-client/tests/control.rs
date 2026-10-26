@@ -4,7 +4,7 @@
 mod common;
 
 use brisk_client::control::{ControlSession, IDR_MIN_INTERVAL, INPUT_DEMO_GAP};
-use brisk_proto::input::{encode_input, InputEvent};
+use brisk_proto::input::{InputEvent, encode_input};
 use common::fake_host::*;
 use std::net::UdpSocket;
 use std::time::{Duration, Instant};
@@ -466,7 +466,7 @@ async fn control_handle_idr_is_rate_limited_to_one_per_100ms() {
 /// the control handle are answered, no RTP video arrives, and the tap gate passes.
 #[tokio::test]
 async fn stream_tap_receives_frames_from_the_tap() {
-    use brisk_client::stream::{stream_tap, Outcome};
+    use brisk_client::stream::{Outcome, stream_tap};
     let t = tempfile::tempdir().unwrap();
     let path = t.path().join("tap.sock");
     let l = brisk_client::tap::TapListener::bind(&path).unwrap();
@@ -518,7 +518,7 @@ async fn stream_tap_receives_frames_from_the_tap() {
 /// the session runs the normal RTP path and gate.
 #[tokio::test]
 async fn stream_tap_falls_back_to_rtp() {
-    use brisk_client::stream::{stream_tap, Outcome};
+    use brisk_client::stream::{Outcome, stream_tap};
     let t = tempfile::tempdir().unwrap();
     let l = brisk_client::tap::TapListener::bind(&t.path().join("tap.sock")).unwrap();
     let f = fake_with(Cfg {
