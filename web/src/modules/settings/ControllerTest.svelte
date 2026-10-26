@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { padName, type PadLike } from '../../lib/gamepad';
   import Card from '../../ui/Card.svelte';
+  import PadDiagram from './PadDiagram.svelte';
   import {
     DEFAULT_DEADZONE, DriftCheck, PollRate, RangeTest, Trail, mappingRows, padChoices, padView, type DriftResult, type PadView, type StickDrift,
   } from './controllertest';
@@ -148,11 +149,6 @@
     };
   });
 
-  // Diagram geometry (viewBox units).
-  const FACE = [[3, 'Y', 268, 76], [0, 'A', 268, 120], [2, 'X', 246, 98], [1, 'B', 290, 98]] as const;
-  const SMALL = [[8, 'Back', 160, 98, 8], [9, 'Start', 200, 98, 8], [16, 'Home', 180, 74, 10]] as const;
-  const DPAD = [[12, 135, 132, '↑'], [13, 135, 164, '↓'], [14, 119, 148, '←'], [15, 151, 148, '→']] as const;
-  const pr = (i: number) => view.buttons[i].pressed;
   const driftSticks = $derived(drift.res ? ([['Left stick', drift.res.left], ['Right stick', drift.res.right]] as [string, StickDrift][]) : []);
 </script>
 
@@ -184,36 +180,7 @@
 
     <!-- 2. diagram + sticks -->
     <div class="live">
-      <svg class="pad" viewBox="-6 0 372 236" aria-hidden="true" focusable="false">
-        <path class="body" d="M64 46 H296 Q336 46 346 120 L356 196 Q360 226 332 226 Q310 226 298 200 L284 178 H76 L62 200 Q50 226 28 226 Q0 226 4 196 L14 120 Q24 46 64 46Z" />
-        {#each [['LT', view.lt, 62], ['RT', view.rt, 228]] as [n, v, x] (n)}
-          <rect class="trk" x={x as number} y="4" width="70" height="16" rx="5" />
-          <rect class="fill" x={x as number} y="4" width={(v as number) * 70} height="16" rx="5" />
-          <text class="t" x={(x as number) + 35} y="15.5" text-anchor="middle">{n} {pct(v as number)}%</text>
-        {/each}
-        {#each [['LB', 4, 62], ['RB', 5, 228]] as [n, i, x] (n)}
-          <rect class="key" class:on={pr(i as number)} x={x as number} y="24" width="70" height="16" rx="8" />
-          <text class="t" class:on={pr(i as number)} x={(x as number) + 35} y="35.5" text-anchor="middle">{n}</text>
-        {/each}
-        <circle class="well" cx="92" cy="98" r="26" />
-        <circle class="cap" class:on={pr(10)} cx={92 + view.left.x * 12} cy={98 + view.left.y * 12} r="17" />
-        <text class="t" class:on={pr(10)} x={92 + view.left.x * 12} y={101 + view.left.y * 12} text-anchor="middle">L3</text>
-        <circle class="well" cx="222" cy="152" r="26" />
-        <circle class="cap" class:on={pr(11)} cx={222 + view.right.x * 12} cy={152 + view.right.y * 12} r="17" />
-        <text class="t" class:on={pr(11)} x={222 + view.right.x * 12} y={155 + view.right.y * 12} text-anchor="middle">R3</text>
-        {#each DPAD as [i, x, y, a] (i)}
-          <rect class="key" class:on={pr(i)} x={x - 8} y={y - 8} width="16" height="16" rx="4" />
-          <text class="t" class:on={pr(i)} {x} y={y + 3.5} text-anchor="middle">{a}</text>
-        {/each}
-        {#each FACE as [i, n, x, y] (i)}
-          <circle class="key" class:on={pr(i)} cx={x} cy={y} r="11" />
-          <text class="t" class:on={pr(i)} {x} y={y + 3.5} text-anchor="middle">{n}</text>
-        {/each}
-        {#each SMALL as [i, n, x, y, r] (i)}
-          <circle class="key" class:on={pr(i)} cx={x} cy={y} {r} />
-          <text class="t s" class:on={pr(i)} {x} y={y + (i === 16 ? 3 : 18)} text-anchor="middle">{n}</text>
-        {/each}
-      </svg>
+      <PadDiagram {view} dz={dz / 100} trails={[trailL, trailR]} />
 
       <div class="sticks">
         {#each [['Left stick', view.left, tl, trailL, rangeL], ['Right stick', view.right, tr, trailR, rangeR]] as [name, s, , trail, gate] (name)}
@@ -330,19 +297,6 @@
   .bad { color: var(--bad); font-size: 13px; }
   .live { display: grid; grid-template-columns: minmax(260px, 1.3fr) minmax(260px, 1fr); gap: 18px; margin-top: 16px; align-items: center; }
   @media (max-width: 640px) { .live { grid-template-columns: 1fr; } }
-  .pad { width: 100%; height: auto; }
-  .body { fill: var(--panel2); stroke: var(--line); stroke-width: 1.5; }
-  .trk, .well { fill: #0b0c0f; stroke: var(--line); }
-  .fill { fill: var(--accent); opacity: .85; }
-  .key { fill: #0b0c0f; stroke: #343a48; stroke-width: 1.2; }
-  .key.on { fill: var(--accent); stroke: var(--accent); }
-  .cap { fill: #1d212b; stroke: #343a48; stroke-width: 1.2; }
-  .cap.on { fill: var(--accent); }
-  .t { font: 600 9px var(--font); fill: var(--muted); pointer-events: none; }
-  .t.on { fill: var(--accent-fg); }
-  .trk ~ .t { fill: var(--fg); }
-  .t.s { font-size: 8px; }
-  .t.s.on { fill: var(--fg); }
   .sticks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .stick { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .stick svg { width: 100%; max-width: 150px; height: auto; align-self: center; }
