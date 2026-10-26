@@ -17,6 +17,7 @@
 
 use std::collections::VecDeque;
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use brisk_client::Error;
@@ -178,17 +179,27 @@ fn is_release(e: &InputEvent) -> bool {
     }
 }
 
+/// Which browser stream an input came from ([`read_stream`] numbers them from 1; 0 is a caller
+/// that does not say). What a stream pressed is its own: when it ends or goes silent only its
+/// keys, buttons and pads are released, so a reloaded page's new stream keeps what it holds.
+pub type StreamId = u64;
+
 #[derive(Default)]
 pub struct InputQueue {
     q: VecDeque<InputEvent>,
-    /// Pressed (sent or queued, not yet released), by vk.
-    keys: Vec<u8>,
-    buttons: [bool; 6],
+    /// Pressed (sent or queued, not yet released), by vk, with the stream that pressed it.
+    keys: Vec<(u8, StreamId)>,
+    /// Pressed buttons and their stream.
+    buttons: [Option<StreamId>; 6],
     /// Every key and button pressed this session, for [`Self::shutdown`].
     ever_keys: Vec<u8>,
     ever_buttons: [bool; 6],
-    /// Per attached pad: its last state queued (mask = its own bit).
-    pads: [Option<InputEvent>; MAX_PADS as usize],
+    /// Per attached pad: its last state queued (mask = its own bit) and the stream that sent it.
+    pads: [Option<(InputEvent, StreamId)>; MAX_PADS as usize],
+    /// Pads detached since [`Self::take_detached`] (their rumble must stop).
+    detached: u16,
+    /// The stream of the frame being handled.
+    from: StreamId,
     /// Bit per pad attached this session, for [`Self::shutdown`].
     ever_pads: u16,
     pub stats: InputStats,
@@ -197,6 +208,12 @@ pub struct InputQueue {
 impl InputQueue {
     /// One frame body from the browser.
     pub fn on_message(&mut self, b: &[u8]) {
+        self.on_message_from(0, b);
+    }
+
+    /// One frame body from browser stream `stream`.
+    pub fn on_message_from(&mut self, stream: StreamId, b: &[u8]) {
+        self.from = stream;
         if b == [KIND_HEARTBEAT] {
             self.stats.heartbeats += 1;
             return;
@@ -212,15 +229,20 @@ impl InputQueue {
         match e {
             InputEvent::Key { vk, down, .. } => {
                 // A repeat press, or a release of a key that is not down (its press was dropped).
-                if self.keys.contains(&vk) == down {
+                let at = self.keys.iter().position(|k| k.0 == vk);
+                if let (Some(i), true) = (at, down) {
+                    self.keys[i].1 = self.from; // a repeat: the newer stream holds it now
+                    return;
+                }
+                if at.is_none() && !down {
                     return;
                 }
                 if !down {
-                    self.keys.retain(|&k| k != vk);
+                    self.keys.retain(|k| k.0 != vk);
                 } else if !self.make_room() {
                     return;
                 } else {
-                    self.keys.push(vk);
+                    self.keys.push((vk, self.from));
                     if !self.ever_keys.contains(&vk) {
                         self.ever_keys.push(vk);
                     }
@@ -228,13 +250,16 @@ impl InputQueue {
             }
             InputEvent::MouseButton { button, down } => {
                 let b = &mut self.buttons[button as usize];
-                if *b == down {
+                if b.is_some() == down {
+                    if down {
+                        *b = Some(self.from);
+                    }
                     return;
                 }
                 if down && !self.make_room() {
                     return;
                 }
-                self.buttons[button as usize] = down;
+                self.buttons[button as usize] = down.then_some(self.from);
                 self.ever_buttons[button as usize] |= down;
             }
             InputEvent::MouseMoveRel { dx, dy } => {
@@ -285,8 +310,11 @@ impl InputQueue {
             return self.detach(index);
         }
         let own = with_mask(&e, bit);
-        if self.pads[index as usize].as_ref() == Some(&own) {
-            return; // the page's resend of a state already queued or sent
+        if let Some((p, by)) = &mut self.pads[index as usize] {
+            if *p == own {
+                *by = self.from; // the page's resend of a state already queued or sent
+                return;
+            }
         }
         let out = with_mask(&e, self.mask() | bit);
         // Sticks and triggers: latest wins over this pad's newest queued state, if that has the
@@ -304,25 +332,62 @@ impl InputQueue {
         } else {
             return; // dropped: the page's next resend brings it back
         }
-        self.pads[index as usize] = Some(own);
+        self.pads[index as usize] = Some((own, self.from));
         self.ever_pads |= bit;
     }
 
     /// Pad `index` is gone: neutral (if it was not) while still attached, then the removal.
     fn detach(&mut self, index: u8) {
-        let Some(p) = self.pads[index as usize].take() else {
+        let Some((p, _)) = self.pads[index as usize].take() else {
             return;
         };
         if !is_neutral(&p) {
             self.q.push_back(neutral(index, self.mask() | 1 << index));
         }
         self.q.push_back(neutral(index, self.mask()));
+        self.detached |= 1 << index;
     }
 
     /// Detaches every pad (after [`Self::release_all`], so each goes neutral first).
     pub fn detach_pads(&mut self) {
         for i in 0..MAX_PADS {
             self.detach(i);
+        }
+    }
+
+    /// Stream `s` ended: releases what it holds and detaches the pads it last sent.
+    pub fn end_stream(&mut self, s: StreamId) {
+        self.release(Some(s));
+        for i in 0..MAX_PADS {
+            if self.pads[i as usize].as_ref().is_some_and(|p| p.1 == s) {
+                self.detach(i);
+            }
+        }
+    }
+
+    /// Bits of the pads detached since the last call.
+    pub fn take_detached(&mut self) -> u16 {
+        std::mem::take(&mut self.detached)
+    }
+
+    /// The control session did not take `e` within 1 s (`Timeout`): a release goes back to the
+    /// front, and so does a pad state unless the next queued state of that pad has the same buttons
+    /// (then only analog values are lost, and the newer ones follow). So a press whose release is
+    /// already queued still reaches Sunshine before it. Anything else is dropped.
+    pub fn timed_out(&mut self, e: InputEvent) {
+        self.stats.timeouts += 1;
+        let retry =
+            match e {
+                InputEvent::Gamepad { index, .. } => is_release(&e)
+                    || self
+                        .q
+                        .iter()
+                        .find(|x| matches!(x, InputEvent::Gamepad { index: i, .. } if *i == index))
+                        .is_none_or(|x| buttons(x) != buttons(&e)),
+                _ => is_release(&e),
+            };
+        if retry {
+            self.q.push_front(e);
         }
     }
 
@@ -356,17 +421,36 @@ impl InputQueue {
 
     /// A key or button is down, or a pad is off neutral.
     pub fn held(&self) -> bool {
-        !self.keys.is_empty()
-            || self.buttons.contains(&true)
-            || self.pads.iter().flatten().any(|p| !is_neutral(p))
+        self.held_by(None)
+    }
+
+    /// [`Self::held`], counting only what `only` (a stream) holds, or everything for `None`.
+    pub fn held_by(&self, only: Option<StreamId>) -> bool {
+        let mine = |s: StreamId| only.is_none_or(|o| o == s);
+        self.keys.iter().any(|k| mine(k.1))
+            || self.buttons.iter().flatten().any(|&s| mine(s))
+            || self
+                .pads
+                .iter()
+                .flatten()
+                .any(|p| mine(p.1) && !is_neutral(&p.0))
     }
 
     /// Queues a release for every key (in vk order) and button that is down, and a neutral state
     /// for every pad off neutral (still attached: the stream may come back).
     pub fn release_all(&mut self) {
-        let mut keys = std::mem::take(&mut self.keys);
+        self.release(None);
+    }
+
+    /// [`Self::release_all`] for what stream `only` holds (`None`: everything).
+    pub fn release(&mut self, only: Option<StreamId>) {
+        let mine = |s: StreamId| only.is_none_or(|o| o == s);
+        let (mut keys, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.keys)
+            .into_iter()
+            .partition(|k| mine(k.1));
+        self.keys = kept;
         keys.sort_unstable();
-        for vk in keys {
+        for (vk, _) in keys {
             self.stats.released += 1;
             self.q.push_back(InputEvent::Key {
                 vk,
@@ -375,7 +459,8 @@ impl InputQueue {
             });
         }
         for button in 1..self.buttons.len() as u8 {
-            if std::mem::take(&mut self.buttons[button as usize]) {
+            if self.buttons[button as usize].is_some_and(mine) {
+                self.buttons[button as usize] = None;
                 self.stats.released += 1;
                 self.q.push_back(InputEvent::MouseButton {
                     button,
@@ -384,12 +469,12 @@ impl InputQueue {
             }
         }
         for i in 0..MAX_PADS {
-            if self.pads[i as usize]
-                .as_ref()
-                .is_some_and(|p| !is_neutral(p))
-            {
+            if let Some((p, s)) = &mut self.pads[i as usize] {
+                if !mine(*s) || is_neutral(p) {
+                    continue;
+                }
+                *p = neutral(i, 1 << i);
                 self.stats.released += 1;
-                self.pads[i as usize] = Some(neutral(i, 1 << i));
                 self.q.push_back(neutral(i, self.mask()));
             }
         }
@@ -450,6 +535,7 @@ pub struct Shared {
     q: Mutex<InputQueue>,
     wake: Notify,
     rumble: watch::Sender<Rumble>,
+    streams: AtomicU64,
 }
 
 impl Shared {
@@ -492,10 +578,25 @@ impl Shared {
         f(&mut self.q.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
-    /// [`Self::with`], then wakes the send loop.
+    /// [`Self::with`], then wakes the send loop and stops the rumble of pads just detached
+    /// (Sunshine sends no stop for a pad it freed).
     fn push(&self, f: impl FnOnce(&mut InputQueue)) {
-        self.with(f);
+        let gone = self.with(|q| {
+            f(q);
+            q.take_detached()
+        });
         self.wake.notify_one();
+        if gone != 0 {
+            self.rumble.send_if_modified(|r| {
+                let mut changed = false;
+                for (i, v) in r.iter_mut().enumerate() {
+                    if gone & 1 << i != 0 && *v != [0; 4] {
+                        (*v, changed) = ([0; 4], true);
+                    }
+                }
+                changed
+            });
+        }
     }
 }
 
@@ -534,9 +635,11 @@ pub async fn write_rumble<W: AsyncWrite + Unpin>(mut w: W, mut rx: watch::Receiv
 /// Reads frames until the stream ends or fails, then releases everything held down. While
 /// something is held, a stream silent for [`HOLD_TIMEOUT`] (a lost network, a frozen or closed
 /// laptop: the QUIC idle timeout alone would take 10 s while Sunshine repeats the key) also
-/// releases everything. The timer runs only while something is held. At the end every pad is
-/// detached and the rumble state cleared (Sunshine sends no stop for a pad it freed).
+/// releases everything. The timer runs only while something is held. At the end the pads it
+/// last sent are detached and their rumble stopped. Both act only on what this stream holds: a
+/// newer stream (a reloaded page) keeps its keys and pads.
 pub async fn read_stream<R: AsyncRead + Unpin>(mut r: R, sh: &Shared) {
+    let id = sh.streams.fetch_add(1, Ordering::Relaxed) + 1;
     let mut b = [0u8; 255];
     loop {
         let n = {
@@ -544,24 +647,20 @@ pub async fn read_stream<R: AsyncRead + Unpin>(mut r: R, sh: &Shared) {
             let f = read_frame(&mut r, &mut b);
             tokio::pin!(f);
             loop {
-                let held = sh.with(|q| q.held());
+                let held = sh.with(|q| q.held_by(Some(id)));
                 tokio::select! {
                     n = &mut f => break n,
                     _ = tokio::time::sleep(HOLD_TIMEOUT), if held => sh.push(|q| {
                         q.stats.held_timeouts += 1;
-                        q.release_all();
+                        q.release(Some(id));
                     }),
                 }
             }
         };
         let Some(n) = n else { break };
-        sh.push(|q| q.on_message(&b[..n]));
+        sh.push(|q| q.on_message_from(id, &b[..n]));
     }
-    sh.push(|q| {
-        q.release_all();
-        q.detach_pads();
-    });
-    sh.rumble.send_replace(Rumble::default());
+    sh.push(|q| q.end_stream(id));
 }
 
 async fn read_frame<R: AsyncRead + Unpin>(r: &mut R, b: &mut [u8; 255]) -> Option<usize> {
@@ -571,10 +670,9 @@ async fn read_frame<R: AsyncRead + Unpin>(r: &mut R, b: &mut [u8; 255]) -> Optio
 }
 
 /// Hands queued events to `send` (the control session) one by one, until it returns `Closed`.
-/// `Timeout` (the session took nothing for 1 s) drops that event, except a release, which goes
-/// back to the front of the queue and is retried, as is a pad state (it may hold a button
-/// release) unless a newer state of that pad is queued. Any other error drops the event (no
-/// retry, so it cannot spin).
+/// `Timeout` (the session took nothing for 1 s): [`InputQueue::timed_out`] (releases and pad
+/// button changes are retried, the rest dropped). Any other error drops the event (no retry, so
+/// it cannot spin).
 pub async fn send_loop<F, Fut>(sh: &Shared, mut send: F) -> brisk_client::Result<()>
 where
     F: FnMut(InputEvent) -> Fut,
@@ -591,18 +689,7 @@ where
             Err(err @ Error::Closed(_)) => return Err(err),
             Err(err @ Error::Timeout(_)) => sh.with(|q| {
                 tracing::warn!("input: {err}");
-                q.stats.timeouts += 1;
-                let newer = |i: u8| {
-                    q.q.iter()
-                        .any(|x| matches!(x, InputEvent::Gamepad { index, .. } if *index == i))
-                };
-                let retry = match e {
-                    InputEvent::Gamepad { index, .. } => is_release(&e) || !newer(index),
-                    _ => is_release(&e),
-                };
-                if retry {
-                    q.q.push_front(e);
-                }
+                q.timed_out(e);
             }),
             Err(err) => sh.with(|q| {
                 tracing::warn!("input dropped: {err}");

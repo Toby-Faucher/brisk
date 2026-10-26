@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use brisk_bridge::input::{
     frame, read_stream, rumble_frame, send_loop, serve, write_rumble, InputQueue, Shared,
-    HOLD_TIMEOUT, KIND_GAMEPAD, KIND_GAMEPAD_GONE, KIND_HEARTBEAT, KIND_RUMBLE, MAX_PADS,
+    HOLD_TIMEOUT, KIND_GAMEPAD, KIND_GAMEPAD_GONE, KIND_HEARTBEAT, KIND_KEY, KIND_RUMBLE, MAX_PADS,
+    MAX_PENDING,
 };
 use brisk_client::Error;
 use brisk_proto::control::ControlMsg;
@@ -251,11 +252,12 @@ fn shutdown_removes_every_pad_ever_attached() {
 }
 
 #[tokio::test]
-async fn timed_out_pad_state_is_retried_unless_a_newer_one_is_queued() {
+async fn timed_out_pad_state_is_retried_like_a_key_up() {
     let sh = Shared::default();
     sh.with(|q| {
         q.on_message(&body(0, A));
         q.on_message(&body(1, A));
+        q.on_message(&body(0, N)); // A's release, already queued behind it
     });
     let mut calls = Vec::new();
     let r = send_loop(&sh, |e| {
@@ -264,48 +266,109 @@ async fn timed_out_pad_state_is_retried_unless_a_newer_one_is_queued() {
         async move {
             match n {
                 1 => Err(Error::Timeout("not drained".into())),
-                2 => Ok(()),
+                2..=4 => Ok(()),
                 _ => Err(Error::Closed("control session")),
             }
         }
     });
+    sh.with(|q| q.on_message(&body(2, A))); // ends the loop on the 5th call
     timeout(SECS2, r).await.unwrap().unwrap_err();
     assert_eq!(
         calls,
-        vec![ev(0, 1, A), ev(0, 1, A), ev(1, 3, A)],
-        "a pad state may hold a button release: retried like a key-up"
+        vec![
+            ev(0, 1, A),
+            ev(0, 1, A),
+            ev(1, 3, A),
+            ev(0, 3, N),
+            ev(2, 7, A)
+        ],
+        "the press is retried although its release is queued: both reach Sunshine"
     );
     assert_eq!(sh.with(|q| q.stats.timeouts), 1);
-
-    // Superseded: a timed-out state is dropped when the same pad has a newer one queued.
-    let sh = Shared::default();
-    sh.with(|q| {
-        q.on_message(&body(0, A));
-        q.on_message(&body(1, A));
-        q.on_message(&body(0, N));
-    });
-    let mut calls = Vec::new();
-    let r = send_loop(&sh, |e| {
-        calls.push(e);
-        let n = calls.len();
-        async move {
-            match n {
-                1 => Err(Error::Timeout("x".into())),
-                2 | 3 => Ok(()),
-                _ => Err(Error::Closed("control session")),
-            }
-        }
-    });
-    sh.with(|q| q.on_message(&body(2, A))); // ends the loop on the 4th call
-    timeout(SECS2, r).await.unwrap().unwrap_err();
-    assert_eq!(
-        calls,
-        vec![ev(0, 1, A), ev(1, 3, A), ev(0, 3, N), ev(2, 7, A)],
-        "pad 0's A was superseded by its release: not retried"
-    );
 }
 
-/// Deterministic xorshift, so the loss pattern is the same every run.
+#[test]
+fn timed_out_analog_only_state_gives_way_to_a_newer_one() {
+    let mut q = InputQueue::default();
+    q.on_message(&body(0, St { lx: 100, ..A }));
+    let e = q.pop().unwrap();
+    q.on_message(&body(0, St { lx: 200, ..A }));
+    q.timed_out(e);
+    assert_eq!(drain(&mut q), vec![ev(0, 1, St { lx: 200, ..A })]);
+}
+
+#[test]
+fn a_pad_release_dropped_by_a_full_queue_comes_back_with_the_resend() {
+    let mut q = InputQueue::default();
+    q.on_message(&body(0, A));
+    assert_eq!(q.pop(), Some(ev(0, 1, A)));
+    for vk in 0..MAX_PENDING as u8 {
+        q.on_message(&[KIND_KEY, 0x50 + vk, 1, 0]); // 32 presses: full
+    }
+    q.on_message(&body(0, N)); // A released: no room
+    assert_eq!(q.stats.dropped, 1);
+    let got = drain(&mut q);
+    assert!(!got.contains(&ev(0, 1, N)));
+    q.on_message(&body(0, N)); // the page's resend 100 ms later
+    assert_eq!(drain(&mut q), vec![ev(0, 1, N)], "not taken for a repeat");
+}
+
+/// Sunshine's view of pads 0 and 1, and how often pad 0's A changed there.
+#[derive(Default)]
+struct Host {
+    pads: [St; 2],
+    a_edges: u32,
+}
+impl Host {
+    fn take(&mut self, e: &InputEvent) {
+        let InputEvent::Gamepad {
+            index,
+            active_mask,
+            buttons,
+            lt,
+            rt,
+            lx,
+            ly,
+            rx,
+            ry,
+        } = *e
+        else {
+            return;
+        };
+        let new = if active_mask & (1 << index) == 0 {
+            N
+        } else {
+            St {
+                buttons: buttons as u16,
+                lt,
+                rt,
+                lx,
+                ly,
+                rx,
+                ry,
+            }
+        };
+        let old = &mut self.pads[index as usize];
+        if index == 0 && (old.buttons ^ new.buttons) & 0x1000 != 0 {
+            self.a_edges += 1;
+        }
+        *old = new;
+    }
+
+    /// The send loop's turn: each event reaches Sunshine, or (`timeout_pct` of the time) the
+    /// control session does not take it in time, and the loop waits for the next turn.
+    fn drain(&mut self, q: &mut InputQueue, r: &mut Rng, timeout_pct: u64) {
+        while let Some(e) = q.pop() {
+            if r.next() % 100 < timeout_pct {
+                q.timed_out(e);
+                return;
+            }
+            self.take(&e);
+        }
+    }
+}
+
+/// Deterministic xorshift, so the pattern is the same every run.
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> u64 {
@@ -316,45 +379,43 @@ impl Rng {
     }
 }
 
-/// The M3 gate at the queue level: 5% of the page's frames lost on the way (as if they were
-/// datagrams), the page resending its full state every 100 ms, and nothing stays pressed.
+#[test]
+fn every_a_press_and_release_reaches_sunshine_despite_merging_and_timeouts() {
+    let mut q = InputQueue::default();
+    let mut r = Rng(0x2545F4914F6CDD1D);
+    let mut host = Host::default();
+    let mut page_edges = 0;
+    for i in 0..500i16 {
+        // A tap inside one send window, with stick motion before, between and after.
+        q.on_message(&body(0, St { lx: i, ..N }));
+        q.on_message(&body(0, St { lx: i, ..A }));
+        q.on_message(&body(0, St { lx: i + 1, ..A }));
+        q.on_message(&body(0, St { lx: i + 2, ..N }));
+        q.on_message(&body(0, St { lx: i + 3, ..N }));
+        page_edges += 2;
+        host.drain(&mut q, &mut r, 20);
+    }
+    for _ in 0..50 {
+        host.drain(&mut q, &mut r, 20);
+    }
+    assert!(
+        q.stats.timeouts > 100,
+        "timeouts happened ({})",
+        q.stats.timeouts
+    );
+    assert!(q.stats.coalesced > 100);
+    assert_eq!(host.a_edges, page_edges);
+}
+
+/// The M3 gate at the queue level, through the paths that really drop pad states: 5% of sends
+/// time out (`timed_out`), and key bursts fill the queue so pad states are dropped there
+/// (`make_room`). The page resends every 100 ms; once the player lets go, nothing stays pressed.
 #[test]
 fn five_percent_loss_leaves_nothing_stuck() {
     let mut q = InputQueue::default();
     let mut r = Rng(0x9E3779B97F4A7C15);
     let mut page = [N; 2];
-    let mut host = [N; 2];
-    let mut lost = 0;
-    let apply = |q: &mut InputQueue, host: &mut [St; 2]| {
-        for e in drain(q) {
-            if let InputEvent::Gamepad {
-                index,
-                active_mask,
-                buttons,
-                lt,
-                rt,
-                lx,
-                ly,
-                rx,
-                ry,
-            } = e
-            {
-                host[index as usize] = if active_mask & (1 << index) == 0 {
-                    N
-                } else {
-                    St {
-                        buttons: buttons as u16,
-                        lt,
-                        rt,
-                        lx,
-                        ly,
-                        rx,
-                        ry,
-                    }
-                };
-            }
-        }
-    };
+    let mut host = Host::default();
     // 4 ms polls for 60 s; buttons change now and then, sticks often.
     for tick in 0..15_000u32 {
         let slot = (r.next() % 2) as usize;
@@ -368,32 +429,113 @@ fn five_percent_loss_leaves_nothing_stuck() {
             page[slot].rt = r.next() as u8;
             changed = true;
         }
+        // Now and then someone mashes the keyboard: 40 presses fill the queue for a moment.
+        let burst = tick % 500 == 7;
+        if burst {
+            for vk in 0..40 {
+                q.on_message(&[KIND_KEY, 0x50 + vk, 1, 0]);
+            }
+        }
         let resend = tick.is_multiple_of(25); // 100 ms
         for (s, st) in page.iter().enumerate() {
             if (changed && s == slot) || resend {
-                if r.next() % 100 < 5 {
-                    lost += 1;
-                } else {
-                    q.on_message(&body(s as u8, *st));
-                }
+                q.on_message(&body(s as u8, *st));
             }
         }
-        if tick % 2 == 0 {
-            apply(&mut q, &mut host); // the send loop drains about every 8 ms
+        if tick % 500 == 9 {
+            for vk in 0..40 {
+                q.on_message(&[KIND_KEY, 0x50 + vk, 0, 0]);
+            }
+        }
+        if tick % 2 == 0 && !burst {
+            host.drain(&mut q, &mut r, 5); // the send loop drains about every 8 ms
         }
     }
     // The player lets go of everything; the page keeps resending for 300 ms.
     page = [N; 2];
     for tick in 0..75u32 {
         for (s, st) in page.iter().enumerate() {
-            if tick.is_multiple_of(25) && r.next() % 100 >= 5 {
+            if tick.is_multiple_of(25) {
                 q.on_message(&body(s as u8, *st));
             }
         }
-        apply(&mut q, &mut host);
+        host.drain(&mut q, &mut r, 5);
     }
-    assert!(lost > 100, "the loss happened ({lost})");
-    assert_eq!(host, [N; 2], "nothing stuck");
+    for _ in 0..20 {
+        host.drain(&mut q, &mut r, 5);
+    }
+    assert!(q.stats.timeouts > 100, "timeouts ({})", q.stats.timeouts);
+    assert!(
+        q.stats.dropped > 10,
+        "queue-full drops ({})",
+        q.stats.dropped
+    );
+    assert_eq!(host.pads, [N; 2], "nothing stuck");
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_old_stream_ending_leaves_the_new_streams_keys_and_pads() {
+    let sh = Arc::new(Shared::default());
+    let open = || {
+        let (tx, rx) = tokio::io::duplex(4096);
+        let sh = sh.clone();
+        tokio::spawn(async move { read_stream(rx, &sh).await });
+        tx
+    };
+    let tick = || sleep(Duration::from_millis(10));
+    let key = |vk: u8, down: bool| frame(&[KIND_KEY, vk, down as u8, 0]);
+    let k = |vk: u8, down: bool| InputEvent::Key {
+        vk,
+        down,
+        modifiers: 0,
+    };
+    let mut old = open();
+    old.write_all(&key(0x41, true)).await.unwrap();
+    old.write_all(&frame(&body(0, A))).await.unwrap();
+    tick().await;
+    // The page reloads: its new stream takes pad 0 over and attaches pad 1.
+    let mut new = open();
+    new.write_all(&key(0x42, true)).await.unwrap();
+    new.write_all(&frame(&body(0, A))).await.unwrap();
+    new.write_all(&frame(&body(1, A))).await.unwrap();
+    tick().await;
+    assert_eq!(
+        sh.with(drain),
+        vec![k(0x41, true), ev(0, 1, A), k(0x42, true), ev(1, 3, A)]
+    );
+    sh.rumble(&ControlMsg::Rumble {
+        controller: 0,
+        low: 5,
+        high: 5,
+    });
+    // The old stream goes silent; the new one keeps its heartbeats going.
+    for _ in 0..6 {
+        sleep(Duration::from_millis(250)).await;
+        new.write_all(&frame(&[KIND_HEARTBEAT])).await.unwrap();
+    }
+    assert_eq!(
+        sh.with(drain),
+        vec![k(0x41, false)],
+        "only the old stream's key"
+    );
+    assert_eq!(sh.with(|q| q.stats.held_timeouts), 1);
+    drop(old);
+    tick().await;
+    assert_eq!(sh.with(drain), vec![], "pad 0 is the new stream's now");
+    assert_eq!(sh.rumble_state()[0], [5, 5, 0, 0], "its rumble goes on");
+    drop(new);
+    tick().await;
+    assert_eq!(
+        sh.with(drain),
+        vec![
+            k(0x42, false),
+            ev(0, 3, N),
+            ev(1, 3, N),
+            ev(0, 2, N),
+            ev(1, 0, N)
+        ]
+    );
+    assert_eq!(sh.rumble_state()[0], [0; 4]);
 }
 
 #[test]
