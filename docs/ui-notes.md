@@ -485,7 +485,8 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
 ## Fuzzing and property tests
 Every parser of bytes Brisk did not produce (network, tap, browser, Sunshine HTTP/RTSP/SDP, control,
 input, audio) is listed with its trust level and coverage in `docs/fuzz-inventory.md`, which also
-records what this found (two bugs fixed, two behaviours described and left).
+records what this found (three bugs fixed, among them a key press lost after a send timeout; one
+behaviour described and left; one bounded worst case noted).
 - **Property tests** (proptest =1.12.0, dev-dependency, `default-features = false, features = ["std"]`:
   no fork/timeout, inputs are kept small instead) run with everything else: `cargo nextest run --workspace`.
   Files: brisk-proto `tests/prop_parsers.rs` (any input, no panic, peak heap under 16 B per input byte
@@ -511,6 +512,12 @@ records what this found (two bugs fixed, two behaviours described and left).
   table, own `Cargo.lock`), not a member of the root workspace: the product build,
   `scripts/brisk-service.sh update`, `scripts/check-pure-rust.sh` and `cargo deny check` all read
   the root workspace graph and never see it. Never add `fuzz` to the root `members`.
+  For the same reason deny's licence check never sees libfuzzer-sys, which is
+  `(MIT OR Apache-2.0) AND NCSA` (libFuzzer's LLVM licence); NCSA is deliberately not in
+  deny.toml's allow list, since nothing in the product uses it.
+- **Keep `fuzz/Cargo.lock` in step** with the root `Cargo.lock`: after a `cargo update` or bump,
+  copy the root lock over it and run `cargo +nightly fuzz build` (cargo adds only the fuzz crates),
+  so the fuzzed code builds against the versions the product ships.
 
 ## [U]
 `[U]` in code comments marks an unverified assumption about bawn (for example the graphical

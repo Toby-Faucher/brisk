@@ -48,7 +48,8 @@ Coverage after this pass: **P** = property test (file::test), **F** = cargo-fuzz
 
 1. **Fixed** (fuzz target `input`): `ControlMsg::input` computed `GAMEPAD_BASE + index` before
    `encode_input` rejected the index, so an index >= 240 overflowed u8: a panic in debug builds
-   (release wrapped, then returned the error). Fix: `wrapping_add`; valid indices unchanged.
+   (release wrapped, then returned the error). Fix: encode (which rejects the index) before the
+   channel sum; valid indices unchanged.
    Repro: brisk-proto tests/control.rs `control_input_gamepad_index_out_of_range_errors_not_panics`.
    Reachability: the bridge only passes slots 0..4, so not reachable from the browser today.
 2. **Fixed** (property test with a counting allocator): the HTTP XML parser stored
@@ -61,11 +62,15 @@ Coverage after this pass: **P** = property test (file::test), **F** = cargo-fuzz
 3. **Not changed** (fuzz target `rtsp`): `RtspCipher::seal(&[])` makes a 24-byte frame that `open`
    refuses as `Truncated`. No RTSP message is empty, and accepting it would change what the client
    takes from the wire, so it is left as is.
-4. **Not changed** (property `final_state_wins`): a key press whose send times out is dropped by
-   design (`InputQueue::timed_out`), but the queue keeps counting the key as down, so the page's
-   repeat of that press is swallowed as a repeat and Sunshine never gets the key until it is
-   released and pressed again. Only after a 1 s control stall; fixing it (forget the key in
-   `timed_out`) changes what the bridge sends, so it is described here instead.
+4. **Fixed after review** (property `final_state_wins`): a key or mouse-button press whose send
+   times out is dropped by design (`InputQueue::timed_out`), but the queue kept counting it as
+   down, so after a 1 s control stall the page's repeats were swallowed (holding W did nothing)
+   until the key was released and pressed again. `timed_out` now forgets the dropped press unless
+   a newer event for the same key/button is still queued (then that one keeps it held, so its
+   release is not ignored). Repro: brisk-bridge tests/input_map.rs
+   `press_dropped_on_timeout_is_forwarded_on_the_next_repeat` (and
+   `press_dropped_on_timeout_keeps_a_newer_queued_press`). Pad states are fine: one is dropped
+   only when a newer queued state of that pad follows.
 5. **Bounded but large**: `FrameAssembler` keeps up to 3 frames x 4 FEC blocks of shards; with
    0% FEC a block may have up to 1023 data shards of up to 4 KiB, about 50 MB in the worst case
    from forged UDP packets. Bounded, so not changed; worth a cap if video ever leaves loopback/LAN.
