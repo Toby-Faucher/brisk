@@ -16,7 +16,7 @@
   let selected = $state<number | null>(null);
   let details = $state<Record<number, Detail | 'none'>>({});
   const shown = $derived(listState(list, failed));
-  const detail = $derived(selected === null ? null : details[selected]);
+  const detail = $derived(selected === null ? undefined : details[selected]); // only read while a session is selected
   const cover = (appid: number | null) => $games?.games.find((g) => g.appid === appid)?.cover;
 
   // The list rows carry their sparkline; only an opened session is fetched, once.

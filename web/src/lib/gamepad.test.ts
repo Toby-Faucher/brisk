@@ -193,7 +193,7 @@ describe('GamepadSender', () => {
     take();
     p.axes = [10 / 32767, 0, 0, 0];
     s.poll();
-    expect(take()).toEqual([], 'small drift off neutral waits');
+    expect(take(), 'small drift off neutral waits').toEqual([]);
   });
 
   it('when the stream is backed up stick-only frames wait, button changes and removals do not', () => {
@@ -209,17 +209,17 @@ describe('GamepadSender', () => {
     expect(w.refused).toBe(2); // tried each poll, not marked sent
     p.press(0);
     s.poll();
-    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]], 'a button change is never skipped');
+    expect(take(), 'a button change is never skipped').toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
     p.axes = [-1, 0, 0, 0];
     s.poll();
     expect(take()).toEqual([]);
     w.full = false;
     s.poll();
-    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]], 'the newest state once there is room');
+    expect(take(), 'the newest state once there is room').toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
     w.full = true;
     list.pads = [];
     s.poll();
-    expect(take()).toEqual([[KIND_GAMEPAD, 0, N], [KIND_GAMEPAD_GONE, 0]], 'release and removal go anyway');
+    expect(take(), 'release and removal go anyway').toEqual([[KIND_GAMEPAD, 0, N], [KIND_GAMEPAD_GONE, 0]]);
   });
 
   it('rumble that came before the pad is played when it appears; none while unfocused', () => {
@@ -270,7 +270,7 @@ describe('GamepadSender', () => {
     s.release();
     expect(take()).toEqual([[KIND_GAMEPAD, 0, N]]);
     s.release();
-    expect(take()).toEqual([], 'once');
+    expect(take(), 'once').toEqual([]);
     s.poll(); // focus back, still held: sent again
     expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
     // A rumble is stopped once on release (release runs every tick while unfocused), then
@@ -376,9 +376,9 @@ describe('attachGamepads', () => {
     expect(take()).toEqual([[KIND_GAMEPAD, 0, { ...N, buttons: 0x1000 }]]);
     e.doc.focused = false;
     e.win.dispatchEvent(new Event('blur'));
-    expect(take()).toEqual([[KIND_GAMEPAD, 0, N]], 'released at once');
+    expect(take(), 'released at once').toEqual([[KIND_GAMEPAD, 0, N]]);
     vi.advanceTimersByTime(1000);
-    expect(take()).toEqual([], 'no state while unfocused: the Gamepad API is stale there');
+    expect(take(), 'no state while unfocused: the Gamepad API is stale there').toEqual([]);
     e.doc.focused = true;
     vi.advanceTimersByTime(POLL_MS);
     expect(take()).toEqual([[KIND_GAMEPAD, 0, { ...N, buttons: 0x1000 }]]);
@@ -420,6 +420,6 @@ describe('attachGamepads', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(take()).toEqual([[KIND_GAMEPAD_GONE, 0]]);
     vi.advanceTimersByTime(1000);
-    expect(take()).toEqual([], 'stopped polling');
+    expect(take(), 'stopped polling').toEqual([]);
   });
 });

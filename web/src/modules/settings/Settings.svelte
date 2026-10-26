@@ -9,8 +9,6 @@
   import ControllerTest from './ControllerTest.svelte';
   import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
 
-  declare const __BRISK_COMMIT__: string | undefined; // vite define, see astro.config.mjs
-
   const PRESETS: Exclude<Preset, 'custom'>[] = ['fast', 'balanced', 'crisp'];
   const set = (p: Partial<Settings>) => settings.update((s) => ({ ...s, ...p }));
   const ACCENTS = Object.keys(ACCENT_HEX) as Accent[];
