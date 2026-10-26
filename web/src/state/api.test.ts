@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, captureSecret } from './api';
+import { get } from 'svelte/store';
+import { api, captureSecret, denied } from './api';
 
 function stubPage(href: string) {
   const m = new Map<string, string>();
@@ -40,6 +41,38 @@ describe('api', () => {
     expect(post.body).toBe('{"appid":570}');
     expect(getUrl).toBe('/api/games');
     expect((getInit.headers as Record<string, string>)['x-brisk-secret']).toBe('sek');
+  });
+
+  it('keeps_a_captured_secret_in_localstorage_for_bookmarks', async () => {
+    const { m } = stubPage('http://localhost:8443/?s=abc123');
+    const local = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v) });
+    captureSecret();
+    expect(local.get('brisk.secret')).toBe('abc123');
+    m.clear(); // a new tab opened from a bookmark of the bare URL
+    const f = stubFetch(204);
+    await api.launch(1);
+    expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-brisk-secret']).toBe('abc123');
+  });
+
+  it('works_without_a_secret_and_survives_broken_storage', async () => {
+    stubPage('https://bawn.tail674625.ts.net:8443/');
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } });
+    const f = stubFetch(200, { name: 'bawn' });
+    await expect(api.host()).resolves.toMatchObject({ name: 'bawn' });
+    const h = (f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(h['x-brisk-secret']).toBeUndefined();
+    expect(h['x-brisk-csrf']).toBe('1');
+  });
+
+  it('flags_403_as_denied_until_a_call_succeeds', async () => {
+    stubPage('https://bawn.tail674625.ts.net:8443/');
+    stubFetch(403);
+    await expect(api.games()).rejects.toMatchObject({ status: 403 });
+    expect(get(denied)).toBe(true);
+    stubFetch(200, { games: [], ownedAvailable: true });
+    await api.games();
+    expect(get(denied)).toBe(false);
   });
 
   it('maps_error_json_to_thrown_message', async () => {
