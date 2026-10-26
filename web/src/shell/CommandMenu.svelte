@@ -8,6 +8,8 @@
   import { attachShortcuts, rank } from './keys';
   import { loadModules, type CommandItem } from './registry';
   import { toast } from './Toasts.svelte';
+  import { askQuit } from './QuitDialog.svelte';
+  import { quitItems } from '../state/quit';
   import Icon from '../ui/Icon.svelte';
 
   const mods = loadModules().filter((m) => !m.soon);
@@ -25,6 +27,7 @@
       icon: 'play',
       run: () => void api.launch(g.appid).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
     })),
+    ...quitItems($games?.games ?? [], (g) => askQuit(g)),
     { id: 'cmd:machine', label: 'Switch machine', hint: 'bawn', icon: 'host', run: () => go('/machines') },
     ...presets.map((p) => ({ id: `cmd:preset:${p}`, label: `Quality: ${p}`, icon: 'stream', run: () => { if (!emitCommand({ type: 'preset', preset: p })) toast(`Default quality: ${p}`); } })),
     { id: 'cmd:stats', label: 'Toggle stats', hint: 'Stream', icon: 'bolt', run: () => emitCommand({ type: 'stats' }) },

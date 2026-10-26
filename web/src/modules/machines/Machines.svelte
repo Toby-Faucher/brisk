@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { Dialog } from 'bits-ui';
   import { api, type StreamInfo } from '../../state/api';
-  import { games } from '../../state/games';
+  import { games, watchGames } from '../../state/games';
+  import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { host, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
@@ -19,11 +20,14 @@
   const machines = $derived($host ? machinesFrom($host) : []);
   const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
 
+  const running = $derived(($games?.games ?? []).filter((g) => g.running));
+
   onMount(() => {
+    const unwatch = watchGames();
     const load = () => api.stream().then((s) => (stream = s), () => (stream = null));
     void load();
     const id = setInterval(() => !document.hidden && void load(), 10_000);
-    return () => (clearInterval(id), clearTimeout(timer)); // HostPill keeps $host fresh
+    return () => (clearInterval(id), clearTimeout(timer), unwatch()); // HostPill keeps $host fresh
   });
 
   async function restart() {
@@ -57,6 +61,15 @@
         <dt>Network</dt><dd>{i.path === 'relay' ? `Relay${i.relay ? ` · ${i.relay}` : ''}` : i.path === 'direct' ? 'Direct' : DASH}</dd>
         <dt>Running</dt><dd>{app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)}</dd>
       </dl>
+      {#if running.length}
+        <h5 class="lab">Running apps</h5>
+        <ul class="apps">
+          {#each running as g (g.appid)}
+            {@const q = $quitting.has(g.appid)}
+            <li><span>{g.name}</span><button class="btn ghost sm" aria-disabled={q} onclick={() => askQuit(g)} aria-label={q ? `Quitting ${g.name}` : `Quit ${g.name}`}>{q ? 'Quitting…' : 'Quit'}</button></li>
+          {/each}
+        </ul>
+      {/if}
       <div class="actions">
         <Dialog.Root bind:open={confirming}>
           <Dialog.Trigger class="btn ghost">Restart Sunshine</Dialog.Trigger>
@@ -92,10 +105,12 @@
   dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0; }
   dt { color: var(--muted); font-size: 13px; }
   dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; }
+  h5 { margin: 16px 0 6px; font-size: 13px; font-weight: 500; }
+  .apps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .apps li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .apps span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sm { padding: 4px 10px; font-size: 13px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
-  :global(.rs) { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 20px; z-index: 41; display: grid; gap: 6px; }
-  :global(.rs-t) { font-size: 16px; font-weight: 650; }
-  :global(.rs-a) { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
   .dot.ready { background: var(--ok); }
   .dot.busy { background: var(--warn); }

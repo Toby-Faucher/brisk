@@ -5,6 +5,7 @@
   import Sidebar from './Sidebar.svelte';
   import Toasts from './Toasts.svelte';
   import CommandMenu from './CommandMenu.svelte';
+  import QuitDialog from './QuitDialog.svelte';
 
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => bindAccent(settings, document.documentElement));
@@ -16,6 +17,7 @@
 </div>
 <Toasts />
 <CommandMenu />
+<QuitDialog />
 
 <style>
   .app { display: flex; min-height: 100vh; }

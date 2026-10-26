@@ -131,6 +131,8 @@ export const api = {
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),
   launch: (appid: number) => call<void>('POST', '/api/launch', { appid }),
   install: (appid: number) => call<void>('POST', '/api/install', { appid }),
+  /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
+  quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
   sessions: () => call<{ sessions: SessionRec[] }>('GET', '/api/sessions'),
   getClipboard,

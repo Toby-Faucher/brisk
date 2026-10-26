@@ -4,6 +4,7 @@
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
   import { badgeLabel, fmtSize, installLabel, playLabel } from './library';
+  import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
   let { game, busy = false, selected = false, onpick, oninstall }: { game: Game; busy?: boolean; selected?: boolean; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
   const size = $derived(fmtSize(game.sizeBytes));
@@ -23,6 +24,10 @@
     <span class="name">{game.name}</span>
     <span class="sub">{sub}</span>
   </button>
+  {#if game.running}
+    {@const q = $quitting.has(game.appid)}
+    <button class="btn ghost quit" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`} title="Quit"><Icon name="power" size={13} />{q ? ' Quitting…' : ''}</button>
+  {/if}
   {#if selected}
     <div class="over"><button class="btn install" aria-disabled={busy} onclick={() => oninstall(game)}><Icon name="dl" size={13} /> {busy ? 'Asking Steam…' : installLabel(game)}</button></div>
   {/if}
@@ -45,6 +50,8 @@
   .g:hover .play, .g:focus-visible .play, .g[aria-disabled='true'] .play { transform: translateX(-50%); }
   /* sits over the bottom of the (lifted) cover; a sibling, since buttons cannot nest */
   .over { position: absolute; inset: 0 0 auto; aspect-ratio: 2 / 3; display: grid; place-items: end center; padding-bottom: 14px; transform: translateY(-5px) scale(1.02); pointer-events: none; z-index: 4; }
+  /* a sibling over the cover's top right corner, like .over */
+  .quit { position: absolute; right: 8px; top: 8px; z-index: 5; padding: 5px 8px; font-size: 12px; border-radius: 9px; }
   .install { pointer-events: auto; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }
   .off :global(.cover) { filter: saturate(.35) brightness(.7); transition: filter .3s; }
   .off:hover :global(.cover), .off:focus-visible :global(.cover), .off.sel :global(.cover) { filter: saturate(.8) brightness(.9); }
