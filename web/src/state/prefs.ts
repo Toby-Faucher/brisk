@@ -12,14 +12,25 @@ export type PrefsBody = Omit<GamePrefs, 'updated'>;
 /** Shared by Library, Home, the Stream page; filled by watchPrefs. */
 export const prefs = writable<PrefsMap>({});
 
-let fetchedAt = -Infinity;
+/** The saved Home card order (ids); undefined until hostd has answered once. */
+export const homeOrder = writable<string[] | undefined>(undefined);
 
-export async function refreshPrefs() {
-  const r = await api.prefs().catch(() => null);
-  if (r) {
-    fetchedAt = Date.now(); // a failure is retried on the next focus
-    prefs.set(r.prefs);
-  }
+let fetchedAt = -Infinity;
+let inflight: Promise<void> | null = null;
+
+/** One GET at a time: Home and its Resume card both ask on mount. */
+export function refreshPrefs(): Promise<void> {
+  return (inflight ??= api
+    .prefs()
+    .catch(() => null)
+    .then((r) => {
+      if (r) {
+        fetchedAt = Date.now(); // a failure is retried on the next focus
+        prefs.set(r.prefs);
+        homeOrder.set(r.homeOrder ?? []);
+      }
+    })
+    .finally(() => (inflight = null)));
 }
 
 /** Fetch if never fetched (or older than a minute), then again on window focus at most once a minute. */

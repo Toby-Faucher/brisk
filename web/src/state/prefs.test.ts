@@ -190,6 +190,23 @@ describe('watchPrefs failure', () => {
   });
 });
 
+describe('refreshPrefs', () => {
+  it('shares one GET between callers and fills homeOrder ([] when hostd has none)', async () => {
+    vi.resetModules();
+    const m = await import('./prefs');
+    const f = vi.fn(async () => new Response(JSON.stringify({ prefs: {}, homeOrder: ['recent', 'host'] })));
+    vi.stubGlobal('fetch', f);
+    expect(get(m.homeOrder)).toBeUndefined();
+    await Promise.all([m.refreshPrefs(), m.refreshPrefs()]);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(get(m.homeOrder)).toEqual(['recent', 'host']);
+    f.mockImplementation(async () => new Response(JSON.stringify({ prefs: {} })));
+    await m.refreshPrefs();
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(get(m.homeOrder)).toEqual([]);
+  });
+});
+
 describe('putPrefs', () => {
   it('uses keepalive so a save can finish while the page unloads', async () => {
     const f = vi.fn(async () => new Response(JSON.stringify(P())));

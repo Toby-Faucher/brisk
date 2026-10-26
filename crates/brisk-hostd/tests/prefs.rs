@@ -61,6 +61,9 @@ impl T {
     async fn all(&self) -> Value {
         self.call("GET", "/api/prefs", true, None).await.1["prefs"].clone()
     }
+    async fn home(&self) -> Value {
+        self.call("GET", "/api/prefs", true, None).await.1["homeOrder"].clone()
+    }
     fn file(&self) -> std::path::PathBuf {
         self.dir.path().join("prefs.json")
     }
@@ -251,4 +254,70 @@ fn cap_drops_the_oldest_by_updated() {
     // re-writing an existing appid never evicts
     p.put_entry(1, e(6000));
     assert_eq!(p.all().len(), MAX_ENTRIES);
+}
+
+#[tokio::test]
+async fn home_order_put_get_delete_and_survives_restart() {
+    let t = t();
+    assert_eq!(t.home().await, json!([]));
+    let (st, body) = t
+        .call(
+            "PUT",
+            "/api/prefs/layout",
+            true,
+            Some(json!({"homeOrder":["recent","host","recent","Bad Id","library"]})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, json!({"homeOrder":["recent","host","library"]}));
+    assert_eq!(t.home().await, json!(["recent", "host", "library"]));
+    // per-game prefs are untouched by it and still work next to it
+    assert_eq!(
+        t.put("5", json!({"preset":"fast","codec":"h264"})).await,
+        StatusCode::OK
+    );
+    assert_eq!(t.all().await.as_object().unwrap().len(), 1);
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
+    assert_eq!(
+        on_disk["layout"],
+        json!({"v":1,"homeOrder":["recent","host","library"]})
+    );
+    let t2 = t_in(t.dir);
+    assert_eq!(t2.home().await, json!(["recent", "host", "library"]));
+    assert_eq!(t2.all().await["5"]["preset"], "fast");
+    assert_eq!(
+        t2.call("DELETE", "/api/prefs/layout", true, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(t2.home().await, json!([]));
+    assert_eq!(t2.all().await["5"]["preset"], "fast");
+}
+
+#[tokio::test]
+async fn home_order_rejects_bad_bodies_and_needs_the_secret() {
+    let t = t();
+    for b in [
+        json!({"homeOrder":"host"}),
+        json!({"homeOrder":[1,2]}),
+        json!({"homeOrder":["host"],"x":1}),
+        json!({}),
+        json!(["host"]),
+    ] {
+        let (st, _) = t
+            .call("PUT", "/api/prefs/layout", true, Some(b.clone()))
+            .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "{b}");
+    }
+    for m in ["PUT", "DELETE"] {
+        let (st, _) = t
+            .call(
+                m,
+                "/api/prefs/layout",
+                false,
+                Some(json!({"homeOrder":["host"]})),
+            )
+            .await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "{m}");
+    }
+    assert!(!t.file().exists());
 }
