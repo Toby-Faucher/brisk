@@ -2,6 +2,7 @@
   import { ACCENT_HEX, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
   import type { Preset } from '../../state/api';
   import Card from '../../ui/Card.svelte';
+  import ControllerTest from './ControllerTest.svelte';
 
   const PRESETS: Exclude<Preset, 'custom'>[] = ['fast', 'balanced', 'crisp'];
   const set = (p: Partial<Settings>) => settings.update((s) => ({ ...s, ...p }));
@@ -55,6 +56,7 @@
     </div>
   </Card>
 </div>
+<ControllerTest />
 
 <style>
   .top { padding: 0 2px 14px; border-bottom: 1px solid var(--line); }

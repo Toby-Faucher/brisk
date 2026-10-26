@@ -241,3 +241,22 @@ to the fake bridge fails, so Stream is only checked for degrading to "Lost the c
   [U] the level Sunshine's VAAPI SPS carries (1080p60 needs 4.1, `L123`) is within the laptop decoder's limit.
 - Toby to measure: the HEVC vs H.264 rows in docs/m0-baseline.md (same bitrate), and whether the stats card
   says `hvc1.*` with hw decode and 0 decode errors over a few quality switches.
+
+## Controller test (Settings)
+- Settings has a "Controller" card below the other settings (web/src/modules/settings/ControllerTest.svelte; pure logic and
+  tests in controllertest.ts / controllertest.test.ts). It shows the pad picker (index, id, mapping, button and axis counts),
+  a rolling poll rate (rAF ticks per second), an SVG pad diagram (aria-hidden; pressed buttons light up in the accent,
+  triggers are fill bars), per-stick circle with crosshair, display-only deadzone ring (0-25%, default 8%), x/y as -1..1 and %,
+  and a 2 s trail; a range test (32 angle bins, max extent drawn as the gate polygon, Reset), a 3 s drift check (mean offset,
+  peak-to-peak noise, OK <2% / Minor 2-6% / Drift >6%, suggested minimum deadzone = ceil(offset + noise); cancelled with
+  "You moved it, try again" if a button, a trigger over 30% or a stick over 30% moves), a mapping table (index, label, the
+  Moonlight flag from `BUTTON_FLAGS` in lib/gamepad.ts, `analog u8` for triggers, `i16` for sticks with the Y-inverted note;
+  the live row is highlighted) and a Weak / Strong / Both rumble test (`dual-rumble`, 400 ms).
+- Lifecycle: the rAF loop runs only while the card is in view (IntersectionObserver), the document has focus and is visible;
+  unmount cancels it, removes every listener (one AbortController) and resets the actuators. It reads `navigator.getGamepads()`
+  only: no fetch, no hostd, nothing reaches the bridge, and it is not on the Stream route. Reduced motion needs nothing special
+  (no animations; the live view is data). The polite status line (role=status, visually hidden, mirrored on screen) speaks only
+  for connect/disconnect and the drift outcome.
+- Chrome shows a pad only after its first button press, hence the hint when none is listed. Readings use the raw axes (y down
+  is positive on screen); the table says what Brisk sends (y flipped). Headless-checked with a scripted fake
+  `navigator.getGamepads`; [U] not tried with the real 8BitDo Ultimate 2 (rumble feel, real poll rate, real stick noise).
