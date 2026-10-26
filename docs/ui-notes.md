@@ -405,6 +405,36 @@ BRISK_DIST, BRISK_DATA_DIR, BRISK_BRIDGE_BIN, BRISK_STEAM_DIR, BRISK_STEAM_KEY_F
 (default `~/.config/brisk/secret`), BRISK_SECRET (tests), BRISK_TLS_DIR (default `~/.config/brisk/tls`),
 BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its own systemd-run scope; set by the unit).
 
+## Rust dev tooling
+- **Toolchain pin**: `rust-toolchain.toml` names an exact release (1.99.1) with `profile = "minimal"` and
+  `components = ["clippy", "rustfmt"]`. rustup installs a missing pinned toolchain automatically on the next
+  `cargo` call, non-interactively (verified), so `scripts/brisk-service.sh update` on the main checkout
+  downloads it on first build after a bump (needs network once; `RUSTUP_AUTO_INSTALL=0` would block it).
+  Bump deliberately about every 6 weeks: edit the version, `cargo update`, run the checks below.
+  Docs and build tools are not in `minimal`; add a component to the list if a build needs it.
+- **Edition 2024** for all crates (`edition.workspace`); `publish = false` on all of them.
+- **Lints**: `[workspace.lints]` in the root `Cargo.toml`, inherited with `[lints] workspace = true`.
+  `unsafe_op_in_unsafe_fn = deny`; clippy `dbg_macro`, `todo`, `unimplemented`, `undocumented_unsafe_blocks`
+  = warn (every `unsafe` needs a `// SAFETY:` comment right above the statement). No print lints (bridge and
+  hostd print on purpose); `unwrap_used` is off until the ~110 unwraps in src are gone.
+- **Checks** (all must pass; use `. scripts/capped.sh; capped cargo ...` for builds on bawn):
+  `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo nextest run --workspace` (profile `ci` = no fail-fast, config in `.config/nextest.toml`),
+  `cargo test --doc --workspace` (nextest does not run doc-tests), `cargo deny check`,
+  `scripts/check-pure-rust.sh`, `scripts/test-*.sh`.
+- **cargo-deny** (`deny.toml`): graph limited to the six native targets (quinn-proto's wasm-only `ring` edge is
+  out of scope); allowed licences MIT, Apache-2.0, BSD-2/3, ISC, Unicode-3.0, Zlib, CC0; bans `proc-macro1`
+  (the Aug 2026 typosquat), `openssl-sys`, `aws-lc-sys`, `ring`, wildcards; sources crates.io only. Seven advisories
+  are ignored on purpose (five `rustls-webpki 0.102.8`, `rsa` Marvin, `crypto-bigint`), all from
+  `rustls-rustcrypto`, each with a reason and a TODO in `deny.toml`; delete them when that crate goes.
+  Duplicate-version warnings are expected. Install: `cargo install --locked cargo-nextest cargo-deny`
+  (cargo-deny's `zstd-sys` needs a C compiler and free space in /tmp; the tool is not part of the product).
+- **Purity allowlist**: `scripts/check-pure-rust.sh` fails on any `*-sys`/`*_sys` crate or `cc`, `cmake`,
+  `bindgen`, `pkg-config`, `vcpkg`, `cxx-build` in the x86_64-linux normal+build graph unless
+  `scripts/pure-rust-allow.txt` has a line `crate | reason | date`. It is empty today; read the header of that
+  file for why `libc`, `autocfg`, `windows-sys` and `linux-raw-sys` are (not) listed. `scripts/test-check-pure-rust.sh`
+  proves the script with a stub `cargo`.
+
 ## [U]
 `[U]` in code comments marks an unverified assumption about bawn (for example the graphical
 environment taken from a running steam process).
