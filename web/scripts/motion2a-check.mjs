@@ -372,6 +372,117 @@ if (want('chips')) {
   await f.ctx.close();
 }
 
+// ---- reduced motion for the swap, and a chunk that fails to load (route abort of every anime.js chunk)
+if (want('reduce')) {
+  const { page, anime, state, errs, ctx } = await mk({ reducedMotion: 'reduce' });
+  await page.goto(BASE + '/library'); await page.waitForSelector('.hero .btn svg path'); await sleep(900);
+  let release; state.hold = new Promise((r) => (release = r)); state.startStatus = 500;
+  await page.click('.hero .btn'); await sleep(200);
+  check('reduced: busy play icon is the static ring at once, nothing animating on it, no chunk', (await heroPath(page)) === RING && (await svgAnims(page)).length === 0 && anime.length === 0);
+  release();
+  await page.waitForFunction((t) => document.querySelector('.hero .btn svg path').getAttribute('d') === t, TRI, { timeout: 3000 });
+  check('reduced: back to the triangle at once', true);
+  check('no errors', errs.length === 0, errs.join('|'));
+  await ctx.close();
+}
+
+if (want('fail')) {
+  const unh = () => window.addEventListener('unhandledrejection', (e) => (window.__unh ??= []).push(String(e.reason)));
+  const { page, anime, errs, ctx } = await mk({ block: true });
+  await page.addInitScript(unh);
+  await page.goto(BASE + '/library'); await page.waitForSelector('.hero h3'); await sleep(1500);
+  const h = await page.evaluate(() => ({ html: document.querySelector('.hero h3').outerHTML.replace(/ class="[^"]*"/g, ''), op: getComputedStyle(document.querySelector('.hero h3 span')).opacity }));
+  check('fail: chunk aborted, the hero title is plain and visible (no copy, no hidden text)', anime.length > 0 && h.html === '<h3><span>Portal 2</span></h3>' && h.op === '1', JSON.stringify([anime.length, h]));
+  let release; const st = await mk({ block: true }); // (the play swap and ring use no library; still fine with every chunk blocked)
+  await st.page.goto(BASE + '/library'); await st.page.waitForSelector('.hero .btn svg path'); await sleep(800);
+  st.state.hold = new Promise((r) => (release = r)); st.state.startStatus = 500;
+  await st.page.click('.hero .btn'); await sleep(500);
+  check('fail: play swap needs no chunk and still ends on the spinner, then the triangle', (await heroPath(st.page)) === RING);
+  release(); await st.page.waitForFunction((t) => document.querySelector('.hero .btn svg path').getAttribute('d') === t, TRI, { timeout: 3000 });
+  await st.ctx.close();
+  const c = await padPage({ block: true });
+  await c.page.addInitScript(unh);
+  await runDrift(c.page); await sleep(900);
+  const cells = await driftCells(c.page);
+  check('fail: chunk aborted, result chips and numbers show their end state', cells.length === 2 && /3\.[56]% \| 0\.0% \| Minor \| 4%$/.test(cells[0]) && /8\.9% \| 0\.0% \| Drift \| 9%$/.test(cells[1]) && (await c.page.evaluate(() => [...document.querySelectorAll('.vchip')].every((x) => getComputedStyle(x).opacity === '1'))), cells.join(' // '));
+  const unhandled = (await c.page.evaluate(() => window.__unh ?? [])).concat(await page.evaluate(() => window.__unh ?? []));
+  check('fail: no console error or unhandled rejection from the failed loads', c.errs.length === 0 && errs.length === 0 && unhandled.length === 0, c.errs.concat(errs, unhandled).join('|'));
+  await c.ctx.close();
+  await ctx.close();
+}
+
+// ---- #12 connection path on Machines
+const pkts = (page) => page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('pkt')).map((a) => ({ props: [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join(), dur: a.effect.getTiming().duration, inf: a.effect.getTiming().iterations === Infinity, ease: a.effect.getTiming().easing, state: a.playState })));
+const cpInfo = (page) => page.evaluate(() => { const c = document.querySelector('.cp'), r = c.getBoundingClientRect(), l = getComputedStyle(c.querySelector('.line')); return { cls: c.className.replace(/svelte-\S+/g, '').trim(), box: [Math.round(r.width), r.height, Math.round(r.top)], lineStyle: l.borderTopStyle, rnode: !!c.querySelector('.rnode'), dotOpacity: getComputedStyle(c.querySelector('.pkt')).opacity, dot: getComputedStyle(c.querySelector('.pkt i')).backgroundColor }; });
+if (want('path')) {
+  const { page, ctx, anime, state, errs } = await mk({ deviceScaleFactor: 3 });
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('Tracing.start', { categories: 'devtools.timeline,blink.animations,cc,disabled-by-default-devtools.timeline', transferMode: 'ReturnAsStream' });
+  await page.goto(BASE + '/machines'); await page.waitForSelector('.cp'); await sleep(900);
+  const d = await cpInfo(page);
+  const pd = await pkts(page);
+  check('path: direct = solid line, no relay node, one steady linear loop of translate (+ opacity) on the dot, 1.6 s', d.cls.includes('direct') && d.lineStyle === 'solid' && !d.rnode && pd.length === 1 && pd[0].props === 'opacity,translate' && pd[0].inf && pd[0].ease === 'linear' && pd[0].dur === 1600 && pd[0].state === 'running', JSON.stringify([d, pd]));
+  check('path: aria-hidden, and the words are already on the card (Network: Direct)', await page.evaluate(() => document.querySelector('.cp').getAttribute('aria-hidden') === 'true' && [...document.querySelectorAll('dt')].some((t) => t.textContent === 'Network' && t.nextElementSibling.textContent === 'Direct')));
+  check('path: anime.js not involved', anime.length === 0, anime.join());
+  await shot(page, 'path-direct-0', await page.locator('.cp').boundingBox().then((b) => ({ x: b.x - 6, y: b.y - 6, width: b.width + 12, height: b.height + 12 })));
+  for (const [t, n] of [[400, 1], [800, 2], [1300, 3]]) {
+    await page.evaluate((t) => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('pkt')).forEach((a) => { a.pause(); a.currentTime = t; }), t);
+    await sleep(60);
+    await shot(page, `path-direct-${n}-t${t}`, await page.locator('.cp').boundingBox().then((b) => ({ x: b.x - 6, y: b.y - 6, width: b.width + 12, height: b.height + 12 })));
+  }
+  await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('pkt')).forEach((a) => a.play()));
+  // tab hidden: paused, then plays again
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await sleep(100);
+  check('path: tab hidden -> the dot animation is paused (no work)', (await pkts(page)).every((p) => p.state === 'paused') && (await pkts(page)).length === 1);
+  await page.evaluate(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
+  await sleep(100);
+  check('path: tab visible again -> running', (await pkts(page))[0]?.state === 'running');
+  // relay
+  state.host = { ...state.host, path: 'relay', relay: 'ams-1' }; await poll(page); await sleep(300);
+  const r = await cpInfo(page), pr = await pkts(page);
+  check('path: relay = dashed line through a relay node, amber dot, slower (3.2 s), still ONE animation', r.cls.includes('relay') && r.lineStyle === 'dashed' && r.rnode && pr.length === 1 && pr[0].dur === 3200 && pr[0].inf && r.dot !== d.dot, JSON.stringify([r, pr]));
+  check('path: relay words on the card (Relay · ams-1)', await page.evaluate(() => [...document.querySelectorAll('dt')].some((t) => t.textContent === 'Network' && t.nextElementSibling.textContent === 'Relay · ams-1')));
+  check('path: the lane keeps its size across direct/relay (no layout shift)', r.box[1] === d.box[1] && r.box[0] === d.box[0] && r.box[2] === d.box[2], `${d.box} vs ${r.box}`);
+  for (const [t, n] of [[0, 0], [1000, 1], [2000, 2], [3000, 3]]) {
+    await page.evaluate((t) => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('pkt')).forEach((a) => { a.pause(); a.currentTime = t; }), t);
+    await sleep(60);
+    await shot(page, `path-relay-${n}-t${t}`, await page.locator('.cp').boundingBox().then((b) => ({ x: b.x - 6, y: b.y - 6, width: b.width + 12, height: b.height + 12 })));
+  }
+  // unknown path: static, dot hidden
+  state.host = { ...state.host, path: null, relay: null }; await poll(page); await sleep(300);
+  const n = await cpInfo(page);
+  check('path: null path = dim dashed line, no dot, no animation, same size', n.cls.includes('none') && n.dotOpacity === '0' && (await pkts(page)).length === 0 && n.box[1] === d.box[1] && n.box[2] === d.box[2], JSON.stringify(n));
+  await shot(page, 'path-none', await page.locator('.cp').boundingBox().then((b) => ({ x: b.x - 6, y: b.y - 6, width: b.width + 12, height: b.height + 12 })));
+  // trace: the dot is compositor-driven
+  state.host = { ...state.host, path: 'direct' }; await poll(page); await sleep(500);
+  const done = await new Promise((res) => {
+    let chunks = '';
+    cdp.on('Tracing.tracingComplete', async ({ stream }) => { for (;;) { const rd = await cdp.send('IO.read', { handle: stream }); chunks += rd.data; if (rd.eof) break; } res(JSON.parse(chunks)); });
+    void cdp.send('Tracing.end');
+  });
+  const evs = (done.traceEvents ?? done).filter((e) => e.name === 'Animation');
+  if (process.env.DEBUG_TRACE) console.log(JSON.stringify(evs.slice(0, 12).map((e) => [e.ph, e.id2?.local ?? e.id, e.args?.data])));
+  const cur = {}; const spans = []; const failed = [];
+  for (const e of evs) {
+    const id = e.id2?.local ?? e.id;
+    if (e.ph === 'b') cur[id] = e.args?.data?.nodeName;
+    if (/class='pkt/.test(cur[id] ?? '')) { if (e.ph === 'b') spans.push(id); if (e.args?.data?.compositeFailed) failed.push(e.args.data); }
+  }
+  check('path: Chrome trace shows no compositeFailed for the dot animation (compositor)', spans.length >= 1 && failed.length === 0, `${spans.length} dot animations traced, ${failed.length} failed`);
+  // leaving
+  await nav(page, '/library'); await sleep(400);
+  check('path: leaving the page cancels it (no dot animation, no rAF)', (await pkts(page)).length === 0 && (await rafIn(page, 700)) <= 2);
+  check('no errors', errs.length === 0, errs.join('|'));
+  await ctx.close();
+
+  const q = await mk({ reducedMotion: 'reduce' });
+  await q.page.goto(BASE + '/machines'); await q.page.waitForSelector('.cp'); await sleep(700);
+  const qi = await cpInfo(q.page);
+  check('path: reduced motion = static line, dot hidden, no animation', (await pkts(q.page)).length === 0 && qi.dotOpacity === '0' && qi.cls.includes('direct'), JSON.stringify(qi));
+  await q.ctx.close();
+}
+
 await browser.close();
 console.log(fails ? `${fails} FAILED` : 'all ok');
 process.exit(fails ? 1 : 0);

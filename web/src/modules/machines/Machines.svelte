@@ -10,6 +10,7 @@
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import StatusDot from '../../ui/StatusDot.svelte';
+  import ConnPath from './ConnPath.svelte';
   import { count } from '../../ui/motion';
   import { DASH, fmtTemp, fmtUptime } from '../home/home';
   import { machinesFrom, restartError } from './machines';
@@ -61,6 +62,7 @@
     <Card cols={2} rows={2}>
       <h4><Icon name="host" color="var(--c-host)" size={16} /> {i.name} <StatusDot state={i.sunshine} /></h4>
       <div class="big">{i.sunshine === 'down' ? 'Sunshine is down' : 'Online'}</div>
+      <ConnPath path={i.path} />
       <dl>
         <dt>Sunshine</dt><dd>{SUN[i.sunshine]}</dd>
         <dt>Uptime</dt><dd>{fmtUptime(i.uptimeS)}</dd>

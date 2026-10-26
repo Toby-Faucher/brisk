@@ -39,10 +39,11 @@ vi.mock('animejs/scope', () => ({
 let path = '/';
 let reduce = false;
 const mqListeners: ((e: { matches: boolean }) => void)[] = [];
+const docListeners: [string, () => void][] = [];
 const vars: Record<string, string> = { '--ease': 'cubic-bezier(.2, .8, .2, 1)', '--dur-count': '600ms', '--spring-snappy-dur': '700ms', '--spring-snappy': 'linear(0, 1)' };
 vi.stubGlobal('location', { get pathname() { return path; } });
-vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f) }));
-vi.stubGlobal('document', { documentElement: {}, hidden: false, createElement: () => fakeEl() });
+vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f), removeEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.splice(mqListeners.indexOf(f), 1) }));
+vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl() });
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (n: string) => vars[n] ?? '' }));
 vi.stubGlobal('window', globalThis);
 
@@ -339,6 +340,54 @@ describe('popIn + countUp (result chips)', () => {
     off();
     expect(anims[0].cancelled).toBe(true);
     expect(g.text.data).toBe('5%');
+  });
+});
+
+describe('travel (connection path dot)', () => {
+  const dot = () => {
+    const a = { cancelled: false, paused: false, pause() { a.paused = true; }, play() { a.paused = false; }, cancel() { a.cancelled = true; } };
+    return { a, animate: vi.fn(() => a) } as any;
+  };
+  afterEach(() => { (document as any).hidden = false; docListeners.length = 0; });
+  it('one infinite linear translate loop, nothing else', () => {
+    const e = dot();
+    const stop = m.travel(e, 1600)!;
+    const [kf, o] = e.animate.mock.calls[0];
+    expect(Object.keys(kf).sort()).toEqual(['opacity', 'translate']);
+    expect(kf.translate).toEqual(['-100% 0', '0 0']);
+    expect(o).toEqual({ duration: 1600, iterations: Infinity, easing: 'linear' });
+    expect(e.animate).toHaveBeenCalledTimes(1);
+    stop();
+    expect(e.a.cancelled).toBe(true);
+    expect(docListeners).toHaveLength(0); // listeners removed again
+  });
+  it('is paused while the tab is hidden and plays again when it is back; starts paused if hidden', () => {
+    const e = dot();
+    const stop = m.travel(e, 1600)!;
+    (document as any).hidden = true;
+    docListeners.forEach(([, f]) => f());
+    expect(e.a.paused).toBe(true);
+    (document as any).hidden = false;
+    docListeners.forEach(([, f]) => f());
+    expect(e.a.paused).toBe(false);
+    stop();
+    (document as any).hidden = true;
+    const h = dot();
+    m.travel(h, 1600);
+    expect(h.a.paused).toBe(true);
+  });
+  it('nothing under reduced motion or on /stream; switching to reduced motion stops it', () => {
+    reduce = true;
+    const e = dot();
+    expect(m.travel(e, 1600)).toBeNull();
+    reduce = false;
+    path = '/stream';
+    expect(m.travel(e, 1600)).toBeNull();
+    expect(e.animate).not.toHaveBeenCalled();
+    path = '/machines';
+    m.travel(e, 1600);
+    [...mqListeners].forEach((f) => f({ matches: true }));
+    expect(e.a.cancelled).toBe(true);
   });
 });
 

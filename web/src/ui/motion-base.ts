@@ -42,6 +42,29 @@ export function ringPulse(ring: Element): Animation | null {
 }
 
 /**
+ * A packet dot travelling along a lane forever (`el` is as wide as the lane with the dot at its right edge, inside an
+ * `overflow: hidden` lane): ONE native compositor animation of `translate` (percent of its own width, so nothing is
+ * measured and a resize needs nothing), paused while the tab is hidden, ended by reduced motion switching on. Returns
+ * the stop function, or null when nothing runs (reduced motion, /stream); the caller calls it on destroy.
+ */
+export function travel(el: Element, ms: number): (() => void) | null {
+  if (onStreamRoute() || reducedMotion()) return null;
+  const a = el.animate({ translate: ['-100% 0', '0 0'], opacity: [1, 1] }, { duration: ms, iterations: Infinity, easing: 'linear' });
+  const mq = matchMedia(REDUCE);
+  const sync = () => (document.hidden ? a.pause() : a.play());
+  const stop = () => {
+    a.cancel();
+    document.removeEventListener('visibilitychange', sync);
+    mq.removeEventListener('change', onMq);
+  };
+  const onMq = (e: { matches: boolean }) => e.matches && stop();
+  sync();
+  document.addEventListener('visibilitychange', sync);
+  mq.addEventListener('change', onMq);
+  return stop;
+}
+
+/**
  * Glide a highlight that already sits at `to` from where it was (`from`, viewport boxes): native Web Animations on
  * `translate` + `scale` only, so it runs on the compositor and leaves no inline style (anime.js's waapi.animate wraps
  * the same API, and the Shell must not load it). `pseudo: '::before'` animates a highlight drawn by the selected item's
