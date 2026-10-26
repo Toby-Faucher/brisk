@@ -1,5 +1,18 @@
 # Brisk UI notes
 
+## Settings tabs
+- Settings is split in Bits UI Tabs (arrow keys, Home/End, roving focus): General (accent, sounds, shaders), Streaming
+  (default quality, replay buffer, clipboard sync), Controller (the pad test), About (commit, host name and Sunshine state
+  from the `host` store, shortcuts list, doc paths as plain text; hostd does not report a version). Pure helpers and
+  tests: web/src/modules/settings/tabs.ts.
+- The tab lives in the URL hash (`#general|streaming|controller|about`), written with `history.replaceState` (no history
+  entries) and mirrored in localStorage `brisk.settingsTab`. No hash: last used tab, then General. An unknown hash: General.
+  `hashchange` and `popstate` listeners are removed on destroy (the Shell remounts islands).
+- The Controller panel is only rendered while its tab is active, so its polling loop is unmounted (not just paused) on
+  leaving. The commit shown comes from `git rev-parse --short HEAD` at build time (vite `define` `__BRISK_COMMIT__`).
+- The server render shows General and the real tab is applied on mount, so a deep link flashes General for a frame.
+- Not done: the shell sidebar has no phone layout (every page is 450 px wide at 390 px); the tab strip itself scrolls.
+
 ## Run
 - On bawn: `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched
   Sunshine, makes a 13-day certificate if needed, runs `target/release/brisk-hostd` in the foreground).
