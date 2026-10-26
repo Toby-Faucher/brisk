@@ -13,7 +13,8 @@
   /**
    * Tooltip for the element just before it (`<button aria-label="…">…</button><Tip label="…" />`): a manual popover in
    * the top layer, CSS-anchored to that element, flipped at the viewport edge. Hover (300 ms) or keyboard focus shows it;
-   * leave, blur, a press or Esc hides it. The trigger keeps its own name and gets aria-describedby.
+   * leave, blur, a press or Esc hides it. The trigger keeps its own name and gets aria-describedby (unless the tip only
+   * repeats that name). On a trigger that cannot take focus it is hover-only: use it only for supplementary text.
    */
   let { label, placement = 'top' }: { label: string; placement?: keyof typeof FALLBACK } = $props();
   const id = $props.id();
@@ -22,7 +23,9 @@
     const el = tip.previousElementSibling as HTMLElement | null;
     if (!el) return;
     el.style.setProperty('anchor-name', `--${id}`);
-    el.setAttribute('aria-describedby', id);
+    // a tip that only repeats the trigger's name is not a description too (a swatch would read "pink, radio, pink")
+    const describes = el.getAttribute('aria-label') !== label;
+    if (describes) el.setAttribute('aria-describedby', id);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const show = () => {
       clearTimeout(timer);
@@ -48,7 +51,7 @@
       hide();
       for (const [k, f] of on) el.removeEventListener(k, f);
       el.style.removeProperty('anchor-name');
-      el.removeAttribute('aria-describedby');
+      if (describes) el.removeAttribute('aria-describedby');
     };
   }
 </script>
