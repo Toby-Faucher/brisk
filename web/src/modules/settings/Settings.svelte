@@ -2,11 +2,19 @@
   import { ACCENT_HEX, settings, type Accent, type Settings } from '../../state/settings';
   import type { Preset } from '../../state/api';
   import Card from '../../ui/Card.svelte';
-  import { applyAccent } from './accent';
 
   const PRESETS: Exclude<Preset, 'custom'>[] = ['fast', 'balanced', 'crisp'];
   const set = (p: Partial<Settings>) => settings.update((s) => ({ ...s, ...p }));
-  const pickAccent = (a: Accent) => (applyAccent(document.documentElement, a), set({ accent: a }));
+  const ACCENTS = Object.keys(ACCENT_HEX) as Accent[];
+  function arrow(e: KeyboardEvent) {
+    const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const a = ACCENTS[(ACCENTS.indexOf($settings.accent) + d + ACCENTS.length) % ACCENTS.length];
+    pickAccent(a);
+    (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(`[aria-label="${a}"]`)?.focus();
+  }
+  const pickAccent = (a: Accent) => set({ accent: a });
 </script>
 
 <div class="top"><h2>Settings</h2></div>
@@ -15,7 +23,7 @@
     <h4>Accent</h4>
     <div class="row" role="radiogroup" aria-label="Accent colour">
       {#each Object.entries(ACCENT_HEX) as [a, hex] (a)}
-        <button class="sw" style:background={hex} role="radio" aria-checked={$settings.accent === a} aria-label={a} onclick={() => pickAccent(a as Accent)}></button>
+        <button class="sw" style:background={hex} role="radio" aria-checked={$settings.accent === a} aria-label={a} tabindex={$settings.accent === a ? 0 : -1} onkeydown={arrow} onclick={() => pickAccent(a as Accent)}></button>
       {/each}
     </div>
   </Card>

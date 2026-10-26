@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Dialog } from 'bits-ui';
   import { api, type StreamInfo } from '../../state/api';
   import { games } from '../../state/games';
   import { host, pollHost, refreshHost } from '../../state/host';
@@ -13,6 +14,7 @@
   let stream = $state<StreamInfo | null>(null);
   let confirming = $state(false);
   let busy = $state(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
   const machines = $derived($host ? machinesFrom($host) : []);
   const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
@@ -22,7 +24,7 @@
     const load = () => api.stream().then((s) => (stream = s), () => (stream = null));
     void load();
     const id = setInterval(() => !document.hidden && void load(), 10_000);
-    return () => (stop(), clearInterval(id));
+    return () => (stop(), clearInterval(id), clearTimeout(timer));
   });
 
   async function restart() {
@@ -31,7 +33,7 @@
       await api.restartSunshine();
       toast('Sunshine is restarting');
       confirming = false;
-      setTimeout(refreshHost, 3000);
+      timer = setTimeout(refreshHost, 3000);
     } catch (e) {
       toast(restartError(e), { error: true });
       confirming = false;
@@ -47,7 +49,7 @@
     {@const i = m.info}
     <Card cols={2} rows={2}>
       <h4><Icon name="host" color="var(--c-host)" size={16} /> {i.name} <span class="dot {i.sunshine}"></span></h4>
-      <div class="big">Online</div>
+      <div class="big">{i.sunshine === 'down' ? 'Sunshine is down' : 'Online'}</div>
       <dl>
         <dt>Sunshine</dt><dd>{SUN[i.sunshine]}</dd>
         <dt>Uptime</dt><dd>{fmtUptime(i.uptimeS)}</dd>
@@ -57,14 +59,21 @@
         <dt>Running</dt><dd>{app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)}</dd>
       </dl>
       <div class="actions">
-        {#if confirming}
-          <span class="lab">Restart Sunshine? A live stream will drop.</span>
-          <button class="btn" disabled={busy} onclick={restart}>Restart</button>
-          <button class="btn ghost" disabled={busy} onclick={() => (confirming = false)}>Cancel</button>
-        {:else}
-          <button class="btn ghost" onclick={() => (confirming = true)}>Restart Sunshine</button>
-          <button class="btn ghost" disabled title="Not in v1">Wake-on-LAN · later</button>
-        {/if}
+        <Dialog.Root bind:open={confirming}>
+          <Dialog.Trigger class="btn ghost">Restart Sunshine</Dialog.Trigger>
+          <Dialog.Portal>
+            <Dialog.Overlay class="cm-dim" />
+            <Dialog.Content class="rs glass">
+              <Dialog.Title class="rs-t">Restart Sunshine?</Dialog.Title>
+              <Dialog.Description class="lab">A live stream will drop.</Dialog.Description>
+              <div class="rs-a">
+                <button class="btn ghost" disabled={busy} onclick={() => (confirming = false)}>Cancel</button>
+                <button class="btn" disabled={busy} onclick={restart}>Restart</button>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+        <button class="btn ghost" disabled title="Not in v1">Wake-on-LAN · later</button>
       </div>
     </Card>
   {:else}
@@ -85,6 +94,9 @@
   dt { color: var(--muted); font-size: 13px; }
   dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
+  :global(.rs) { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 20px; z-index: 41; display: grid; gap: 6px; }
+  :global(.rs-t) { font-size: 16px; font-weight: 650; }
+  :global(.rs-a) { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
   .dot.ready { background: var(--ok); }
   .dot.busy { background: var(--warn); }

@@ -11,7 +11,9 @@ const DEFAULTS: Settings = { accent: 'mint', sounds: true, shaders: true, defaul
 
 function read(): Settings {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    const v = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    if (!(v.accent in ACCENT_HEX)) v.accent = DEFAULTS.accent;
+    return v;
   } catch {
     return { ...DEFAULTS }; // private window, blocked storage, bad JSON, or no localStorage at all
   }

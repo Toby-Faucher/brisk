@@ -1,14 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { settings } from '../state/settings';
+  import { bindAccent } from '../modules/settings/accent';
   import Sidebar from './Sidebar.svelte';
   import Toasts from './Toasts.svelte';
   import CommandMenu from './CommandMenu.svelte';
 
   let { path, children }: { path: string; children?: Snippet } = $props();
-  $effect(() => {
-    document.documentElement.dataset.accent = $settings.accent;
-  });
+  $effect(() => bindAccent(settings, document.documentElement));
 </script>
 
 <div class="app">
