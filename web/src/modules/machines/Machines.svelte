@@ -9,6 +9,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import { count } from '../../ui/motion';
   import { DASH, fmtTemp, fmtUptime } from '../home/home';
   import { machinesFrom, restartError } from './machines';
 
@@ -62,8 +63,8 @@
       <dl>
         <dt>Sunshine</dt><dd>{SUN[i.sunshine]}</dd>
         <dt>Uptime</dt><dd>{fmtUptime(i.uptimeS)}</dd>
-        <dt>GPU</dt><dd>{fmtTemp(i.gpuTempC)}</dd>
-        <dt>CPU</dt><dd>{fmtTemp(i.cpuTempC)}</dd>
+        <dt>GPU</dt><dd {@attach count(i.gpuTempC, fmtTemp)}>{fmtTemp(i.gpuTempC)}</dd>
+        <dt>CPU</dt><dd {@attach count(i.cpuTempC, fmtTemp)}>{fmtTemp(i.cpuTempC)}</dd>
         <dt>Network</dt><dd>{i.path === 'relay' ? `Relay${i.relay ? ` · ${i.relay}` : ''}` : i.path === 'direct' ? 'Direct' : DASH}</dd>
         <dt>Running</dt><dd>{app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)}</dd>
       </dl>
@@ -110,7 +111,7 @@
   .big { font-size: 30px; font-weight: 650; letter-spacing: -.03em; margin: 6px 0 14px; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0; }
   dt { color: var(--muted); font-size: 13px; }
-  dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; }
+  dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }
   h5 { margin: 16px 0 6px; font-size: 13px; font-weight: 500; }
   .apps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .apps li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
