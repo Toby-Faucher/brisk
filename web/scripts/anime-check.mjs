@@ -281,6 +281,21 @@ if (want('chart')) {
   check('chart: opening another session draws its lines once more', (await page.evaluate(() => window.__draws)) === 6);
   check('no errors', errs.length === 0, errs.join('|'));
   await page.context().close();
+  for (const width of [800, 1400]) {
+    const { page: pw, errs: ew } = await mk({ viewport: { width, height: 900 } });
+    await pw.goto(BASE + '/history'); await sleep(900);
+    await watchDraw(pw);
+    await pw.click('.grid .card a.fill >> nth=0'); await pw.waitForSelector('.lc-area-line'); await sleep(40);
+    const midCut = await pw.evaluate(() => [...document.querySelectorAll('.lc-area-line')].map((p) => p.getAttribute('stroke-dasharray')));
+    await pw.screenshot({ path: `${OUT}/chart-draw-mid-${width}.png` });
+    await sleep(1100);
+    const fx = await pw.evaluate(() => { const p = document.querySelector('.lc-area-line'); const c = getComputedStyle(p); return { ve: c.vectorEffect, cap: c.strokeLinecap }; });
+    const st = await lineState(pw);
+    const dash = await pw.evaluate(() => window.__dash.slice());
+    check(`chart @${width}px: 3 lines draw once, progressively, end full and clean (vector-effect ${fx.ve}, linecap ${fx.cap})`, (await pw.evaluate(() => window.__draws)) === 3 && new Set(dash).size >= 6 && st.length === 3 && st.every((l) => l.attrs === 0 && !l.style), `mid ${midCut.join(' | ')}`);
+    check(`chart @${width}px: no errors`, ew.length === 0, ew.join('|'));
+    await pw.context().close();
+  }
   const { page: p2, errs: e2 } = await mk({ reducedMotion: 'reduce' });
   await p2.goto(BASE + '/history?session=1700000000000'); await p2.waitForSelector('.lc-area-line'); await sleep(200);
   await watchDraw(p2);
@@ -384,8 +399,8 @@ if (want('spring')) {
   await page.keyboard.press('Escape');
   await page.goto(BASE + '/stream'); await sleep(800);
   // the bar only renders while connected: read its rule from the loaded stylesheet instead
-  const bar = await page.evaluate(() => { for (const sh of document.styleSheets) for (const r of sh.cssRules) if (/^\.bar\.svelte-[\w-]+$/.test(r.selectorText ?? '')) return r.style.transition; return 'no .bar rule'; });
-  check('ghost bar: slides on the settle spring (CSS only)', /spring-settle/.test(bar), bar);
+  const bar = await page.evaluate(() => { const o = {}; for (const sh of document.styleSheets) for (const r of sh.cssRules) { const t = r.selectorText ?? ''; if (/^\.bar\.svelte-[\w-]+$/.test(t)) o.exit = r.style.transition; if (/^\.bar\.on\.svelte-[\w-]+$|^\.bar\.svelte-[\w-]+\.on$/.test(t)) o.enter = r.style.transition; } return o; });
+  check('ghost bar: enters on the settle spring, leaves faster (300 ms), CSS only', /spring-settle/.test(bar.enter) && /0?\.3s/.test(bar.exit), JSON.stringify(bar));
   check('springs load no anime.js', anime.length === 0, JSON.stringify(anime));
   check('no errors', errs.length === 0, errs.join('|'));
   await page.context().close();

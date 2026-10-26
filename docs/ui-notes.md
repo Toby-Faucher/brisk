@@ -42,8 +42,10 @@
   blocks such as an open shelf grid, menus, the host pill.
 - Springs (CSS only, zero runtime): `web/scripts/gen-spring-tokens.mjs` solves three springs with anime.js offline and writes
   `--spring-soft|snappy|settle` (CSS `linear()`) and `--spring-*-dur` (settling time, use it as the duration) into the
-  generated block at the end of tokens.css; `--check` fails if stale. soft (170/26, no overshoot): Card and game card hover
-  lift. snappy (380/34, 0.4 %): link-card press, glides. settle (150/19, 2 %): ghost bar slide, confirm dialog rise (`.rs`).
+  generated block at the end of tokens.css; `npm run springs:check` and `src/styles/tokens.test.ts` fail if it is stale.
+  soft (400/40, no overshoot, 90 % at 195 ms, capped at 450 ms): Card and game card hover lift. snappy (380/34, 0.4 %, 90 % at
+  169 ms, 700 ms): link-card press, glides. settle (150/19, 2 %, 90 % at 237 ms, 900 ms): ghost bar slide-in (it leaves
+  faster, 300 ms `--ease`), confirm dialog rise (`.rs`). These CSS springs are allowed on /stream; anime.js is not.
 - anime.js 4.5.0 (exact pin, MIT; a runtime dependency because `ui/motion.ts` loads it) is used only where CSS cannot do it,
   all through `web/src/ui/motion.ts`, lazily by sub-path (`animejs/animation`, `/easings`, `/svg`, `/scope`), each on its first
   real use: numbers that change after load (`count` attachment / `tweenNumber`: Home host temps and ring `--p`, Machines GPU/CPU,
@@ -69,7 +71,8 @@
   `opacity`; never anime's `x`/`y` in waapi (they go through a custom property and fail compositing). (7) No anime `onScroll`
   (it holds a 60 Hz rAF loop alive) and no `loop: true`. (8) anime and Svelte never write the same thing on one element (the
   ring's `--p` is no longer a `style:` binding; `count` writes Svelte's own text node and ends on Svelte's value).
-  (9) Nothing left behind: no `will-change`, no inline `transition`, no inline `--accent` on `<html>`.
+  (9) Nothing left behind: no `will-change`, no inline `transition`, no inline `--accent` on `<html>`. (10) Every lazy motion
+  path falls back to its end state when its chunk fails to load (a number shows the new value, a chart line shows in full).
 - Smooth scroll: `html { scroll-behavior: smooth }` (off while the Astro router is navigating, so scroll restore does not
   glide), `scroll-padding-top: 64px` for the sticky Settings strip, `overscroll-behavior-x: contain` on the shelf and the tab
   strip. No JS smooth-scroll library and no wheel hijacking (the shelf's vertical-wheel-to-sideways stays as it was).

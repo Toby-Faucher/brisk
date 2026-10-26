@@ -7,7 +7,8 @@
     "build": "astro build",
     "test": "vitest run",
     "headless": "node scripts/headless.mjs",
-    "smoke": "node scripts/ui-smoke.mjs"
+    "smoke": "node scripts/ui-smoke.mjs",
+    "springs:check": "node scripts/gen-spring-tokens.mjs --check"
   },
   "dependencies": {
     "@astrojs/svelte": "^9.1.1",

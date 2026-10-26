@@ -252,8 +252,9 @@
 </div>
 
 <style>
-  .bar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px); padding: 6px 8px; display: flex; align-items: center; gap: 2px; transition: transform var(--spring-settle-dur) var(--spring-settle); z-index: 35; border-radius: 999px; }
-  .bar.on { transform: translateX(-50%) translateY(0); }
+  .bar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px); padding: 6px 8px; display: flex; align-items: center; gap: 2px; transition: transform .3s var(--ease); z-index: 35; border-radius: 999px; }
+  /* enter on the settle spring, leave faster (the transition of the state being entered applies) */
+  .bar.on { transform: translateX(-50%) translateY(0); transition: transform var(--spring-settle-dur) var(--spring-settle); }
   .hostchip { display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; white-space: nowrap; }
   .hostchip b { font-weight: 600; }
   .padchip { position: relative; display: grid; place-items: center; width: 30px; height: 34px; color: var(--ok); }
