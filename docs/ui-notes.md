@@ -874,3 +874,6 @@ Use `scripts/axe-check.mjs` for the a11y part meanwhile.
   manual's top view). L4/R4, PL/PR and Square/Star/Profile are drawn faint with a caption: Chrome's standard mapping only
   reports the 17 standard buttons. Sources and open questions: research/8bitdo-ultimate-2-dimensions.md. pad.svg.test.ts
   checks the body aspect, one element per standard button 0..16, and unique ids.
+
+## Stream idle smoke (2026-10-26)
+The Stream page's "Nothing is streaming" state shows the same accent smoke (opacity .5 on black). It is mounted only while `page === 'idle'`, so the WebGL context is destroyed before any session starts; boot, live session, reconnect and unsupported stay plain black. `smokeAllowed(path, shaders, idle)` still blocks /stream unless `idle` is set; the shaders setting still turns it off.

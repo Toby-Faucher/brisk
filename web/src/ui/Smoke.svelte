@@ -1,17 +1,18 @@
 <script lang="ts">
-  // Storm Flow smoke in the accent colour. Off (CSS gradient, no WebGL context) on /stream, without WebGL2 or
+  // Storm Flow smoke in the accent colour. Off (CSS gradient, no WebGL context) on /stream (except `idle`, the
+  // not-streaming state, which must be unmounted when a session starts), without WebGL2 or
   // float targets, or when settings.shaders is false. The context is destroyed on unmount.
   import { onMount } from 'svelte';
   import { settings } from '../state/settings';
   import { runSmoke, smokeAllowed, smokeGL, type SmokeRun } from './smoke';
 
-  let { accent, active = true }: { accent: string; active?: boolean } = $props();
+  let { accent, active = true, idle = false }: { accent: string; active?: boolean; idle?: boolean } = $props();
   let cv: HTMLCanvasElement | undefined = $state();
   let run: SmokeRun | null = $state(null);
 
   onMount(() => {
     // settings.shaders off -> remount happens on the next navigation; good enough for a settings toggle
-    if (!cv || !smokeAllowed(location.pathname, $settings.shaders)) return;
+    if (!cv || !smokeAllowed(location.pathname, $settings.shaders, idle)) return;
     const gl = smokeGL<WebGL2RenderingContext>(cv);
     run = gl && runSmoke(cv, gl, () => accent);
     if (!run) (gl?.getExtension('WEBGL_lose_context') as WEBGL_lose_context | null)?.loseContext();

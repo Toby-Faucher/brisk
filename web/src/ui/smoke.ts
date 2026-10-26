@@ -9,7 +9,8 @@ export function smokeGL<T extends GLish>(canvas: { getContext(id: string, opts?:
 }
 
 /** Shaders are off on the Stream route (no WebGL context next to video decode) or when the setting says so. */
-export const smokeAllowed = (path: string, shaders: boolean) => shaders && !/^\/stream(\/|$)/.test(path);
+// `idle`: the Stream page's "Nothing is streaming" state; the caller unmounts the smoke before a session starts.
+export const smokeAllowed = (path: string, shaders: boolean, idle = false) => shaders && (idle || !/^\/stream(\/|$)/.test(path));
 
 /** '#5eead4' -> linear RGB for the shader. */
 export function accentLinear(hex: string): [number, number, number] {

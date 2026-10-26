@@ -4,10 +4,11 @@
   import { navigate } from 'astro:transitions/client';
   import { api, type StreamInfo, type StreamReq } from '../../state/api';
   import { host } from '../../state/host';
-  import { settings } from '../../state/settings';
+  import { ACCENT_HEX, settings } from '../../state/settings';
   import { games, watchGames } from '../../state/games';
   import { forgetPrefs, prefs, saver, savedBody, startGame, watchPrefs } from '../../state/prefs';
   import { onCommand } from '../../state/commands';
+  import Smoke from '../../ui/Smoke.svelte';
   import { toast } from '../../shell/Toasts.svelte';
   import { startVideo } from '../../lib/video';
   import { startAudio } from '../../lib/audio';
@@ -383,6 +384,7 @@
       </div>
     {/if}
   {:else if page === 'idle'}
+    <div class="bg" aria-hidden="true"><Smoke idle accent={ACCENT_HEX[$settings.accent]} /></div>
     <div class="center glass card">
       <h3>Nothing is streaming</h3>
       <p class="muted">Start the desktop of {$host?.name ?? 'your host'}, or pick a game in the Library.</p>
@@ -409,6 +411,7 @@
   /* Covers the shell (sidebar included): the stream is the whole window. */
   .stream { position: fixed; inset: 0; z-index: 30; background: #000; }
   .stage { position: absolute; inset: 0; display: grid; }
+  .bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: .5; }
   .stage :global(canvas) { width: 100%; height: 100%; object-fit: contain; outline: none; display: block; }
   .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   .pill { display: flex; gap: 10px; align-items: center; padding: 10px 18px; border-radius: 999px; font-weight: 500; }

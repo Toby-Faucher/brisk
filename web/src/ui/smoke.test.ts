@@ -16,5 +16,7 @@ describe('smoke', () => {
     expect(smokeAllowed('/stream', true)).toBe(false);
     expect(smokeAllowed('/stream/', true)).toBe(false);
     expect(smokeAllowed('/streamers', true)).toBe(true);
+    expect(smokeAllowed('/stream', true, true)).toBe(true);
+    expect(smokeAllowed('/stream', false, true)).toBe(false);
   });
 });
