@@ -125,6 +125,8 @@ export interface VideoStats {
   width: number;
   height: number;
   framesReceived: number;
+  /// Video payload + header bytes received (Chrome's transport getStats() reports 0 for this).
+  bytesReceived: number;
   framesDecoded: number;
   framesPresented: number;
   /// Received but not decoded (waiting for a key frame, gaps, stale).
@@ -167,7 +169,7 @@ export interface Video {
 export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): Video {
   const stats: VideoStats = {
     codec: null, supported: null, hardwareAcceleration: null, width: 0, height: 0,
-    framesReceived: 0, framesDecoded: 0, framesPresented: 0, framesDropped: 0, framesSkipped: 0,
+    framesReceived: 0, bytesReceived: 0, framesDecoded: 0, framesPresented: 0, framesDropped: 0, framesSkipped: 0,
     streamsReset: 0, decodeErrors: 0, keyRequests: 0, decodeQueueSize: 0, lastError: null,
     bridgeCaptureMs: new Window(), decodeMs: new Window(), presentMs: new Window(),
     rafMs: new Window(), drawMs: new Window(), stalls: [], lastBytes: 0, tinyRun: 0, tinyMax: 0,
@@ -265,6 +267,7 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
   const onFrame = (b: Uint8Array, arrival: number) => {
     const h = parseHeader(b);
     stats.framesReceived++;
+    stats.bytesReceived += b.length;
     stats.lastBytes = b.length - HEADER_LEN;
     if (stats.lastBytes < 300) {
       if (++stats.tinyRun > stats.tinyMax) stats.tinyMax = stats.tinyRun;

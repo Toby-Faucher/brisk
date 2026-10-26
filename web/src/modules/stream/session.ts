@@ -220,7 +220,7 @@ export class StreamSession {
       if (conn !== this.conn) return;
       const dt = (at - prev.at) / 1000;
       const rtt = ts?.smoothedRtt ?? null;
-      const bytes = ts?.bytesReceived ?? null;
+      const bytes = s.bytesReceived ?? null; // Chrome's getStats().bytesReceived is 0
       const fps = dt > 0 ? (s.framesPresented - prev.frames) / dt : 0;
       const mbps = bytes !== null && prev.bytes !== null && dt > 0 ? ((bytes - prev.bytes) * 8) / dt / 1e6 : 0;
       prev = { at, frames: s.framesPresented, bytes };
