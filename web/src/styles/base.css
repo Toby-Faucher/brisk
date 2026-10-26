@@ -78,9 +78,19 @@ html:active-view-transition-type(library) {
   &::view-transition-group(*) { animation-duration: var(--dur-tab); animation-timing-function: var(--ease); }
   &::view-transition-old(*), &::view-transition-new(*) { animation-duration: var(--dur-tab); }
 }
+/* Shared-element morph (ui/motion.ts morph(), type `morph`: the History session cover): same rules, the one named
+   element glides on the snappy spring and its two snapshots cross-fade quickly, so the sharp new cover shows early. */
+html:active-view-transition-type(morph) {
+  view-transition-name: none;
+  &::view-transition { pointer-events: none; }
+  &::view-transition-group(*) { animation-duration: var(--spring-snappy-dur); animation-timing-function: var(--spring-snappy); }
+  &::view-transition-old(*), &::view-transition-new(*) { animation-duration: var(--dur-tab); animation-timing-function: var(--ease); }
+}
 /* Motion only; sounds are not affected by this preference. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  /* a view transition already running when reduced motion switches on ends at once */
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 
 /* One scrollbar for the whole app (Chrome only, so ::-webkit-scrollbar: the standard scrollbar-width/-color

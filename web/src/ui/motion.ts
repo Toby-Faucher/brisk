@@ -158,6 +158,48 @@ export function glideSwap(root: Element | undefined, sel: string, change: () => 
   if (now && now !== old) glide(now, from, box(now), { pseudo: '::before' });
 }
 
+let morphing: { t: ViewTransition; untag(): void } | null = null;
+
+/**
+ * Shared-element view transition of ONE element that `update` replaces (History: a session's cover grows into the
+ * detail header and back). `pick()` finds it: the old one is named `name` before, the new one after `update` (which
+ * must leave the DOM done, flushSync), and only those; type `morph` keeps the root out of the capture (base.css), so the
+ * rest of the page stays live and no click is swallowed. A second call skips the running one and takes its name off at
+ * once (never two elements with one name); names come off when it ends, is skipped or fails. Plain `update()` without
+ * support, under reduced motion, on /stream, during the router's own transition or with no old element.
+ */
+export function morph(name: string, pick: () => HTMLElement | null | undefined, update: () => void): ViewTransition | null {
+  skipMorph();
+  const old = pick();
+  if (!old || !document.startViewTransition || !motionAllowed() || document.documentElement.hasAttribute('data-astro-transition')) return update(), null;
+  const tagged: HTMLElement[] = [];
+  const tag = (el: HTMLElement | null | undefined) => el && ((el.style.viewTransitionName = name), tagged.push(el));
+  const untag = () => {
+    for (const el of tagged.splice(0)) {
+      el.style.removeProperty('view-transition-name');
+      if (!el.getAttribute('style')) el.removeAttribute('style');
+    }
+  };
+  tag(old);
+  const me = { t: null as unknown as ViewTransition, untag };
+  // A skipped transition still runs its update later: it then names nothing (the newer one owns the name).
+  me.t = document.startViewTransition({ update: () => (untag(), update(), morphing === me && tag(pick())), types: ['morph'] });
+  morphing = me;
+  const done = () => (untag(), morphing === me && (morphing = null));
+  me.t.ready.catch(() => {});
+  me.t.updateCallbackDone.catch(() => {});
+  me.t.finished.then(done, done);
+  return me.t;
+}
+
+/** End a running `morph` now (its update still happens), e.g. when the component that started it is destroyed. */
+export function skipMorph() {
+  if (!morphing) return;
+  morphing.t.skipTransition();
+  morphing.untag();
+  morphing = null;
+}
+
 const DRAW = ['pathLength', 'stroke-dasharray', 'stroke-dashoffset'];
 
 /**

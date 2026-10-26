@@ -1,11 +1,14 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { flushSync, onMount, tick } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
+  import type { TransitionBeforePreparationEvent } from 'astro:transitions/client';
   import { enter } from '../../shell/reveal';
   import { api, type SeriesPoint, type SessionRec } from '../../state/api';
   import { games, watchGames } from '../../state/games';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import Tip from '../../ui/Tip.svelte';
+  import { morph, skipMorph } from '../../ui/motion';
   import { DASH, fmtDuration } from '../home/home';
   import { chartRows, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows } from './history';
 
@@ -18,7 +21,11 @@
   let details = $state<Record<number, Detail | 'none'>>({});
   const shown = $derived(listState(list, failed));
   const detail = $derived(selected === null ? undefined : details[selected]); // only read while a session is selected
-  const cover = (appid: number | null) => $games?.games.find((g) => g.appid === appid)?.cover;
+  const bad = new SvelteSet<string>(); // cover URLs that failed to load: the placeholder shows, in the list and the header
+  const cover = (appid: number | null) => {
+    const c = $games?.games.find((g) => g.appid === appid)?.cover;
+    return c && !bad.has(c) ? c : undefined;
+  };
 
   // The list rows carry their sparkline; only an opened session is fetched, once.
   const asked = new Set<number>();
@@ -31,12 +38,35 @@
     );
   }
 
-  function open(id: number | null, push = true) {
-    selected = id;
-    if (id !== null) load(id);
-    if (push) history.pushState(null, '', id === null ? '/history' : `/history?session=${id}`);
-    swapped = true;
-    window.scrollTo({ top: 0, behavior: 'instant' });
+  // List <-> detail. The session's cover is the shared element (motion.ts morph: a view transition naming only that
+  // cover). `want` is the latest target, so updates that run late (a skipped transition still runs its update) agree.
+  let want: number | null = null;
+  function swap(id: number | null) {
+    const from = selected;
+    const moving = id ?? from; // whose cover moves: the opened one, or on the way back the one we leave
+    want = id;
+    morph('session-cover', () => (moving === null ? null : document.querySelector<HTMLElement>(`[data-cover="${moving}"]`)), () => {
+      selected = want;
+      if (want !== null) load(want);
+      swapped = true;
+      flushSync();
+      // focus moves before the new snapshot is taken, so its scroll is already in it (instant: html scrolls smoothly)
+      if (selected !== null) {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        document.querySelector<HTMLElement>('#session-title')?.focus({ preventScroll: true });
+      } else if (from !== null) {
+        const a = document.querySelector<HTMLElement>(`a.fill[data-session="${from}"]`);
+        a?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        a?.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function open(id: number | null) {
+    // the router's state (same index) on our entries too, so coming back to one from another page is the router's
+    // navigation (with null state it ignored it: another page's content under this URL); within History `keep` holds it
+    history.pushState(history.state && { ...history.state, scrollX: 0, scrollY: 0 }, '', id === null ? '/history' : `/history?session=${id}`);
+    swap(id);
   }
 
   onMount(() => {
@@ -50,27 +80,38 @@
       },
       () => (failed = true),
     );
-    // Our entries carry no state, so Astro's router leaves them to us.
-    const pop = () => ((selected = sessionParam(location.search)), (swapped = true));
+    // Back/forward between History's own entries is ours. They all carry the router's state, so it would refetch and
+    // swap the whole page for each (no morph, focus lost). Its preparation event is the hook it offers: a loader that
+    // never settles leaves that navigation pending (the next router navigation aborts it). Its popstate listener runs
+    // before ours (registered first), so this is set in time.
+    const here = location.pathname;
+    const keep = (e: TransitionBeforePreparationEvent) => e.navigationType === 'traverse' && e.to.pathname === here && (e.loader = () => new Promise<void>(() => {}));
+    const pop = () => location.pathname === here && swap(sessionParam(location.search));
+    document.addEventListener('astro:before-preparation', keep);
     window.addEventListener('popstate', pop);
-    return () => (window.removeEventListener('popstate', pop), unwatch());
+    return () => (skipMorph(), document.removeEventListener('astro:before-preparation', keep), window.removeEventListener('popstate', pop), unwatch());
   });
 </script>
 
 {#if selected !== null}
   {@const s = detail && detail !== 'none' ? detail.session : list?.find((r) => r.started === selected)}
+  {@const c = s && cover(s.appid)}
   <div class:swap-in={swapped}>
   <div class="top">
     <button class="btn ghost back" onclick={() => open(null)}><Icon name="chev" size={14} /> History</button>
-    {#if s}
-      <h2>{s.name}</h2>
-      {#if s.stats?.gate}<!-- svelte-ignore a11y_no_noninteractive_tabindex (focusable so keyboard users get its Tip too) -->
-      <span class="gate {s.stats.gate}" role="note" tabindex="0">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span><Tip label="M2 gate: bridge write p50 within 2 ms of the host's own" placement="bottom" />{/if}
-    {/if}
   </div>
-  {#if s}
-    <p class="meta mono">{fmtWhen(s.started)} · {fmtDuration(s.started, s.ended)} · {qualityLabel(s)}</p>
-  {/if}
+  <!-- fixed-size cover box: the header keeps its height when the image or the record arrives -->
+  <div class="dh">
+    {#if c}<img class="hcover" data-cover={selected} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="hcover" data-cover={selected}></div>{/if}
+    <div class="dt">
+      <div class="dn">
+        <h2 id="session-title" tabindex="-1">{s?.name ?? 'Session'}</h2>
+        {#if s?.stats?.gate}<!-- svelte-ignore a11y_no_noninteractive_tabindex (focusable so keyboard users get its Tip too) -->
+        <span class="gate {s.stats.gate}" role="note" tabindex="0">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span><Tip label="M2 gate: bridge write p50 within 2 ms of the host's own" placement="bottom" />{/if}
+      </div>
+      {#if s}<p class="meta mono">{fmtWhen(s.started)} · {fmtDuration(s.started, s.ended)} · {qualityLabel(s)}</p>{/if}
+    </div>
+  </div>
   {#if detail === undefined}
     <p class="lab pad">Loading…</p>
   {:else if detail === 'none'}
@@ -106,9 +147,9 @@
         {@const path = sparkPath(s.spark ?? [], 120, 28)}
         {@const c = cover(s.appid)}
         <Card cols={1}>
-          <a class="fill" href="/history?session={s.started}" onclick={(e) => (e.preventDefault(), open(s.started))} aria-label="{s.name}, {fmtWhen(s.started)}"></a>
+          <a class="fill" href="/history?session={s.started}" data-session={s.started} onclick={(e) => (e.preventDefault(), open(s.started))} aria-label="{s.name}, {fmtWhen(s.started)}"></a>
           <div class="head">
-            {#if c}<img class="cover" src={c} alt="" />{:else}<div class="cover"></div>{/if}
+            {#if c}<img class="cover" data-cover={s.started} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="cover" data-cover={s.started}></div>{/if}
             <div class="txt"><b>{s.name}</b><div class="lab">{fmtWhen(s.started)}</div></div>
             {#if s.stats?.gate}<span class="gate {s.stats.gate}">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span>{/if}
           </div>
@@ -135,7 +176,12 @@
   h3 { font-size: 13px; font-weight: 600; margin: 22px 0 8px; color: #c4cad6; }
   .back { padding: 5px 10px 5px 6px; font-size: 13px; }
   .back :global(svg) { transform: scaleX(-1); }
-  .meta { color: var(--muted); font-size: 12.5px; margin: 12px 2px 14px; }
+  .meta { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+  .dh { display: flex; align-items: center; gap: 18px; padding: 18px 2px 16px; }
+  .hcover { width: 112px; height: 112px; border-radius: 18px; flex: 0 0 auto; object-fit: cover; background: linear-gradient(135deg, var(--panel2), var(--line)); }
+  .dt { min-width: 0; }
+  .dn { display: flex; align-items: center; gap: 12px; }
+  h2:focus { outline: none; } /* focused by script on open (where a keyboard user lands); not a control */
   .pad { padding: 16px 2px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding-top: 16px; }
   .fill { position: absolute; inset: 0; z-index: 1; }
