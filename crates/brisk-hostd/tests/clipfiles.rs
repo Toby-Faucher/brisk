@@ -402,6 +402,17 @@ async fn post_sets_clipboard_without_echo() {
         .await;
     assert_eq!(r.status(), StatusCode::NO_CONTENT);
     assert_eq!(t.fake.writes.lock().unwrap()[1].kind, Kind::Image);
+    // Over axum's 2 MiB default, under the 16 MiB cap.
+    let big = vec![b'a'; 3 << 20];
+    let r = t
+        .send(req(
+            "POST",
+            "/api/clipboard",
+            Some("text/plain"),
+            Body::from(big),
+        ))
+        .await;
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
