@@ -116,27 +116,35 @@ cmd_install() {
   local tmp changed=0 was=0; tmp=$(mktemp)
   sed "s#%h/Projects/brisk#$here#g" "$src/deploy/$UNIT" > "$tmp"
   [ "$here" = "$HOME/Projects/brisk" ] || echo "note: the unit runs $here (not ~/Projects/brisk)"
-  if cmp -s "$tmp" "$UNIT_DIR/$UNIT"; then echo "unit unchanged"; rm -f "$tmp"
-  else
+  local pending=0 why
+  systemctl --user is-active -q "$UNIT" && was=1
+  if cmp -s "$tmp" "$UNIT_DIR/$UNIT"; then
+    rm -f "$tmp"
+    # Same file, but the running process may predate it (an earlier install that could not restart).
+    if [ $was = 1 ] && unit_newer_than_service; then pending=1; echo "unit installed but service not restarted yet"
+    else echo "unit unchanged"; fi
+  else changed=1; fi
+  # Over a live stream nothing is written and the manager is not reloaded: a reload could hand the
+  # running process the new unit's settings (e.g. a watchdog it never pings).
+  if [ $was = 1 ] && [ $((changed + pending)) -gt 0 ] && ! why=$(restart_ok); then
+    rm -f "$tmp"
+    if [ $changed = 1 ]; then die "unit changed; not installed while $why; run $0 install again when idle (or FORCE=1)"; fi
+    die "unit installed but service not restarted yet; not restarting while $why; run $0 install again when idle (or FORCE=1)"
+  fi
+  if [ $changed = 1 ]; then
     # The previous unit is kept as .bak: a new unit that does not come up is rolled back to it.
     [ -f "$UNIT_DIR/$UNIT" ] && cp -p "$UNIT_DIR/$UNIT" "$UNIT_DIR/$UNIT.bak"
-    mv "$tmp" "$UNIT_DIR/$UNIT"; chmod 644 "$UNIT_DIR/$UNIT"; echo "wrote $UNIT_DIR/$UNIT"; changed=1
+    mv "$tmp" "$UNIT_DIR/$UNIT"; chmod 644 "$UNIT_DIR/$UNIT"; echo "wrote $UNIT_DIR/$UNIT"
   fi
-  systemctl --user is-active -q "$UNIT" && was=1
   systemctl --user daemon-reload
   # Type=notify: start blocks until READY and fails on a timeout; judged below, not by set -e.
-  local started=1 tried=$changed
+  local started=1 tried=$((changed + pending))
   systemctl --user enable --now "$UNIT" || started=0
   # enable --now leaves a running unit alone: a changed unit needs a restart to apply.
-  if [ $changed = 1 ] && [ $was = 1 ]; then
-    local why
-    if why=$(restart_ok); then
-      systemctl --user restart "$UNIT" || true; echo "restarted $UNIT (unit changed)"
-    else
-      tried=0; echo "unit changed but not restarting ($why); run $0 install again later (or FORCE=1)"
-    fi
+  if [ $was = 1 ] && [ $tried -gt 0 ]; then
+    systemctl --user restart "$UNIT" || true; echo "restarted $UNIT (unit changed)"
   fi
-  if [ "$tried" = 1 ] && ! came_up; then rollback; fi
+  if [ $tried -gt 0 ] && ! came_up; then rollback; fi
   [ $started = 1 ] || die "$UNIT failed to start ($0 logs)"
   echo "enabled and started $UNIT. Next: $0 serve-on, then $0 doctor"
 }
@@ -155,13 +163,25 @@ came_up() {
   return 1
 }
 
-# The new unit did not come up: put the previous one back and start it.
+# The unit file is newer than the running process (whole seconds; same second = applied).
+unit_newer_than_service() {
+  local t
+  t=$(systemctl --user show -p ActiveEnterTimestamp --timestamp=unix "$UNIT" 2>/dev/null | sed -n 's/^ActiveEnterTimestamp=@//p')
+  [[ $t =~ ^[0-9]+$ ]] && [ "$(stat -c %Y "$UNIT_DIR/$UNIT")" -gt "$t" ]
+}
+
+# The new unit did not come up: put the previous one back and start it. Without a previous unit
+# (a first install) it is disabled, so it cannot restart-loop at boot.
 rollback() {
   local b=$UNIT_DIR/$UNIT.bak
-  [ -f "$b" ] || die "new unit failed to come up and there is no previous unit ($b) to restore; see $0 logs"
+  if [ ! -f "$b" ]; then
+    systemctl --user disable --now "$UNIT" || true
+    die "new unit failed to come up and there is no previous unit ($b) to restore; $UNIT disabled; see $0 logs"
+  fi
   cp -p "$b" "$UNIT_DIR/$UNIT"
   systemctl --user daemon-reload
   systemctl --user restart "$UNIT" || true
+  came_up || die "new unit failed; previous unit restored but it did not come up either (see $0 logs)"
   die "new unit failed; previous unit restored (see $0 logs)"
 }
 

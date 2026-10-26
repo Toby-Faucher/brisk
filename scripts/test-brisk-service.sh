@@ -12,7 +12,7 @@ stub() { printf '#!/bin/bash\necho "%s $*" >> "%s"\n%s\n' "$1" "$L" "$2" > "$t/b
 # ACT_FAIL: a unit without the "# old" mark (the new one) fails to start; the old one starts.
 stub systemctl 'case $2 in
   show) case "$*" in
-    *brisk-hostd*) printf "Type=%s\nSubState=%s\nStatusText=%s\nWatchdogUSec=%s\n" "${S_TYPE-notify}" "${S_SUB-running}" "${S_STATUS-serving 127.0.0.1:8443, stream idle}" "${S_WD-30s}";;
+    *brisk-hostd*) printf "Type=%s\nSubState=%s\nStatusText=%s\nWatchdogUSec=%s\nActiveEnterTimestamp=%s\n" "${S_TYPE-notify}" "${S_SUB-running}" "${S_STATUS-serving 127.0.0.1:8443, stream idle}" "${S_WD-1min}" "${S_START:+@$S_START}";;
     *) echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }";;
   esac;;
   is-active) [ -f "$T/state" ] && exit "$(cat "$T/state")"; exit "${SVC_ACTIVE:-3}";;
@@ -107,10 +107,25 @@ echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "install over a changed unit failed"
 grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "changed unit not restarted"
 : > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "unchanged unit restarted"
-echo '# old' >> "$U"
-: > "$L"; SVC_ACTIVE=0 STREAM=live "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted over a live stream"
-echo '# old' >> "$U"
-: > "$L"; SVC_ACTIVE=0 STREAM=down "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted with the API down"
+# a changed unit while a stream is live (or the API is silent): nothing written, no backup, no reload
+for e in STREAM=live STREAM=down; do
+  echo '# old' >> "$U"; old=$(cat "$U"); rm -f "$U.bak"
+  : > "$L"; out=$(env SVC_ACTIVE=0 "$e" "$B" install 2>&1) && fail "$e: install of a changed unit succeeded"
+  grep -q 'unit changed; not installed while' <<<"$out" || fail "$e: no 'not installed' message: $out"
+  [ "$(cat "$U")" = "$old" ] || fail "$e: unit file changed"
+  [ -e "$U.bak" ] && fail "$e: backup created"
+  grep -qE 'daemon-reload|restart|enable' "$L" && fail "$e: manager touched"
+done
+# same file but newer than the running process (an install that could not restart): restart when idle
+SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "idle install of the changed unit failed"
+touch -d '1 hour ago' "$U"; : > "$L"; SVC_ACTIVE=0 S_START=$(date +%s) "$B" install >/dev/null 2>&1
+grep -q restart "$L" && fail "restarted a service started after its unit"
+touch "$U"; s=$(( $(date +%s) - 60 ))
+: > "$L"; out=$(SVC_ACTIVE=0 S_START=$s STREAM=live "$B" install 2>&1) && fail "pending unit: install over a live stream succeeded"
+grep -q 'unit installed but service not restarted yet' <<<"$out" || fail "pending unit not reported: $out"
+grep -qE 'daemon-reload|restart' "$L" && fail "pending unit: manager touched over a live stream"
+: > "$L"; out=$(SVC_ACTIVE=0 S_START=$s "$B" install 2>&1) || fail "pending unit, idle: install failed: $out"
+grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "pending unit not restarted when idle"
 echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" install >/dev/null 2>&1; grep -q '^systemctl --user restart' "$L" || fail "FORCE=1 did not restart"
 
@@ -125,13 +140,17 @@ for e in ACT_FAIL=1 LOCAL=down; do
   : > "$L"; out=$(env SVC_ACTIVE=0 "$e" "$B" install 2>&1) && fail "install succeeded with $e"
   grep -q 'new unit failed; previous unit restored' <<<"$out" || fail "$e: no restore message: $out"
   [ "$(cat "$U")" = "$old" ] || fail "$e: previous unit not restored"
-  [ "$(grep -c '^systemctl --user daemon-reload' "$L")" = 2 ] && [ "$(tail -1 "$L")" = 'systemctl --user restart brisk-hostd.service' ] \
-    || fail "$e: restored unit not reloaded and restarted"
+  [ "$(grep -c '^systemctl --user daemon-reload' "$L")" = 2 ] || fail "$e: restored unit not reloaded"
+  # a restart after the second reload, then the came_up check again
+  awk '/daemon-reload/ { n++ } n == 2 && /^systemctl --user restart / { r = 1 } r && /^curl .*8443\/api\/host/ { c = 1 } END { exit !c }' "$L" \
+    || fail "$e: restored unit not restarted and checked"
 done
+grep -q 'did not come up either' <<<"$out" || fail "LOCAL=down: restored unit's failure not reported: $out"
 # no backup (a first install that fails): says so, exits non-zero
 rm -f "$U" "$U.bak"
 out=$(ACT_FAIL=1 "$B" install 2>&1) && fail "a failing first install succeeded"
 grep -q 'no previous unit' <<<"$out" || fail "missing backup not reported: $out"
+grep -q '^systemctl --user disable --now brisk-hostd.service' "$L" || fail "failed first install left enabled"
 "$B" install >/dev/null 2>&1 || fail "reinstall after the failed first install"
 
 # serve-on/off: only ever the :8443 mapping; without operator rights a sudoq line, no call.
