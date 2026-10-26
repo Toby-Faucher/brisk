@@ -15,6 +15,7 @@ vi.mock('animejs/animation', () => ({
     return a;
   },
 }));
+vi.mock('animejs/svg', () => ({ createDrawable: (el: unknown) => [el] }));
 vi.mock('animejs/easings', () => ({ cubicBezier: (...p: number[]) => Object.assign((t: number) => t, { p }) }));
 vi.mock('animejs/scope', () => ({
   createScope: () => {
@@ -64,7 +65,7 @@ describe('guards', () => {
     expect(e.text.data).toBe('63 °C');
     expect(m.glide(e, { x: 0, y: 0, w: 10, h: 10 }, { x: 0, y: 40, w: 10, h: 10 })).toBeNull();
   });
-  it('/streaming-like paths elsewhere are not the stream route', () => {
+  it('only /stream and /stream-* paths are the stream route', () => {
     expect(m.onStreamRoute('/library')).toBe(false);
     expect(m.onStreamRoute('/stream-legacy')).toBe(true); // also a stream page
   });
@@ -215,5 +216,96 @@ describe('glide', () => {
     reduce = true;
     expect(m.glide(e, { x: 0, y: 0, w: 5, h: 5 }, { x: 0, y: 50, w: 5, h: 5 })).toBeNull();
     expect(e.animate).not.toHaveBeenCalled();
+  });
+});
+
+describe('count edge values', () => {
+  it('NaN/Infinity never tween; null or NaN resets a CSS prop (the ring empties)', async () => {
+    const e = el();
+    m.count(40, String, '--p')(e);
+    m.count(Number.NaN, String, '--p')(e);
+    expect(e.props['--p']).toBe('0');
+    m.count(Infinity, String, '--p')(e);
+    m.count(50, String, '--p')(e);
+    m.count(null, String, '--p')(e);
+    await flush();
+    expect(anims).toHaveLength(0);
+    expect(e.props['--p']).toBe('0');
+  });
+});
+
+function svgEl() {
+  const attrs: Record<string, string> = {};
+  return { attrs, setAttribute: (k: string, v: string) => (attrs[k] = v), removeAttribute: (k: string) => delete attrs[k], style: { removeProperty: vi.fn() } } as any;
+}
+
+describe('drawIn', () => {
+  it('hides the line at once, draws 0 0 -> 0 1 with --dur-draw, and leaves no dash attributes when done', async () => {
+    vars['--dur-draw'] = '700ms';
+    const p = svgEl();
+    m.drawIn(p);
+    expect(p.attrs).toEqual({ pathLength: '1000', 'stroke-dasharray': '0 1010' });
+    await flush();
+    expect(anims[0].obj).toEqual([p]);
+    expect(anims[0].p.draw).toEqual(['0 0', '0 1']);
+    expect(anims[0].p.duration).toBe(700);
+    anims[0].complete();
+    expect(p.attrs).toEqual({});
+  });
+  it('destroy mid-draw cancels and cleans; reduced motion does nothing', async () => {
+    const p = svgEl();
+    const off = m.drawIn(p)!;
+    await flush();
+    off();
+    expect(anims[0].cancelled).toBe(true);
+    expect(p.attrs).toEqual({});
+    reduce = true;
+    const q = svgEl();
+    expect(m.drawIn(q)).toBeUndefined();
+    expect(q.attrs).toEqual({});
+  });
+});
+
+describe('fadeIn', () => {
+  it('native opacity fade with a delay, cancelled on destroy; nothing under reduced motion', () => {
+    const cancel = vi.fn();
+    const e = { animate: vi.fn(() => ({ cancel })) } as any;
+    const off = m.fadeIn(250)(e)!;
+    expect(e.animate.mock.calls[0][0]).toEqual({ opacity: [0, 1] });
+    expect(e.animate.mock.calls[0][1]).toMatchObject({ delay: 250, fill: 'backwards' });
+    off();
+    expect(cancel).toHaveBeenCalled();
+    reduce = true;
+    const f = { animate: vi.fn() } as any;
+    expect(m.fadeIn()(f)).toBeUndefined();
+    expect(f.animate).not.toHaveBeenCalled();
+  });
+});
+
+describe('glideSwap', () => {
+  const chip = (x: number, w: number) => ({ getBoundingClientRect: () => ({ left: x, top: 0, width: w, height: 20 }), animate: vi.fn() }) as any;
+  it("glides the new selection's ::before from the old one, after the change", () => {
+    const a = chip(0, 40), b = chip(100, 60);
+    let sel = a;
+    const root = { querySelector: () => sel } as any;
+    const change = vi.fn(() => (sel = b));
+    m.glideSwap(root, '[aria-pressed="true"]', change);
+    expect(change).toHaveBeenCalled();
+    const [kf, opt] = b.animate.mock.calls[0];
+    expect(kf[0]).toEqual({ translate: '-100px 0px', scale: `${40 / 60} 1` });
+    expect(opt.pseudoElement).toBe('::before');
+  });
+  it('same item, no previous selection or no root: just the change', () => {
+    const a = chip(0, 40);
+    const change = vi.fn();
+    m.glideSwap({ querySelector: () => a } as any, 's', change);
+    m.glideSwap({ querySelector: () => null } as any, 's', change);
+    m.glideSwap(undefined, 's', change);
+    expect(change).toHaveBeenCalledTimes(3);
+    expect(a.animate).not.toHaveBeenCalled();
+  });
+  it('glide refuses a zero-size previous box', () => {
+    const e = el();
+    expect(m.glide(e, { x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 40, w: 10, h: 10 })).toBeNull();
   });
 });

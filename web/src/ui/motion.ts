@@ -72,7 +72,7 @@ export function tweenNumber(el: HTMLElement, to: number, o: { from?: number | nu
       onComplete: () => (live.delete(a), write((cur = to))),
     });
     live.add((anim = a));
-  });
+  }).catch(() => dead || write((cur = to))); // chunk failed to load: show the new value, never the stale one
   return {
     cancel() {
       dead = true;
@@ -92,13 +92,19 @@ function setText(el: HTMLElement, s: string) {
 const shown = new WeakMap<Element, number>();
 
 /**
+ * Every lazy path here falls back to its end state when the chunk fails to load (deploy restart, flaky network).
+ *
  * Svelte attachment for a number that changes after load: `<b {@attach count(c, fmtTemp)}>{fmtTemp(c)}</b>`. Svelte
  * still renders the value (server render, screen readers, the final text); on each later change the tween rolls the same
  * text node from the value on screen to the new one with the same formatter, so both always agree at rest. The first
  * value and null (shown as a dash by Svelte) never animate. Re-runs on change; the cleanup cancels a tween in flight.
  */
 export const count = (value: number | null | undefined, format: (v: number) => string, prop?: string) => (el: HTMLElement) => {
-  if (value == null) return void shown.delete(el);
+  if (value == null || !Number.isFinite(value)) {
+    shown.delete(el);
+    if (prop) el.style.setProperty(prop, '0'); // e.g. the ring empties when the host goes away
+    return;
+  }
   const t = tweenNumber(el, value, { from: shown.get(el), format, prop });
   shown.set(el, value);
   return () => shown.set(el, t.cancel());
@@ -173,7 +179,7 @@ export function drawIn(el: SVGGeometryElement) {
       onComplete: () => (live.delete(anim), clean()),
     });
     live.add((a = anim));
-  });
+  }).catch(() => dead || clean()); // chunk failed to load: show the full line rather than none
   return () => {
     dead = true;
     if (a) live.delete(a), a.cancel();

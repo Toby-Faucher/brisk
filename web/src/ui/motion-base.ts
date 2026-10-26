@@ -39,7 +39,7 @@ export const box = (el: Element): Box => {
  * flushSync) it is never seen at the new spot first. Null when nothing ran (no move, reduced motion, /stream).
  */
 export function glide(el: Element, from: Box, to: Box, o: { pseudo?: string; easing?: string } = {}): Animation | null {
-  if (!motionAllowed() || !to.w || !to.h) return null;
+  if (!motionAllowed() || !to.w || !to.h || !from.w || !from.h) return null; // a zero box would scale from a corner
   const dx = from.x - to.x, dy = from.y - to.y, sx = from.w / to.w, sy = from.h / to.h;
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return null;
   return el.animate(

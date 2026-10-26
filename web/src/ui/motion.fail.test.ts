@@ -1,0 +1,35 @@
+import { describe, expect, it, vi } from 'vitest';
+
+// A lazy chunk that fails to load (hostd restarted mid-deploy, flaky network) must leave the end state, not a stale one.
+vi.mock('animejs/animation', () => {
+  throw new Error('Failed to fetch dynamically imported module');
+});
+vi.mock('animejs/svg', () => {
+  throw new Error('Failed to fetch dynamically imported module');
+});
+vi.stubGlobal('location', { pathname: '/' });
+vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {} }));
+vi.stubGlobal('document', { documentElement: {} });
+vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+
+const m = await import('./motion');
+const settle = () => new Promise((r) => setTimeout(r, 10));
+
+describe('chunk load failure', () => {
+  it('tweenNumber shows the new value', async () => {
+    const text = { nodeType: 3, data: '', nextSibling: null };
+    const e = { firstChild: text } as any;
+    m.tweenNumber(e, 63, { from: 45, format: (v) => `${Math.round(v)} °C` });
+    expect(text.data).toBe('45 °C');
+    await settle();
+    expect(text.data).toBe('63 °C');
+  });
+  it('drawIn shows the full line', async () => {
+    const attrs: Record<string, string> = {};
+    const p = { setAttribute: (k: string, v: string) => (attrs[k] = v), removeAttribute: (k: string) => delete attrs[k], style: { removeProperty: () => {} } } as any;
+    m.drawIn(p);
+    expect(attrs['stroke-dasharray']).toBe('0 1010');
+    await settle();
+    expect(attrs).toEqual({});
+  });
+});

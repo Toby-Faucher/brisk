@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { box, glide, onStreamRoute } from '../ui/motion-base';
+  import { glide, onStreamRoute } from '../ui/motion-base';
   import { loadModules } from './registry';
   import HostPill from './HostPill.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -18,9 +18,11 @@
 
   // After a client navigation the highlight slides over from where it was (never on first load, never onto /stream).
   let nav: HTMLElement;
+  // layout box, not the rect: the clicked item is still hovered (translateX(2px)) when the next page mounts
+  const layoutBox = (el: HTMLElement): Box => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
   onMount(() => {
-    const el = nav.querySelector('[aria-current="page"]');
-    const now = el && box(el);
+    const el = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    const now = el && layoutBox(el);
     if (el && now && last && !onStreamRoute()) glide(el, last, now, { pseudo: '::before' });
     last = now;
   });
