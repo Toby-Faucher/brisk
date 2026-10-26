@@ -65,10 +65,10 @@ proptest! {
         let base0 = start & !3;
         let mut rx = AudioRx::new(0, KEY, 7);
         let mut out = Vec::new();
-        for b in 0..nblocks {
+        for (b, lost) in loss.iter().take(nblocks).enumerate() {
             let base = base0.wrapping_add(4 * b as u16);
             for (i, d) in block(base, len).iter().enumerate() {
-                if !loss[b].contains(&i) {
+                if !lost.contains(&i) {
                     out.extend(rx.push(d, b as u64 * 20_000_000).into_iter().map(|f| f.seq));
                 }
             }
