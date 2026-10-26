@@ -669,7 +669,9 @@ async fn start_returns_wt_and_hash() {
     assert!(
         log[0].contains("--host 127.0.0.1 --app 42 --listen 100.64.0.1:4433 --cert ")
             && log[0].contains("/.config/brisk/tls/bridge.pem --key ")
-            && log[0].contains("/.config/brisk/tls/bridge.key.pem --page http://localhost:8443/"),
+            && log[0].contains(
+                "/.config/brisk/tls/bridge.key.pem --codec h264 --page http://localhost:8443/"
+            ),
         "{log:?}"
     );
     r.call("DELETE", "/api/stream", "").await;
@@ -717,6 +719,44 @@ async fn preset_maps_to_flags() {
     }
     assert_eq!(r.log().len(), n, "a bad request must not touch the bridge");
     r.call("DELETE", "/api/stream", "").await;
+}
+
+#[tokio::test]
+async fn codec_is_passed_to_the_bridge() {
+    let r = rig("");
+    for (req, codec) in [
+        (r#"{"preset":"balanced"}"#, "h264"),
+        (r#"{"preset":"crisp","codec":"hevc"}"#, "hevc"),
+        (
+            r#"{"preset":"custom","width":1280,"height":720,"codec":"h264"}"#,
+            "h264",
+        ),
+    ] {
+        let (st, v) = r.call("POST", "/api/stream", req).await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["codec"], codec, "{req}");
+        assert_eq!(r.call("GET", "/api/stream", "").await.1["codec"], codec);
+        let log = r.log();
+        let last = log.iter().rev().find(|l| l.starts_with("start")).unwrap();
+        assert!(
+            last.contains(&format!(" --codec {codec} ")),
+            "{req}: {last}"
+        );
+    }
+    let n = r.log().len();
+    for bad in [
+        r#"{"preset":"balanced","codec":"av1"}"#,
+        r#"{"preset":"balanced","codec":1}"#,
+    ] {
+        let (st, v) = r.call("POST", "/api/stream", bad).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "{bad}: {v}");
+    }
+    assert_eq!(r.log().len(), n, "a bad codec must not touch the bridge");
+    r.call("DELETE", "/api/stream", "").await;
+    assert_eq!(
+        r.call("GET", "/api/stream", "").await.1["codec"],
+        serde_json::Value::Null
+    );
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import type { StreamInfo } from '../../state/api';
 import { RETRY_MS, StreamSession, pollLive, type Deps } from './session';
 
-const LIVE: StreamInfo = { state: 'live', preset: 'balanced', appid: 42, wt: 'https://h:4433/a', hash: 'aa' };
+const LIVE: StreamInfo = { state: 'live', preset: 'balanced', codec: 'h264', appid: 42, wt: 'https://h:4433/a', hash: 'aa' };
 
 function fakeTransport(ok = true) {
   let close!: () => void;

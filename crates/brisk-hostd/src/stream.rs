@@ -23,6 +23,24 @@ pub enum Preset {
     Custom,
 }
 
+/// The bridge's `--codec` value; H.264 unless the page asks for HEVC.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Codec {
+    #[default]
+    H264,
+    Hevc,
+}
+
+impl Codec {
+    fn flag(self) -> &'static str {
+        match self {
+            Codec::H264 => "h264",
+            Codec::Hevc => "hevc",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamReq {
@@ -31,6 +49,8 @@ pub struct StreamReq {
     pub height: Option<u32>,
     pub fps: Option<u32>,
     pub bitrate_kbps: Option<u32>,
+    #[serde(default)]
+    pub codec: Codec,
     /// Set on a fresh start from a game; the page omits it for a quality change.
     pub appid: Option<u32>,
 }
@@ -75,6 +95,7 @@ pub enum State {
 pub struct StreamInfo {
     pub state: State,
     pub preset: Option<Preset>,
+    pub codec: Option<Codec>,
     pub appid: Option<u32>,
     pub wt: Option<String>,
     pub hash: Option<String>,
@@ -83,6 +104,7 @@ pub struct StreamInfo {
 const IDLE: StreamInfo = StreamInfo {
     state: State::Idle,
     preset: None,
+    codec: None,
     appid: None,
     wt: None,
     hash: None,
@@ -177,6 +199,7 @@ impl Supervisor {
             s.info = StreamInfo {
                 state: State::Starting,
                 preset: Some(req.preset),
+                codec: Some(req.codec),
                 appid,
                 ..IDLE
             };
@@ -205,6 +228,8 @@ impl Supervisor {
             .arg("--key")
             .arg(&self.key)
             .args([
+                "--codec",
+                req.codec.flag(),
                 "--page",
                 "http://localhost:8443/",
                 "--width",
@@ -309,6 +334,7 @@ impl Supervisor {
         s.info = StreamInfo {
             state: State::Live,
             preset: Some(req.preset),
+            codec: Some(req.codec),
             appid,
             wt: Some(wt),
             hash: Some(hash),

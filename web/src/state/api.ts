@@ -18,10 +18,13 @@ export type HostInfo = {
   relay: string | null;
 };
 export type Preset = 'fast' | 'balanced' | 'crisp' | 'custom';
-export type StreamReq = { preset: Preset; width?: number; height?: number; fps?: number; bitrateKbps?: number; appid?: number };
+export type Codec = 'h264' | 'hevc';
+/** `codec` defaults to h264 on hostd. */
+export type StreamReq = { preset: Preset; width?: number; height?: number; fps?: number; bitrateKbps?: number; codec?: Codec; appid?: number };
 export type StreamInfo = {
   state: 'idle' | 'starting' | 'live';
   preset: Preset | null;
+  codec: Codec | null;
   appid: number | null;
   wt: string | null;
   hash: string | null;
