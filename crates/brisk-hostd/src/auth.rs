@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// The Host headers hostd answers: loopback on 8443, `BRISK_ALLOWED_HOSTS`, and this machine's
-/// tailnet name (`tailscale status --json` Self.DNSName, with and without :8443).
+/// tailnet name (`tailscale status --json` Self.DNSName, with :8443).
 pub struct Hosts {
     fixed: Vec<String>,
     tailnet: Mutex<Vec<String>>,
@@ -77,14 +77,11 @@ impl Hosts {
     }
 }
 
-/// `Self.DNSName` without its trailing dot, as `name:8443` and `name`.
+/// `Self.DNSName` without its trailing dot, as `name:8443` (the only port tailscale serve maps to us).
 pub fn tailnet_names(json: &str) -> Option<Vec<String>> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let n = v["Self"]["DNSName"].as_str()?.trim_end_matches('.');
-    (!n.is_empty()).then(|| {
-        let n = n.to_ascii_lowercase();
-        vec![format!("{n}:8443"), n]
-    })
+    (!n.is_empty()).then(|| vec![format!("{}:8443", n.to_ascii_lowercase())])
 }
 
 /// A request that came through `tailscale serve` from an allowed login. tailscaled sets

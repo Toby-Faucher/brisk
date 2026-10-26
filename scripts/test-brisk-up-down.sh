@@ -11,7 +11,7 @@ for c in cargo npm openssl python3 nice ionice; do printf '#!/bin/sh\necho "%s $
 printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/nice"; printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/ionice"
 printf '#!/bin/sh\n[ -n "${TS_NONE:-}" ] || echo 100.64.0.9\n' > "$t/bin/tailscale"
 printf '#!/bin/sh\necho "<currentgame>${GAME:-0}</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>"\n' > "$t/bin/curl"
-printf '#!/bin/sh\n[ "$2" = show ] && echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }"\n[ "$2" = is-active ] && exit "${SVC_ACTIVE:-3}"\nexit 0\n' > "$t/bin/systemctl"
+printf '#!/bin/sh\n[ "$2" = show ] && echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }"\n[ "$2" = is-active ] && exit "${SVC_ACTIVE:-3}"\n[ "$2" = is-enabled ] && exit "${SVC_ENABLED:-1}"\nexit 0\n' > "$t/bin/systemctl"
 # systemd-run: logs, fails if SR_FAIL, reports the enforced memory.max for the probe, else runs the command
 printf '#!/bin/sh\necho "systemd-run $*" >> "%s"\n[ -z "${SR_FAIL:-}" ] || exit 1\nwhile [ "$1" != -c3 ]; do shift; done; shift\n[ "$1" = sh ] && { echo 9663676416; exit 0; }\nexec "$@"\n' "$L" > "$t/bin/systemd-run"
 printf '#!/bin/sh\necho "sb $*" >> "%s"\n' "$L" > "$t/sb"
@@ -39,7 +39,12 @@ no_sb "no cap"
 grep -q 'running as a service: use scripts/brisk-service.sh' <<<"$out" || fail "brisk-up did not point at brisk-service.sh: $out"
 grep -q '^\(cargo\|systemd-run\)' "$L" && fail "brisk-up built beside the service"
 : > "$t/d/brisk.conf"; SVC_ACTIVE=0 "$s/brisk-down.sh" >/dev/null 2>&1 && fail "brisk-down ran beside the service"
-no_sb "service active"; rm -f "$t/d/brisk.conf"
+no_sb "service active"
+# ... and when it is only enabled (crashed, or between restarts).
+: > "$L"; SVC_ENABLED=0 "$s/brisk-up.sh" >/dev/null 2>&1 && fail "brisk-up ran beside an enabled service"
+grep -q '^\(cargo\|systemd-run\)' "$L" && fail "brisk-up built beside an enabled service"
+SVC_ENABLED=0 "$s/brisk-down.sh" >/dev/null 2>&1 && fail "brisk-down ran beside an enabled service"
+no_sb "service enabled"; rm -f "$t/d/brisk.conf"
 
 # 3. Bad listen address: refused before any Sunshine action.
 for env in BRISK_LISTEN=0.0.0.0:4433 BRISK_LISTEN=bawn:4433; do

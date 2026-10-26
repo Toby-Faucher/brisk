@@ -123,6 +123,15 @@ fn users_file_comments_and_permissions() {
     assert_eq!(load_users(&f), ["toby@example.com", "other@x.y"]);
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o666)).unwrap();
     assert!(load_users(&f).is_empty(), "group/world writable is ignored");
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let link = t.path().join("link");
+    std::os::unix::fs::symlink(&f, &link).unwrap();
+    assert!(load_users(&link).is_empty(), "a symlink is ignored");
+    // owned by someone else: /etc/hostname is root's, 0644
+    assert!(
+        load_users(Path::new("/etc/hostname")).is_empty(),
+        "not our uid"
+    );
     assert_eq!(
         list("a.ts.net:8443, a.ts.net,,"),
         ["a.ts.net:8443", "a.ts.net"]
@@ -193,7 +202,6 @@ async fn extra_and_tailnet_hosts_are_allowed_foreign_ones_are_not() {
         "127.0.0.1:8443",
         "brisk.example:8443",
         "BAWN.tail674625.ts.net:8443",
-        "bawn.tail674625.ts.net",
     ] {
         assert_eq!(
             status(&app, "/", Req { host: h, ..R }).await,
@@ -211,6 +219,10 @@ async fn extra_and_tailnet_hosts_are_allowed_foreign_ones_are_not() {
         "evil.ts.net:8443",
         "bawn.tail674625.ts.net.evil.test:8443",
         "other.tail674625.ts.net",
+        "bawn.tail674625.ts.net",
+        "bawn.tail674625.ts.net.:8443",
+        "localhost.:8443",
+        "[::1]:8443",
     ] {
         assert_eq!(
             status(
@@ -342,6 +354,110 @@ async fn empty_allowlist_means_secret_required() {
     assert_eq!(status(&app, "/api/nope", r).await, StatusCode::FORBIDDEN);
 }
 
+/// What a cross-site page could send with the laptop's identity attached by tailscale serve.
+#[tokio::test]
+async fn cross_site_requests_with_a_login_are_refused_and_get_no_cors() {
+    let (app, _st, _d) = app(Fake::new(Some(STATUS)), &[], &["toby@example.com"]);
+    let send = |m: &str, extra: &[(&str, &str)]| {
+        let mut b = Request::builder()
+            .method(m)
+            .uri("/api/stream")
+            .header("host", "localhost:8443")
+            .header("origin", "https://evil.example")
+            .header("tailscale-user-login", "toby@example.com");
+        for (k, v) in extra {
+            b = b.header(*k, *v);
+        }
+        let mut req = b.body(Body::from(r#"{"preset":"balanced"}"#)).unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo("127.0.0.1:5000".parse::<SocketAddr>().unwrap()));
+        app.clone().oneshot(req)
+    };
+    // preflight: refused, no access-control-* headers, so the browser never sends x-brisk-csrf
+    let r = send(
+        "OPTIONS",
+        &[
+            ("access-control-request-method", "POST"),
+            ("access-control-request-headers", "x-brisk-csrf"),
+        ],
+    )
+    .await
+    .unwrap();
+    assert_eq!(r.status(), StatusCode::FORBIDDEN);
+    assert!(
+        r.headers()
+            .keys()
+            .all(|k| !k.as_str().starts_with("access-control-")),
+        "{:?}",
+        r.headers()
+    );
+    // a "simple" text/plain POST (no preflight) carries the login but cannot carry the csrf header
+    let r = send("POST", &[("content-type", "text/plain")])
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::FORBIDDEN);
+}
+
+/// `update` swaps web/dist as a symlink between build dirs: hostd follows it per request but never
+/// serves anything outside the current build.
+#[tokio::test]
+async fn dist_symlink_is_followed_and_escapes_are_refused() {
+    let t = tempfile::tempdir().unwrap();
+    let (a, b) = (t.path().join("dist.1"), t.path().join("dist.2"));
+    for (d, s) in [(&a, "one"), (&b, "two")] {
+        std::fs::create_dir_all(d.join("_astro")).unwrap();
+        std::fs::write(d.join("index.html"), s).unwrap();
+        std::fs::write(d.join("_astro/x.js"), s).unwrap();
+    }
+    std::fs::write(t.path().join("outside.js"), "secret").unwrap();
+    std::os::unix::fs::symlink(t.path().join("outside.js"), a.join("_astro/leak.js")).unwrap();
+    std::os::unix::fs::symlink(t.path(), a.join("up")).unwrap();
+    let dist = t.path().join("dist");
+    std::os::unix::fs::symlink("dist.1", &dist).unwrap();
+    let mut cfg = Config::from_env(dist.clone());
+    cfg.secret = SECRET.into();
+    let app = router(Arc::new(AppState::with_host(
+        cfg,
+        Fake::new(None),
+        Arc::new(Clock0),
+    )));
+    let get = |p: &str| {
+        let req = Request::builder()
+            .uri(p)
+            .header("host", "localhost:8443")
+            .body(Body::empty())
+            .unwrap();
+        let app = app.clone();
+        async move {
+            let r = app.oneshot(req).await.unwrap();
+            let st = r.status();
+            let b = axum::body::to_bytes(r.into_body(), 1 << 16).await.unwrap();
+            (st, String::from_utf8_lossy(&b).to_string())
+        }
+    };
+    assert_eq!(get("/_astro/x.js").await, (StatusCode::OK, "one".into()));
+    for p in ["/_astro/leak.js", "/up/outside.js", "/_astro/gone.js"] {
+        assert_eq!(get(p).await.0, StatusCode::NOT_FOUND, "{p}");
+    }
+    // the swap: a new symlink renamed over the old one
+    std::os::unix::fs::symlink("dist.2", t.path().join("dist.tmp")).unwrap();
+    std::fs::rename(t.path().join("dist.tmp"), &dist).unwrap();
+    assert_eq!(get("/").await, (StatusCode::OK, "two".into()));
+    assert_eq!(get("/_astro/x.js").await, (StatusCode::OK, "two".into()));
+}
+
+#[test]
+fn service_page_line_has_no_secret() {
+    use brisk_hostd::config::page_line;
+    assert_eq!(
+        page_line(SECRET, false),
+        format!("page\thttp://localhost:8443/?s={SECRET}")
+    );
+    let l = page_line(SECRET, true);
+    assert!(!l.contains("?s=") && !l.contains(SECRET), "{l}");
+    assert!(l.starts_with("page\thttp://localhost:8443/") && l.contains("brisk-service.sh link"));
+}
+
 // ---- 4. bridge address and certificate ----
 
 #[test]
@@ -368,7 +484,12 @@ fn listen_is_the_tailscale_ip_or_brisk_listen_never_all_interfaces() {
 }
 
 fn age(p: &Path, days: f64) {
-    let t = SystemTime::now() - Duration::from_secs_f64(days * 86400.0);
+    let d = Duration::from_secs_f64(days.abs() * 86400.0);
+    let t = if days < 0.0 {
+        SystemTime::now() + d
+    } else {
+        SystemTime::now() - d
+    };
     std::fs::File::options()
         .write(true)
         .open(p)
@@ -395,15 +516,31 @@ fn cert_is_created_0600_kept_while_fresh_and_renewed_after_10_days() {
         2,
         "no temp files left"
     );
-    age(&c, 9.9);
+    let pair = |d: f64| {
+        age(&k, d);
+        age(&c, d);
+    };
+    pair(9.9);
     ensure_cert(&*fake, &dir, SystemTime::now()).unwrap();
     assert_eq!(fake.calls("openssl"), 1, "fresh: kept");
-    age(&c, 10.01);
+    pair(10.01);
     ensure_cert(&*fake, &dir, SystemTime::now()).unwrap();
     assert_eq!(fake.calls("openssl"), 2, "older than 10 days: renewed");
     std::fs::remove_file(&k).unwrap();
     ensure_cert(&*fake, &dir, SystemTime::now()).unwrap();
     assert_eq!(fake.calls("openssl"), 3, "missing key: renewed");
+    // a key newer than its cert is from another run (a renewal cut off between the renames)
+    pair(2.0);
+    age(&k, 1.0);
+    ensure_cert(&*fake, &dir, SystemTime::now()).unwrap();
+    assert_eq!(fake.calls("openssl"), 4, "key newer than cert: renewed");
+    // an mtime in the future (clock jumped) counts as stale, not as fresh
+    pair(-1.0);
+    ensure_cert(&*fake, &dir, SystemTime::now()).unwrap();
+    assert_eq!(fake.calls("openssl"), 5, "future mtime: renewed");
+    pair(1.0);
+    ensure_cert(&*fake, &dir, SystemTime::now()).unwrap();
+    assert_eq!(fake.calls("openssl"), 5, "same-age pair: kept");
 }
 
 #[test]

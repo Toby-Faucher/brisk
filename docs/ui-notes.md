@@ -79,7 +79,8 @@
 - Unit: deploy/brisk-hostd.service, installed by `scripts/brisk-service.sh install` into
   ~/.config/systemd/user (WantedBy=default.target; with linger it starts at boot without a login).
   Restart=on-failure every 3 s (gives up after 10 starts in 2 min), TimeoutStopSec=20 (the bridge stop
-  can take 12 s), KillMode=control-group, MemoryMax=1G, CPUWeight=50, Nice=5, Wants/After the Sunshine
+  can take 12 s), KillMode=mixed (SIGTERM to hostd only, so it stops the bridge first; SIGKILL to anything
+  left after 20 s), MemoryMax=1G, CPUWeight=50, Nice=5, Wants/After the Sunshine
   unit. Hardening is deliberately thin, each omission is commented in the unit: NoNewPrivileges would be
   inherited by a Steam that `steam steam://` cold-starts; ProtectSystem/ProtectHome/PrivateTmp/
   PrivateUsers/ProtectProc need a user+mount namespace in a user unit, which Steam, games and `kill` on
@@ -90,17 +91,33 @@
 - Self-managed at each stream start (no shell script needed): the bridge address is `tailscale ip -4`
   :4433 unless `BRISK_LISTEN` is set (0.0.0.0 refused; tailscale down = a clear 500 "tailscale gave no
   IPv4 address"), and `~/.config/brisk/tls/bridge.pem` + `bridge.key.pem` (ECDSA P-256, 13 days, 0600)
-  are made with openssl when missing or older than 10 days. Both happen before an old bridge is stopped,
+  are made with openssl when missing, older than 10 days, dated in the future, or mismatched (key newer
+  than cert; a new pair gets one mtime). Both happen before an old bridge is stopped,
   so a failure leaves a running stream alone. A new pair is written to `.bridge*.new` (0600 before
   openssl writes) and renamed over the old one; a failed openssl leaves the old pair.
 - Scripts: `scripts/brisk-service.sh install | update | status | logs [-f] | link | uninstall |
   serve-on | serve-off | sunshine-permanent | doctor` (never sudo; a root step is printed as the
   `sudoq run ...` line). `update` = capped release build of hostd + bridge, `npm ci` only when the lock
-  changed, `npm run build` only when web sources are newer than web/dist, then a restart, refused while
-  a stream is live (FORCE=1 ends it). `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
-  spaced restarts, refuses unless Sunshine is FREE). `doctor` checks linger, the unit, the loopback-only
-  listener, the serve mapping, 403 without and 200 with the secret over https, the certificate age and
-  the Sunshine drop-in/binary/state. Tests: scripts/test-brisk-service.sh (all stubs).
+  changed, and only when web sources are newer than web/dist a build into a new `web/dist.<stamp>`
+  (`npm run build -- --outDir`), swapped in by renaming a `web/dist` symlink over the old one (`ln -sfn`
+  + `mv -T`, atomic; a first plain dist is moved to `web/dist.00000000-000000`; the current and one
+  previous build are kept), then a restart, refused while a stream is live (FORCE=1 ends it). hostd
+  canonicalizes `dist` per request and only serves files that canonicalize inside it (a symlink out of
+  the build is a 404); a missing path with an extension is a 404, never index.html. `update` does not
+  re-sync the unit file: after a change to deploy/brisk-hostd.service run `install` again (it restarts
+  the unit when the file changed). `install` = copy the unit, daemon-reload, enable --now, and a restart
+  if the unit changed while it ran (not over a live stream). `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
+  spaced restarts, refuses unless Sunshine is FREE). `doctor` checks linger, the unit, the listener
+  (127.0.0.1:8443 required; tailscaled's own `…%tailscale0:8443` sockets in TUN mode are fine; 0.0.0.0, [::],
+  * or any other address FAIL), the serve mapping (`<name>:8443` -> `http://127.0.0.1:8443` exactly), 403
+  without and 200 with the secret over https, the certificate age and the Sunshine drop-in/binary/state.
+  Tests: scripts/test-brisk-service.sh (all stubs).
+- Under systemd (`INVOCATION_ID` set) hostd's startup line is `page<TAB>http://localhost:8443/ (link:
+  scripts/brisk-service.sh link)`, without the secret, so the journal never holds it; `logs` also masks
+  any `?s=`/`&s=` value. brisk-up and manual runs still print the full link. brisk-up/brisk-down refuse
+  while the unit is active or enabled.
+- A restart of the service ends hostd's `wl-copy`, so a clipboard set from the laptop is gone from bawn's
+  clipboard after an update or restart.
 - Rollback: `git checkout <good commit> && scripts/brisk-service.sh update`; or back to the tunnel
   workflow: `scripts/brisk-service.sh uninstall`, `serve-off`, then brisk-up/brisk-down as before.
 - Root steps (Toby, via sudoq): only `tailscale serve --bg --https=8443 http://127.0.0.1:8443` (and its
@@ -117,13 +134,13 @@
 
 ### Auth model and its limits
 - Host header (DNS rebinding): exactly `localhost:8443`, `127.0.0.1:8443`, `BRISK_ALLOWED_HOSTS`
-  (comma list) and this machine's `Self.DNSName` from `tailscale status --json`, with :8443 and without
-  a port. Anything else is 403 before any route runs, the secret does not help.
+  (comma list) and this machine's `Self.DNSName` from `tailscale status --json`, as `<name>:8443` only
+  (no port-less, trailing-dot or IPv6 forms). Anything else is 403 before any route runs, the secret does not help.
 - Every /api request needs one of: the `x-brisk-secret` header (128 random bits, `~/.config/brisk/secret`,
   0600, made once; `BRISK_SECRET` overrides for tests; `BRISK_SECRET_FILE` moves it), or a tailnet login:
   the peer is loopback, `Tailscale-User-Login` is in `BRISK_ALLOWED_USERS` (comma list) or
-  `~/.config/brisk/allowed-users` (one per line, `#` comments; ignored unless 0600/0644 and a regular
-  file; read at startup, so restart after editing), and the request carries `x-brisk-csrf` (the page
+  `~/.config/brisk/allowed-users` (one per line, `#` comments; ignored, with a warning, unless it is a
+  regular file (not a symlink) owned by hostd's uid and not group/world-writable; read at startup, so restart after editing), and the request carries `x-brisk-csrf` (the page
   always sends it). The allowlist is empty by default: feature off, secret required as before.
 - Why `x-brisk-csrf`: tailscale serve attaches the laptop's identity to every request from the laptop,
   including one a hostile web page makes cross-site (a `text/plain` POST needs no preflight). A custom

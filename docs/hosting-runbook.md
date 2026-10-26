@@ -53,7 +53,15 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
 
 ## Everyday
 - Update after new commits: `scripts/brisk-service.sh update` (refuses to restart over a live stream;
-  `FORCE=1` ends it).
+  `FORCE=1` ends it). The page is swapped in atomically (web/dist is a symlink to the newest
+  web/dist.<stamp>; the previous build is kept: to go back, `ln -sfn dist.<older> web/dist.link &&
+  mv -T web/dist.link web/dist`).
+- `update` does not re-sync the unit file. After changing deploy/brisk-hostd.service, run
+  `scripts/brisk-service.sh install` again (daemon-reload, and a restart because the file changed).
+- Any restart (update, install with a changed unit) ends hostd's `wl-copy`: a clipboard sent from the
+  laptop is no longer on bawn's clipboard afterwards.
+- The journal never holds the secret (hostd prints the page line without it under systemd); use
+  `scripts/brisk-service.sh link` for the link.
 - Status / logs: `scripts/brisk-service.sh status`, `scripts/brisk-service.sh logs -f`.
 - A new link (another browser): `scripts/brisk-service.sh link`. To rotate the secret: remove
   `~/.config/brisk/secret`, `systemctl --user restart brisk-hostd.service`, open the new link.

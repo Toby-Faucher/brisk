@@ -598,7 +598,8 @@ fn rig(mode: &str) -> Rig {
     // A fresh pair, so starts never run openssl (and never look at the real ~/.config/brisk).
     cfg.tls_dir = d.path().join(".config/brisk/tls");
     std::fs::create_dir_all(&cfg.tls_dir).unwrap();
-    for f in ["bridge.pem", "bridge.key.pem"] {
+    for f in ["bridge.key.pem", "bridge.pem"] {
+        // key first: a key newer than its cert would count as a mismatched pair
         std::fs::write(cfg.tls_dir.join(f), "-----BEGIN fake\n").unwrap();
     }
     cfg.app_id = 42;

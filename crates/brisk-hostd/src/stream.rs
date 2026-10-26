@@ -498,11 +498,16 @@ pub fn ensure_cert(
 ) -> Result<(PathBuf, PathBuf), String> {
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let (cert, key) = (dir.join("bridge.pem"), dir.join("bridge.key.pem"));
-    let age = std::fs::metadata(&cert)
-        .and_then(|m| m.modified())
-        .ok()
-        .map(|m| now.duration_since(m).unwrap_or_default().as_secs());
-    if key.is_file() && age.is_some_and(|a| a <= CERT_RENEW_S) {
+    let mtime = |p: &PathBuf| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    // Fresh = both present, the key no newer than its cert (else they are from different runs,
+    // e.g. a renewal cut off between the two renames), and the cert's mtime not in the future.
+    let fresh = match (mtime(&cert), mtime(&key)) {
+        (Some(c), Some(k)) if k <= c => now
+            .duration_since(c)
+            .is_ok_and(|a| a.as_secs() <= CERT_RENEW_S),
+        _ => false,
+    };
+    if fresh {
         return Ok((cert, key));
     }
     let fail = |e: String| {
@@ -557,6 +562,13 @@ pub fn ensure_cert(
     std::fs::rename(&tk, &key)
         .and_then(|_| std::fs::rename(&tc, &cert))
         .map_err(|e| fail(e.to_string()))?;
+    // One mtime for the pair, whatever order openssl wrote them in (see `fresh` above).
+    if let Some(c) = mtime(&cert) {
+        let _ = std::fs::File::options()
+            .write(true)
+            .open(&key)
+            .and_then(|f| f.set_modified(c));
+    }
     eprintln!(
         "new bridge certificate {} ({CERT_DAYS} days)",
         cert.display()

@@ -64,6 +64,15 @@ impl Config {
     }
 }
 
+/// hostd's startup line. Under systemd (`service`) it goes to the journal, so no secret in it.
+pub fn page_line(secret: &str, service: bool) -> String {
+    if service {
+        "page\thttp://localhost:8443/ (link: scripts/brisk-service.sh link)".into()
+    } else {
+        format!("page\thttp://localhost:8443/?s={secret}")
+    }
+}
+
 /// 128 random bits, hex.
 fn new_secret() -> String {
     let mut s = [0u8; 16];
@@ -141,15 +150,18 @@ pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> 
 }
 
 /// One login per line (`#` comments ok). Ignored, with a warning, unless it is a regular file
-/// only its owner can write (0600 or 0644): anyone else editing it could let themselves in.
+/// (not a symlink) owned by us that only we can write (0600 or 0644): anyone else editing it
+/// could let themselves in.
 pub fn load_users(file: &Path) -> Vec<String> {
-    use std::os::unix::fs::PermissionsExt;
-    let Ok(m) = std::fs::metadata(file) else {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let Ok(m) = std::fs::symlink_metadata(file) else {
         return vec![];
     };
-    if !m.is_file() || m.permissions().mode() & 0o022 != 0 {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    let me = unsafe { libc::getuid() };
+    if !m.file_type().is_file() || m.uid() != me || m.permissions().mode() & 0o022 != 0 {
         eprintln!(
-            "warning: ignoring {} (must be a file only its owner can write: 0600 or 0644)",
+            "warning: ignoring {} (must be a regular file owned by uid {me}, writable only by it: 0600 or 0644)",
             file.display()
         );
         return vec![];

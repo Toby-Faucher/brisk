@@ -21,9 +21,19 @@ die() { echo "brisk-service: $*" >&2; exit 1; }
 . "$src/scripts/brisk-common.sh"
 mkdir -p -m 700 "$RUN"
 
+# Self.DNSName only (peers have one too): the first DNSName inside the top-level "Self" block,
+# trailing dot dropped, and only if it looks like a host name.
 ts_name() {
   [ -n "${BRISK_TS_NAME:-}" ] && { echo "$BRISK_TS_NAME"; return; }
-  tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1
+  local n
+  n=$(tailscale status --json 2>/dev/null | awk '
+    /^  "Self": *\{/ { s = 1; next }
+    s && /^  [}]/ { exit }
+    s && match($0, /"DNSName": *"[^"]*"/) {
+      v = substr($0, RSTART, RLENGTH); sub(/^"DNSName": *"/, "", v); sub(/\.?"$/, "", v); print v; exit
+    }')
+  [[ $n =~ ^[A-Za-z0-9.-]+$ ]] && echo "$n"
+  return 0
 }
 # Header file for curl, so the secret never shows in a process list.
 secret_header() {
@@ -32,7 +42,37 @@ secret_header() {
   echo "$RUN/doctor.hdr"
 }
 is_operator() { tailscale debug prefs 2>/dev/null | grep -q "\"OperatorUser\": *\"$(id -un)\""; }
-serve_mapped() { tailscale serve status --json 2>/dev/null | grep -q 'http://127.0.0.1:8443'; }
+# Our mapping exactly: a Web entry "<name>:8443" whose handler proxies to http://127.0.0.1:8443
+# (the root entry "<name>:443" -> orch must not count, nor another port pointing at us).
+serve_mapped() {
+  tailscale serve status --json 2>/dev/null | awk '
+    match($0, /"[^"]+:[0-9]+": *\{/) { host = substr($0, RSTART + 1, RLENGTH); sub(/".*/, "", host) }
+    /"Proxy": *"http:\/\/127\.0\.0\.1:8443\/?"/ && host ~ /:8443$/ { found = 1 }
+    END { exit !found }'
+}
+# A live or starting stream on the running hostd (a restart would end it).
+stream_live() {
+  local h st=""
+  if h=$(secret_header); then st=$(curl -s --max-time 5 -H "@$h" http://127.0.0.1:8443/api/stream || true); rm -f "$h"; fi
+  case $st in *'"state":"live"'*|*'"state":"starting"'*) return 0 ;; esac
+  return 1
+}
+# web/dist is a symlink to web/dist.<stamp>: a build goes to a new dir and the link is renamed
+# over the old one (atomic), so hostd never serves a half-written build. The previous build is kept.
+build_web() {
+  local w=$here/web new
+  new=$w/dist.$(date +%Y%m%d-%H%M%S)
+  [ -e "$new" ] && new=$new-$$
+  ( cd "$w" && capped npm run build -- --outDir "$new" )
+  [ -f "$new/index.html" ] || die "the web build made no $new/index.html; web/dist left as it was"
+  # One-time move of a plain dist dir (brisk-up's build) aside; it sorts first, so it goes first.
+  if [ -d "$w/dist" ] && [ ! -L "$w/dist" ]; then mv "$w/dist" "$w/dist.00000000-000000"; fi
+  ln -sfn "$(basename "$new")" "$w/dist.link"
+  mv -T "$w/dist.link" "$w/dist"
+  echo "web/dist -> $(basename "$new")"
+  local d
+  for d in $(find "$w" -maxdepth 1 -name 'dist.[0-9]*' -type d | sort | head -n -2); do rm -rf "$d"; done
+}
 # Runs a tailscale serve command if we may; else says why and prints the sudoq line for Toby.
 ts_root() {
   local why=$1; shift
@@ -56,13 +96,22 @@ cmd_install() {
   fi
   mkdir -p "$UNIT_DIR"
   # The template points at ~/Projects/brisk; another checkout gets its own path written in.
-  local tmp; tmp=$(mktemp)
+  local tmp changed=0 was=0; tmp=$(mktemp)
   sed "s#%h/Projects/brisk#$here#g" "$src/deploy/$UNIT" > "$tmp"
   [ "$here" = "$HOME/Projects/brisk" ] || echo "note: the unit runs $here (not ~/Projects/brisk)"
   if cmp -s "$tmp" "$UNIT_DIR/$UNIT"; then echo "unit unchanged"; rm -f "$tmp"
-  else mv "$tmp" "$UNIT_DIR/$UNIT"; chmod 644 "$UNIT_DIR/$UNIT"; echo "wrote $UNIT_DIR/$UNIT"; fi
+  else mv "$tmp" "$UNIT_DIR/$UNIT"; chmod 644 "$UNIT_DIR/$UNIT"; echo "wrote $UNIT_DIR/$UNIT"; changed=1; fi
+  systemctl --user is-active -q "$UNIT" && was=1
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT"
+  # enable --now leaves a running unit alone: a changed unit needs a restart to apply.
+  if [ $changed = 1 ] && [ $was = 1 ]; then
+    if stream_live && [ "${FORCE:-}" != 1 ]; then
+      echo "unit changed but a stream is live: not restarting; run $0 install again afterwards (or FORCE=1)"
+    else
+      systemctl --user restart "$UNIT"; echo "restarted $UNIT (unit changed)"
+    fi
+  fi
   echo "enabled and started $UNIT. Next: $0 serve-on, then $0 doctor"
 }
 
@@ -77,15 +126,12 @@ cmd_update() {
     ( cd "$w" && capped npm ci --no-audit --no-fund )
   fi
   if [ ! -f "$w/dist/index.html" ] || [ -n "$(find "$w/src" "$w/public" "$w/package-lock.json" "$w"/astro.config.* -newer "$w/dist/index.html" 2>/dev/null | head -1)" ]; then
-    ( cd "$w" && capped npm run build )
+    build_web
   else
     echo "web/dist is up to date"
   fi
   systemctl --user is-active -q "$UNIT" || { echo "$UNIT is not running; built only (install starts it)"; return; }
-  local h st=""
-  if h=$(secret_header); then st=$(curl -s --max-time 5 -H "@$h" http://127.0.0.1:8443/api/stream || true); rm -f "$h"; fi
-  case $st in *'"state":"live"'*|*'"state":"starting"'*)
-    [ "${FORCE:-}" = 1 ] || die "a stream is live; not restarting (FORCE=1 to end it)" ;; esac
+  if stream_live && [ "${FORCE:-}" != 1 ]; then die "a stream is live; not restarting (FORCE=1 to end it)"; fi
   systemctl --user restart "$UNIT"
   echo "restarted $UNIT"
 }
@@ -97,7 +143,8 @@ cmd_status() {
   if serve_mapped; then echo "tailscale serve: :8443 mapped"; else echo "tailscale serve: :8443 NOT mapped ($0 serve-on)"; fi
 }
 
-cmd_logs() { journalctl --user -u "$UNIT" --no-pager "${@:--n200}"; }
+# hostd never logs the secret under systemd; the filter is a second line of defence for transcripts.
+cmd_logs() { journalctl --user -u "$UNIT" --no-pager "${@:--n200}" | sed -u -E 's/([?&]s=)[^[:space:]&#]+/\1<hidden>/g'; }
 
 # The links with the secret (for a browser that has none and no allowed tailnet login).
 cmd_link() {
@@ -139,10 +186,13 @@ cmd_doctor() {
   if loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q '^Linger=yes'; then ok "linger on"; else no "linger off (sudoq run --why 'start brisk at boot' -- loginctl enable-linger $(id -un))"; fi
   if systemctl --user is-enabled -q "$UNIT" 2>/dev/null; then ok "$UNIT enabled"; else no "$UNIT not enabled ($0 install)"; fi
   if systemctl --user is-active -q "$UNIT" 2>/dev/null; then ok "$UNIT active"; else no "$UNIT not active ($0 logs)"; fi
+  # tailscaled (TUN mode) binds its serve ports on tailscale0 (`100.x%tailscale0:8443`, `[fd7a:…]%tailscale0:8443`):
+  # those are fine. Anything else besides hostd's 127.0.0.1:8443 (0.0.0.0, [::], *, a LAN address) is not.
   l=$(ss -Hltn 'sport = :8443' 2>/dev/null | awk '{print $4}')
-  if [ -z "$l" ]; then no "nothing listens on :8443"
-  elif echo "$l" | grep -qv '^127\.0\.0\.1:8443$'; then no "8443 listens beyond loopback: $(echo "$l" | tr '\n' ' ')"
-  else ok "8443 on loopback only"; fi
+  local beyond; beyond=$(grep -v -e '^127\.0\.0\.1:8443$' -e '%tailscale0:8443$' <<<"$l" | grep . || true)
+  if ! grep -qx '127\.0\.0\.1:8443' <<<"$l"; then no "hostd is not listening on 127.0.0.1:8443"
+  elif [ -n "$beyond" ]; then no "8443 listens beyond loopback: $(echo "$beyond" | tr '\n' ' ')"
+  else ok "8443 on loopback only (plus tailscaled on tailscale0)"; fi
   if serve_mapped; then ok "tailscale serve maps :8443"; else no "tailscale serve :8443 not mapped (or not readable) ($0 serve-on)"; fi
   n=$(ts_name)
   if [ -z "$n" ]; then no "no tailscale name (tailscale down?)"

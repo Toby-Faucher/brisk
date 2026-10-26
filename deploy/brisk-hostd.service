@@ -23,9 +23,10 @@ Environment=BRISK_SPAWN_SCOPE=1
 # No BRISK_SECRET: hostd keeps it in ~/.config/brisk/secret (0600).
 Restart=on-failure
 RestartSec=3
-# hostd stops its bridge first on SIGTERM, which can take 12 s (Sunshine session cancel).
+# mixed: SIGTERM goes to hostd only, which stops its bridge first (the bridge cancels its
+# Sunshine session; up to 12 s); whatever is left in the cgroup gets SIGKILL after TimeoutStopSec.
 TimeoutStopSec=20
-KillMode=control-group
+KillMode=mixed
 
 # Resources: hostd + one bridge need well under 100 MB; the cap only stops a runaway.
 MemoryMax=1G

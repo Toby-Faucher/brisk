@@ -16,7 +16,7 @@ use axum::routing::{get, post, put};
 use axum::Router;
 use serde::Deserialize;
 use std::net::SocketAddr;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
@@ -513,19 +513,32 @@ async fn static_file(State(s): State<Arc<AppState>>, req: Request) -> Response {
     if !safe || (req.method() != Method::GET && req.method() != Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let dist: &PathBuf = &s.cfg.dist;
+    // Resolved once per request: `update` swaps web/dist (a symlink) to a new build atomically,
+    // and every file must canonicalize to inside that one build (no symlink out of it).
+    let Ok(dist) = std::fs::canonicalize(&s.cfg.dist) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let inside = |p: &Path| {
+        std::fs::canonicalize(p)
+            .ok()
+            .filter(|c| c.starts_with(&dist) && c.is_file())
+    };
     let mut path = dist.join(rel);
     if path.is_dir() {
         path.push("index.html");
     }
     // Unknown page: the root index, so client-side routes still load.
     // A missing file with an extension is a missing asset, not a page.
-    if !path.is_file() && Path::new(rel).extension().is_some() {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    if !path.is_file() {
-        path = dist.join("index.html");
-    }
+    let path = match inside(&path) {
+        Some(p) => p,
+        None if Path::new(rel).extension().is_some() || path.exists() => {
+            return StatusCode::NOT_FOUND.into_response()
+        }
+        None => match inside(&dist.join("index.html")) {
+            Some(p) => p,
+            None => return StatusCode::NOT_FOUND.into_response(),
+        },
+    };
     match tokio::fs::read(&path).await {
         Ok(b) => ([(header::CONTENT_TYPE, mime(&path))], b).into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),

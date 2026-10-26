@@ -2,7 +2,7 @@
 //! `ssh -N -L 8443:127.0.0.1:8443 bawn` or through `tailscale serve` (docs/ui-notes.md, Hosting).
 //!   brisk-hostd [DIST_DIR]      (default ./web/dist, or BRISK_DIST)
 
-use brisk_hostd::config::{load_secret, load_users, Config};
+use brisk_hostd::config::{load_secret, load_users, page_line, Config};
 use brisk_hostd::http::{router, AppState};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -42,7 +42,10 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    println!("page\thttp://localhost:8443/?s={}", cfg.secret);
+    println!(
+        "{}",
+        page_line(&cfg.secret, std::env::var_os("INVOCATION_ID").is_some())
+    );
     let state = Arc::new(AppState::new(cfg));
     state.hosts.refresh().await;
     state.clip.start_watch();
