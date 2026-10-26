@@ -2,7 +2,7 @@
 
 ## Settings tabs
 - Settings is split in Bits UI Tabs (arrow keys, Home/End, roving focus): General (accent, sounds, shaders), Streaming
-  (default quality, replay buffer, clipboard sync), Controller (the pad test), About (commit, host name and Sunshine state
+  (default quality, replay buffer, clipboard sync, keep the screen awake), Controller (the pad test), About (commit, host name and Sunshine state
   from the `host` store, shortcuts list, doc paths as plain text; hostd does not report a version). Pure helpers and
   tests: web/src/modules/settings/tabs.ts.
 - The tab lives in the URL hash (`#general|streaming|controller|about`), written with `history.replaceState` (no history
@@ -36,10 +36,14 @@
   headers, Add-a-module. `.enter` = entrance only, never scroll-driven: Library cards (first 8 of a shelf at its start),
   and only tagged by `enter()` at route load / games arrival, so paging a shelf or scrolling mounts cards without any
   animation. `.fade-in` (opacity, 420 ms) is added by class when data lands: Home host card and resume card content.
-- Library search/filter: the results (`.body`) cross-fade 0.3 -> 1 over 140 ms via WAAPI, at most once per 150 ms.
+- Library search: the results (`.body`) cross-fade 0.3 -> 1 over 140 ms via WAAPI, at most once per 150 ms. Filter chips:
+  a view transition (see Platform features), the same fade when it is skipped.
+- Dialogs (command menu, Quit and Restart confirms): CSS transitions in base.css. Enter from `@starting-style` (opacity
+  over `--dur-page`, a small rise/scale on `--spring-snappy`), leave faster from Bits' `data-ending-style`
+  (`--dur-exit` 140 ms, `--ease-exit`), so they no longer vanish. Tips enter over `--dur-tab` and leave over `--dur-exit`.
 - Also animates: Settings tab panels and the History list/detail swap (`.swap-in` / `.live`, 180 ms, only after a user action).
 - Does not animate: /stream (except the ghost bar's CSS slide), virtualised items when they mount while scrolling, tall
-  blocks such as an open shelf grid, menus, the host pill.
+  blocks such as an open shelf grid, the ghost bar's own menus (they enter but do not exit: /stream), the host pill.
 - Springs (CSS only, zero runtime): `web/scripts/gen-spring-tokens.mjs` solves three springs with anime.js offline and writes
   `--spring-soft|snappy|settle` (CSS `linear()`) and `--spring-*-dur` (settling time, use it as the duration) into the
   generated block at the end of tokens.css; `npm run springs:check` and `src/styles/tokens.test.ts` fail if it is stale.
@@ -73,6 +77,8 @@
   ring's `--p` is no longer a `style:` binding; `count` writes Svelte's own text node and ends on Svelte's value).
   (9) Nothing left behind: no `will-change`, no inline `transition`, no inline `--accent` on `<html>`. (10) Every lazy motion
   path falls back to its end state when its chunk fails to load (a number shows the new value, a chart line shows in full).
+  (11) Exits are faster than entrances (`--dur-exit`, `--ease-exit`) and are CSS transitions the component library can see
+  (`getAnimations()`), never a JS timer before unmounting. (12) A view transition never runs per keystroke.
 - Smooth scroll: `html { scroll-behavior: smooth }` (off while the Astro router is navigating, so scroll restore does not
   glide), `scroll-padding-top: 64px` for the sticky Settings strip, `overscroll-behavior-x: contain` on the shelf and the tab
   strip. No JS smooth-scroll library and no wheel hijacking (the shelf's vertical-wheel-to-sideways stays as it was).
@@ -83,6 +89,49 @@
   module widgets mount, with or without motion. anime.js pass: `node web/scripts/anime-check.mjs [graph stream count revert
   reduce glide chart tour spring]` (port 4423; /stream import graph + network, tweens, revert on navigation via rAF counts,
   reduced motion, glide seeked screenshots + Chrome trace, chart draw-in, long tasks). Unit tests: `web/src/ui/motion.test.ts`.
+
+## Platform features
+Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each degrades to the old behaviour without it.
+- Dialog enter/exit: `@starting-style` (117) + Bits UI 2.20.2 presence. Bits sets `data-starting-style` / `data-ending-style`
+  and keeps the node mounted until `getAnimations()` on it has finished (one rAF after the state change), so plain CSS
+  transitions are enough: no `forceMount`, no `child` snippet, no anime.js. Bits dialogs are portalled divs, not top
+  layer, so `transition-behavior: allow-discrete` is not needed there. QuitDialog keeps its last text while it leaves.
+  Without `@starting-style` they appear at once; reduced motion: no transition, unmount at once (base.css).
+- Tooltips: `ui/Tip.svelte`, placed right after its trigger (`<button aria-label=…>…</button><Tip label=… placement=…/>`).
+  A `popover="manual"` span (114) in the top layer, `anchor-name`/`position-anchor`/`position-area` (125) with
+  `position-try-fallbacks: flip-block, flip-inline` (128), `role="tooltip"`, the trigger gets `aria-describedby`.
+  Hover 300 ms or keyboard focus (`:focus-visible`, so a click does not pop it); leave, blur, a press or Esc hides it.
+  Exit uses `allow-discrete` on `display`/`overlay` (top layer). Without anchor positioning
+  (`CSS.supports('position-anchor: --a')`) it is placed once from the trigger's rect, no flip. Used on: Library card
+  Quit and saved-quality chips, Hero chip, History gate, Settings accent swatches. Not on the ghost bar: its CSS-only
+  `.tip`s stay (/stream, no new JS there); not on the sidebar (it never collapses, items have visible labels).
+  The disabled "Wake-on-LAN" buttons keep `title=` (disabled buttons get no pointer events; the text is visible).
+- Library filter chips: same-document View Transition (111; `types` 125, `view-transition-class` 125). `Library.svelte`
+  `pickFilter`: on-screen cards in an open "Show all" grid get `view-transition-name: vt-<appid>` (removed when it ends;
+  virtualised shelf rows are never named), type `library` scopes the CSS (base.css: groups `--dur-enter`/`--ease`,
+  cross-fades `--dur-tab`; header and chips swap without a cross-fade so the chip glide shows), so Astro's router
+  transitions are untouched. Skipped (plain swap + fade) with reduced motion, without support, while
+  `html[data-astro-transition]` is set or while one of ours runs.
+  Search has none: with a transition only when the result set changed and at most once per 300 ms, typing "game 1"
+  (6 keys, 80 ms apart, both grids open, 139 games, headless Chrome) made the slowest key event 168 ms vs 40 ms without
+  (136 ms even with no card names: the snapshot itself), no long tasks either way. It failed the bar (no slower than
+  without), so search keeps the WAAPI fade. Chip click with both grids open: no long task.
+- Screen Wake Lock (84, secure context; localhost counts): `stream/wakelock.ts` `keepAwake()`. While the stream is
+  `live` and Settings > Streaming "Keep the screen awake while streaming" (`keepAwake`, default on) is set, it asks for
+  a `screen` lock when the tab is visible and again on `visibilitychange` (Chrome drops it when hidden); released on
+  failed, Disconnect, leaving /stream and the setting going off. Refusals (NotAllowedError, low battery, no API) are
+  one `console.debug`. No UI, no timers. /stream JS +630 bytes uncompressed (Stream chunk 38010 -> 38627), same 24
+  files; vs main +706 in all (QuitDialog +76).
+- Deliberately not used: `interestfor` (interest invokers: origin trial / experimental in 152-156; Tip does it by
+  hand), `popover="hint"` (not needed: tips are manual popovers that do not close the others anyway), scroll-triggered
+  animations (`animation-trigger`, not on by default in 152; the scroll reveal stays on `animation-timeline: view()`),
+  cross-document view transitions (Brisk needs one persistent document, see research/ecosystem-frontend-2026-10.md).
+- Check: `node web/scripts/platform-check.mjs [dialog tip vt wake]` against `astro preview` (port 4470, mocked /api):
+  dialog still mounted and fading 50 ms after Esc then gone, focus back, reduced motion instant; tip hover/focus/Esc,
+  flip at the top edge, the no-anchor fallback, axe with a tip open; the chip transition (spy on
+  `startViewTransition`, pseudo-element animations, names removed, none under reduced motion, none while typing) and
+  the typing measurement; wake lock acquire/re-acquire/release with a stubbed `navigator.wakeLock` and a fake
+  WebTransport, setting off, failed state, and /stream's JS file list. Screenshots to `$OUT`.
 
 ## Run
 - Normal: hostd runs as a systemd user service and the laptop opens https://bawn.tail674625.ts.net:8443
@@ -485,7 +534,7 @@ Use `scripts/axe-check.mjs` for the a11y part meanwhile.
   menu animation can make a test wait or flake. Its API server is pinned to `127.0.0.1:4460` (strictPort): Vitest browser mode had critical advisories
   for an exposed API, so never 0.0.0.0. `astro:transitions/client` is aliased to `src/test/astro-transitions.ts` (a `navigate`
   spy). Covered: CommandMenu (Ctrl+K, filter, Enter navigates, Esc returns focus), the Quit confirm (focus in, Tab trap,
-  Esc, focus back), Settings tabs (arrows/Home/End and the hash), GameCard (a click on a not-installed card never installs).
+  Esc, focus back; and with a test-only transition: still mounted with its text mid-exit, then unmounted), Settings tabs (arrows/Home/End and the hash), GameCard (a click on a not-installed card never installs).
 
 ## HEVC
 - Select: ghost bar, Quality, Advanced..., Codec: HEVC, Apply. It reconnects like any custom quality
