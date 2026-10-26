@@ -79,7 +79,7 @@ Streaming
 
 ## 7. Visual system notes for the builder
 
-- Tokens: bg #0b0c0f, panel #121419, panel2 #171a21, line #22262f, text #eceef3, muted #8e96a5, accent per swatch (mint #5eead4 default). Geist 400/500/600/700, Geist Mono 400/500. Easing `cubic-bezier(.2,.8,.2,1)`.
+- Tokens: bg #0b0c0f, panel #121419, panel2 #171a21, line #22262f, text #eceef3, muted #8e96a5, dim #7a8292 (was #5d6575; raised to 4.5:1 for WCAG AA), accent per swatch (mint #5eead4 default). Geist 400/500/600/700, Geist Mono 400/500 (variable fonts since 2026-10-26; 650 is written as 700). Easing `cubic-bezier(.2,.8,.2,1)`.
 - The shader code is WebGL2 GLSL under `research/shaders/ports/` (own implementation, no library). The earlier plan to use the shaders.com Svelte package (MIT, WebGPU) remains an option; decide when building the Home background.
 - Cover art: placeholder gradients with an initial in the mockups; real art source is open (section 8).
 
