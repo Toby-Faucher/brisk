@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterGames, installLabel, playLabel, searchGames, shelves, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterGames, installLabel, playLabel, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', running: false, ...o });
 
 describe('library', () => {
+  it('sortGames_orders_and_default_keeps_input', () => {
+    const list = [g(1, 'banjo', { playtimeMin: 5, lastPlayed: 10 }), g(2, 'Apex', { playtimeMin: 50 }), g(3, 'cave', { playtimeMin: 9, lastPlayed: 99 })];
+    const ids = (s: Parameters<typeof sortGames>[1]) => sortGames(list, s).map((x) => x.appid);
+    expect(ids('default')).toEqual([1, 2, 3]);
+    expect(ids('az')).toEqual([2, 1, 3]);
+    expect(ids('most-played')).toEqual([2, 3, 1]);
+    expect(ids('last-played')).toEqual([3, 1, 2]);
+    expect(list.map((x) => x.appid)).toEqual([1, 2, 3]);
+  });
+
   it('search_folds_diacritics', () => {
     const list = [g(1, 'Pokémon Legends'), g(2, 'Stardew Valley'), g(3, 'Ōkami HD')];
     expect(searchGames(list, 'pokemon').map((x) => x.appid)).toEqual([1]);

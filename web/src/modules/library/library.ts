@@ -3,6 +3,8 @@ import { pickResume } from '../home/home';
 
 export type Filter = 'all' | 'installed' | 'not-installed' | 'recent';
 
+export type Sort = 'default' | 'az' | 'most-played' | 'last-played';
+
 const RECENT_S = 30 * 86_400;
 
 /** `now` is unix ms; Game.lastPlayed is unix seconds. */
@@ -10,6 +12,14 @@ export function filterGames(games: Game[], f: Filter, now = Date.now()): Game[] 
   if (f === 'installed') return games.filter((g) => g.installed);
   if (f === 'not-installed') return games.filter((g) => !g.installed);
   if (f === 'recent') return games.filter((g) => g.lastPlayed != null && now / 1000 - g.lastPlayed <= RECENT_S);
+  return games;
+}
+
+/** 'default' keeps the incoming order (search relevance, then most played); the others are stable sorts of a copy. */
+export function sortGames(games: Game[], s: Sort): Game[] {
+  if (s === 'az') return [...games].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  if (s === 'most-played') return [...games].sort((a, b) => b.playtimeMin - a.playtimeMin);
+  if (s === 'last-played') return [...games].sort((a, b) => (b.lastPlayed ?? -1) - (a.lastPlayed ?? -1)); // never played last
   return games;
 }
 

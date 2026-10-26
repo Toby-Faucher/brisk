@@ -10,15 +10,17 @@
   import { glideSwap, splitIn } from '../../ui/motion';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
-  import { cardClick, filterGames, searchGames, shelves, type Filter } from './library';
+  import { cardClick, filterGames, searchGames, shelves, sortGames, type Filter, type Sort } from './library';
 
   const FILTERS: [Filter, string][] = [['all', 'All'], ['installed', 'Installed'], ['not-installed', 'Not installed'], ['recent', 'Recent']];
+  const SORTS: [Sort, string][] = [['default', 'Default order'], ['az', 'A-Z'], ['most-played', 'Most played'], ['last-played', 'Last played']];
   let q = $state('');
+  let sort = $state<Sort>('default');
   let f = $state<Filter>('all');
   let busy = $state<number | null>(null);
   let selected = $state<number | null>(null); // the not-installed card showing its Install button
 
-  const s = $derived(shelves(searchGames(filterGames($games?.games ?? [], f), q)));
+  const s = $derived(shelves(sortGames(searchGames(filterGames($games?.games ?? [], f), q), sort)));
   const hero = $derived(q.trim() ? null : s.hero);
 
   // Skeleton -> content: when the games first arrive the hero, shelf headers and first cards get the load entrance
@@ -114,10 +116,11 @@
 
 <div class="top reveal">
   <h2>Library</h2>
-  <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} oninput={fade} placeholder="Search games" aria-label="Search games" /></label>
+  <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} oninput={fade} onkeydown={(e) => e.key === 'Escape' && q && ((q = ''), e.currentTarget.blur(), fade())} placeholder="Search games" aria-label="Search games" /></label>
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
   {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => pickFilter(id)}>{label}</button>{/each}
+  <select class="sort" bind:value={sort} onchange={fade} aria-label="Sort games">{#each SORTS as [id, label] (id)}<option value={id}>{label}</option>{/each}</select>
 </div>
 
 <div class="body" bind:this={body}>
@@ -142,7 +145,9 @@
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
-      <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p></div>
+      <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p>
+        <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'))}>Clear search and filter</button>
+      </div>
     {/if}
   {/if}
 </div>
@@ -159,6 +164,8 @@
   /* the selected fill is a pseudo-element, so it can glide between chips (motion glideSwap) */
   .fchip[aria-pressed='true'] { border-color: transparent; color: var(--fg); }
   .fchip[aria-pressed='true']::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--accent) 20%, transparent); border: 1px solid var(--accent); transform-origin: 0 0; }
+  .sort { margin-left: auto; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+  .sort:hover { color: var(--fg); border-color: #3a4152; }
   .body { padding-top: 16px; }
   .banner { margin-bottom: 14px; padding: 9px 14px; border-radius: 12px; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
   .empty { padding: 48px 0; display: grid; gap: 6px; justify-items: center; text-align: center; }
