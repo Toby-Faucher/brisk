@@ -258,6 +258,9 @@ fn safe_err(e: &ureq::Error) -> String {
 
 /// Blocking GET with strict limits: connect 5 s, total 15 s, no redirects, no proxy, 8 MiB body,
 /// certificates checked against the system roots (/etc/ssl/certs via rustls-platform-verifier).
+/// Key safety: ureq logs every request through the `log` crate, and at trace level (and in some
+/// debug lines) with the full path and query, i.e. `key=`. hostd installs no `log` logger, so
+/// nothing is printed; never add one (env_logger, tracing-log, ...) without filtering ureq out.
 fn https_get(url: &str) -> Result<Vec<u8>, String> {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     let tls = TlsConfig::builder()
@@ -546,6 +549,72 @@ mod fetch_tests {
             };
             assert!(!e.contains(KEY) && !e.contains("feedface"), "{base}: {e}");
         }
+    }
+
+    /// A loopback server that answers every connection with `head` and then `body_len` bytes of
+    /// `x` (streamed in 64 KiB writes, no content-length unless `head` has one). Counts requests.
+    fn mock(
+        head: &'static str,
+        body_len: usize,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", l.local_addr().unwrap());
+        let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let hits = n.clone();
+        std::thread::spawn(move || {
+            for c in l.incoming() {
+                let Ok(mut c) = c else { return };
+                hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = c.read(&mut [0u8; 8192]);
+                let _ = c.write_all(head.as_bytes());
+                let chunk = vec![b'x'; 64 << 10];
+                let mut left = body_len;
+                while left > 0 {
+                    let k = left.min(chunk.len());
+                    if c.write_all(&chunk[..k]).is_err() {
+                        break;
+                    }
+                    left -= k;
+                }
+            }
+        });
+        (base, n)
+    }
+
+    #[tokio::test]
+    async fn redirects_are_not_followed() {
+        let (base, hits) = mock(
+            "HTTP/1.1 302 Found\r\nlocation: http://127.0.0.1:1/elsewhere\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            0,
+        );
+        let d = tempfile::tempdir().unwrap();
+        let Err(e) = fetch_owned(&cfg_with(&base, d.path())).await else {
+            panic!("a redirect was accepted");
+        };
+        assert_eq!(e, "HTTP 302");
+        assert!(!e.contains(KEY));
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn bodies_over_8_mib_are_cut_while_streaming() {
+        // No content-length: ureq cannot refuse up front, it has to stop reading at the cap.
+        let (base, _) = mock("HTTP/1.1 200 OK\r\nconnection: close\r\n\r\n", 9 << 20);
+        let d = tempfile::tempdir().unwrap();
+        let Err(e) = fetch_owned(&cfg_with(&base, d.path())).await else {
+            panic!("an oversized body was accepted");
+        };
+        assert_eq!(e, "response too large");
+        // Just under the cap is fine (not JSON, so that error instead).
+        let (base, _) = mock(
+            "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\n",
+            (8 << 20) - 1,
+        );
+        let Err(e) = fetch_owned(&cfg_with(&base, d.path())).await else {
+            panic!("x... is not JSON");
+        };
+        assert_eq!(e, "response is not JSON");
     }
 
     /// Real network: proves the graviola + platform-verifier TLS stack against Steam's public,
