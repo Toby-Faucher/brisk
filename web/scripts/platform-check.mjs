@@ -68,6 +68,17 @@ try {
     const quit = page.getByRole('button', { name: 'Quit Portal 2' }).first();
     await exit('quit dialog', () => quit.click(), '.rs', 'dialog-exit-quit.png');
     check('quit dialog: focus back on its Quit button', await quit.evaluate((b) => b === document.activeElement));
+    // the fading backdrop lets clicks through: a chip clicked 30 ms after Esc reacts
+    await page.keyboard.press('Control+k');
+    await page.waitForSelector('.cm-dim[data-state="open"]');
+    await sleep(800);
+    const chip = await page.getByRole('button', { name: 'Installed', exact: true }).boundingBox();
+    await page.keyboard.press('Escape');
+    await sleep(30);
+    const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.className ?? '', [chip.x + chip.width / 2, chip.y + chip.height / 2]);
+    await page.mouse.click(chip.x + chip.width / 2, chip.y + chip.height / 2);
+    await sleep(600);
+    check('backdrop exit: a click 30 ms after Esc reaches the page', String(under).includes('fchip') && (await page.getByRole('button', { name: 'Installed', exact: true }).getAttribute('aria-pressed')) === 'true', `hit ${under}`);
     await go('/machines');
     await exit('restart dialog', () => page.getByRole('button', { name: 'Restart Sunshine' }).click(), '.rs');
     check('restart dialog: focus back on its trigger', await page.getByRole('button', { name: 'Restart Sunshine' }).evaluate((b) => b === document.activeElement));
@@ -88,9 +99,9 @@ try {
   if (want('tip')) {
     const tipOf = (page, sel) => page.evaluate((sel) => {
       const el = document.querySelector(sel);
-      const tip = document.getElementById(el.getAttribute('aria-describedby') ?? '');
+      const tip = document.getElementById(el.getAttribute('aria-describedby') ?? '') ?? el.nextElementSibling;
       const r = el.getBoundingClientRect(), t = tip?.getBoundingClientRect();
-      return { top: Math.round(r.top), tipTop: t && Math.round(t.top), role: tip?.getAttribute('role'), open: !!tip?.matches(':popover-open'), text: tip?.textContent, above: t && t.bottom <= r.top + 1, below: t && t.top >= r.bottom - 1, dx: t && Math.round(t.left + t.width / 2 - (r.left + r.width / 2)) };
+      return { described: el.hasAttribute('aria-describedby'), top: Math.round(r.top), tipTop: t && Math.round(t.top), role: tip?.getAttribute('role'), open: !!tip?.matches(':popover-open'), text: tip?.textContent, above: t && t.bottom <= r.top + 1, below: t && t.top >= r.bottom - 1, dx: t && Math.round(t.left + t.width / 2 - (r.left + r.width / 2)) };
     }, sel);
     for (const fallback of [false, true]) {
       const tag = fallback ? 'no anchor positioning: ' : '';
@@ -102,7 +113,7 @@ try {
       check(`${tag}hover: no tip before 300 ms`, !(await tipOf(page, sw)).open);
       await sleep(350);
       let t = await tipOf(page, sw);
-      check(`${tag}hover: tip shown above, centred, role=tooltip, describes the trigger`, t.open && t.above && Math.abs(t.dx) <= 2 && t.role === 'tooltip' && t.text === 'pink', JSON.stringify(t));
+      check(`${tag}hover: tip shown above, centred, role=tooltip; not a description (it repeats the swatch's name)`, t.open && t.above && Math.abs(t.dx) <= 2 && t.role === 'tooltip' && t.text === 'pink' && !t.described, JSON.stringify(t));
       if (!fallback) {
         await page.screenshot({ path: `${OUT}/tooltip-hover.png`, clip: { x: 220, y: 60, width: 520, height: 220 } });
         const bad = await axe(page);
@@ -130,7 +141,7 @@ try {
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); // not page.hover: it would scroll
         await sleep(450);
         t = await tipOf(page, q);
-        check('edge: tip flips below a trigger at the top of the viewport', t.open && t.below, JSON.stringify(t));
+        check('edge: tip flips below a trigger at the top of the viewport; it describes the Quit button', t.open && t.below && t.described, JSON.stringify(t));
         await page.screenshot({ path: `${OUT}/tooltip-flipped.png`, clip: { x: 220, y: 0, width: 400, height: 140 } });
       }
       check(`${tag}no page errors`, errs.length === 0, errs.join(' | '));
@@ -164,7 +175,7 @@ try {
       await page.getByRole('button', { name: 'Installed', exact: true }).click();
       await sleep(80);
       let v = await vts(page);
-      check('filter chip: one view transition of type library, animating', v.length === 1 && v[0].types?.[0] === 'library' && v[0].anims > 0, JSON.stringify(v));
+      check('filter chip: one view transition of type library (no grid open: nothing captured, the root stays live)', v.length === 1 && v[0].types?.[0] === 'library' && v[0].anims === 0, JSON.stringify(v));
       check('filter chip: no names on shelf-row cards', v[0]?.named === 0);
       await sleep(600);
       check('filter chip: names removed after', (await leftNames(page)) === 0);
@@ -178,7 +189,7 @@ try {
       await page.screenshot({ path: `${OUT}/library-vt-mid.png` });
       v = await vts(page);
       const gridCards = await page.evaluate(() => document.querySelectorAll('.grid [data-appid]').length);
-      check('grid: on-screen grid cards named (vt-<appid>), at most 60', v.length === 1 && v[0].named > 0 && v[0].named <= 60, `named ${v[0]?.named}, grid now ${gridCards}`);
+      check('grid: on-screen grid cards named (vt-<appid>), at most 60, and they animate', v.length === 1 && v[0].named > 0 && v[0].named <= 60 && v[0].anims > 0, `anims ${v[0]?.anims}, named ${v[0]?.named}, grid now ${gridCards}`);
       await sleep(600);
       check('grid: names removed after', (await leftNames(page)) === 0);
       await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -199,6 +210,55 @@ try {
       await page.getByRole('button', { name: 'Installed', exact: true }).click();
       await sleep(100);
       check('reduced motion: no view transition', (await vts(page)).length === 0);
+      await ctx.close();
+    }
+    // A card clicked ~100 ms after a chip click (the open grid's cards still animating) reacts. Control: with the root
+    // captured again (pointer-events: none on ::view-transition kept) the same click is swallowed, so the check is real.
+    const clickDuring = async (control) => {
+      const { ctx, page, go } = await mk({ init: spy });
+      await go('/library');
+      if (control) await page.addStyleTag({ content: 'html:active-view-transition-type(library) { view-transition-name: root !important; }' });
+      await page.getByRole('button', { name: 'Show all' }).first().click(); // Installed as a grid: its cards get names
+      await sleep(300);
+      await page.getByRole('button', { name: 'Not installed', exact: true }).click();
+      await sleep(100);
+      const box = await page.evaluate(() => {
+        const r = document.querySelector('.g[aria-expanded]').getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, running: document.getAnimations().some((a) => a.effect?.pseudoElement?.startsWith('::view-transition') && a.playState === 'running') };
+      });
+      await page.mouse.click(box.x, box.y);
+      await sleep(400);
+      const r = { running: box.running, expanded: await page.evaluate(() => document.querySelectorAll('.g[aria-expanded="true"]').length === 1) };
+      await ctx.close();
+      return r;
+    };
+    const real = await clickDuring(false);
+    const ctl = await clickDuring(true);
+    check('chip transition: a card clicked 100 ms in (transition running) reacts', real.running && real.expanded, JSON.stringify(real));
+    check('chip transition: control with the root captured swallows that click', ctl.running && !ctl.expanded, JSON.stringify(ctl));
+    {
+      // two chip clicks 50 ms apart: the first is skipped, the second wins, names come off, no errors
+      const { ctx, page, go, errs } = await mk({ init: spy });
+      await go('/library');
+      await page.getByRole('button', { name: 'Show all' }).first().click();
+      await sleep(300);
+      await page.getByRole('button', { name: 'Recent', exact: true }).click();
+      await sleep(50);
+      await page.getByRole('button', { name: 'Installed', exact: true }).click({ force: true });
+      await sleep(600);
+      const pressed = await page.evaluate(() => document.querySelector('.fchip[aria-pressed="true"]')?.textContent);
+      check('second chip click during a transition: skipped then replaced, last chip wins, names removed', (await vts(page)).length === 2 && pressed === 'Installed' && (await leftNames(page)) === 0 && errs.length === 0, `${pressed}; ${errs.join(' | ')}`);
+      await ctx.close();
+    }
+    {
+      // an update callback that throws: names still come off, no unhandled rejection
+      const { ctx, page, go, errs } = await mk({ init: () => { const o = document.startViewTransition.bind(document); document.startViewTransition = (a) => o({ ...a, update: async () => { await a.update(); throw new Error('boom'); } }); } });
+      await go('/library');
+      await page.getByRole('button', { name: 'Show all' }).first().click();
+      await sleep(300);
+      await page.getByRole('button', { name: 'Recent', exact: true }).click();
+      await sleep(600);
+      check('failed update: names removed, no unhandled rejection', (await leftNames(page)) === 0 && errs.length === 0, errs.join(' | '));
       await ctx.close();
     }
     // Typing cost with both grids open (worst case), with and without startViewTransition; 3 runs each, median.
@@ -229,8 +289,8 @@ try {
     const on = { long: med(runs.on, 'long'), ev: med(runs.on, 'ev'), evSum: med(runs.on, 'evSum'), chipLong: med(runs.on, 'chipLong') };
     const off = { long: med(runs.off, 'long'), ev: med(runs.off, 'ev'), evSum: med(runs.off, 'evSum'), chipLong: med(runs.off, 'chipLong') };
     console.log(`     typing "game 1" (6 keys, 80 ms apart, both grids open): with VT ${JSON.stringify(on)} vts=${runs.on.map((r) => r.n)} | without ${JSON.stringify(off)}`);
-    check('typing: no long task over 50 ms with view transitions', on.long < 50, `${on.long} ms`);
-    check('typing: slowest key event no slower than without (+16 ms, one frame of jitter)', on.ev <= off.ev + 16, `${on.ev} vs ${off.ev} ms`);
+    // search has no view transition, so with/without run the same code: information only, not an assertion
+    console.log(`     (info) slowest key event ${on.ev} vs ${off.ev} ms, longest task ${on.long} vs ${off.long} ms`);
     check('filter chip with both grids open: no long task over 50 ms', on.chipLong < 50, `${on.chipLong} ms (plain swap ${off.chipLong} ms)`);
   }
 

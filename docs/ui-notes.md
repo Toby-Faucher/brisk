@@ -97,21 +97,32 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   transitions are enough: no `forceMount`, no `child` snippet, no anime.js. Bits dialogs are portalled divs, not top
   layer, so `transition-behavior: allow-discrete` is not needed there. QuitDialog keeps its last text while it leaves.
   Without `@starting-style` they appear at once; reduced motion: no transition, unmount at once (base.css).
+  While the backdrop fades, clicks reach the page: Bits keeps `pointer-events: none` inline on <body> (modal) and `auto`
+  on the overlay until unmount, so base.css overrides both under `[data-ending-style]` (`body:has(...)`, !important).
+  Focus return and Esc are unchanged (platform-check, browser tests).
 - Tooltips: `ui/Tip.svelte`, placed right after its trigger (`<button aria-label=…>…</button><Tip label=… placement=…/>`).
   A `popover="manual"` span (114) in the top layer, `anchor-name`/`position-anchor`/`position-area` (125) with
-  `position-try-fallbacks: flip-block, flip-inline` (128), `role="tooltip"`, the trigger gets `aria-describedby`.
+  `position-try-fallbacks: flip-block, flip-inline` (128), `role="tooltip"`, the trigger gets `aria-describedby` (not when the tip only repeats its aria-label, as on the
+  accent swatches).
   Hover 300 ms or keyboard focus (`:focus-visible`, so a click does not pop it); leave, blur, a press or Esc hides it.
   Exit uses `allow-discrete` on `display`/`overlay` (top layer). Without anchor positioning
   (`CSS.supports('position-anchor: --a')`) it is placed once from the trigger's rect, no flip. Used on: Library card
-  Quit and saved-quality chips, Hero chip, History gate, Settings accent swatches. Not on the ghost bar: its CSS-only
+  Quit and saved-quality chips, Hero chip, History gate (focusable, `role="note"`), Settings accent swatches. The
+  saved-quality chips cannot take focus (the card chip sits inside the card button), so their tip is hover-only and
+  supplementary: the card's accessible name already says "saved quality …" and the chip text is visible. Not on the ghost bar: its CSS-only
   `.tip`s stay (/stream, no new JS there); not on the sidebar (it never collapses, items have visible labels).
   The disabled "Wake-on-LAN" buttons keep `title=` (disabled buttons get no pointer events; the text is visible).
 - Library filter chips: same-document View Transition (111; `types` 125, `view-transition-class` 125). `Library.svelte`
-  `pickFilter`: on-screen cards in an open "Show all" grid get `view-transition-name: vt-<appid>` (removed when it ends;
-  virtualised shelf rows are never named), type `library` scopes the CSS (base.css: groups `--dur-enter`/`--ease`,
-  cross-fades `--dur-tab`; header and chips swap without a cross-fade so the chip glide shows), so Astro's router
-  transitions are untouched. Skipped (plain swap + fade) with reduced motion, without support, while
-  `html[data-astro-transition]` is set or while one of ours runs.
+  `pickFilter`: on-screen cards in an open "Show all" grid get `view-transition-name: vt-<appid>` (at most 60, removed
+  when it ends, also after a skip or a failed update; virtualised shelf rows are never named). Type `library` scopes the
+  CSS, so Astro's router transitions are untouched: `--dur-tab` (180 ms), `::view-transition { pointer-events: none }`
+  and `view-transition-name: none` on the root. The root is not captured on purpose: with it captured, Chrome (headless
+  1248) hit-tested <html> for the whole transition even with `pointer-events: none`, swallowing every click; now only
+  the named cards are snapshots, the rest of the page stays live (it gets the usual .body fade) and a card clicked 100 ms
+  in reacts (platform-check, with a control that re-captures the root and loses the click). The named cards themselves
+  are not clickable while they glide (180 ms). With no grid open nothing is captured, so it is just the fade.
+  A second chip click calls `skipTransition()` on the running one and starts a new one. Skipped (plain swap + fade)
+  with reduced motion, without support, or while `html[data-astro-transition]` is set.
   Search has none: with a transition only when the result set changed and at most once per 300 ms, typing "game 1"
   (6 keys, 80 ms apart, both grids open, 139 games, headless Chrome) made the slowest key event 168 ms vs 40 ms without
   (136 ms even with no card names: the snapshot itself), no long tasks either way. It failed the bar (no slower than
@@ -120,17 +131,24 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   `live` and Settings > Streaming "Keep the screen awake while streaming" (`keepAwake`, default on) is set, it asks for
   a `screen` lock when the tab is visible and again on `visibilitychange` (Chrome drops it when hidden); released on
   failed, Disconnect, leaving /stream and the setting going off. Refusals (NotAllowedError, low battery, no API) are
-  one `console.debug`. No UI, no timers. /stream JS +630 bytes uncompressed (Stream chunk 38010 -> 38627), same 24
-  files; vs main +706 in all (QuitDialog +76).
-- Deliberately not used: `interestfor` (interest invokers: origin trial / experimental in 152-156; Tip does it by
-  hand), `popover="hint"` (not needed: tips are manual popovers that do not close the others anyway), scroll-triggered
-  animations (`animation-trigger`, not on by default in 152; the scroll reveal stays on `animation-timeline: view()`),
+  one `console.debug`. No UI, no timers. /stream JS +630 bytes uncompressed over its 24 files (Stream chunk +617:
+  38010 -> 38627; settings chunk +13), no new file; vs main +706 in all (QuitDialog +76).
+- Deliberately not used: `interestfor` (interest invokers). Checked 2026-10-26 against
+  https://chromestatus.com/api/v0/features/4530756656562176: the ship stage (stage_type 160) starts at desktop 142 and
+  the rollout plan says "Will ship enabled for all users", although the summary label still reads "Origin trial".
+  So it is in 152, and research/ecosystem-frontend-2026-10.md is wrong to call it origin-trial only. Not used anyway:
+  the plan ruled it out for this pass, and Tip needs the 300 ms delay and the click-does-not-pop rule it has today;
+  revisit to drop Tip's listeners. `popover="hint"` (not needed: tips are manual popovers). Scroll-triggered
+  animations (`animation-trigger`): https://chromestatus.com/api/v0/features/5181996801982464 has a ship stage from
+  desktop 146 (label "Proposed"), so also in 152; not used because the scroll reveal on `animation-timeline: view()`
+  already does what we need.
   cross-document view transitions (Brisk needs one persistent document, see research/ecosystem-frontend-2026-10.md).
 - Check: `node web/scripts/platform-check.mjs [dialog tip vt wake]` against `astro preview` (port 4470, mocked /api):
   dialog still mounted and fading 50 ms after Esc then gone, focus back, reduced motion instant; tip hover/focus/Esc,
   flip at the top edge, the no-anchor fallback, axe with a tip open; the chip transition (spy on
-  `startViewTransition`, pseudo-element animations, names removed, none under reduced motion, none while typing) and
-  the typing measurement; wake lock acquire/re-acquire/release with a stubbed `navigator.wakeLock` and a fake
+  `startViewTransition`, pseudo-element animations, names removed, none under reduced motion, none while typing, a
+  card click during it plus its control, a second chip click, a throwing update) and the typing numbers (information
+  only); the backdrop letting a click through during a dialog exit; wake lock acquire/re-acquire/release with a stubbed `navigator.wakeLock` and a fake
   WebTransport, setting off, failed state, and /stream's JS file list. Screenshots to `$OUT`.
 
 ## Run

@@ -121,13 +121,14 @@ if (want('count')) {
   check('home first paint: temps shown, anime.js not even loaded', anime.length === 0, JSON.stringify(anime));
   state.host = { ...state.host, gpuTempC: 63.4, cpuTempC: 52 };
   await page.evaluate(() => {
-    window.__samples = [];
+    window.__samples = []; window.__sampled = false;
     const el = document.querySelector('.stats b.mono'); const ring = document.querySelector('.ring');
     const t0 = performance.now();
-    const s = () => { window.__samples.push([Math.round(performance.now() - t0), el.textContent, ring.style.getPropertyValue('--p')]); if (performance.now() - t0 < 1200) requestAnimationFrame(s); };
+    const s = () => { window.__samples.push([Math.round(performance.now() - t0), el.textContent, ring.style.getPropertyValue('--p')]); const end = el.textContent === '63 °C' && ring.style.getPropertyValue('--p') === '63.4'; if (!end && performance.now() - t0 < 3000) requestAnimationFrame(s); else window.__sampled = true; };
     requestAnimationFrame(s);
   });
-  await poll(page); await sleep(1300);
+  // under load the tween can end later than 1.2 s: sample until the end values are shown (or 3 s)
+  await poll(page); await page.waitForFunction(() => window.__sampled, null, { timeout: 5000 }).catch(() => {});
   const s = await page.evaluate(() => window.__samples);
   const texts = [...new Set(s.map((x) => x[1]))];
   check('home poll: GPU temp rolls 45 -> 63 through intermediate values', texts.length >= 5 && texts[0] === '45 °C' && texts.at(-1) === '63 °C', texts.join(' '));
@@ -138,7 +139,7 @@ if (want('count')) {
   check('home poll: tabular-nums on the rolling numbers', await page.evaluate(() => [...document.querySelectorAll('.stats b')].every((b) => getComputedStyle(b).fontVariantNumeric.includes('tabular-nums'))));
   // rapid updates retarget: three polls 120 ms apart end on the last value
   for (const g of [80, 30, 71.6]) { state.host = { ...state.host, gpuTempC: g }; await poll(page); await sleep(120); }
-  await sleep(900);
+  await page.waitForFunction(() => document.querySelector('.stats b.mono').textContent === '72 °C' && document.querySelector('.ring').style.getPropertyValue('--p') === '71.6', null, { timeout: 3000 }).catch(() => {});
   check('home rapid polls: ends on the last value only', await page.evaluate(() => document.querySelector('.stats b.mono').textContent === '72 °C' && document.querySelector('.ring').style.getPropertyValue('--p') === '71.6'));
   const idle = await rafIn(page, 1000);
   report.homeIdleRaf = idle;
