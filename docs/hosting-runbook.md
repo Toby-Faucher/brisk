@@ -81,6 +81,12 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
 - A new link (another browser): `scripts/brisk-service.sh link`. To rotate the secret: remove
   `~/.config/brisk/secret`, `systemctl --user restart brisk-hostd.service`, open the new link.
 
+## Single binary (optional, not what the service runs)
+`cargo build --release -p brisk-hostd --features embed` after `cd web && npm run build` gives a hostd with the
+page inside (`BRISK_STATIC=embed`, or automatically when web/dist is missing). The unit and `update` keep
+serving web/dist from disk, because the atomic dist swap is the update and rollback path. Details:
+docs/ui-notes.md, Hosting, Static files.
+
 ## Rollback
 - Bad build: `git checkout <last good commit> && scripts/brisk-service.sh update`, later back to main.
 - Bad unit file: `install` restores the previous one by itself (see Everyday). By hand:
