@@ -26,7 +26,7 @@ describe('api', () => {
     expect(String(replaceState.mock.calls[0][2])).toBe('http://localhost:8443/library?x=1#top');
   });
 
-  it('sends_secret_on_post_only', async () => {
+  it('sends_secret_on_every_call', async () => {
     const { m } = stubPage('http://localhost:8443/');
     m.set('brisk.secret', 'sek');
     const f = stubFetch(204);
@@ -39,7 +39,7 @@ describe('api', () => {
     expect((post.headers as Record<string, string>)['x-brisk-secret']).toBe('sek');
     expect(post.body).toBe('{"appid":570}');
     expect(getUrl).toBe('/api/games');
-    expect((getInit.headers as Record<string, string>)['x-brisk-secret']).toBeUndefined();
+    expect((getInit.headers as Record<string, string>)['x-brisk-secret']).toBe('sek');
   });
 
   it('maps_error_json_to_thrown_message', async () => {

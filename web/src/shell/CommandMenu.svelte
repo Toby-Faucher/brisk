@@ -26,7 +26,7 @@
       run: () => void api.launch(g.appid).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
     })),
     { id: 'cmd:machine', label: 'Switch machine', hint: 'bawn', icon: 'host', run: () => go('/machines') },
-    ...presets.map((p) => ({ id: `cmd:preset:${p}`, label: `Quality: ${p}`, icon: 'stream', run: () => emitCommand({ type: 'preset', preset: p }) })),
+    ...presets.map((p) => ({ id: `cmd:preset:${p}`, label: `Quality: ${p}`, icon: 'stream', run: () => { if (!emitCommand({ type: 'preset', preset: p })) toast(`Default quality: ${p}`); } })),
     { id: 'cmd:stats', label: 'Toggle stats', hint: 'Stream', icon: 'bolt', run: () => emitCommand({ type: 'stats' }) },
     ...mods.flatMap((m) => m.commands?.() ?? []),
   ]);

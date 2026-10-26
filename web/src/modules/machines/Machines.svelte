@@ -3,7 +3,7 @@
   import { Dialog } from 'bits-ui';
   import { api, type StreamInfo } from '../../state/api';
   import { games } from '../../state/games';
-  import { host, pollHost, refreshHost } from '../../state/host';
+  import { host, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
@@ -20,11 +20,10 @@
   const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
 
   onMount(() => {
-    const stop = pollHost();
     const load = () => api.stream().then((s) => (stream = s), () => (stream = null));
     void load();
     const id = setInterval(() => !document.hidden && void load(), 10_000);
-    return () => (stop(), clearInterval(id), clearTimeout(timer));
+    return () => (clearInterval(id), clearTimeout(timer)); // HostPill keeps $host fresh
   });
 
   async function restart() {
