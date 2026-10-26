@@ -20,7 +20,7 @@ const report = {};
 // ---- the anime.js chunks = what motion.ts may load (its __vite__mapDeps list), minus Vite's preload helper
 const astro = path.join(DIST, '_astro');
 const files = fs.readdirSync(astro).filter((f) => f.endsWith('.js'));
-const motionChunk = files.find((f) => /^motion\./.test(f) && fs.readFileSync(path.join(astro, f), 'utf8').includes('prefers-reduced-motion: reduce') && fs.readFileSync(path.join(astro, f), 'utf8').includes('__vite__mapDeps'));
+const motionChunk = files.find((f) => /^motion\./.test(f) && /m\.f=\[[^\]]*"_astro\/layout\./.test(fs.readFileSync(path.join(astro, f), 'utf8')));
 const deps = motionChunk ? [...fs.readFileSync(path.join(astro, motionChunk), 'utf8').match(/m\.f=\[([^\]]*)\]/)[1].matchAll(/"_astro\/([^"]+)"/g)].map((m) => m[1]) : [];
 const ANIME = new Set(deps.filter((f) => !/^preload-helper/.test(f)));
 const isAnime = (url) => ANIME.has(url.split('/').pop());
@@ -47,7 +47,7 @@ if (want('graph')) {
 
 const games = Array.from({ length: 139 }, (_, i) => ({ appid: 1000 + i, name: i === 0 ? 'Portal 2' : `Game ${i}`, installed: i < 40, sizeBytes: 1e9, lastPlayed: i < 5 ? 1700000000 - i * 1e5 : null, playtimeMin: 90, cover: '', running: false }));
 const sessions = Array.from({ length: 15 }, (_, i) => ({ appid: 1000, name: 'Portal 2', started: 1700000000000 + i * 1e6, ended: 1700000600000 + i * 1e6, host: 'bawn', preset: 'balanced', codec: 'h264', bitrateKbps: 20000, stats: null, spark: [1, 3, 2, 4, 3] }));
-const series = Array.from({ length: 120 }, (_, i) => ({ t: 1700000000000 + i * 5000, fps: 58 + Math.sin(i / 6) * 3, mbps: 18 + Math.cos(i / 9) * 4, delayMs: 9 + Math.sin(i / 4) * 2, lost: 0 }));
+const series = Array.from({ length: 120 }, (_, i) => [1700000000000 + i * 5000, 9 + Math.sin(i / 4) * 2, 58 + Math.sin(i / 6) * 3, 18 + Math.cos(i / 9) * 4]);
 const mkHost = () => ({ name: 'bawn', sunshine: 'ready', uptimeS: 5000, cpuTempC: 40, gpuTempC: 45, path: 'direct', relay: null });
 
 const browser = await chromium.launch({ executablePath: exe });
@@ -245,6 +245,49 @@ if (want('glide')) {
   check('no glide left running, no inline styles or will-change left on the chips/nav', await page.evaluate(() => document.getAnimations().every((a) => !a.effect?.pseudoElement) && [...document.querySelectorAll('aside a.nav, .fchip')].every((e) => !e.getAttribute('style') && getComputedStyle(e).willChange === 'auto')));
   check('no errors', errs.length === 0, errs.join('|'));
   await page.context().close();
+}
+
+// ---- 6. chart lines draw in once per open (createDrawable), the fill fades in, nothing is left behind
+const watchDraw = (page) => page.evaluate(() => {
+  window.__draws = 0; window.__dash = [];
+  new MutationObserver((ms) => ms.forEach((m) => {
+    if (m.attributeName === 'pathLength' && m.target.getAttribute('pathLength')) window.__draws++;
+    if (m.attributeName === 'stroke-dasharray' && m.target.classList.contains('lc-area-line')) window.__dash.push(m.target.getAttribute('stroke-dasharray'));
+  })).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['pathLength', 'stroke-dasharray'] });
+});
+const lineState = (page) => page.evaluate(() => [...document.querySelectorAll('.lc-area-line')].map((p) => ({ attrs: ['pathLength', 'stroke-dasharray', 'stroke-dashoffset'].filter((a) => p.hasAttribute(a)).length, style: p.getAttribute('style'), len: Math.round(p.getTotalLength()), op: getComputedStyle(p).opacity })));
+if (want('chart')) {
+  const { page, anime, errs } = await mk();
+  await page.goto(BASE + '/history'); await sleep(1000);
+  await watchDraw(page);
+  const t0 = Date.now();
+  await page.click('.grid .card a.fill >> nth=0');
+  await page.waitForSelector('.lc-area-line'); await sleep(30);
+  await page.screenshot({ path: `${OUT}/chart-draw-mid.png`, clip: { x: 218, y: 90, width: 900, height: 230 } });
+  await sleep(1000);
+  const mid = await page.evaluate(() => window.__dash.slice()); // every dash state the lines went through
+  await page.screenshot({ path: `${OUT}/chart-draw-end.png`, clip: { x: 218, y: 90, width: 900, height: 230 } });
+  const end = await lineState(page);
+  const draws = await page.evaluate(() => window.__draws);
+  check('chart: each of the 3 lines draws in once (pathLength set once each), progressively', draws === 3 && new Set(mid).size >= 6, `${draws} draws, ${new Set(mid).size} dash states, e.g. ${mid.slice(0, 3).join(' | ')}`);
+  check('chart: ends with the full line and no dash attributes or inline style left', end.length === 3 && end.every((l) => l.attrs === 0 && !l.style && l.len > 100), JSON.stringify(end));
+  check('chart: the anime.js svg chunk was loaded for it (lazy)', anime.some((a) => /^svg\./.test(a.url)), anime.map((a) => a.url).join(' '));
+  await page.setViewportSize({ width: 1200, height: 900 }); await sleep(800);
+  check('chart: a resize re-renders the paths but does not draw again', (await page.evaluate(() => window.__draws)) === 3);
+  const r = await rafIn(page, 1000);
+  check('chart: idle after the draw (no rAF)', r <= 1, `${r} rAF/s`);
+  await page.click('button.back'); await sleep(500);
+  await page.click('.grid .card a.fill >> nth=1'); await page.waitForSelector('.lc-area-line'); await sleep(1100);
+  check('chart: opening another session draws its lines once more', (await page.evaluate(() => window.__draws)) === 6);
+  check('no errors', errs.length === 0, errs.join('|'));
+  await page.context().close();
+  const { page: p2, errs: e2 } = await mk({ reducedMotion: 'reduce' });
+  await p2.goto(BASE + '/history?session=1700000000000'); await p2.waitForSelector('.lc-area-line'); await sleep(200);
+  await watchDraw(p2);
+  const st = await lineState(p2);
+  check('chart reduced motion: full lines at once, never dashed, fill not fading', st.length === 3 && st.every((l) => l.attrs === 0) && (await p2.evaluate(() => document.getAnimations().length)) === 0, JSON.stringify(st));
+  check('no errors', e2.length === 0, e2.join('|'));
+  await p2.context().close();
 }
 
 // ---- CSS springs (zero runtime): hover lift, game card, dialog entrance, ghost bar

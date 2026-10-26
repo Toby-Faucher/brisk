@@ -150,3 +150,41 @@ export function glideSwap(root: Element | undefined, sel: string, change: () => 
   const now = root.querySelector(sel);
   if (now && now !== old) glide(now, from, box(now), { pseudo: '::before' });
 }
+
+const DRAW = ['pathLength', 'stroke-dasharray', 'stroke-dashoffset'];
+
+/**
+ * Svelte attachment for an SVG line: it draws itself in once, when it mounts (anime.js `createDrawable`). It is hidden
+ * at once in anime's own '0 0' state, so a slow chunk load never flashes the full line first; on completion, on
+ * destroy or when motion is off the attributes are removed again, so the line ends exactly as drawn without us.
+ */
+export function drawIn(el: SVGGeometryElement) {
+  if (!motionAllowed()) return;
+  const clean = () => (DRAW.forEach((a) => el.removeAttribute(a)), el.style.removeProperty('stroke-linecap'));
+  el.setAttribute('pathLength', '1000');
+  el.setAttribute('stroke-dasharray', '0 1010');
+  let a: { cancel(): unknown; complete(): unknown } | undefined;
+  let dead = false;
+  void load('svg', 'animation', 'easings').then((lib) => {
+    if (dead) return;
+    const anim = lib.animate(lib.createDrawable(el), {
+      draw: ['0 0', '0 1'],
+      duration: ms('--dur-draw', 700),
+      ease: ease(lib),
+      onComplete: () => (live.delete(anim), clean()),
+    });
+    live.add((a = anim));
+  });
+  return () => {
+    dead = true;
+    if (a) live.delete(a), a.cancel();
+    clean();
+  };
+}
+
+/** Svelte attachment: fade an element in once it mounts (native Web Animations, nothing loaded), after `delay` ms. */
+export const fadeIn = (delay = 0) => (el: Element) => {
+  if (!motionAllowed()) return;
+  const a = el.animate({ opacity: [0, 1] }, { duration: ms('--dur-enter', 420), delay, easing: cssVar('--ease'), fill: 'backwards' });
+  return () => a.cancel();
+};
