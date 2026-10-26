@@ -1,6 +1,6 @@
 use rand_core::{OsRng, RngCore};
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Shared by every route. Deliberately has no field for the Steam API key: it is read from
 /// `steam_key_file` per request and never stored.
@@ -13,9 +13,18 @@ pub struct Config {
     pub steam_key_file: PathBuf,
     pub steam_api_base: String,
     pub bridge_bin: PathBuf,
-    pub bridge_listen: String,
+    /// `BRISK_LISTEN`; None = the tailscale IPv4 :4433, looked up at each stream start.
+    pub bridge_listen: Option<String>,
+    /// Holds bridge.pem / bridge.key.pem, made and renewed by hostd at each stream start.
+    pub tls_dir: PathBuf,
+    /// Host headers allowed besides localhost:8443 and 127.0.0.1:8443 (`BRISK_ALLOWED_HOSTS`).
+    pub allowed_hosts: Vec<String>,
+    /// Tailnet logins let in through `tailscale serve`'s identity header; empty = off.
+    pub allowed_users: Vec<String>,
     pub app_id: u32,
     pub secret: String,
+    /// Running under systemd (`INVOCATION_ID`): stdout is the journal, so no secrets or tokens in it.
+    pub service: bool,
     /// File drop target, created on the first upload.
     pub downloads_dir: PathBuf,
     /// Where running games are looked up; tests point it at a fake.
@@ -27,11 +36,10 @@ fn env_path(name: &str) -> Option<PathBuf> {
 }
 
 impl Config {
-    /// Defaults plus the `BRISK_*` overrides; a fresh per-run secret (128 random bits, hex).
+    /// Defaults plus the `BRISK_*` overrides, with a fresh random secret: main.rs swaps in the
+    /// persistent one (`load_secret`), so tests never touch ~/.config/brisk.
     pub fn from_env(dist: PathBuf) -> Config {
         let home = env_path("HOME").unwrap_or_else(|| PathBuf::from("."));
-        let mut s = [0u8; 16];
-        OsRng.fill_bytes(&mut s);
         Config {
             listen: ([127, 0, 0, 1], 8443).into(),
             dist,
@@ -43,16 +51,145 @@ impl Config {
             steam_api_base: std::env::var("BRISK_STEAM_API_BASE")
                 .unwrap_or_else(|_| "https://api.steampowered.com".into()),
             bridge_bin: env_path("BRISK_BRIDGE_BIN").unwrap_or_else(|| "brisk-bridge".into()),
-            // Same names as scripts/brisk-up.sh. [U] 127.0.0.1 default: brisk-up.sh passes the tailscale IP.
-            bridge_listen: std::env::var("BRISK_LISTEN")
-                .unwrap_or_else(|_| "127.0.0.1:4433".into()),
+            bridge_listen: std::env::var("BRISK_LISTEN").ok().filter(|v| !v.is_empty()),
+            tls_dir: env_path("BRISK_TLS_DIR").unwrap_or_else(|| home.join(".config/brisk/tls")),
+            allowed_hosts: list(&std::env::var("BRISK_ALLOWED_HOSTS").unwrap_or_default()),
+            allowed_users: list(&std::env::var("BRISK_ALLOWED_USERS").unwrap_or_default()),
             app_id: std::env::var("BRISK_APP")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(870779643),
-            secret: s.iter().map(|b| format!("{b:02x}")).collect(),
+            secret: new_secret(),
+            service: std::env::var_os("INVOCATION_ID").is_some(),
             downloads_dir: home.join("Downloads/brisk"),
             proc_dir: "/proc".into(),
         }
     }
+}
+
+/// hostd's startup line. Under systemd (`service`) it goes to the journal, so no secret in it.
+pub fn page_line(secret: &str, service: bool) -> String {
+    if service {
+        "page\thttp://localhost:8443/ (link: scripts/brisk-service.sh link)".into()
+    } else {
+        format!("page\thttp://localhost:8443/?s={secret}")
+    }
+}
+
+/// 128 random bits, hex.
+fn new_secret() -> String {
+    let mut s = [0u8; 16];
+    OsRng.fill_bytes(&mut s);
+    s.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Comma or newline separated; trimmed, `#` comments and empty entries dropped.
+pub fn list(s: &str) -> Vec<String> {
+    s.split([',', '\n'])
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// `env` (`BRISK_SECRET`, for tests) if set, else the secret in `file`, created once (0600, its
+/// directory 0700) so a bookmarked link survives restarts. Shorter than 16 characters is refused.
+pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> {
+    use std::io::{Error, ErrorKind, Write};
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    let check = |s: String| {
+        if s.len() >= 16 && s.bytes().all(|b| b.is_ascii_graphic()) {
+            Ok(s)
+        } else {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "the secret ({}) is empty, too short or not printable",
+                    file.display()
+                ),
+            ))
+        }
+    };
+    if let Some(s) = env.filter(|s| !s.is_empty()) {
+        return check(s);
+    }
+    match std::fs::read_to_string(file) {
+        Ok(s) => {
+            if std::fs::metadata(file)?.permissions().mode() & 0o077 != 0 {
+                std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600))?;
+                eprintln!(
+                    "warning: {} was readable by others; now 0600",
+                    file.display()
+                );
+            }
+            check(s.trim().to_string())
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            if let Some(dir) = file.parent() {
+                std::fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(dir)?;
+            }
+            let s = new_secret();
+            // create_new: of two hostds starting at once only one writes; the other reads it.
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(file)
+            {
+                Ok(mut f) => {
+                    f.write_all(format!("{s}\n").as_bytes())?;
+                    f.sync_all()?;
+                    Ok(s)
+                }
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => load_secret(None, file),
+                Err(e) => Err(e),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// One login per line (`#` comments ok). Ignored, with a warning, unless it is a regular file
+/// (not a symlink) owned by us that only we can write (0600 or 0644): anyone else editing it
+/// could let themselves in.
+pub fn load_users(file: &Path) -> Vec<String> {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    load_users_as(file, unsafe { libc::getuid() })
+}
+
+/// `load_users` for an expected owner `uid`. Opened with O_NOFOLLOW (a symlink fails to open) and
+/// checked with fstat on that same descriptor, so nothing can be swapped in between check and read.
+pub fn load_users_as(file: &Path, uid: u32) -> Vec<String> {
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK) // NONBLOCK: a FIFO must not hang startup
+        .open(file);
+    let warn = || {
+        eprintln!(
+            "warning: ignoring {} (must be a regular file, not a symlink, owned by uid {uid} and writable only by it: 0600 or 0644)",
+            file.display()
+        );
+        vec![]
+    };
+    let mut f = match f {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return vec![],
+        Err(_) => return warn(),
+    };
+    let Ok(m) = f.metadata() else {
+        return warn();
+    };
+    if !m.file_type().is_file() || m.uid() != uid || m.permissions().mode() & 0o022 != 0 {
+        return warn();
+    }
+    let mut s = String::new();
+    if f.read_to_string(&mut s).is_err() {
+        return warn();
+    }
+    list(&s)
 }

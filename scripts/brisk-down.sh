@@ -8,6 +8,11 @@ RUN=${XDG_RUNTIME_DIR:?}/brisk
 SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
 # shellcheck source=scripts/brisk-common.sh
 . "$here/scripts/brisk-common.sh"
+# The service keeps patched Sunshine on for good; rolling it back under it is not brisk-down's call.
+if systemctl --user is-active -q brisk-hostd.service 2>/dev/null || systemctl --user is-enabled -q brisk-hostd.service 2>/dev/null; then
+  echo "brisk-down: hostd is running as a service: use scripts/brisk-service.sh (uninstall, then rollback via scripts/sunshine-brisk.sh)" >&2
+  exit 1
+fi
 
 if [ -f "$RUN/bridge.pid" ] && kill -0 "$(cat "$RUN/bridge.pid")" 2>/dev/null; then
   pid=$(cat "$RUN/bridge.pid")

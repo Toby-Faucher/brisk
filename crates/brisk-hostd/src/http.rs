@@ -1,3 +1,4 @@
+use crate::auth::{tailnet_ok, Hosts};
 use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
@@ -7,14 +8,15 @@ use crate::running::{Quit, QuitError, Quitter};
 use crate::sessions::{valid_point, Point, SeriesError, MAX_POINTS};
 use crate::steam::{self, GamesResult};
 use crate::stream::{Codec, Preset, StreamReq, Supervisor};
-use axum::extract::{DefaultBodyLimit, Path as UrlPath, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::Router;
 use serde::Deserialize;
-use std::path::{Component, Path, PathBuf};
+use std::net::SocketAddr;
+use std::path::{Component, Path};
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
@@ -27,6 +29,7 @@ pub struct AppState {
     pub files: Files,
     pub quit: Quitter,
     pub prefs: Prefs,
+    pub hosts: Hosts,
 }
 
 impl AppState {
@@ -43,6 +46,7 @@ impl AppState {
             files: Files::new(cfg.downloads_dir.clone()),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
+            hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -468,20 +472,29 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-/// Host check on everything (DNS rebinding), secret on every /api request (GET too: /api/stream carries the session token).
+/// Host check on everything (DNS rebinding); every /api request (GET too: /api/stream carries
+/// the session token) needs the secret or an allowed tailnet login (see auth.rs).
 async fn guard(State(s): State<Arc<AppState>>, req: Request, next: Next) -> Response {
-    let host_ok = req
-        .headers()
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .is_some_and(|h| h == "localhost:8443" || h == "127.0.0.1:8443");
-    let needs_secret = req.uri().path().starts_with("/api");
-    let secret_ok = !needs_secret
-        || req
-            .headers()
+    let hd = req.headers();
+    let host = hd.get(header::HOST).and_then(|h| h.to_str().ok());
+    let host_ok = match host {
+        Some(h) => s.hosts.allowed(h).await,
+        None => false,
+    };
+    let needs_auth = req.uri().path().starts_with("/api");
+    let auth_ok = !needs_auth
+        || hd
             .get("x-brisk-secret")
-            .is_some_and(|v| ct_eq(v.as_bytes(), s.cfg.secret.as_bytes()));
-    if host_ok && secret_ok {
+            .is_some_and(|v| ct_eq(v.as_bytes(), s.cfg.secret.as_bytes()))
+        || tailnet_ok(
+            &s.cfg.allowed_users,
+            req.extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .is_some_and(|c| c.0.ip().is_loopback()),
+            hd.get("tailscale-user-login").and_then(|v| v.to_str().ok()),
+            hd.contains_key("x-brisk-csrf"),
+        );
+    if host_ok && auth_ok {
         next.run(req).await
     } else {
         StatusCode::FORBIDDEN.into_response()
@@ -500,19 +513,32 @@ async fn static_file(State(s): State<Arc<AppState>>, req: Request) -> Response {
     if !safe || (req.method() != Method::GET && req.method() != Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let dist: &PathBuf = &s.cfg.dist;
+    // Resolved once per request: `update` swaps web/dist (a symlink) to a new build atomically,
+    // and every file must canonicalize to inside that one build (no symlink out of it).
+    let Ok(dist) = std::fs::canonicalize(&s.cfg.dist) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let inside = |p: &Path| {
+        std::fs::canonicalize(p)
+            .ok()
+            .filter(|c| c.starts_with(&dist) && c.is_file())
+    };
     let mut path = dist.join(rel);
     if path.is_dir() {
         path.push("index.html");
     }
     // Unknown page: the root index, so client-side routes still load.
     // A missing file with an extension is a missing asset, not a page.
-    if !path.is_file() && Path::new(rel).extension().is_some() {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    if !path.is_file() {
-        path = dist.join("index.html");
-    }
+    let path = match inside(&path) {
+        Some(p) => p,
+        None if Path::new(rel).extension().is_some() || path.exists() => {
+            return StatusCode::NOT_FOUND.into_response()
+        }
+        None => match inside(&dist.join("index.html")) {
+            Some(p) => p,
+            None => return StatusCode::NOT_FOUND.into_response(),
+        },
+    };
     match tokio::fs::read(&path).await {
         Ok(b) => ([(header::CONTENT_TYPE, mime(&path))], b).into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),

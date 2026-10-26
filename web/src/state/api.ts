@@ -73,6 +73,7 @@ export type SessionRec = {
 /** `[t s since started, delay ms, fps, Mbit/s]`, one per 5 s. */
 export type SeriesPoint = [number, number, number, number];
 
+import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 
 export class ApiError extends Error {
@@ -83,31 +84,50 @@ export class ApiError extends Error {
 
 const SECRET_KEY = 'brisk.secret';
 
-/** hostd prints `/?s=<secret>`: keep it for this tab and take it out of the address bar. */
+/** hostd answered 403: no valid secret and no allowed tailnet login. The Shell shows how to get in. */
+export const denied = writable(false);
+
+/** hostd prints `/?s=<secret>`: keep it (this tab, and localStorage so a bookmark of the bare URL
+ *  keeps working; the secret file on bawn persists across restarts) and take it out of the address bar. */
 export function captureSecret() {
   try {
     const u = new URL(location.href);
     const s = u.searchParams.get('s');
     if (!s) return;
     sessionStorage.setItem(SECRET_KEY, s);
+    try {
+      localStorage.setItem(SECRET_KEY, s);
+    } catch {}
     u.searchParams.delete('s');
     history.replaceState(history.state, '', u.href);
   } catch {}
 }
 captureSecret();
 
-function secret(): string | null {
+function stored(st: () => Storage): string | null {
   try {
-    return sessionStorage.getItem(SECRET_KEY);
+    return st().getItem(SECRET_KEY);
   } catch {
     return null;
   }
 }
 
+/** None is fine: through `tailscale serve` hostd may know the login instead. */
+function secret(): string | null {
+  return stored(() => sessionStorage) ?? stored(() => localStorage);
+}
+
+/** `x-brisk-csrf` on every call: hostd only trusts a tailnet login on requests carrying it (a
+ *  custom header cannot be sent cross-site without a CORS preflight, which hostd never grants). */
 function auth(headers: Record<string, string> = {}): Record<string, string> {
   const s = secret();
   if (s) headers['x-brisk-secret'] = s;
+  headers['x-brisk-csrf'] = '1';
   return headers;
+}
+
+function seen(status: number) {
+  denied.set(status === 403);
 }
 
 /** hostd's `{error}` text, else the status line. */
@@ -122,6 +142,7 @@ function apiError(status: number, statusText: string, body: string): ApiError {
 
 async function send(path: string, init: RequestInit): Promise<Response> {
   const r = await fetch(path, init);
+  seen(r.status);
   if (!r.ok) throw apiError(r.status, r.statusText, await r.text().catch(() => ''));
   return r;
 }
@@ -155,7 +176,7 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
     x.open('PUT', `/api/files/${encodeURIComponent(f.name)}`);
     for (const [k, v] of Object.entries(auth())) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => progress(e.loaded);
-    x.onload = () => (x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText)));
+    x.onload = () => (seen(x.status), x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText)));
     x.onerror = () => no(new ApiError('the upload was cut off', 0));
     x.send(f);
   });

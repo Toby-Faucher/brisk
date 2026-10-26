@@ -1,6 +1,6 @@
 //! The bridge supervisor: at most one `brisk-bridge` child, start/stop serialized, plus the
-//! `steam://` commands. The bridge's wt URL carries its own `--listen` address (the tailscale IP
-//! from `BRISK_LISTEN`); with the 127.0.0.1 default a remote page cannot reach it.
+//! `steam://` commands. The bridge's wt URL carries its own `--listen` address (`BRISK_LISTEN`,
+//! else the tailscale IP looked up at each start, see `resolve_listen`).
 
 use crate::config::Config;
 use crate::host::Runner;
@@ -148,10 +148,11 @@ struct Running {
 pub struct Supervisor {
     bin: PathBuf,
     proc_dir: PathBuf,
-    listen: String,
+    listen: Option<String>,
     app_id: u32,
-    cert: PathBuf,
-    key: PathBuf,
+    tls: PathBuf,
+    /// Service mode: bridge lines with the session token are not re-printed (see `bridge_line`).
+    pub quiet: bool,
     runner: Arc<dyn Runner>,
     pub sessions: Arc<Sessions>,
     shared: Arc<Mutex<Shared>>,
@@ -166,17 +167,13 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new(cfg: &Config, runner: Arc<dyn Runner>) -> Self {
-        // Where scripts/brisk-up.sh creates them.
-        let tls = std::env::var_os("HOME")
-            .map_or_else(|| PathBuf::from("."), PathBuf::from)
-            .join(".config/brisk/tls");
         Supervisor {
             bin: cfg.bridge_bin.clone(),
             proc_dir: cfg.proc_dir.clone(),
             listen: cfg.bridge_listen.clone(),
             app_id: cfg.app_id,
-            cert: tls.join("bridge.pem"),
-            key: tls.join("bridge.key.pem"),
+            tls: cfg.tls_dir.clone(),
+            quiet: cfg.service,
             runner,
             sessions: Arc::new(Sessions::new(cfg.data_dir.join("sessions.jsonl"))),
             shared: Arc::new(Mutex::new(Shared {
@@ -208,6 +205,16 @@ impl Supervisor {
         if self.shutting_down() {
             return Err("hostd is shutting down".into());
         }
+        // Before the old bridge is stopped: a missing tailscale or openssl leaves it running.
+        let (r, conf, tls) = (self.runner.clone(), self.listen.clone(), self.tls.clone());
+        let (listen, (cert, key)) = tokio::task::spawn_blocking(move || {
+            Ok::<_, String>((
+                resolve_listen(&*r, conf.as_deref())?,
+                ensure_cert(&*r, &tls, std::time::SystemTime::now())?,
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         let (prev, prev_rec) = self.stop_locked(&mut slot).await;
         let quality_change = req.appid.is_none() && prev.state == State::Live;
         let appid = req.appid.or(prev.appid.filter(|_| quality_change));
@@ -244,12 +251,12 @@ impl Supervisor {
                 "--app",
                 &n(self.app_id),
                 "--listen",
-                &self.listen,
+                &listen,
             ])
             .arg("--cert")
-            .arg(&self.cert)
+            .arg(&cert)
             .arg("--key")
-            .arg(&self.key)
+            .arg(&key)
             .args([
                 "--codec",
                 req.codec.flag(),
@@ -280,6 +287,7 @@ impl Supervisor {
         );
         let mut launch = req.appid;
         let proc = self.proc_dir.clone();
+        let quiet = self.quiet;
         let report = Arc::new(Mutex::new(Report::default()));
         let rep = report.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
@@ -288,14 +296,18 @@ impl Supervisor {
             let mut lines = BufReader::new(out).lines();
             let mut page_tx = Some(page_tx);
             let mut eof = false;
+            let mut tok: Option<String> = None;
             // Ends on the child's exit, not on stdout EOF: a grandchild may hold the pipe open.
             loop {
                 tokio::select! {
                     l = lines.next_line(), if !eof => match l {
                         Ok(Some(l)) => {
                             if let Some(p) = l.strip_prefix("page\t") {
-                                if let (Some(tx), Some(wh)) = (page_tx.take(), parse_page(p)) {
-                                    let _ = tx.send(wh);
+                                if let Some(wh) = parse_page(p) {
+                                    tok = wh.0.rsplit('/').next().filter(|t| t.len() >= 8).map(String::from);
+                                    if let Some(tx) = page_tx.take() {
+                                        let _ = tx.send(wh);
+                                    }
                                 }
                             } else if l.starts_with("tap\tconnected") {
                                 if let Some(id) = launch.take() {
@@ -303,7 +315,7 @@ impl Supervisor {
                                 }
                             }
                             rep.lock().unwrap().line(&l);
-                            forward(l);
+                            forward(bridge_line(l, quiet, tok.as_deref()));
                         }
                         _ => eof = true,
                     },
@@ -315,7 +327,7 @@ impl Supervisor {
             let rest = async {
                 while let Ok(Some(l)) = lines.next_line().await {
                     rep.lock().unwrap().line(&l);
-                    forward(l);
+                    forward(bridge_line(l, quiet, tok.as_deref()));
                 }
             };
             if !eof {
@@ -458,6 +470,127 @@ impl Supervisor {
     }
 }
 
+/// The bridge's address: `BRISK_LISTEN`, else this machine's tailscale IPv4 on :4433, asked at
+/// each start (bawn may boot before tailscale is up). Never all interfaces. Blocking.
+pub fn resolve_listen(runner: &dyn Runner, configured: Option<&str>) -> Result<String, String> {
+    let a = match configured {
+        Some(a) => a.to_string(),
+        None => {
+            let ip = runner
+                .run("tailscale", &["ip", "-4"])
+                .and_then(|o| o.lines().next().map(|l| l.trim().to_string()))
+                .filter(|l| !l.is_empty())
+                .ok_or("tailscale gave no IPv4 address (is tailscale up? or set BRISK_LISTEN)")?;
+            format!("{ip}:4433")
+        }
+    };
+    match a.parse::<std::net::SocketAddrV4>() {
+        Ok(s) if s.ip().is_unspecified() => {
+            Err("refusing to listen on all interfaces (0.0.0.0)".into())
+        }
+        Ok(_) => Ok(a),
+        Err(_) => Err(format!("bridge listen address '{a}' is not IPv4:PORT")),
+    }
+}
+
+const CERT_DAYS: &str = "13"; // Chrome's serverCertificateHashes allows at most 14 days
+const CERT_RENEW_S: u64 = 10 * 86400;
+
+/// `bridge.pem` / `bridge.key.pem` in `dir`, made with openssl when missing or older than 10
+/// days (the policy scripts/brisk-up.sh had): ECDSA P-256, 13 days, both 0600. The new pair is
+/// written next to the old one and renamed over it, so a failed run leaves the old pair. Blocking.
+pub fn ensure_cert(
+    runner: &dyn Runner,
+    dir: &std::path::Path,
+    now: std::time::SystemTime,
+) -> Result<(PathBuf, PathBuf), String> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let (cert, key) = (dir.join("bridge.pem"), dir.join("bridge.key.pem"));
+    let mtime = |p: &PathBuf| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    // Fresh = both present, the key no newer than its cert (else they are from different runs,
+    // e.g. a renewal cut off between the two renames), and the cert's mtime not in the future.
+    let fresh = match (mtime(&cert), mtime(&key)) {
+        (Some(c), Some(k)) if k <= c => now
+            .duration_since(c)
+            .is_ok_and(|a| a.as_secs() <= CERT_RENEW_S),
+        _ => false,
+    };
+    if fresh {
+        return Ok((cert, key));
+    }
+    let fail = |e: String| {
+        format!(
+            "couldn't make the bridge certificate in {}: {e}",
+            dir.display()
+        )
+    };
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
+        .map_err(|e| fail(e.to_string()))?;
+    let (tc, tk) = (dir.join(".bridge.pem.new"), dir.join(".bridge.key.pem.new"));
+    // Made 0600 first: openssl truncates and keeps the mode, so the key is never world-readable.
+    for p in [&tc, &tk] {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(p)
+            .map_err(|e| fail(e.to_string()))?;
+    }
+    let (tcs, tks) = (tc.to_string_lossy(), tk.to_string_lossy());
+    let ran = runner.run(
+        "openssl",
+        &[
+            "req",
+            "-x509",
+            "-newkey",
+            "ec",
+            "-pkeyopt",
+            "ec_paramgen_curve:prime256v1",
+            "-nodes",
+            "-days",
+            CERT_DAYS,
+            "-subj",
+            "/CN=brisk-bridge",
+            "-keyout",
+            &tks,
+            "-out",
+            &tcs,
+        ],
+    );
+    let pem = |p: &PathBuf| std::fs::read_to_string(p).is_ok_and(|s| s.contains("-----BEGIN"));
+    if ran.is_none() || !pem(&tc) || !pem(&tk) {
+        let _ = (std::fs::remove_file(&tc), std::fs::remove_file(&tk));
+        return Err(fail("openssl failed or is missing".into()));
+    }
+    // Key first: if we die in between, the old cert's age makes the next start renew again.
+    std::fs::rename(&tk, &key)
+        .and_then(|_| std::fs::rename(&tc, &cert))
+        .map_err(|e| fail(e.to_string()))?;
+    // One mtime for the pair, whatever order openssl wrote them in (see `fresh` above).
+    if let Some(c) = mtime(&cert) {
+        if let Err(e) = std::fs::File::options()
+            .write(true)
+            .open(&key)
+            .and_then(|f| f.set_modified(c))
+        {
+            // Harmless but noisy: the next start sees a mismatched pair and renews once more.
+            eprintln!(
+                "warning: couldn't align {}'s mtime with the cert: {e}",
+                key.display()
+            );
+        }
+    }
+    eprintln!(
+        "new bridge certificate {} ({CERT_DAYS} days)",
+        cert.display()
+    );
+    Ok((cert, key))
+}
+
 fn signal(pid: u32, sig: &str) {
     let _ = std::process::Command::new("kill")
         .args([format!("-{sig}"), pid.to_string()])
@@ -514,6 +647,18 @@ fn forwarder<W: Write + Send + 'static>(mut w: W) -> SyncSender<String> {
         }
     });
     tx
+}
+
+/// What hostd re-prints of a bridge stdout line. `quiet` (service mode: stdout is the journal)
+/// keeps the session token out: the `page` line and anything carrying `?wt=` or the token
+/// itself (it grants stream and input for the session) become `page <redacted>`.
+pub fn bridge_line(l: String, quiet: bool, tok: Option<&str>) -> String {
+    let secret = l.starts_with("page\t") || l.contains("wt=") || tok.is_some_and(|t| l.contains(t));
+    if quiet && secret {
+        "page <redacted>".into()
+    } else {
+        l
+    }
 }
 
 fn forward(l: String) {

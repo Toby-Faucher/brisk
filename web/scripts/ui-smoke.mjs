@@ -48,7 +48,8 @@ const shot = async (page, n) => (await page.screenshot({ path: `${OUT}/${n}.png`
 try {
   child = spawn(hostd, [`${root}/web/dist`], {
     env: { ...process.env, PATH: `${work}/bin:${process.env.PATH}`, BRISK_STEAM_DIR: `${work}/steam`, BRISK_STEAM_KEY_FILE: `${work}/key`,
-      BRISK_STEAM_API_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_BRIDGE_BIN: `${work}/bridge.sh`, BRISK_DATA_DIR: `${work}/data`, BRISK_LISTEN: '127.0.0.1:4433' },
+      BRISK_STEAM_API_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_BRIDGE_BIN: `${work}/bridge.sh`, BRISK_DATA_DIR: `${work}/data`, BRISK_LISTEN: '127.0.0.1:4433',
+      BRISK_SECRET_FILE: `${work}/secret`, BRISK_TLS_DIR: `${work}/tls` },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   let out = '';

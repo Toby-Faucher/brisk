@@ -1,0 +1,194 @@
+#!/bin/bash
+# Stubbed test of brisk-service.sh; touches nothing real (systemctl, tailscale, loginctl, ss, curl,
+# journalctl, cargo, npm, systemd-run and sunshine-brisk.sh are stubs; HOME, XDG_RUNTIME_DIR and
+# the checkout are temp dirs).
+set -u
+s=$(cd "$(dirname "$0")" && pwd)
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+mkdir -p "$t/bin" "$t/home/.config/brisk/tls" "$t/run" "$t/d" "$t/root/target/release" "$t/root/web/src" "$t/root/web/dist" "$t/root/web/node_modules"
+L=$t/log
+stub() { printf '#!/bin/bash\necho "%s $*" >> "%s"\n%s\n' "$1" "$L" "$2" > "$t/bin/$1"; chmod +x "$t/bin/$1"; }
+stub systemctl 'case $2 in show) echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }";; is-active) exit "${SVC_ACTIVE:-3}";; is-enabled) exit "${SVC_ENABLED:-1}";; esac; exit 0'
+stub tailscale 'case "$*" in
+  "debug prefs") [ -n "${TS_OP:-}" ] && echo "  \"OperatorUser\": \"$(id -un)\",";;
+  "serve status --json") cat "$T/serve-${TS_MAPPED:-}.json";;
+  "status --json") cat "$T/status.json";;
+esac; exit 0'
+# Shaped like tailscale 1.104 output (MarshalIndent, 2 spaces). A peer comes first on purpose.
+cat > "$t/status.json" <<'J'
+{
+  "Version": "1.104.1",
+  "Peer": {
+    "nodekey:1": {
+      "DNSName": "laptop.tail0.ts.net.",
+      "Online": true
+    }
+  },
+  "Self": {
+    "ID": "n1",
+    "DNSName": "bawn.tail0.ts.net.",
+    "TailscaleIPs": ["100.64.0.9"]
+  },
+  "CertDomains": ["bawn.tail0.ts.net"]
+}
+J
+root='"bawn.tail0.ts.net:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:8481"
+        }
+      }
+    }'
+printf '{\n  "TCP": {\n    "443": {\n      "HTTPS": true\n    }\n  },\n  "Web": {\n    %s\n  }\n}\n' "$root" > "$t/serve-.json"
+printf '{\n  "TCP": {\n    "443": {\n      "HTTPS": true\n    },\n    "8443": {\n      "HTTPS": true\n    }\n  },\n  "Web": {\n    %s,\n    "bawn.tail0.ts.net:8443": {\n      "Handlers": {\n        "/": {\n          "Proxy": "http://127.0.0.1:8443"\n        }\n      }\n    }\n  }\n}\n' "$root" > "$t/serve-1.json"
+# Not ours: :8443 points elsewhere and :443 points at 127.0.0.1:8443.
+sed -e 's#127.0.0.1:8443#127.0.0.1:9999#' -e 's#127.0.0.1:8481#127.0.0.1:8443#' "$t/serve-1.json" > "$t/serve-wrong.json"
+stub loginctl 'echo "Linger=${LINGER:-yes}"'
+# like `ss -Hltn sport = :8443`: only the :8443 listeners of SS_ADDR
+stub ss 'for a in ${SS_ADDR:-127.0.0.1:8443}; do case $a in *:8443) echo "LISTEN 0 1024 $a 0.0.0.0:*";; esac; done'
+stub journalctl 'echo "page	http://localhost:8443/?s=0123456789abcdef0123456789abcdef&x=1"; echo "bridge	page	http://localhost:8443/?wt=https://100.64.0.9:4433/abcdef0123&hash=ab12"'
+stub curl 'a="$*"; case $a in
+  *47989/serverinfo*) echo "<currentgame>${GAME:-0}</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>";;
+  *api/stream*) [ "${STREAM:-idle}" = down ] || echo "{\"state\":\"${STREAM:-idle}\"}";;
+  *"-H @"*) echo -n "${CODE_AUTH:-200}";;
+  *x-brisk-csrf*) echo -n 403;;
+  *https*) echo -n "${CODE_NOAUTH:-403}";;
+esac'
+stub cargo ''
+# npm run build -- --outDir X: makes X/index.html like astro would
+# NPM_FAIL: leaves a partial dir and fails; NPM_EMPTY: "succeeds" without an index.html
+stub npm 'o=""; while [ $# -gt 0 ]; do [ "$1" = --outDir ] && o=$2; shift; done; [ -n "$o" ] || exit 0
+mkdir -p "$o/_astro"; [ -n "${NPM_FAIL:-}" ] && exit 1; [ -n "${NPM_EMPTY:-}" ] && exit 0; echo built > "$o/index.html"'
+# date +%Y%m%d-%H%M%S returns DATE_STAMP when set (a clock stepped back)
+printf '#!/bin/sh\n[ -n "${DATE_STAMP:-}" ] && [ "$1" = +%%Y%%m%%d-%%H%%M%%S ] && { echo "$DATE_STAMP"; exit 0; }\nexec /usr/bin/date "$@"\n' > "$t/bin/date"
+printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/nice"; cp "$t/bin/nice" "$t/bin/ionice"
+printf '#!/bin/sh\necho "systemd-run $*" >> "%s"\nwhile [ "$1" != -c3 ]; do shift; done; shift\n[ "$1" = sh ] && { echo 9663676416; exit 0; }\nexec "$@"\n' "$L" > "$t/bin/systemd-run"
+printf '#!/bin/sh\necho "sb $*" >> "%s"\n' "$L" > "$t/sb"
+chmod +x "$t"/bin/* "$t/sb"
+export T=$t PATH=$t/bin:$PATH HOME=$t/home XDG_RUNTIME_DIR=$t/run BRISK_SB=$t/sb SB_DROPIN_DIR=$t/d BRISK_ROOT=$t/root
+B=$s/brisk-service.sh U=$t/home/.config/systemd/user/brisk-hostd.service
+echo 0123456789abcdef0123456789abcdef > "$t/home/.config/brisk/secret"
+bad=0
+fail() { echo "FAIL: $*"; sed 's/^/    log: /' "$L" 2>/dev/null; bad=1; }
+
+# install: refuses without the release binaries, then installs once and is idempotent.
+: > "$L"; "$B" install >/dev/null 2>&1 && fail "install without binaries"
+grep -q 'enable' "$L" && fail "enabled without binaries"
+touch "$t/root/target/release/brisk-hostd" "$t/root/target/release/brisk-bridge" "$t/root/web/dist/index.html"
+chmod +x "$t/root/target/release/"*
+: > "$L"; "$B" install >/dev/null 2>&1 || fail "install failed"
+grep -q "^ExecStart=$t/root/target/release/brisk-hostd $t/root/web/dist$" "$U" || fail "unit ExecStart: $(grep ExecStart "$U")"
+grep -q "^Environment=BRISK_BRIDGE_BIN=$t/root/target/release/brisk-bridge$" "$U" || fail "unit bridge path"
+grep -q '^systemctl --user daemon-reload' "$L" && grep -q '^systemctl --user enable --now brisk-hostd.service' "$L" || fail "no daemon-reload + enable --now"
+grep -q sudo "$L" && fail "install used sudo"
+out=$("$B" install 2>&1) || fail "second install failed"; grep -q 'unit unchanged' <<<"$out" || fail "second install rewrote the unit"
+mkdir -p "$t/run/brisk"; sleep 30 & p=$!; echo $p > "$t/run/brisk/bridge.pid"
+"$B" install >/dev/null 2>&1 && fail "install beside a brisk-up hostd"; kill $p; rm -f "$t/run/brisk/bridge.pid"
+# a changed unit is applied to a running service by a restart (enable --now would not)
+echo '# old' >> "$U"
+: > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "install over a changed unit failed"
+grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "changed unit not restarted"
+: > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "unchanged unit restarted"
+echo '# old' >> "$U"
+: > "$L"; SVC_ACTIVE=0 STREAM=live "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted over a live stream"
+echo '# old' >> "$U"
+: > "$L"; SVC_ACTIVE=0 STREAM=down "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted with the API down"
+echo '# old' >> "$U"
+: > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" install >/dev/null 2>&1; grep -q '^systemctl --user restart' "$L" || fail "FORCE=1 did not restart"
+
+# serve-on/off: only ever the :8443 mapping; without operator rights a sudoq line, no call.
+want='tailscale serve --bg --https=8443 http://127.0.0.1:8443'
+: > "$L"; out=$("$B" serve-on 2>&1); rc=$?
+[ $rc = 2 ] || fail "serve-on without operator: rc $rc"
+grep -qF "sudoq run --why \"Brisk page on the tailnet at :8443 (root mapping untouched)\" -- $want" <<<"$out" || fail "no sudoq line: $out"
+grep -q '^tailscale serve --bg' "$L" && fail "serve ran without operator rights"
+: > "$L"; TS_OP=1 "$B" serve-on >/dev/null 2>&1 || fail "serve-on as operator failed"
+grep -qx "$want" "$L" || fail "serve-on did not map :8443"
+: > "$L"; TS_OP=1 TS_MAPPED=1 "$B" serve-on >/dev/null 2>&1; grep -q '^tailscale serve --bg' "$L" && fail "serve-on not idempotent"
+: > "$L"; TS_OP=1 TS_MAPPED=1 "$B" serve-off >/dev/null 2>&1; grep -qx 'tailscale serve --https=8443 off' "$L" || fail "serve-off"
+: > "$L"; TS_OP=1 "$B" serve-off >/dev/null 2>&1; grep -q 'off$' "$L" && fail "serve-off not idempotent"
+# a mapping that is not exactly :8443 -> 127.0.0.1:8443 does not count as ours
+: > "$L"; TS_OP=1 TS_MAPPED=wrong "$B" serve-on >/dev/null 2>&1; grep -qx "$want" "$L" || fail "wrong mapping counted as ours"
+grep -h '^tailscale serve' "$L" | grep -v -e 'status --json' -e '--https=8443' && fail "a serve call outside :8443"
+
+# sunshine-permanent: refuses on a busy host, else install + enable through sunshine-brisk.sh.
+: > "$L"; STATE=SUNSHINE_SERVER_BUSY GAME=1 "$B" sunshine-permanent >/dev/null 2>&1 && fail "permanent on a busy host"
+grep -q '^sb ' "$L" && fail "sunshine-brisk ran on a busy host"
+: > "$L"; "$B" sunshine-permanent >/dev/null 2>&1 || fail "sunshine-permanent failed"
+grep -q '^sb install' "$L" && grep -q '^sb enable' "$L" || fail "no sb install + enable"
+: > "$t/d/brisk.conf"; : > "$L"; EXEC=/x/sunshine-brisk/bin/sunshine "$B" sunshine-permanent >/dev/null 2>&1
+grep -q '^sb ' "$L" && fail "sunshine-permanent not idempotent"
+
+# update: capped build, web build only when sources changed, no restart over a live stream.
+touch -d '2 days ago' "$t/root/web/src/a.ts" "$t/root/web/package-lock.json"; touch "$t/root/web/dist/index.html" "$t/root/web/node_modules/.package-lock.json"
+: > "$L"; SVC_ACTIVE=0 STREAM=live "$B" update >/dev/null 2>&1 && fail "update restarted over a live stream"
+grep -q 'ionice -c3 cargo build --release -q -p brisk-hostd -p brisk-bridge' "$L" || fail "build not capped"
+grep -q '^npm' "$L" && fail "npm ran with web/dist up to date"
+grep -q 'restart' "$L" && fail "restart over a live stream"
+: > "$L"; SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 || fail "update failed"
+grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "update did not restart"
+touch "$t/root/web/src/a.ts"; touch -d '1 day ago' "$t/root/web/dist/index.html"
+: > "$L"; "$B" update >/dev/null 2>&1; grep -q '^npm run build -- --outDir '"$t/root/web/dist."'[0-9]' "$L" || fail "web not rebuilt into a new dir after a source change"
+grep -q '^npm ci' "$L" && fail "npm ci with node_modules up to date"
+# the build dir is swapped in by renaming a symlink; the old plain dist is kept aside
+w=$t/root/web
+[ -L "$w/dist" ] && [ "$(cat "$w/dist/index.html")" = built ] || fail "web/dist is not a symlink to the new build"
+ls -d "$w"/dist.plain-* >/dev/null 2>&1 && [ -f "$(ls -d "$w"/dist.plain-* | head -1)/index.html" ] || fail "old plain dist not kept for rollback: $(ls "$w")"
+builds() { find "$w" -maxdepth 1 -name 'dist.*' -type d | sort; }
+src_changed() { sleep 1.1; touch "$w/src/a.ts"; touch -d '1 day ago' "$w/dist/index.html"; }
+for i in 1 2; do src_changed; "$B" update >/dev/null 2>&1 || fail "update $i"; done
+[ "$(builds | wc -l)" = 2 ] || fail "want the live + one previous build, have: $(builds)"
+[ -e "$w/dist.link" ] && fail "temp link left"
+cur=$(readlink "$w/dist"); [ -f "$w/$cur/index.html" ] || fail "dist points at a missing build ($cur)"
+# a failed or empty build: removed, web/dist and both kept builds untouched, update fails
+before=$(builds); live=$(readlink "$w/dist")
+for e in NPM_FAIL=1 NPM_EMPTY=1; do
+  src_changed; env "$e" "$B" update >/dev/null 2>&1 && fail "update succeeded with $e"
+  [ "$(readlink "$w/dist")" = "$live" ] || fail "$e: web/dist moved"
+  [ "$(builds)" = "$before" ] || fail "$e: builds changed: $(builds)"
+done
+# the page is swapped only with the restart: a live stream or a silent API keeps the old page
+for e in STREAM=live STREAM=down; do
+  src_changed; : > "$L"; env SVC_ACTIVE=0 "$e" "$B" update >/dev/null 2>&1 && fail "update went on with $e"
+  [ "$(readlink "$w/dist")" = "$live" ] || fail "$e: new page against the old hostd"
+  [ "$(builds)" = "$before" ] || fail "$e: new build left behind: $(builds)"
+  grep -q restart "$L" && fail "$e: restarted"
+done
+src_changed; : > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" update >/dev/null 2>&1 || fail "FORCE=1 update"
+[ "$(readlink "$w/dist")" != "$live" ] && grep -q '^systemctl --user restart' "$L" || fail "FORCE=1: no swap + restart"
+# clock stepped back: the new (live) build sorts oldest by name; it and the newest other one stay
+prev=$(readlink "$w/dist"); src_changed
+DATE_STAMP=19990101-000000 "$B" update >/dev/null 2>&1 || fail "update with an old clock"
+[ "$(readlink "$w/dist")" = dist.19990101-000000 ] || fail "not swapped to the old-stamped build"
+[ "$(builds)" = "$(printf '%s\n' "$w/dist.19990101-000000" "$w/$prev" | sort)" ] || fail "prune by name, not by mtime/live: $(builds)"
+# the same old stamp again (exists: gets -PID) is still the live one afterwards
+src_changed; DATE_STAMP=19990101-000000 "$B" update >/dev/null 2>&1 || fail "update with a taken stamp"
+cur=$(readlink "$w/dist"); [ -f "$w/$cur/index.html" ] && [ "$cur" != dist.19990101-000000 ] || fail "taken stamp: dist -> $cur"
+[ "$(builds | wc -l)" = 2 ] || fail "taken stamp: $(builds)"
+
+# doctor: all good, then each broken check fails it.
+: > "$t/home/.config/brisk/tls/bridge.pem"
+dr() { env SVC_ACTIVE=0 SVC_ENABLED=0 TS_MAPPED=1 EXEC=/x/sunshine-brisk/bin/sunshine "$@" "$B" doctor 2>&1; }
+out=$(dr) || fail "doctor failed on a good setup: $out"
+[ -n "${VERBOSE:-}" ] && echo "$out"
+out=$(dr "SS_ADDR=127.0.0.1:8443 100.64.0.9%tailscale0:443 100.64.0.9%tailscale0:8443 [fd7a:115c:a1e0::9]%tailscale0:8443") \
+  || fail "doctor failed with tailscaled's tailscale0 listeners: $out"
+for e in SS_ADDR=0.0.0.0:8443 "SS_ADDR=127.0.0.1:8443 [::]:8443" "SS_ADDR=127.0.0.1:8443 *:8443" "SS_ADDR=127.0.0.1:8443 192.168.1.5:8443" \
+    SS_ADDR=100.64.0.9%tailscale0:8443 TS_MAPPED=wrong CODE_NOAUTH=200 CODE_AUTH=403 LINGER=no TS_MAPPED= SVC_ACTIVE=3; do
+  out=$(dr "$e") && fail "doctor passed with $e"
+  grep -q '^FAIL' <<<"$out" || fail "no FAIL line with $e"
+done
+grep -q '0123456789abcdef0123' "$L" && fail "the secret appeared on a command line"
+
+# link, logs, uninstall.
+"$B" link | grep -qx $'page\thttps://bawn.tail0.ts.net:8443/?s=0123456789abcdef0123456789abcdef' || fail "link"
+: > "$L"; out=$("$B" logs -f); grep -qx 'journalctl --user -u brisk-hostd.service --no-pager -f' "$L" || fail "logs"
+[ "$out" = $'page\thttp://localhost:8443/?s=<hidden>&x=1\nbridge\tpage\thttp://localhost:8443/?wt=<hidden>&hash=ab12' ] \
+  || fail "logs did not hide the secret and the session token: $out"
+: > "$L"; "$B" uninstall >/dev/null 2>&1 || fail "uninstall failed"
+[ -f "$U" ] && fail "unit left after uninstall"; grep -q 'disable --now brisk-hostd.service' "$L" || fail "not disabled"
+"$B" uninstall >/dev/null 2>&1 || fail "uninstall not idempotent"
+
+if command -v shellcheck >/dev/null; then shellcheck -x "$s/brisk-service.sh" "$s/brisk-up.sh" "$s/brisk-down.sh" || fail shellcheck; fi
+[ $bad = 0 ] && echo "ok: brisk-service"
+exit $bad

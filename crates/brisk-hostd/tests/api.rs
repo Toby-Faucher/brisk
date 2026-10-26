@@ -577,6 +577,11 @@ struct Rig {
 }
 
 fn rig(mode: &str) -> Rig {
+    rig_with(mode, false)
+}
+
+/// `service`: hostd as under systemd (stdout = journal).
+fn rig_with(mode: &str, service: bool) -> Rig {
     use brisk_hostd::steam::{Game, GamesResult};
     use std::os::unix::fs::PermissionsExt;
     let d = dist();
@@ -594,8 +599,16 @@ fn rig(mode: &str) -> Rig {
     let mut cfg = Config::from_env(d.path().to_path_buf());
     cfg.secret = SECRET.into();
     cfg.bridge_bin = bin;
-    cfg.bridge_listen = "100.64.0.1:4433".into();
+    cfg.bridge_listen = Some("100.64.0.1:4433".into());
+    // A fresh pair, so starts never run openssl (and never look at the real ~/.config/brisk).
+    cfg.tls_dir = d.path().join(".config/brisk/tls");
+    std::fs::create_dir_all(&cfg.tls_dir).unwrap();
+    for f in ["bridge.key.pem", "bridge.pem"] {
+        // key first: a key newer than its cert would count as a mismatched pair
+        std::fs::write(cfg.tls_dir.join(f), "-----BEGIN fake\n").unwrap();
+    }
     cfg.app_id = 42;
+    cfg.service = service;
     cfg.data_dir = d.path().join("data");
     cfg.steam_dir = d.path().join("nosteam");
     cfg.steam_key_file = d.path().join("nokey");
@@ -731,6 +744,23 @@ async fn start_returns_wt_and_hash() {
             ),
         "{log:?}"
     );
+    r.call("DELETE", "/api/stream", "").await;
+}
+
+/// Service mode hides the bridge's page line from stdout but still parses it for the API.
+#[tokio::test]
+async fn service_mode_still_returns_wt_and_hash() {
+    let r = rig_with("", true);
+    assert!(r.state.stream.quiet);
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v["wt"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://100.64.0.1:4433/tok"));
+    assert_eq!(v["hash"], "ab12cd");
     r.call("DELETE", "/api/stream", "").await;
 }
 

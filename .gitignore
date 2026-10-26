@@ -9,4 +9,7 @@ research/c17-offline/
 fixtures/audio/*.key
 web/node_modules/
 web/dist/
+# brisk-service.sh update: web/dist is a symlink to web/dist.<stamp>
+web/dist
+web/dist.*
 web/.astro/

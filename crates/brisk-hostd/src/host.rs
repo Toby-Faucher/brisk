@@ -45,9 +45,21 @@ pub trait Runner: Send + Sync {
 pub struct RealRunner;
 impl Runner for RealRunner {
     /// Own process group and null stdio, so it outlives hostd's terminal and signals; a thread reaps it.
+    /// With `BRISK_SPAWN_SCOPE=1` (set by deploy/brisk-hostd.service) it also gets its own scope:
+    /// a Steam that `steam steam://…` cold-starts must not sit in hostd's cgroup (MemoryMax,
+    /// killed on restart).
     fn spawn(&self, prog: &str, args: &[&str], env: &[(String, String)]) -> bool {
         use std::os::unix::process::CommandExt;
-        let c = std::process::Command::new(prog)
+        let scoped = std::env::var_os("BRISK_SPAWN_SCOPE").is_some_and(|v| v == "1");
+        // systemd-run would start fine for a missing program; keep "could not start" honest.
+        if scoped && !on_path(prog) {
+            return false;
+        }
+        let mut c = std::process::Command::new(if scoped { "systemd-run" } else { prog });
+        if scoped {
+            c.args(["--user", "--scope", "--quiet", "--collect", "--", prog]);
+        }
+        let c = c
             .args(args)
             .envs(env.iter().map(|(k, v)| (k, v)))
             .stdin(std::process::Stdio::null())
@@ -94,6 +106,18 @@ impl Runner for RealRunner {
         let out = reader.join().ok()??;
         status.success().then_some(out)
     }
+}
+
+fn on_path(prog: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let exec = |p: &Path| {
+        std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    };
+    if prog.contains('/') {
+        return exec(Path::new(prog));
+    }
+    std::env::var_os("PATH")
+        .is_some_and(|ps| std::env::split_paths(&ps).any(|d| exec(&d.join(prog))))
 }
 
 pub trait Clock: Send + Sync {
@@ -473,6 +497,13 @@ mod tests {
         assert!(RealRunner.spawn("sleep", &["5"], &[]));
         assert!(t.elapsed() < Duration::from_secs(1));
         assert!(!RealRunner.spawn("/nonexistent/brisk-steam", &[], &[]));
+    }
+
+    #[test]
+    fn on_path_finds_executables_only() {
+        assert!(on_path("sh") && on_path("/bin/sh"));
+        assert!(!on_path("brisk-no-such-prog") && !on_path("/nonexistent/brisk-steam"));
+        assert!(!on_path("/etc/hostname"), "not executable");
     }
 
     #[test]
