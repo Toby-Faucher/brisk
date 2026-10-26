@@ -10,6 +10,7 @@
 ## API (hostd, 127.0.0.1:8443 only; Host header checked; every /api request, GET included, needs the `x-brisk-secret` header, because GET /api/stream carries the bridge URL and session token; static pages and assets do not)
 - GET /api/games, GET /api/host, GET /api/sessions
 - GET/POST/DELETE /api/stream (state / start / stop the bridge)
+- GET /api/prefs, PUT/DELETE /api/prefs/<appid> (see Per-game quality)
 - POST /api/launch, POST /api/install, POST /api/sunshine/restart
 - POST /api/quit `{appid, force?}` (see Quit game)
 - GET/POST /api/clipboard, PUT /api/files/<name> (see Clipboard and file drop)
@@ -52,6 +53,26 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   Proton game may show a "really quit?" prompt and fall through to SIGTERM), that Steam's overlay
   (gameoverlayui, a child of steam) and the Running badge clear by themselves once the reaper exits, that sway
   focuses Big Picture again after the last game window closes, and the confirm's focus trap/Esc in Chrome.
+
+## Per-game quality
+- Each game remembers its own quality (preset, codec, and width/height/fps/bitrate for `custom`), with no extra
+  clicks. Changing quality during a stream of a game (ghost bar chips, Advanced Apply, Ctrl+K presets) saves it for
+  that appid after 1 s of quiet (last change wins; leaving the page flushes a pending one). The Desktop / Big
+  Picture stream (no appid) and a failed switch save nothing. The ghost bar's Quality menu then shows "Saved for
+  <game>" and "Forget for this game" (only while saved).
+- Starting a game (Library click, Resume card) sends its saved quality, else Settings' default preset on h264; the
+  Stream page's own Start (the Desktop) uses the default. One pure function decides: `prefsFor` in
+  web/src/state/prefs.ts, used through `startGame`. Library cards and the hero show a chip of the saved quality
+  ("Crisp", "HEVC · 40 Mbps", "Custom · 8 Mbps") only when saved. The store refreshes on focus (at most once a minute).
+- hostd (prefs.rs): `<data_dir>/prefs.json`, `{"<appid>": {preset, codec, width?, height?, fps?, bitrateKbps?, updated}}`,
+  written to a 0600 temp file in the same directory, fsynced and renamed; a missing or corrupt file (or a bad entry) loads
+  as empty. `PUT /api/prefs/<appid>` validates like StreamReq (preset fast|balanced|crisp|custom, codec h264|hevc, 320..3840 px,
+  24..144 fps, 1000..150000 kbps; custom numbers are kept only for `custom`), 400 otherwise and for the Desktop app id;
+  `DELETE` is idempotent (204). Capped at 500 entries, oldest `updated` dropped. All need the secret.
+- Not done: Ctrl+K "Launch <game>" only starts the game on the host (`/api/launch`, no stream), so it has no quality to
+  apply; the saved quality is used when the game is then opened from Library or Resume. A saved HEVC on a browser
+  without HEVC decode is not downgraded.
+- [U] Not tried on hardware: saved quality across a real Library -> stream -> quality change -> Disconnect -> Library round trip.
 
 ## Clipboard and file drop
 - Clipboard sync (on by default; ghost bar clipboard panel or Settings, key `clipboardSync`) carries text and PNG

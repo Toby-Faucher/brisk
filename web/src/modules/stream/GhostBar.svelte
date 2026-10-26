@@ -22,6 +22,8 @@
     onvolume,
     oncapture,
     onquality,
+    savedFor = null,
+    onforget,
     onfullscreen,
     ondisconnect,
   }: {
@@ -38,6 +40,9 @@
     onvolume: (v: number) => void;
     oncapture: () => void;
     onquality: (r: StreamReq) => void;
+    /** The game's name while its quality is saved, else null. */
+    savedFor?: string | null;
+    onforget: () => void;
     onfullscreen: () => void;
     ondisconnect: () => void;
   } = $props();
@@ -176,6 +181,9 @@
         <button class="chip" aria-pressed={advanced || preset === 'custom'} aria-expanded={advanced} onclick={() => (advanced = !advanced)}>Advanced…</button>
       </div>
       <p class="mono muted line">{current ? `1080p · 60 fps · ${codecName} · ${current.mbps} Mbps` : `custom · ${codecName}`}</p>
+      {#if savedFor}
+        <p class="line muted saved" role="status">Saved for {savedFor} <button class="forget" onclick={onforget}>Forget for this game</button></p>
+      {/if}
       {#if advanced}
         <div class="adv">
           <label>Resolution
@@ -245,6 +253,9 @@
   .chip:hover { background: color-mix(in srgb, #fff 14%, transparent); }
   .chip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent) inset; }
   .line { margin: 0; font-size: 12px; }
+  .saved { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+  .forget { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; text-decoration: underline; cursor: pointer; }
+  .forget:hover, .forget:focus-visible { color: var(--fg); }
   .warn { color: var(--warn); }
   .opt { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }
   .opt input { accent-color: var(--accent); width: 18px; height: 18px; }

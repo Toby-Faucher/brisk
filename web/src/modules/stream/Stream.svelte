@@ -5,6 +5,8 @@
   import { api, type StreamInfo, type StreamReq } from '../../state/api';
   import { host } from '../../state/host';
   import { settings } from '../../state/settings';
+  import { games, watchGames } from '../../state/games';
+  import { forgetPrefs, prefs, saver, savedBody, startGame, watchPrefs } from '../../state/prefs';
   import { onCommand } from '../../state/commands';
   import { toast } from '../../shell/Toasts.svelte';
   import { startVideo } from '../../lib/video';
@@ -57,6 +59,7 @@
   let statsOn = $state(false);
   let preset = $state<StreamInfo['preset']>(null);
   let codec = $state<StreamInfo['codec']>(null);
+  let appid = $state<number | null>(null); // the live game, null for the Desktop
   let captured = $state(false);
   let starting = $state(false);
   let hold = $state<Hold>({ progress: 0, fired: false });
@@ -76,6 +79,7 @@
     }
     if (!info) return; // left the page while waiting
     if (info.state !== 'live') return void (page = 'idle');
+    appid = info.appid;
     preset = info.preset;
     codec = info.codec;
     page = 'session';
@@ -85,8 +89,9 @@
   async function start() {
     starting = true;
     try {
-      const info = await api.startStream({ preset: $settings.defaultPreset });
+      const info = await startGame(undefined); // the Desktop: no saved quality
       if (destroyed) return; // left the page during the POST: the session is closed anyway
+      appid = info.appid;
       preset = info.preset;
       codec = info.codec;
       page = 'session';
@@ -100,9 +105,25 @@
 
   async function quality(r: StreamReq) {
     toast(`Switching to ${r.preset === 'custom' ? 'custom quality' : r.preset}…`);
+    const liveCodec = codec;
     await session.changeQuality(r);
     preset = session.info?.preset ?? r.preset;
     codec = session.info?.codec ?? codec;
+    // Remembered per game, automatically; the Desktop (no appid) and a failed switch save nothing.
+    if (appid !== null && get(phase) !== 'failed') saver.save(appid, savedBody(r, liveCodec));
+  }
+
+  const gameName = $derived($games?.games.find((g) => g.appid === appid)?.name ?? 'this game');
+  const savedFor = $derived(appid !== null && $prefs[appid] ? gameName : null);
+
+  async function forget() {
+    if (appid === null) return;
+    try {
+      await forgetPrefs(appid);
+      toast(`Forgot the saved quality for ${gameName}`);
+    } catch (e) {
+      toast(`Couldn't forget it: ${(e as Error).message}`, { error: true });
+    }
   }
 
   async function disconnect() {
@@ -225,9 +246,14 @@
       else if (page === 'session' && c.preset !== preset) void quality({ preset: c.preset });
     });
     void boot();
+    const unwatchPrefs = watchPrefs();
+    const unwatchGames = watchGames(); // the game's name for "Saved for …"
     return () => {
+      unwatchPrefs();
+      unwatchGames();
       // Leaving /stream (the island unmounts on navigation): release keys, close everything.
       destroyed = true;
+      saver.flush(); // a change made in the last second still counts
       session.disconnect();
       clip.stop();
       uploads.cancel();
@@ -267,6 +293,8 @@
       onvolume={(v) => session.setVolume(v)}
       oncapture={capture}
       onquality={quality}
+      {savedFor}
+      onforget={forget}
       onfullscreen={fullscreen}
       ondisconnect={disconnect}
     />

@@ -37,6 +37,8 @@ export type Clip = { kind: 'text'; text: string } | { kind: 'image'; blob: Blob 
 export type Saved = { path: string; size: number };
 export type SessionRec = { appid: number | null; name: string; started: number /* unix ms */; ended: number | null; host: string; preset: Preset };
 
+import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -88,7 +90,7 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   return r;
 }
 
-async function call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const headers = auth(body === undefined ? {} : { 'content-type': 'application/json' });
   const r = await send(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   return (r.status === 204 ? undefined : await r.json()) as T;
@@ -134,6 +136,9 @@ export const api = {
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
+  prefs: () => call<{ prefs: PrefsMap }>('GET', '/api/prefs'),
+  putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b),
+  deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
   sessions: () => call<{ sessions: SessionRec[] }>('GET', '/api/sessions'),
   getClipboard,
   postClipboard,

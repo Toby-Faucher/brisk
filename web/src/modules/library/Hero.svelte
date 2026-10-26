@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Game } from '../../state/api';
+  import { prefs, prefsChip } from '../../state/prefs';
   import Icon from '../../ui/Icon.svelte';
   import { fmtAgo } from '../home/home';
   import Cover, { hue } from './Cover.svelte';
@@ -7,6 +8,7 @@
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
   let { game, busy, onpick }: { game: Game; busy: boolean; onpick: (g: Game) => void } = $props();
+  const saved = $derived($prefs[game.appid]);
   const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
 </script>
 
@@ -15,7 +17,7 @@
   <div class="txt">
     <div class="lab">{game.running ? 'Running on the host' : 'Continue where you left off'}</div>
     <h3>{game.name}</h3>
-    <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total</div>
+    <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip" title="Saved quality for this game">{prefsChip(saved)}</span>{/if}</div>
     <div class="acts">
       <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><Icon name="play" size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
       {#if game.running}
@@ -31,5 +33,6 @@
   .txt { min-width: 0; }
   .lab { color: #c9d1e0; font-size: 14px; }
   h3 { margin: 2px 0 6px; font-size: 28px; letter-spacing: -.03em; }
+  .pchip { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; background: #0007; white-space: nowrap; }
   .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 </style>

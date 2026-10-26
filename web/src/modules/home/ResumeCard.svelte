@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { get } from 'svelte/store';
+  import { onMount } from 'svelte';
   import { navigate } from 'astro:transitions/client';
-  import { api } from '../../state/api';
   import { games } from '../../state/games';
-  import { settings } from '../../state/settings';
+  import { startGame, watchPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
@@ -12,12 +11,13 @@
 
   const g = $derived(pickResume($games?.games ?? []));
   let busy = $state(false);
+  onMount(() => watchPrefs());
 
   async function play() {
     if (!g) return;
     busy = true;
     try {
-      await api.startStream({ preset: get(settings).defaultPreset, appid: g.appid });
+      await startGame(g.appid);
       await navigate('/stream');
     } catch (e) {
       toast(`Could not start ${g.name}: ${(e as Error).message}`, { error: true });

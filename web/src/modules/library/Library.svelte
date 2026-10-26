@@ -1,10 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { get } from 'svelte/store';
   import { navigate } from 'astro:transitions/client';
   import { api, type Game } from '../../state/api';
   import { games, gamesFailed, refreshGames, watchGames } from '../../state/games';
-  import { settings } from '../../state/settings';
+  import { startGame, watchPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import Hero from './Hero.svelte';
@@ -20,7 +19,11 @@
   const s = $derived(shelves(searchGames(filterGames($games?.games ?? [], f), q)));
   const hero = $derived(q.trim() ? null : s.hero);
 
-  onMount(() => watchGames());
+  onMount(() => {
+    const offGames = watchGames();
+    const offPrefs = watchPrefs();
+    return () => (offGames(), offPrefs());
+  });
 
   async function run(g: Game, verb: string, task: () => Promise<unknown>) {
     if (busy != null) return;
@@ -39,7 +42,7 @@
     selected = c.selected;
     if (c.action === 'play')
       void run(g, 'start', async () => {
-        await api.startStream({ preset: get(settings).defaultPreset, appid: g.appid });
+        await startGame(g.appid);
         await navigate('/stream');
       });
   }

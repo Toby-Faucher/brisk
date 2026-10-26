@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Game } from '../../state/api';
+  import { prefs, prefsChip } from '../../state/prefs';
   import Icon from '../../ui/Icon.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
@@ -7,6 +8,7 @@
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
   let { game, busy = false, selected = false, onpick, oninstall }: { game: Game; busy?: boolean; selected?: boolean; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
+  const saved = $derived($prefs[game.appid]);
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');
   const sub = $derived(game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
@@ -18,6 +20,7 @@
   <button class="g" class:off={!game.installed} class:sel={selected} aria-disabled={busy} aria-expanded={game.installed ? undefined : selected} onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
+      {#if saved}<span class="pchip" title="Saved quality for this game">{prefsChip(saved)}</span>{/if}
       <span class="glow"></span>
       {#if game.installed}<span class="btn play"><Icon name="play" size={13} /> {busy ? 'Starting…' : playLabel(game)}</span>{/if}
     </Cover>
@@ -44,6 +47,7 @@
   .badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   .badge.off i { background: var(--muted); }
   .badge.run i { background: var(--accent); }
+  .pchip { position: absolute; left: 10px; top: 36px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: #0009; backdrop-filter: blur(6px); white-space: nowrap; }
   .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; background: radial-gradient(80% 60% at 50% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%); pointer-events: none; z-index: 1; }
   .play { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(12px); opacity: 0; transition: all .35s var(--ease); z-index: 3; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }
   .g:hover .glow, .g:hover .play, .g:focus-visible .glow, .g:focus-visible .play, .g[aria-disabled='true'] .play, .sel .glow { opacity: 1; }
