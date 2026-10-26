@@ -60,12 +60,25 @@ impl Doc {
     }
 }
 
+/// Text under a longer element path is not kept: every path a reply is read by is shorter
+/// (`root/ServerCodecModeSupport`). Storing the path of each text node of a deeply nested or
+/// long-named reply cost memory and time quadratic in its size (about 250 MB for 64 KiB).
+const MAX_PATH: usize = 64;
+
+fn pop(stack: &mut Vec<String>, path_len: &mut usize) {
+    if let Some(n) = stack.pop() {
+        *path_len -= n.len() + usize::from(!stack.is_empty());
+    }
+}
+
 fn parse(xml: &str) -> Result<Doc, HttpError> {
     if xml.len() > MAX_BODY {
         return Err(HttpError::TooLarge);
     }
     let mut r = Reader::from_str(xml);
     let mut stack: Vec<String> = Vec::new();
+    // Bytes of `stack.join("/")`, kept up to date so no event costs more than O(MAX_PATH).
+    let mut path_len = 0usize;
     let mut texts = Vec::new();
     let mut buf = String::new(); // text of the current element; entities arrive as separate events
     let (mut code, mut message, mut seen_root) = (None, String::new(), false);
@@ -78,7 +91,7 @@ fn parse(xml: &str) -> Result<Doc, HttpError> {
                     .map_err(|_| HttpError::BadXml)?,
             ),
             Event::Start(_) | Event::Empty(_) | Event::End(_) | Event::Eof => {
-                if !stack.is_empty() && !buf.trim().is_empty() {
+                if !stack.is_empty() && path_len <= MAX_PATH && !buf.trim().is_empty() {
                     texts.push((stack.join("/"), std::mem::take(&mut buf)));
                 }
                 buf.clear();
@@ -103,18 +116,17 @@ fn parse(xml: &str) -> Result<Doc, HttpError> {
                                 }
                             }
                         }
+                        path_len += name.len() + usize::from(!stack.is_empty());
                         stack.push(name);
-                        let path = stack.join("/");
-                        if path == "root/App" {
-                            texts.push((path, String::new()));
+                        // stack[0] is always "root" (checked above).
+                        if stack.len() == 2 && stack[1] == "App" {
+                            texts.push(("root/App".to_string(), String::new()));
                         }
                         if matches!(ev, Event::Empty(_)) {
-                            stack.pop();
+                            pop(&mut stack, &mut path_len);
                         }
                     }
-                    Event::End(_) => {
-                        stack.pop();
-                    }
+                    Event::End(_) => pop(&mut stack, &mut path_len),
                     _ => break,
                 }
             }
