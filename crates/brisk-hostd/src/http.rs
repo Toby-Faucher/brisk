@@ -6,17 +6,17 @@ use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, Syst
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
 use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
+use crate::site::Site;
 use crate::steam::{self, GamesResult};
 use crate::stream::{Codec, Preset, StreamReq, Supervisor};
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
-use axum::http::{Method, StatusCode, header};
+use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use serde::Deserialize;
 use std::net::SocketAddr;
-use std::path::{Component, Path};
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
@@ -30,6 +30,8 @@ pub struct AppState {
     pub quit: Quitter,
     pub prefs: Prefs,
     pub hosts: Hosts,
+    /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
+    pub site: Site,
 }
 
 impl AppState {
@@ -47,6 +49,7 @@ impl AppState {
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
+            site: Site::Disk(cfg.dist.clone()),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -438,7 +441,8 @@ async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>)
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Mount API routes on `api` below; everything else falls through to `dist/`. The guard wraps all.
+/// Mount API routes on `api` below; everything else falls through to the static site (site.rs).
+/// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/games", get(games))
@@ -494,11 +498,16 @@ async fn guard(State(s): State<Arc<AppState>>, req: Request, next: Next) -> Resp
             hd.get("tailscale-user-login").and_then(|v| v.to_str().ok()),
             hd.contains_key("x-brisk-csrf"),
         );
-    if host_ok && auth_ok {
+    let mut r = if host_ok && auth_ok {
         next.run(req).await
     } else {
         StatusCode::FORBIDDEN.into_response()
-    }
+    };
+    r.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        header::HeaderValue::from_static("nosniff"),
+    );
+    r
 }
 
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
@@ -506,55 +515,5 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 async fn static_file(State(s): State<Arc<AppState>>, req: Request) -> Response {
-    let rel = req.uri().path().trim_start_matches('/');
-    let safe = Path::new(rel)
-        .components()
-        .all(|c| matches!(c, Component::Normal(_)));
-    if !safe || (req.method() != Method::GET && req.method() != Method::HEAD) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    // Resolved once per request: `update` swaps web/dist (a symlink) to a new build atomically,
-    // and every file must canonicalize to inside that one build (no symlink out of it).
-    let Ok(dist) = std::fs::canonicalize(&s.cfg.dist) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let inside = |p: &Path| {
-        std::fs::canonicalize(p)
-            .ok()
-            .filter(|c| c.starts_with(&dist) && c.is_file())
-    };
-    let mut path = dist.join(rel);
-    if path.is_dir() {
-        path.push("index.html");
-    }
-    // Unknown page: the root index, so client-side routes still load.
-    // A missing file with an extension is a missing asset, not a page.
-    let path = match inside(&path) {
-        Some(p) => p,
-        None if Path::new(rel).extension().is_some() || path.exists() => {
-            return StatusCode::NOT_FOUND.into_response();
-        }
-        None => match inside(&dist.join("index.html")) {
-            Some(p) => p,
-            None => return StatusCode::NOT_FOUND.into_response(),
-        },
-    };
-    match tokio::fs::read(&path).await {
-        Ok(b) => ([(header::CONTENT_TYPE, mime(&path))], b).into_response(),
-        Err(_) => StatusCode::NOT_FOUND.into_response(),
-    }
-}
-
-fn mime(p: &Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()) {
-        Some("html") => "text/html; charset=utf-8",
-        Some("js" | "mjs") => "text/javascript",
-        Some("css") => "text/css",
-        Some("json") => "application/json",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("woff2") => "font/woff2",
-        Some("wasm") => "application/wasm",
-        _ => "application/octet-stream",
-    }
+    s.site.serve(req).await
 }

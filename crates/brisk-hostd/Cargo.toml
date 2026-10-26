@@ -18,6 +18,9 @@ rustls-graviola = "=0.4.0"
 rustix = { version = "=1.1.5", default-features = false, features = ["std", "process"] }
 # systemd Type=notify readiness + watchdog (only acts when NOTIFY_SOCKET is set).
 sd-notify = { version = "=0.5.0", default-features = false }
+# Static files (web/dist): Range, ETag/Last-Modified + 304, precompressed .br/.gz, HEAD.
+percent-encoding = "2"
+tower-http = { version = "=0.7.1", default-features = false, features = ["fs"] }
 tokio = { version = "1", features = ["rt", "net", "macros", "fs", "signal", "process", "io-util"] }
 
 [dev-dependencies]

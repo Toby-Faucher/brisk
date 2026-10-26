@@ -8,5 +8,6 @@ pub mod notify;
 pub mod prefs;
 pub mod running;
 pub mod sessions;
+pub mod site;
 pub mod steam;
 pub mod stream;
