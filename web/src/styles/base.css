@@ -49,7 +49,12 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
      until it unmounts */
   body:has(.cm-dim[data-ending-style]) { pointer-events: auto !important; }
   .cm-dim[data-ending-style] { pointer-events: none !important; }
+  /* Home module picker (AddModule.svelte): swells from the card by a native FLIP on translate + scale; only its opacity
+     is a CSS transition on entry. The exit shrinks back onto the card's box (--mp-t / --mp-s, set inline by Svelte). */
+  .mp { transition: opacity var(--dur-page) var(--ease); }
+  .mp[data-ending-style] { opacity: 0; translate: var(--mp-t, 0 6px); scale: var(--mp-s, .98); transition: opacity var(--dur-page) var(--ease-exit), translate var(--dur-page) var(--ease-exit), scale var(--dur-page) var(--ease-exit); }
   @starting-style {
+    .mp[data-state='open'] { opacity: 0; }
     :is(.cm, .rs, .cm-dim)[data-state='open'] { opacity: 0; }
     .cm[data-state='open'] { translate: 0 -12px; scale: .97; }
     .rs[data-state='open'] { translate: 0 10px; }

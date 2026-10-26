@@ -92,6 +92,25 @@
   - Rule reminder for new motion: motion-base stays library-free (the Shell imports it: every byte is on /stream), a lazy
     helper's chunk failing must end in the end state, and a name you add (`.halo`) must not collide with a selector another
     check already uses (the first `.ring` here was the Home CPU ring's).
+- Motion pass 2, F3b (#13 #9; check: `node web/scripts/f3b-check.mjs [status stream picker reduce fail]`, port 4490,
+  screenshots to `$OUT`; unit tests `motion.test.ts` (dotFade, fadeOnChange, flipDelta), browser test `AddModule.browser.test.ts`).
+  Both are native Web Animations: no anime.js chunk is needed, so a failed chunk load changes nothing.
+  - Status transitions: `StatusDot` keeps an aria-hidden `.was` copy of the dot (resting at opacity 0, on top of the ring); on a
+    state change it takes the old state (`data-s`, written only by the component's effect) and fades 1 -> 0 over 360 ms
+    (`dotFade` in motion-base): a cross-fade, opacity only, together with the ring. Same guards as the ring (not on first
+    paint, not on /stream, not under reduced motion). On the Machines card the big text, the Sunshine word and the uptime fade
+    in from .35 when their text changes (`fadeOnChange` attachment, opacity only; first value and repeats do nothing). Rows
+    are monospace tabular numbers in a fixed grid: nothing moves (checked: rows and card height identical through ready ->
+    busy -> down and 1 h -> 2 h). Chrome still scores ~0.00015 CLS when the right-aligned Sunshine word gets longer, with or
+    without motion. No live region on the card, so polling never speaks.
+  - Module picker: the "Add a module" card is now a Bits `Dialog.Trigger` for a small picker (installed modules and what each
+    contributes; adding one is still a folder in web/src/modules, so it lists, it does not install). Opening: the panel is laid out
+    centred (`.mp`, no `transform`, `transform-origin: 0 0`) and `glide()` FLIPs it from the card's box (translate + scale,
+    `--spring-snappy`), its opacity a CSS `@starting-style` transition. Closing: the card's box is measured in the open-change
+    handler and passed as `--mp-t` / `--mp-s` (Svelte `style`), and `.mp[data-ending-style]` transitions translate, scale and
+    opacity there in `--dur-page` with `--ease-exit` (faster than the 700 ms swell), so Bits waits for it. A close mid-swell cancels
+    the swell first. Esc, Tab trap, focus return to the card and axe are unchanged/clean; reduced motion = no rule, instant.
+    Non-uniform scale squashes the text for the first frames (card 386x120 -> panel 420x398); accepted for a 700 ms swell.
 - Not done: Library grid FLIP (`createLayout`): it works with the keyed list, but walks the whole subtree under its root and
   cost 50-61 ms per change on the 40-card "Show all" grid (over the 50 ms long-task budget while typing). Patch and numbers:
   `.superpowers/sdd/anime-pass-flip-experiment.patch`, `anime-check.mjs flip`.
