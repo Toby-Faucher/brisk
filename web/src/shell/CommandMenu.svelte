@@ -82,12 +82,8 @@
   :global(.cm .sr) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   :global(.cm-in) { width: 100%; background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; font-size: 16px; padding: 12px 14px; border-bottom: 1px solid color-mix(in srgb, #fff 10%, transparent); box-sizing: border-box; }
   :global(.cm-list) { padding: 4px 0 0; display: grid; gap: 2px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
-  /* Chrome-only app: ::-webkit-scrollbar (the standard scrollbar-* properties would switch these off). The thumb is a pill inset from the edge via a transparent border. */
-  :global(.cm-list::-webkit-scrollbar) { width: 12px; }
-  :global(.cm-list::-webkit-scrollbar-track) { background: transparent; margin: 4px 0; }
-  :global(.cm-list::-webkit-scrollbar-thumb) { background: color-mix(in srgb, #fff 16%, transparent); border: 4px solid transparent; background-clip: padding-box; border-radius: 999px; min-height: 36px; }
-  :global(.cm-list::-webkit-scrollbar-thumb:hover) { background: color-mix(in srgb, var(--accent) 55%, transparent); background-clip: padding-box; }
-  :global(.cm-list::-webkit-scrollbar-thumb:active) { background: var(--accent); background-clip: padding-box; }
+  /* Scrollbar look is global (styles/base.css); the track only needs breathing room from the panel's rounded corners. */
+  :global(.cm-list::-webkit-scrollbar-track) { margin: 4px 0; }
   /* Concentric corners: inner radius = panel radius - panel padding (20px - 8px = 12px). */
   /* The global :focus-visible ring would draw a square teal box inside the rounded panel; the selected row is the focus cue here. */
   :global(.cm-in:focus-visible) { outline: none; box-shadow: none; }

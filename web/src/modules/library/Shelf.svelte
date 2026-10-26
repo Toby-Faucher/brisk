@@ -87,7 +87,7 @@
   .chev { border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; padding: 0; }
   .chev:not(.r) :global(svg) { transform: scaleX(-1); }
   .chev[aria-disabled='true'] { opacity: .35; cursor: default; }
-  .row { overflow-x: auto; padding: 8px 0 8px; margin-top: -8px; scrollbar-width: thin; }
+  .row { overflow-x: auto; padding: 8px 0 8px; margin-top: -8px; }
   .track { display: flex; gap: 14px; }
   .slot { flex: 0 0 138px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
