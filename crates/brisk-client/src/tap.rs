@@ -32,7 +32,7 @@ pub fn tap_path() -> Option<PathBuf> {
 }
 
 /// `CLOCK_MONOTONIC` in ns: the clock of the header's `capture_ns`/`tap_ns` (libstdc++
-/// `steady_clock` [U]). `Instant` does not expose its value, so it cannot be compared.
+/// `steady_clock` \[U\]). `Instant` does not expose its value, so it cannot be compared.
 pub fn monotonic_ns() -> u64 {
     let mut t = libc::timespec {
         tv_sec: 0,

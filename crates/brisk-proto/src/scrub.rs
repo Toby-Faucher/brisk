@@ -19,7 +19,7 @@ pub fn scrub(bytes: &[u8], secrets: &[Vec<u8>]) -> Vec<u8> {
 }
 
 /// Like [`scrub`], but also scrubs each secret's lowercase and uppercase hex text
-/// (rikey travels as hex in HTTP query strings).
+/// (rikey travels as hex in HTTP query strings). Empty secrets are ignored.
 pub fn scrub_with_encodings(bytes: &[u8], secrets: &[Vec<u8>]) -> Vec<u8> {
     let mut all = secrets.to_vec();
     for s in secrets.iter().filter(|s| !s.is_empty()) {

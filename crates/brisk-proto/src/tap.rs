@@ -19,7 +19,7 @@
 pub const MAGIC: [u8; 4] = *b"BTAP";
 pub const VERSION: u8 = 1;
 pub const HEADER_LEN: usize = 44;
-/// Largest Annex B payload accepted (a 1080p IDR is about 100-500 KB [U]).
+/// Largest Annex B payload accepted (a 1080p IDR is about 100-500 KB \[U\]).
 pub const MAX_PAYLOAD: usize = 4 << 20;
 
 pub const FLAG_IDR: u8 = 0x01;
@@ -28,6 +28,8 @@ pub const FLAG_NO_CAPTURE_TS: u8 = 0x04;
 /// Frames were dropped (socket full) before this one; it is the recovery IDR.
 pub const FLAG_GAP: u8 = 0x08;
 
+/// The fixed header of one tap message, as parsed by [`parse_tap`]; the field layout is in the
+/// module docs above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TapHeader {
     pub flags: u8,
@@ -41,15 +43,19 @@ pub struct TapHeader {
 }
 
 impl TapHeader {
+    /// The frame is an IDR ([`FLAG_IDR`]).
     pub fn idr(&self) -> bool {
         self.flags & FLAG_IDR != 0
     }
+    /// The frame follows a reference-frame invalidation ([`FLAG_AFTER_RFI`]).
     pub fn after_rfi(&self) -> bool {
         self.flags & FLAG_AFTER_RFI != 0
     }
+    /// `capture_ns` is not a real capture time ([`FLAG_NO_CAPTURE_TS`]).
     pub fn no_capture_ts(&self) -> bool {
         self.flags & FLAG_NO_CAPTURE_TS != 0
     }
+    /// Frames were dropped before this one ([`FLAG_GAP`]).
     pub fn gap(&self) -> bool {
         self.flags & FLAG_GAP != 0
     }

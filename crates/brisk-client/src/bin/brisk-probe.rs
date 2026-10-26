@@ -31,7 +31,7 @@ use brisk_client::tap::{TapListener, tap_path};
 use brisk_client::{Error, StderrLog, SystemRng};
 use brisk_proto::pair::Rng;
 use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, StreamConfig};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: brisk-probe [--record DIR] [--config DIR] (pair --host HOST [--pin NNNN] | apps --host HOST | launch --host HOST --app ID [--take-over] | control --host HOST --app ID [--secs N] [--input-demo] [--take-over] | stream --host HOST --app ID [--secs N] [--record-samples DIR] [--input-demo] [--tap] [--take-over] | cancel --host HOST)";
@@ -154,7 +154,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
     let r = match a.cmd.as_str() {
         "pair" => {
             let ident = load_or_create_identity(&dir)?;
-            let pin = pin.as_deref().unwrap();
+            let pin = pin.as_deref().ok_or(Error::Setup("pair: no PIN".into()))?;
             println!("PIN {pin}: enter it in Sunshine's web UI (PIN tab). Waiting up to 5 min...");
             s.pair(&dir, &ident, pin).await.map(|_| {
                 println!(
@@ -193,7 +193,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     false => None,
                 };
                 let listener = listener.as_ref();
-                let app = a.app.unwrap();
+                let app = a.app.ok_or(Error::Setup("need --app ID (see `apps`)".into()))?;
                 let (host, secs, cmd, demo) = (a.host.clone(), a.secs, a.cmd.clone(), a.input_demo);
                 let samples = a.samples.clone();
                 let during = |p: StreamPorts| async move {
@@ -309,7 +309,9 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 eprintln!(
                     "recorded {} scrubbed files in {}",
                     f.len(),
-                    a.record.unwrap().display()
+                    a.record
+                        .as_deref()
+                        .map_or(Path::new("").display(), |d| d.display())
                 );
                 return r;
             }
