@@ -4,6 +4,7 @@
 //! ([`brisk_proto::tap`] framing). The listener lives in a 0700 directory and only accepts a peer
 //! running as our own uid (`SO_PEERCRED`) whose first frame carries our session's connect data.
 
+use brisk_proto::sdp::Codec;
 use brisk_proto::tap::{parse_tap, TapError, TapHeader, HEADER_LEN, MAX_PAYLOAD};
 use bytes::{Bytes, BytesMut};
 use socket2::{Domain, SockAddr, Socket, Type};
@@ -108,11 +109,12 @@ impl TapListener {
         self
     }
 
-    /// The first connection from our uid whose first frame is H.264 with `connect_data`. Other
-    /// peers are closed (Sunshine then stops that session on EPIPE) and waiting goes on.
+    /// The first connection from our uid whose first frame carries `connect_data`; its codec must
+    /// be `codec`, the one the session announced (else an error). Other peers are closed
+    /// (Sunshine then stops that session on EPIPE) and waiting goes on.
     // shortcut: one connection is checked at a time, so a peer that connects and never sends
     // stalls the accept; only our own uid can reach the 0700 directory.
-    pub async fn accept(&self, connect_data: u32) -> crate::Result<TapConn> {
+    pub async fn accept(&self, connect_data: u32, codec: Codec) -> crate::Result<TapConn> {
         loop {
             let (s, _) = self.fd.async_io(Interest::READABLE, |l| l.accept()).await?;
             let uid = peer_uid(&s)?;
@@ -137,10 +139,23 @@ impl TapListener {
                 );
                 continue;
             }
-            if h.codec != 0 {
+            // The tap header's codec is Sunshine's videoFormat (0 H.264, 1 HEVC, 2 AV1).
+            let name = |c: u32| {
+                ["H.264", "HEVC", "AV1"]
+                    .get(c as usize)
+                    .copied()
+                    .unwrap_or("?")
+            };
+            let want = match codec {
+                Codec::H264 => 0,
+                Codec::Hevc => 1,
+            };
+            if h.codec != want {
                 return Err(crate::Error::Protocol(format!(
-                    "tap: codec {} (only H.264 = 0 is handled)",
-                    h.codec
+                    "tap: codec {} ({}), but the session asked for {}",
+                    h.codec,
+                    name(h.codec),
+                    name(want)
                 )));
             }
             return Ok(c);

@@ -8,7 +8,7 @@ use crate::rtsp::StreamPorts;
 use crate::tap::{monotonic_ns, TapConn, TapListener, TapRx, TapSummary};
 use brisk_proto::audio::{AudioCipher, AudioFec, PT_AUDIO};
 use brisk_proto::rtp::{parse_video_packet, AssembledFrame, FrameAssembler, VideoCipher};
-use brisk_proto::sdp::{SS_ENC_AUDIO, SS_ENC_VIDEO};
+use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, SS_ENC_VIDEO};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -556,9 +556,10 @@ pub async fn race(
     c: &mut ControlSession,
     l: &TapListener,
     cd: u32,
+    codec: Codec,
     rx: &mut StreamRx,
 ) -> crate::Result<Option<TapConn>> {
-    let accept = l.accept(cd);
+    let accept = l.accept(cd, codec);
     tokio::pin!(accept);
     let deadline = Instant::now() + TAP_WAIT;
     loop {
@@ -646,7 +647,8 @@ async fn run(
         let mut c = ControlSession::connect(addr, cd, rikey, connect_id, Some(av)).await?;
         let r = async {
             let conn = match tap {
-                Some(l) => race(&mut c, l, cd, &mut rx).await?,
+                // brisk-probe streams H.264 only.
+                Some(l) => race(&mut c, l, cd, Codec::H264, &mut rx).await?,
                 None => None,
             };
             if let Some(mut conn) = conn {

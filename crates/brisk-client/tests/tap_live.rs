@@ -2,6 +2,7 @@
 //! process, writing messages as the patch's `brisk_tap_send` does).
 
 use brisk_client::tap::{monotonic_ns, TapListener};
+use brisk_proto::sdp::Codec;
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -59,7 +60,7 @@ async fn listener_delivers_frames_of_the_matching_session() {
     let p = peer(&path);
     p.send(&msg(0b1001, CD, 41, 1000, 2, ANNEXB)).unwrap();
     p.send(&msg(0, CD, 42, 2000, 2, &ANNEXB[11..])).unwrap();
-    let mut c = l.accept(CD).await.unwrap();
+    let mut c = l.accept(CD, Codec::H264).await.unwrap();
     let f = c.recv().await.unwrap();
     assert_eq!((f.idx, f.idr, f.capture_ns, f.dropped), (41, true, 1000, 2));
     assert_eq!(&f.annexb[..], ANNEXB);
@@ -80,7 +81,7 @@ async fn listener_skips_other_sessions() {
     stale.send(&msg(1, CD + 1, 1, 1, 0, ANNEXB)).unwrap();
     let ours = peer(&path);
     ours.send(&msg(1, CD, 7, 1, 0, ANNEXB)).unwrap();
-    let mut c = l.accept(CD).await.unwrap();
+    let mut c = l.accept(CD, Codec::H264).await.unwrap();
     assert_eq!(c.recv().await.unwrap().idx, 7);
     assert!(closed(&stale));
 }
@@ -95,7 +96,7 @@ async fn listener_rejects_foreign_uid() {
         .expect_uid(unsafe { libc::getuid() } + 1);
     let p = peer(&path);
     p.send(&msg(1, CD, 1, 1, 0, ANNEXB)).unwrap();
-    let r = tokio::time::timeout(Duration::from_millis(300), l.accept(CD)).await;
+    let r = tokio::time::timeout(Duration::from_millis(300), l.accept(CD, Codec::H264)).await;
     assert!(r.is_err(), "a foreign peer must not be accepted");
     assert!(closed(&p));
 }
@@ -107,7 +108,7 @@ async fn tap_conn_reports_eof_as_closed() {
     let l = TapListener::bind(&path).unwrap();
     let p = peer(&path);
     p.send(&msg(1, CD, 1, 1, 0, ANNEXB)).unwrap();
-    let mut c = l.accept(CD).await.unwrap();
+    let mut c = l.accept(CD, Codec::H264).await.unwrap();
     c.recv().await.unwrap();
     drop(p);
     let r = tokio::time::timeout(Duration::from_secs(2), c.recv())
@@ -126,7 +127,7 @@ async fn tap_conn_rejects_garbage() {
     p.send(&msg(1, CD, 1, 1, 0, ANNEXB)).unwrap();
     p.send(b"BTAQ not a tap message at all, but long enough to have a header")
         .unwrap();
-    let mut c = l.accept(CD).await.unwrap();
+    let mut c = l.accept(CD, Codec::H264).await.unwrap();
     c.recv().await.unwrap();
     let r = c.recv().await;
     assert!(matches!(r, Err(brisk_client::Error::Tap(_))), "{r:?}");
@@ -167,7 +168,7 @@ async fn bench_recv_latency() {
         }
         p
     });
-    let mut c = l.accept(CD).await.unwrap();
+    let mut c = l.accept(CD, Codec::H264).await.unwrap();
     let mut us = Vec::new();
     for _ in 0..n {
         let f = c.recv().await.unwrap();
@@ -278,7 +279,7 @@ async fn listener_accepts_header_len_300() {
     m.splice(44..44, std::iter::repeat_n(0xEE, 256));
     let p = peer(&path);
     p.send(&m).unwrap();
-    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD)).await;
+    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD, Codec::H264)).await;
     let mut c = r.expect("accept hung").expect("header_len 300 refused");
     let f = c.recv().await.unwrap();
     assert_eq!((f.idx, &f.annexb[..]), (9, ANNEXB));
@@ -296,8 +297,59 @@ async fn listener_skips_garbage_first_message() {
         .unwrap();
     let ours = peer(&path);
     ours.send(&msg(1, CD, 5, 1, 0, ANNEXB)).unwrap();
-    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD)).await;
+    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD, Codec::H264)).await;
     let mut c = r.expect("accept hung").expect("garbage aborted the accept");
     assert_eq!(c.recv().await.unwrap().idx, 5);
     assert!(closed(&junk));
+}
+
+/// HEVC (VPS 0x40, SPS 0x42, PPS 0x44, IDR_W_RADL 0x26) with the tap header's codec field = 1.
+const HEVC: &[u8] = &[
+    0, 0, 0, 1, 0x40, 1, 0, 0, 0, 1, 0x42, 1, 0, 0, 0, 1, 0x44, 1, 0, 0, 0, 1, 0x26, 1,
+];
+
+fn with_codec(mut m: Vec<u8>, codec: u32) -> Vec<u8> {
+    m[12..16].copy_from_slice(&codec.to_le_bytes());
+    m
+}
+
+#[tokio::test]
+async fn listener_accepts_hevc_when_the_session_asked_for_it() {
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("tap.sock");
+    let l = TapListener::bind(&path).unwrap();
+    let p = peer(&path);
+    p.send(&with_codec(msg(1, CD, 3, 1, 0, HEVC), 1)).unwrap();
+    let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD, Codec::Hevc)).await;
+    let mut c = r.expect("accept hung").expect("HEVC refused");
+    let f = c.recv().await.unwrap();
+    assert_eq!((f.idx, f.idr, &f.annexb[..]), (3, true, HEVC));
+}
+
+/// The tap's codec must be the one the session announced; anything else is a clear error.
+#[tokio::test]
+async fn listener_rejects_a_codec_mismatch() {
+    for (sent, want, msg_has) in [
+        (
+            0u32,
+            Codec::Hevc,
+            "codec 0 (H.264), but the session asked for HEVC",
+        ),
+        (
+            1,
+            Codec::H264,
+            "codec 1 (HEVC), but the session asked for H.264",
+        ),
+        (2, Codec::H264, "codec 2 (AV1)"),
+    ] {
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("tap.sock");
+        let l = TapListener::bind(&path).unwrap();
+        let p = peer(&path);
+        p.send(&with_codec(msg(1, CD, 3, 1, 0, ANNEXB), sent))
+            .unwrap();
+        let r = tokio::time::timeout(Duration::from_secs(2), l.accept(CD, want)).await;
+        let e = r.expect("accept hung").err().expect("mismatch accepted");
+        assert!(e.to_string().contains(msg_has), "{e}");
+    }
 }

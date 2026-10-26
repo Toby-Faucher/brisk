@@ -1,8 +1,8 @@
-//! brisk-bridge: launches a Sunshine session with the brisk tap and forwards its H.264 frames to
-//! a browser over WebTransport (one uni stream per frame, see `session.rs`).
+//! brisk-bridge: launches a Sunshine session with the brisk tap and forwards its H.264 or HEVC frames
+//! to a browser over WebTransport (one uni stream per frame, see `session.rs`).
 //!
 //!   brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM
-//!                [--config DIR] [--secs N] [--page URL] [--take-over]
+//!                [--config DIR] [--secs N] [--page URL] [--take-over] [--codec h264|hevc]
 //!
 //! --listen must be a Tailscale or loopback IP (not 0.0.0.0). --cert/--key: an ECDSA P-256
 //! certificate valid for at most 14 days (Chrome's rule for `serverCertificateHashes`; see
@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 /// Audio datagrams waiting for the forward loop (64 = 160 ms of packets plus parity).
 const AUDIO_QUEUE: usize = 64;
 
-const USAGE: &str = "usage: brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM [--config DIR] [--secs N] [--page URL] [--take-over] [--width N] [--height N] [--fps N] [--bitrate-kbps N]";
+const USAGE: &str = "usage: brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM [--config DIR] [--secs N] [--page URL] [--take-over] [--width N] [--height N] [--fps N] [--bitrate-kbps N] [--codec h264|hevc]";
 
 struct Args {
     host: String,
@@ -48,6 +48,7 @@ struct Args {
     height: u16,
     fps: u16,
     bitrate_kbps: u32,
+    codec: Codec,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -60,6 +61,7 @@ fn parse_from(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut page = "http://localhost:8443/".to_owned();
     let mut take_over = false;
     let (mut width, mut height, mut fps, mut bitrate_kbps) = (1920, 1080, 60, 20000);
+    let mut codec = Codec::H264;
     let mut it = args;
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
@@ -77,6 +79,13 @@ fn parse_from(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--height" => height = ranged(&a, val()?, 320, 3840)? as u16,
             "--fps" => fps = ranged(&a, val()?, 24, 144)? as u16,
             "--bitrate-kbps" => bitrate_kbps = ranged(&a, val()?, 1000, 150000)?,
+            "--codec" => {
+                codec = match val()?.as_str() {
+                    "h264" => Codec::H264,
+                    "hevc" => Codec::Hevc,
+                    _ => return Err("--codec must be h264 or hevc".into()),
+                }
+            }
             _ => return Err(format!("unexpected argument {a:?}")),
         }
     }
@@ -98,6 +107,7 @@ fn parse_from(args: impl Iterator<Item = String>) -> Result<Args, String> {
         height,
         fps,
         bitrate_kbps,
+        codec,
     })
 }
 
@@ -162,7 +172,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
         height: a.height,
         fps: a.fps,
         bitrate_kbps: a.bitrate_kbps,
-        codec: Codec::H264,
+        codec: a.codec,
         packet_size: 1392,
         fec_percent: 20,
         enc_flags: SS_ENC_AUDIO,
@@ -186,7 +196,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 .await?;
         let r = async {
             let mut rx = StreamRx::new(p.enc_flags, p.key.rikey, p.key.rikeyid, None)?;
-            let Some(mut tap) = race(&mut c, &listener, cd, &mut rx).await? else {
+            let Some(mut tap) = race(&mut c, &listener, cd, cfg.codec, &mut rx).await? else {
                 return Err(Error::Setup(
                     "Sunshine sent RTP, not the tap: is the brisk build running? (scripts/sunshine-brisk.sh status)".into(),
                 ));
@@ -311,6 +321,15 @@ mod tests {
         assert!(parse(&["--fps", "500"]).is_err());
         assert!(parse(&["--bitrate-kbps", "999"]).is_err());
         assert!(parse(&["--width", "abc"]).is_err());
+    }
+
+    #[test]
+    fn codec_flag_defaults_to_h264() {
+        assert_eq!(parse(&[]).unwrap().codec, Codec::H264);
+        assert_eq!(parse(&["--codec", "h264"]).unwrap().codec, Codec::H264);
+        assert_eq!(parse(&["--codec", "hevc"]).unwrap().codec, Codec::Hevc);
+        assert!(parse(&["--codec", "av1"]).is_err());
+        assert!(parse(&["--codec"]).is_err());
     }
 
     #[test]
