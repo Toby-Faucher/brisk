@@ -13,5 +13,9 @@ sha2 = "0.10.9"
 subtle = "2.6.1"
 x509-cert = { version = "0.2.5", features = ["pem"] }
 
+[dev-dependencies]
+# Property tests. No fork/timeout features (rusty-fork, tempfile): inputs are kept small instead.
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+
 [lints]
 workspace = true
