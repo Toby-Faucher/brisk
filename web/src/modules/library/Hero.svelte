@@ -12,7 +12,7 @@
   const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
 </script>
 
-<div class="hero" style="background:radial-gradient(120% 140% at 85% 0%, hsl({hue(game)} 62% 48% / .67), #12151c 62%)">
+<div class="hero reveal" style="background:radial-gradient(120% 140% at 85% 0%, hsl({hue(game)} 62% 48% / .67), #12151c 62%)">
   <Cover {game} style="width:150px;flex:0 0 auto" />
   <div class="txt">
     <div class="lab">{game.running ? 'Running on the host' : 'Continue where you left off'}</div>

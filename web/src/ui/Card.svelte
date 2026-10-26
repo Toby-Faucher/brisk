@@ -4,7 +4,7 @@
   let { cols = 2, rows = 1, class: cls = '', children }: { cols?: number; rows?: number; class?: string; children?: Snippet } = $props();
 </script>
 
-<div class="card {cls}" style:grid-column="span {cols}" style:grid-row="span {rows}" role="group">
+<div class="card reveal {cls}" style:grid-column="span {cols}" style:grid-row="span {rows}" role="group">
   {@render children?.()}
 </div>
 

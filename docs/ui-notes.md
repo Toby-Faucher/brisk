@@ -13,6 +13,25 @@
 - The server render shows General and the real tab is applied on mount, so a deep link flashes General for a frame.
 - Not done: the shell sidebar has no phone layout (every page is 450 px wide at 390 px); the tab strip itself scrolls.
 
+## Motion
+- Tokens in tokens.css: `--dur-page` 260 ms, `--dur-tab` 180 ms, `--rise` 8 px, `--rise-scroll` 14 px, easing `--ease`. All motion is
+  opacity + the independent `translate` property (never `transform`, which hover owns), no `will-change`, and sits in
+  base.css under `prefers-reduced-motion: no-preference` (reduced motion: no animation, `scroll-behavior: auto`).
+- Animates: page enter (`.page-in` on Shell's `<main>` only, so the sidebar, host pill and frame never replay; the island
+  remounts but the SSR markup already carries the class, so no blank frame and no layout shift); Settings tab panels and the
+  History list/detail swap (`.swap-in` / `.live`, 180 ms, only after a user action, so first load animates once);
+  scroll reveal (`.reveal`: CSS `animation-timeline: view()`, `entry 0% entry 35%`, inside `@supports`, so unsupported means
+  plain visible) on `Card`, the Library hero and shelf headers.
+- Does not animate: /stream (anti-goal, docs/ui-design.md section 2: the Shell leaves `.page-in` off there; a `translate`
+  on `<main>` would also trap the stream's `position: fixed`), Library game cards and any virtualised item (they mount and
+  unmount while scrolling), tall blocks such as an open shelf grid, the ghost bar, menus and dialogs.
+- Smooth scroll: `html { scroll-behavior: smooth }` (off while the Astro router is navigating, so scroll restore does not
+  glide), `scroll-padding-top: 64px` for the sticky Settings strip, `overscroll-behavior-x: contain` on the shelf and the tab
+  strip. No JS smooth-scroll library and no wheel hijacking (the shelf's vertical-wheel-to-sideways stays as it was).
+- Do not write the reveal as an `animation:` shorthand: the minifier would fold `view()` into it and Chrome drops that.
+- Check: `node web/scripts/motion-check.mjs` against `astro preview` on port 4421 (mocked /api). Home shows a pre-existing
+  layout shift of about 0.06 when the module widgets mount, with or without motion.
+
 ## Run
 - On bawn: `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched
   Sunshine, makes a 13-day certificate if needed, runs `target/release/brisk-hostd` in the foreground).
