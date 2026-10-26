@@ -430,6 +430,58 @@ describe('ringPulse', () => {
   });
 });
 
+describe('dotFade', () => {
+  it('the old dot colour fades out over the new one: opacity 1 -> 0 only, 360 ms, --ease, no loop', () => {
+    const e = el();
+    expect(m.dotFade(e)).not.toBeNull();
+    const [kf, opt] = e.animate.mock.calls[0];
+    expect(kf).toEqual({ opacity: [1, 0] });
+    expect(opt).toEqual({ duration: 360, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+  });
+  it('nothing under reduced motion and, quietly even in dev, on /stream', () => {
+    const e = el();
+    reduce = true;
+    expect(m.dotFade(e)).toBeNull();
+    reduce = false;
+    path = '/stream';
+    expect(m.dotFade(e)).toBeNull();
+    expect(e.animate).not.toHaveBeenCalled();
+  });
+});
+
+describe('fadeOnChange', () => {
+  it('first value and an unchanged value do nothing; a new value fades the text in from .35 (opacity only)', () => {
+    const e = el();
+    m.fadeOnChange('10 min')(e);
+    m.fadeOnChange('10 min')(e);
+    expect(e.animate).not.toHaveBeenCalled();
+    const off = m.fadeOnChange('11 min')(e);
+    const [kf, opt] = e.animate.mock.calls[0];
+    expect(kf).toEqual({ opacity: [0.35, 1] });
+    expect(opt).toMatchObject({ duration: 360, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    expect(typeof off).toBe('function');
+  });
+  it('reduced motion: the value is remembered but nothing animates', () => {
+    const e = el();
+    m.fadeOnChange('a')(e);
+    reduce = true;
+    m.fadeOnChange('b')(e);
+    reduce = false;
+    m.fadeOnChange('b')(e);
+    expect(e.animate).not.toHaveBeenCalled();
+  });
+});
+
+describe('flipDelta', () => {
+  it('translate + scale that put the `to` box (origin top left) on the `from` box', () => {
+    expect(m.flipDelta({ x: 10, y: 100, w: 200, h: 30 }, { x: 10, y: 140, w: 100, h: 30 })).toEqual({ dx: 0, dy: -40, sx: 2, sy: 1 });
+  });
+  it('null for no move or a zero box', () => {
+    expect(m.flipDelta({ x: 0, y: 0, w: 5, h: 5 }, { x: 0, y: 0, w: 5, h: 5 })).toBeNull();
+    expect(m.flipDelta({ x: 0, y: 0, w: 0, h: 5 }, { x: 9, y: 0, w: 5, h: 5 })).toBeNull();
+  });
+});
+
 function fakePath(d = '') {
   const attrs: Record<string, string> = { d };
   return { attrs, removed: false, setAttribute: (k: string, v: string) => (attrs[k] = v), getAttribute: (k: string) => attrs[k], remove() { this.removed = true; } } as any;
