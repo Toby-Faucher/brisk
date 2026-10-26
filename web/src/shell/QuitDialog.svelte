@@ -22,7 +22,11 @@
 <script lang="ts">
   import { Dialog } from 'bits-ui';
   const ask = flow.ask;
-  const verb = $derived($ask?.force ? 'Force quit' : 'Quit');
+  // the text stays while the dialog plays its exit (ask is already null then)
+  let last = $state($ask);
+  $effect.pre(() => void ($ask && (last = $ask)));
+  const shown = $derived($ask ?? last);
+  const verb = $derived(shown?.force ? 'Force quit' : 'Quit');
 </script>
 
 <Dialog.Root bind:open={() => !!$ask, (v) => !v && flow.cancel()}>
@@ -37,9 +41,9 @@
         }
       }}
     >
-      {#if $ask}
-        <Dialog.Title class="rs-t">{verb} {$ask.game.name}?</Dialog.Title>
-        <Dialog.Description class="lab">{$ask.force ? 'It gets 3 seconds to close, then it is stopped. Unsaved progress will be lost.' : 'Unsaved progress may be lost.'}</Dialog.Description>
+      {#if shown}
+        <Dialog.Title class="rs-t">{verb} {shown.game.name}?</Dialog.Title>
+        <Dialog.Description class="lab">{shown.force ? 'It gets 3 seconds to close, then it is stopped. Unsaved progress will be lost.' : 'Unsaved progress may be lost.'}</Dialog.Description>
         <div class="rs-a">
           <Dialog.Close class="btn ghost">Cancel</Dialog.Close>
           <button class="btn" onclick={() => void flow.confirm()}>{verb}</button>
@@ -52,9 +56,7 @@
 <style>
   /* Confirm dialogs (this one and Machines' restart). Mounted on every page, so global here. */
   :global(.rs) { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 20px; z-index: 41; display: grid; gap: 6px; }
-  /* CSS only (mounted on /stream too): a short spring rise on open; the global reduced-motion rule turns it off */
-  @media (prefers-reduced-motion: no-preference) { :global(.rs[data-state='open']) { animation: rs-in var(--spring-settle-dur) var(--spring-settle) backwards; } }
-  @keyframes -global-rs-in { from { opacity: 0; translate: 0 10px; } }
+  /* enter/exit: base.css (CSS only, so fine on /stream too) */
   :global(.rs-t) { font-size: 16px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ }
   :global(.rs-a) { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 </style>

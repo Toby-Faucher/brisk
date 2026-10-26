@@ -38,6 +38,18 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
   html[data-enter-pending] main.page-in :is(.reveal, .enter) { opacity: 0; }
   /* set only after a user action (tab change, list/detail swap), so first load animates once (page-in) */
   .swap-in { animation: rise-in var(--dur-tab) var(--ease) backwards; }
+  /* Bits UI dialogs (command menu .cm, confirms .rs, their .cm-dim overlay): CSS transitions only. They enter from
+     @starting-style on the snappy spring and leave faster from data-ending-style; Bits keeps the node mounted until
+     getAnimations() on it has finished, then unmounts. Portalled divs, not top layer: no allow-discrete needed. */
+  :is(.cm, .rs) { transition: opacity var(--dur-page) var(--ease), translate var(--spring-snappy-dur) var(--spring-snappy), scale var(--spring-snappy-dur) var(--spring-snappy); }
+  .cm-dim { transition: opacity var(--dur-page) var(--ease); }
+  :is(.cm, .rs, .cm-dim)[data-ending-style] { opacity: 0; transition-duration: var(--dur-exit); transition-timing-function: var(--ease-exit); }
+  :is(.cm, .rs)[data-ending-style] { translate: 0 6px; scale: .98; }
+  @starting-style {
+    :is(.cm, .rs, .cm-dim)[data-state='open'] { opacity: 0; }
+    .cm[data-state='open'] { translate: 0 -12px; scale: .97; }
+    .rs[data-state='open'] { translate: 0 10px; }
+  }
 }
 /* Scroll reveal for cards and headers on a view timeline: nothing runs in JS. Without support (or with reduced
    motion) the rule is absent and everything is simply visible. Never on virtualised or mount/unmount items. */
