@@ -48,6 +48,17 @@ export interface Deps {
 
 type Conn = { t: Transport; ctx: Ctx; gain?: Gain; video?: { stats: VideoStats }; input?: { release(): void }; ours: boolean; liveAt: number };
 
+/** hostd's stream, waiting up to 10 s while it is 'starting'; null as soon as `alive()` turns false. */
+export async function pollLive(api: Deps['api'], alive: () => boolean): Promise<StreamInfo | null> {
+  let info = await api.stream();
+  for (let i = 0; alive() && info.state === 'starting' && i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (!alive()) return null;
+    info = await api.stream();
+  }
+  return alive() ? info : null;
+}
+
 const live = (i: StreamInfo | null): i is StreamInfo & { wt: string; hash: string } => !!i && i.state === 'live' && !!i.wt && !!i.hash;
 
 export class StreamSession {
@@ -57,6 +68,7 @@ export class StreamSession {
   readonly canvasEl = writable<Canvas | null>(null);
   info: StreamInfo | null = null;
   private conn: Conn | null = null;
+  private closed = false; // after disconnect() nothing connects again (the page is gone)
   private gen = 0; // bumped by every connect/changeQuality/disconnect: stale async work checks it
   private tries = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -66,6 +78,7 @@ export class StreamSession {
 
   /** Connect to a live stream. Resolves once connected or once it gave up. */
   async connect(info: StreamInfo) {
+    if (this.closed) return;
     const gen = ++this.gen;
     this.end();
     this.tries = 0;
@@ -94,8 +107,9 @@ export class StreamSession {
     if (gen === this.gen) await this.connect(info);
   }
 
-  /** User disconnect or leaving the page: release keys, close everything, no retry. */
+  /** User disconnect or leaving the page: release keys, close everything, no retry, no later connect. */
   disconnect() {
+    this.closed = true;
     this.gen++;
     this.end();
   }

@@ -197,6 +197,26 @@ describe('attach', () => {
     return { ...e, s, out };
   };
 
+  it('removes every listener once the transport closes', async () => {
+    const e = env();
+    const targets = [e.canvas, e.doc, e.win];
+    const adds = targets.map((t) => vi.spyOn(t, 'addEventListener'));
+    const { s, out } = sender();
+    let end!: () => void;
+    attach(s, e, new Promise<void>((r) => (end = r)));
+    const signals = adds.flatMap((a) => a.mock.calls.map((c) => (c[2] as AddEventListenerOptions).signal));
+    expect(signals.length).toBe(12);
+    expect(signals.every((x) => x && !x.aborted)).toBe(true);
+    end();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(signals.every((x) => x!.aborted)).toBe(true);
+    e.lock();
+    e.win.dispatchEvent(ev('keydown', { code: 'KeyA', key: 'a', repeat: false }));
+    expect(e.canvas.requestPointerLock).not.toHaveBeenCalled();
+    expect(out).toEqual([]);
+  });
+
   it('a click asks for pointer lock and is not sent', () => {
     const { canvas, out } = setup();
     canvas.dispatchEvent(ev('mousedown', { button: 0 }));

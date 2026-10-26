@@ -190,7 +190,7 @@ export interface InputEnv {
   win: EventTarget;
 }
 
-/// Wires page events to `s` until `closed` settles.
+/// Wires page events to `s` until `closed` settles (then removes its listeners).
 export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: Promise<unknown>) {
   const locked = () => doc.pointerLockElement === canvas;
   const captured = () => locked() || doc.activeElement === canvas;
@@ -198,7 +198,9 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
     s.releaseAll();
     if (doc.activeElement === canvas) canvas.blur();
   };
-  const on = (t: EventTarget, type: string, f: (e: any) => void, passive = true) => t.addEventListener(type, f, { passive });
+  // Every listener goes when `closed` settles, so a reconnect does not leave the old ones behind.
+  const gone = new AbortController();
+  const on = (t: EventTarget, type: string, f: (e: any) => void, passive = true) => t.addEventListener(type, f, { passive, signal: gone.signal });
   // The first non-zero motion once locked is the cursor jumping to where Chrome parks it, not
   // the user's: dropped. Headless Chromium sends it (-640,-360 on a 1280x720 page) before
   // `pointerlockchange`, so the flag is set when the lock is asked for.
@@ -249,7 +251,10 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
   on(doc, 'visibilitychange', () => {
     if (doc.visibilityState === 'hidden') leave();
   });
-  closed.finally(() => s.releaseAll());
+  closed.finally(() => {
+    s.releaseAll();
+    gone.abort();
+  });
 }
 
 export interface Input {

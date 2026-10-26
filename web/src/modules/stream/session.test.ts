@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { StreamInfo } from '../../state/api';
-import { RETRY_MS, StreamSession, type Deps } from './session';
+import { RETRY_MS, StreamSession, pollLive, type Deps } from './session';
 
 const LIVE: StreamInfo = { state: 'live', preset: 'balanced', appid: 42, wt: 'https://h:4433/a', hash: 'aa' };
 
@@ -135,5 +135,50 @@ describe('StreamSession', () => {
     await s.resumeSound();
     expect(f.ctxs[0].resume).toHaveBeenCalled();
     expect(get(s.needsSound)).toBe(false);
+  });
+
+  it('disconnect_before_late_connect_creates_nothing', async () => {
+    const f = fakeDeps();
+    const s = new StreamSession(f.deps);
+    s.disconnect(); // the page unmounted while boot()/start() was still awaiting hostd
+    await s.connect(LIVE);
+    await s.changeQuality({ preset: 'crisp' });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(f.deps.open).not.toHaveBeenCalled();
+    expect(f.ctxs).toHaveLength(0);
+  });
+
+  it('disconnect_while_opening_closes_the_new_transport_and_audio', async () => {
+    let ready!: () => void;
+    const t = { ready: new Promise<void>((r) => (ready = r)), closed: new Promise(() => {}), close: vi.fn() };
+    const startVideo = vi.fn();
+    const f = fakeDeps({ open: vi.fn(() => t), startVideo });
+    const s = new StreamSession(f.deps);
+    const p = s.connect(LIVE);
+    s.disconnect();
+    ready();
+    await p;
+    expect(t.close).toHaveBeenCalledTimes(1);
+    expect(f.ctxs[0].close).toHaveBeenCalledTimes(1);
+    expect(startVideo).not.toHaveBeenCalled();
+  });
+
+  it('unmount_during_starting_poll_never_connects', async () => {
+    let alive = true;
+    const api = { stream: vi.fn(async () => ({ ...LIVE, state: 'starting' as const })), startStream: vi.fn() };
+    const p = pollLive(api, () => alive);
+    await vi.advanceTimersByTimeAsync(1200);
+    alive = false;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await p).toBeNull();
+    expect(api.stream.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it('poll_returns_live_once_started', async () => {
+    let n = 0;
+    const api = { stream: vi.fn(async () => ({ ...LIVE, state: n++ < 2 ? ('starting' as const) : ('live' as const) })), startStream: vi.fn() };
+    const p = pollLive(api, () => true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect((await p)?.state).toBe('live');
   });
 });

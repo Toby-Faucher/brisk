@@ -10,7 +10,7 @@
   import { startAudio } from '../../lib/audio';
   import { startInput } from '../../lib/input';
   import workletUrl from '../../lib/audio-worklet.ts?worker&url';
-  import { StreamSession } from './session';
+  import { StreamSession, pollLive } from './session';
   import { holdEsc, type Hold } from './ghostbar';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
@@ -40,23 +40,20 @@
   let starting = $state(false);
   let hold = $state<Hold>({ progress: 0, fired: false });
   let kbLocked = false;
+  let destroyed = false;
   let stage: HTMLElement;
 
   async function boot() {
     page = 'boot';
     if (!('WebTransport' in window) || !('VideoDecoder' in window)) return void (page = 'unsupported');
-    let info: StreamInfo;
+    let info: StreamInfo | null;
     try {
-      info = await api.stream();
-      // hostd is still starting the bridge (Library/Resume just asked): wait for it, up to 10 s.
-      for (let i = 0; info.state === 'starting' && i < 20; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        info = await api.stream();
-      }
+      info = await pollLive(api, () => !destroyed);
     } catch (e) {
       toast(`Couldn't reach the host: ${(e as Error).message}`, { error: true });
       return void (page = 'idle');
     }
+    if (!info) return; // left the page while waiting
     if (info.state !== 'live') return void (page = 'idle');
     preset = info.preset;
     page = 'session';
@@ -67,6 +64,7 @@
     starting = true;
     try {
       const info = await api.startStream({ preset: $settings.defaultPreset });
+      if (destroyed) return; // left the page during the POST: the session is closed anyway
       preset = info.preset;
       page = 'session';
       await session.connect(info);
@@ -157,6 +155,7 @@
     void boot();
     return () => {
       // Leaving /stream (the island unmounts on navigation): release keys, close everything.
+      destroyed = true;
       session.disconnect();
       off();
       cancelAnimationFrame(raf);
