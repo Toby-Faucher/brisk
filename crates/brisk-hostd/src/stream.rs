@@ -240,6 +240,7 @@ impl Supervisor {
         };
         let n = |v: u32| v.to_string();
         let mut cmd = tokio::process::Command::new(&self.bin);
+        crate::notify::scrub(cmd.as_std_mut());
         // SAFETY: the hook only makes one raw prctl syscall (rustix, no allocation or locks), which
         // is async-signal-safe after fork; the bridge dies with hostd even on SIGKILL.
         unsafe {

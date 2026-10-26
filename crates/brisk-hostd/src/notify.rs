@@ -7,6 +7,16 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// Removes systemd's notify/watchdog variables from a child's environment: the bridge, Steam and
+/// helpers must never talk to (or be mistaken for) hostd's service manager. Plain `env_remove`,
+/// not sd-notify's `*_and_unset_env` (an unsafe `remove_var` in a threaded process).
+pub fn scrub(c: &mut std::process::Command) -> &mut std::process::Command {
+    for k in ["NOTIFY_SOCKET", "WATCHDOG_USEC", "WATCHDOG_PID"] {
+        c.env_remove(k);
+    }
+    c
+}
+
 /// Started by systemd with a notify socket.
 pub fn enabled() -> bool {
     std::env::var_os("NOTIFY_SOCKET").is_some()
@@ -114,17 +124,16 @@ mod tests {
     /// The notify calls read the real environment, so they run in a child copy of this test
     /// binary that gets NOTIFY_SOCKET (no set_var in a threaded test process).
     fn run_child(env: &[(&str, &str)]) -> std::process::ExitStatus {
+        run_named("notify::tests::child", env)
+    }
+
+    fn run_named(test: &str, env: &[(&str, &str)]) -> std::process::ExitStatus {
         let mut c = std::process::Command::new(std::env::current_exe().unwrap());
-        c.args([
-            "notify::tests::child",
-            "--exact",
-            "--ignored",
-            "--nocapture",
-        ])
-        .env_remove("NOTIFY_SOCKET")
-        .env_remove("WATCHDOG_USEC")
-        .env_remove("WATCHDOG_PID")
-        .env("BRISK_NOTIFY_CHILD", "1");
+        c.args([test, "--exact", "--ignored", "--nocapture"])
+            .env_remove("NOTIFY_SOCKET")
+            .env_remove("WATCHDOG_USEC")
+            .env_remove("WATCHDOG_PID")
+            .env("BRISK_NOTIFY_CHILD", "1");
         for (k, v) in env {
             c.env(k, v);
         }
@@ -205,6 +214,54 @@ mod tests {
             pings.iter().all(|m| *m == format!("WATCHDOG=1\n{status}")),
             "{got:?}"
         );
+    }
+
+    /// Child side of `children_never_see_the_notify_variables`: hostd's real runner, with the
+    /// variables set in this process (and once more passed explicitly to `spawn`).
+    #[test]
+    #[ignore = "run by children_never_see_the_notify_variables"]
+    fn env_child() {
+        use crate::host::{RealRunner, Runner};
+        let Some(out) = std::env::var_os("BRISK_ENV_OUT") else {
+            return;
+        };
+        let seen = RealRunner.run("env", &[]).unwrap();
+        std::fs::write(std::path::Path::new(&out).join("run"), seen).unwrap();
+        let script = format!("env > '{}/spawn'", out.to_str().unwrap());
+        let extra = [("NOTIFY_SOCKET".to_string(), "/x".to_string())];
+        assert!(RealRunner.spawn("sh", &["-c", &script], &extra));
+    }
+
+    #[test]
+    fn children_never_see_the_notify_variables() {
+        let d = tempfile::tempdir().unwrap();
+        let st = run_named(
+            "notify::tests::env_child",
+            &[
+                ("BRISK_ENV_OUT", d.path().to_str().unwrap()),
+                ("NOTIFY_SOCKET", "/run/user/1000/systemd/notify"),
+                ("WATCHDOG_USEC", "60000000"),
+                ("WATCHDOG_PID", "1"),
+            ],
+        );
+        assert!(st.success());
+        for f in ["run", "spawn"] {
+            let p = d.path().join(f);
+            for _ in 0..100 {
+                if std::fs::read_to_string(&p).is_ok_and(|s| s.contains("PATH=")) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let env = std::fs::read_to_string(&p).unwrap();
+            assert!(
+                env.contains("BRISK_ENV_OUT="),
+                "{f}: child env not captured"
+            );
+            for k in ["NOTIFY_SOCKET=", "WATCHDOG_USEC=", "WATCHDOG_PID="] {
+                assert!(!env.lines().any(|l| l.starts_with(k)), "{f} saw {k}");
+            }
+        }
     }
 
     #[test]

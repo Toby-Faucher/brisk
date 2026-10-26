@@ -161,8 +161,8 @@ fn wayland_env() -> Vec<(String, String)> {
 
 fn cmd(prog: &str, args: &[&str]) -> Command {
     let mut c = Command::new(prog);
-    c.args(args)
-        .envs(wayland_env())
+    c.args(args).envs(wayland_env());
+    crate::notify::scrub(&mut c)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
