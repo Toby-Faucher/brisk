@@ -5,6 +5,7 @@
   import type { Preset } from '../../state/api';
   import { host } from '../../state/host';
   import Card from '../../ui/Card.svelte';
+  import Tip from '../../ui/Tip.svelte';
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
   import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
@@ -77,7 +78,7 @@
           <h4>Accent</h4>
           <div class="row" role="radiogroup" aria-label="Accent colour">
             {#each Object.entries(ACCENT_HEX) as [a, hex] (a)}
-              <button class="sw" style:background={hex} role="radio" aria-checked={$settings.accent === a} aria-label={a} tabindex={$settings.accent === a ? 0 : -1} onkeydown={arrow} onclick={() => pickAccent(a as Accent)}></button>
+              <button class="sw" style:background={hex} role="radio" aria-checked={$settings.accent === a} aria-label={a} tabindex={$settings.accent === a ? 0 : -1} onkeydown={arrow} onclick={() => pickAccent(a as Accent)}></button><Tip label={a} />
             {/each}
           </div>
         </Card>

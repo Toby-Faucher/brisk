@@ -3,6 +3,7 @@
 // Screenshots go to $OUT.
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
+import { axe } from './axe.mjs';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4470';
 const OUT = process.env.OUT ?? '/tmp/platform-shots';
@@ -81,6 +82,60 @@ try {
     await sleep(30);
     check('reduced motion: command menu gone at once', await r.page.evaluate(() => !document.querySelector('.cm')));
     await r.ctx.close();
+  }
+
+  // ---- 2. tooltips: popover + anchor positioning, hover (300 ms) and keyboard focus, Esc, flip at the edge
+  if (want('tip')) {
+    const tipOf = (page, sel) => page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const tip = document.getElementById(el.getAttribute('aria-describedby') ?? '');
+      const r = el.getBoundingClientRect(), t = tip?.getBoundingClientRect();
+      return { top: Math.round(r.top), tipTop: t && Math.round(t.top), role: tip?.getAttribute('role'), open: !!tip?.matches(':popover-open'), text: tip?.textContent, above: t && t.bottom <= r.top + 1, below: t && t.top >= r.bottom - 1, dx: t && Math.round(t.left + t.width / 2 - (r.left + r.width / 2)) };
+    }, sel);
+    for (const fallback of [false, true]) {
+      const tag = fallback ? 'no anchor positioning: ' : '';
+      const { ctx, page, go, errs } = await mk({ init: fallback ? () => { const s = CSS.supports.bind(CSS); CSS.supports = (...a) => !String(a[0]).includes('anchor') && s(...a); } : undefined });
+      await go('/settings#general');
+      const sw = '.sw[aria-label="pink"]';
+      await page.hover(sw);
+      await sleep(120);
+      check(`${tag}hover: no tip before 300 ms`, !(await tipOf(page, sw)).open);
+      await sleep(350);
+      let t = await tipOf(page, sw);
+      check(`${tag}hover: tip shown above, centred, role=tooltip, describes the trigger`, t.open && t.above && Math.abs(t.dx) <= 2 && t.role === 'tooltip' && t.text === 'pink', JSON.stringify(t));
+      if (!fallback) {
+        await page.screenshot({ path: `${OUT}/tooltip-hover.png`, clip: { x: 220, y: 60, width: 520, height: 220 } });
+        const bad = await axe(page);
+        check('axe with a tip open', bad.length === 0, bad.join(' | '));
+      }
+      await page.mouse.move(5, 890);
+      await sleep(250);
+      check(`${tag}leave: tip hidden`, !(await tipOf(page, sw)).open);
+      await page.focus('.sw[aria-checked="true"]');
+      await page.keyboard.press('ArrowRight'); // keyboard focus (focus-visible) on the next swatch
+      const cur = '.sw[aria-checked="true"]';
+      await sleep(60);
+      check(`${tag}keyboard focus: tip shown at once`, (await tipOf(page, cur)).open);
+      await page.keyboard.press('Escape');
+      await sleep(250);
+      check(`${tag}Esc: tip hidden`, !(await tipOf(page, cur)).open);
+      if (!fallback) {
+        // the running card's Quit button pinned to the top edge: a top tip must flip below it
+        await go('/library');
+        const q = '.wrap .quit';
+        await page.getByRole('button', { name: 'Show all' }).last().click(); // a taller page, so the shelf can reach the top
+        await sleep(300);
+        await page.evaluate((q) => { const b = document.querySelector(q); window.scrollBy({ top: b.getBoundingClientRect().top - 2, behavior: 'instant' }); }, q);
+        const box = await page.locator(q).boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); // not page.hover: it would scroll
+        await sleep(450);
+        t = await tipOf(page, q);
+        check('edge: tip flips below a trigger at the top of the viewport', t.open && t.below, JSON.stringify(t));
+        await page.screenshot({ path: `${OUT}/tooltip-flipped.png`, clip: { x: 220, y: 0, width: 400, height: 140 } });
+      }
+      check(`${tag}no page errors`, errs.length === 0, errs.join(' | '));
+      await ctx.close();
+    }
   }
 } catch (e) {
   check('platform-check ran', false, e.stack ?? String(e));
