@@ -4,6 +4,8 @@
   import Icon from '../../ui/Icon.svelte';
   import { hevcSupported } from '../../lib/video';
   import { EDGE_PX, HIDE_MS, advancedReq, edgeReveal, type Advanced } from './ghostbar';
+  import { settings } from '../../state/settings';
+  import type { Upload } from './clipboard';
 
   let {
     host,
@@ -11,6 +13,9 @@
     preset,
     codec,
     captured,
+    clipDenied,
+    upload,
+    onfiles,
     statsOn = $bindable(false),
     onvolume,
     oncapture,
@@ -23,6 +28,9 @@
     preset: Preset | null;
     codec: Codec | null;
     captured: boolean;
+    clipDenied: boolean;
+    upload: { u: Upload; queued: number } | null;
+    onfiles: (f: File[]) => void;
     statsOn?: boolean;
     onvolume: (v: number) => void;
     oncapture: () => void;
@@ -45,6 +53,7 @@
   let muted = $state(false);
   let adv = $state<Advanced>({ res: '1920x1080', fps: 60, bitrateKbps: 20000, codec: 'h264' });
   let hevcOk = $state(false);
+  let fileInput: HTMLInputElement;
 
   // Pointer state for edgeReveal: last y, whether it is on the bar, when it left the bar or edge.
   let y = 999;
@@ -189,8 +198,18 @@
     </div>
   {:else if menu === 'clip'}
     <div class="menu glass" role="dialog" aria-label="Clipboard and files">
-      <p class="line">Shared clipboard and file drop are coming soon.</p>
-      <button class="btn ghost sm" disabled>Send a file…</button>
+      <label class="opt"><span>Clipboard sync <small class="muted">text and images, both ways</small></span>
+        <input type="checkbox" checked={$settings.clipboardSync} onchange={(e) => settings.update((s) => ({ ...s, clipboardSync: e.currentTarget.checked }))} />
+      </label>
+      {#if $settings.clipboardSync && clipDenied}
+        <p class="line warn">Allow clipboard access: click the icon left of the address, then Clipboard: Allow.</p>
+      {/if}
+      <p class="line muted">Files go to ~/Downloads/brisk on {host}. Drop them on the stream, or:</p>
+      <button class="btn ghost sm" onclick={() => fileInput.click()}>Send files…</button>
+      <input type="file" multiple hidden bind:this={fileInput} onchange={(e) => (onfiles(Array.from(e.currentTarget.files ?? [])), (e.currentTarget.value = ''))} />
+      {#if upload}
+        <p class="line mono">{upload.u.name} · {upload.u.total ? Math.floor((upload.u.loaded / upload.u.total) * 100) : 100}%{upload.queued ? ` · ${upload.queued} more` : ''}</p>
+      {/if}
     </div>
   {/if}
 </div>
@@ -215,6 +234,9 @@
   .chip:hover { background: color-mix(in srgb, #fff 14%, transparent); }
   .chip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent) inset; }
   .line { margin: 0; font-size: 12px; }
+  .warn { color: var(--warn); }
+  .opt { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }
+  .opt input { accent-color: var(--accent); width: 18px; height: 18px; }
   .adv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: end; }
   .adv label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
   .adv select, .adv input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 12.5px; }

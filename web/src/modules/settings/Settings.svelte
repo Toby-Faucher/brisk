@@ -33,6 +33,11 @@
     <label class="opt"><span>Shaders <small class="lab">background smoke</small></span><input type="checkbox" checked={$settings.shaders} onchange={(e) => set({ shaders: e.currentTarget.checked })} /></label>
   </Card>
   <Card cols={2}>
+    <h4>Clipboard</h4>
+    <label class="opt"><span>Clipboard sync <small class="lab">text and images, while streaming</small></span><input type="checkbox" checked={$settings.clipboardSync} onchange={(e) => set({ clipboardSync: e.currentTarget.checked })} /></label>
+    <p class="note">On: every copy on this laptop goes to the host's clipboard while the stream has focus, passwords from a password manager included.</p>
+  </Card>
+  <Card cols={2}>
     <h4>Default quality</h4>
     <div class="row" role="group" aria-label="Default quality">
       {#each PRESETS as p (p)}
@@ -50,6 +55,7 @@
   .sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
   .sw[aria-checked='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }
   .opt { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+  .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
   .opt input { accent-color: var(--accent); width: 18px; height: 18px; }
   .fchip { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; text-transform: capitalize; }
   .fchip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); color: var(--fg); }

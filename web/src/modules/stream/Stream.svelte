@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { navigate } from 'astro:transitions/client';
   import { api, type StreamInfo, type StreamReq } from '../../state/api';
   import { host } from '../../state/host';
@@ -12,6 +13,7 @@
   import workletUrl from '../../lib/audio-worklet.ts?worker&url';
   import { StreamSession, pollLive } from './session';
   import { holdEsc, type Hold } from './ghostbar';
+  import { ClipSync, browserClipboard, uploadQueue, type Upload } from './clipboard';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
 
@@ -31,6 +33,24 @@
     notify: (text, error) => toast(text, { error }),
   });
   const { state: phase, stats, needsSound, canvasEl } = session;
+
+  let clipDenied = $state(false);
+  const clip = new ClipSync({
+    local: browserClipboard(),
+    api: { get: api.getClipboard, post: api.postClipboard },
+    focused: () => document.hasFocus() && document.visibilityState === 'visible',
+    enabled: () => get(settings).clipboardSync && get(phase) === 'live',
+    notify: (text, error) => toast(text, { error }),
+    onstatus: (s) => (clipDenied = s === 'denied'),
+  });
+  let upload = $state<{ u: Upload; queued: number } | null>(null);
+  let dropping = $state(false);
+  const uploads = uploadQueue(api.uploadFile, {
+    progress: (u, queued) => (upload = u && { u, queued }),
+    done: (_, path) => toast(`Saved ${path}`, { ms: 6000 }),
+    error: (name, msg) => toast(`Couldn't send ${name}: ${msg}`, { error: true }),
+  });
+  const pct = (u: Upload) => (u.total ? Math.floor((u.loaded / u.total) * 100) : 100);
 
   // 'boot' = asking hostd; 'idle' = nothing streaming; 'unsupported' = no WebTransport/WebCodecs.
   let page = $state<'boot' | 'idle' | 'unsupported' | 'session'>('boot');
@@ -114,6 +134,11 @@
     toast(kbLocked ? 'Fullscreen: hold Esc to get your mouse back' : `Esc lock is off (${why}): a tap on Esc will free the mouse`, { error: !kbLocked });
   }
 
+  $effect(() => {
+    if ($phase === 'live' && $settings.clipboardSync) clip.start();
+    else clip.stop();
+  });
+
   // Mount the session's canvas (a fresh one per connection) into the stage.
   $effect(() => {
     const c = $canvasEl;
@@ -156,6 +181,28 @@
     const fs = () => {
       if (!document.fullscreenElement) kbLocked = false;
     };
+    const clipFocus = () => void clip.focus();
+    // Drag and drop of files from the laptop (needs a free pointer: not while it is locked).
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); // else Chrome opens the file
+      dropping = true;
+    };
+    const leave = (e: DragEvent) => {
+      if (!e.relatedTarget) dropping = false; // left the window
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dropping = false;
+      uploads.add(Array.from(e.dataTransfer!.files));
+    };
+    const drag: [string, (e: DragEvent) => void][] = [['dragenter', over], ['dragover', over], ['dragleave', leave], ['drop', drop]];
+    for (const [k, f] of drag) window.addEventListener(k, f as EventListener);
+    window.addEventListener('focus', clipFocus);
+    document.addEventListener('visibilitychange', clipFocus);
+    document.addEventListener('pointerlockchange', clipFocus);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     document.addEventListener('pointerlockchange', cap);
@@ -172,6 +219,11 @@
       // Leaving /stream (the island unmounts on navigation): release keys, close everything.
       destroyed = true;
       session.disconnect();
+      clip.stop();
+      for (const [k, f] of drag) window.removeEventListener(k, f as EventListener);
+      window.removeEventListener('focus', clipFocus);
+      document.removeEventListener('visibilitychange', clipFocus);
+      document.removeEventListener('pointerlockchange', clipFocus);
       off();
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', down);
@@ -196,6 +248,9 @@
       {preset}
       {codec}
       {captured}
+      {clipDenied}
+      {upload}
+      onfiles={(f) => uploads.add(f)}
       bind:statsOn
       onvolume={(v) => session.setVolume(v)}
       oncapture={capture}
@@ -237,6 +292,12 @@
       <p class="muted">Brisk needs WebTransport and WebCodecs: use Chrome on http://localhost.</p>
     </div>
   {/if}
+  {#if dropping}
+    <div class="drop" aria-hidden="true"><div class="glass card"><h3>Drop to send to {$host?.name ?? 'bawn'}</h3><p class="muted">Saved in ~/Downloads/brisk</p></div></div>
+  {/if}
+  {#if upload}
+    <div class="up glass mono" role="status">Sending {upload.u.name} · {pct(upload.u)}%{upload.queued ? ` · ${upload.queued} more` : ''}</div>
+  {/if}
 </div>
 
 <style>
@@ -257,4 +318,7 @@
   .ring { width: 34px; height: 34px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p, 0) * 1%), color-mix(in srgb, #fff 14%, transparent) 0); display: grid; place-items: center; }
   .ring b { width: 26px; height: 26px; border-radius: 50%; background: #12151b; display: grid; place-items: center; font-size: 10.5px; font-family: var(--mono); }
   .small { font-size: 12px; }
+  .drop { position: absolute; inset: 12px; z-index: 40; border: 2px dashed var(--accent); border-radius: 22px; display: grid; place-items: center; background: #0008; pointer-events: none; }
+  .drop .card { text-align: center; }
+  .up { position: absolute; right: 16px; bottom: 16px; padding: 8px 14px; border-radius: 999px; font-size: 12px; z-index: 36; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
