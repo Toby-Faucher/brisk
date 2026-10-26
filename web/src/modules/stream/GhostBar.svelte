@@ -45,7 +45,7 @@
     onquality: (r: StreamReq) => void;
     /** The game's name while its quality is saved, else null. */
     savedFor?: string | null;
-    onforget: () => void;
+    onforget: () => void | Promise<void>;
     onfullscreen: () => void;
     ondisconnect: () => void;
     /** Settings' replay buffer length; 0 = off (the button is disabled). */
@@ -128,6 +128,11 @@
     update();
     onquality(advancedReq(adv));
   };
+  let qualityBtn: HTMLButtonElement;
+  const forget = async () => {
+    await onforget();
+    qualityBtn?.focus(); // the Forget button is gone now
+  };
   const current = $derived(PRESETS.find((p) => p.id === preset));
   const codecName = $derived(codec === 'hevc' ? 'HEVC' : 'H.264');
 </script>
@@ -165,7 +170,7 @@
   <button class="ic" aria-expanded={menu === 'clip'} aria-label="Clipboard and files" onclick={() => toggle('clip')} style="color:var(--c-lib)">
     <Icon name="clip" /><span class="tip">Clipboard · drop files</span>
   </button>
-  <button class="ic" aria-expanded={menu === 'quality'} aria-label="Quality" onclick={() => toggle('quality')} style="color:var(--c-agent)">
+  <button class="ic" aria-expanded={menu === 'quality'} aria-label="Quality" bind:this={qualityBtn} onclick={() => toggle('quality')} style="color:var(--c-agent)">
     <Icon name="quality" /><span class="tip">Quality: {current?.label ?? 'Custom'}</span>
   </button>
   <button class="ic" aria-label="Screenshot" onclick={onshot} style="color:var(--c-stream)">
@@ -194,9 +199,11 @@
         <button class="chip" aria-pressed={advanced || preset === 'custom'} aria-expanded={advanced} onclick={() => (advanced = !advanced)}>Advanced…</button>
       </div>
       <p class="mono muted line">{current ? `1080p · 60 fps · ${codecName} · ${current.mbps} Mbps` : `custom · ${codecName}`}</p>
-      {#if savedFor}
-        <p class="line muted saved" role="status">Saved for {savedFor} <button class="forget" onclick={onforget}>Forget for this game</button></p>
-      {/if}
+      <!-- The live region is always rendered (empty first) so the screen reader announces the text when it appears. -->
+      <p class="line muted saved">
+        <span role="status" aria-live="polite">{savedFor ? `Saved for ${savedFor}` : ''}</span>
+        {#if savedFor}<button class="forget" onclick={forget}>Forget for this game</button>{/if}
+      </p>
       {#if advanced}
         <div class="adv">
           <label>Resolution

@@ -320,7 +320,7 @@ async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PrefsBody {
     preset: Preset,
     #[serde(default)]
@@ -338,7 +338,7 @@ async fn prefs_put(
     UrlPath(id): UrlPath<u32>,
     b: axum::body::Bytes,
 ) -> Response {
-    if id == s.cfg.app_id {
+    if id == 0 || id == s.cfg.app_id {
         return err(StatusCode::BAD_REQUEST, "the Desktop has no per-game quality");
     }
     let b = match parse::<PrefsBody>(&b) {

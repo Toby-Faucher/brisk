@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 import { api, type Codec, type Preset, type StreamInfo, type StreamReq } from './api';
 import { settings } from './settings';
+import { hevcSupported } from '../lib/video';
 
 /** What hostd keeps per game (camelCase JSON). The custom numbers exist only for `custom`. */
 export type GamePrefs = { preset: Preset; codec: Codec; width?: number; height?: number; fps?: number; bitrateKbps?: number; updated: number };
@@ -14,9 +15,11 @@ export const prefs = writable<PrefsMap>({});
 let fetchedAt = -Infinity;
 
 export async function refreshPrefs() {
-  fetchedAt = Date.now();
   const r = await api.prefs().catch(() => null);
-  if (r) prefs.set(r.prefs);
+  if (r) {
+    fetchedAt = Date.now(); // a failure is retried on the next focus
+    prefs.set(r.prefs);
+  }
 }
 
 /** Fetch if never fetched (or older than a minute), then again on window focus at most once a minute. */
@@ -40,11 +43,18 @@ export function prefsFor(appid: number | undefined, map: PrefsMap, defaultPreset
 }
 
 /** Start a stream (Library click, Resume card, Stream Start). Deps are injectable for tests. */
-export function startGame(
+export async function startGame(
   appid: number | undefined,
-  d: { startStream: (r: StreamReq) => Promise<StreamInfo>; defaultPreset: () => Preset } = { startStream: api.startStream, defaultPreset: () => get(settings).defaultPreset },
+  notify: (text: string) => void,
+  d: { startStream: (r: StreamReq) => Promise<StreamInfo>; defaultPreset: () => Preset; hevcOk: () => Promise<boolean> } = { startStream: api.startStream, defaultPreset: () => get(settings).defaultPreset, hevcOk: () => hevcSupported() },
 ) {
-  return d.startStream(prefsFor(appid, get(prefs), d.defaultPreset()));
+  const req = prefsFor(appid, get(prefs), d.defaultPreset());
+  // Only this start falls back; the saved entry stays for a browser that can decode it.
+  if (req.codec === 'hevc' && !(await d.hevcOk())) {
+    req.codec = 'h264';
+    notify('This browser cannot decode HEVC, starting in H.264');
+  }
+  return d.startStream(req);
 }
 
 /** What to save after a quality change: a chip keeps the live codec, Advanced names its own. */
@@ -70,11 +80,21 @@ export const SAVE_DELAY_MS = 1000;
 export function prefSaver(d: { put: (appid: number, b: PrefsBody) => Promise<GamePrefs>; onSaved: (appid: number, p: GamePrefs) => void; delay?: number }) {
   let pending: { appid: number; body: PrefsBody } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const inflight = new Map<number, Promise<void>>();
+  const forgotten = new Set<Promise<void>>(); // PUTs whose game was forgotten meanwhile: their answer is dropped
   const flush = () => {
     clearTimeout(timer);
     const p = pending;
     pending = null;
-    if (p) void d.put(p.appid, p.body).then((r) => d.onSaved(p.appid, r), () => {}); // quiet: the next change tries again
+    if (!p) return;
+    // quiet on failure: the next change tries again
+    const job: Promise<void> = d.put(p.appid, p.body).then(
+      (r) => {
+        if (!forgotten.delete(job)) d.onSaved(p.appid, r);
+      },
+      () => void forgotten.delete(job),
+    ).finally(() => inflight.get(p.appid) === job && inflight.delete(p.appid));
+    inflight.set(p.appid, job);
   };
   return {
     save(appid: number, body: PrefsBody) {
@@ -84,20 +104,25 @@ export function prefSaver(d: { put: (appid: number, b: PrefsBody) => Promise<Gam
       timer = setTimeout(flush, d.delay ?? SAVE_DELAY_MS);
     },
     flush,
-    /** Drop a pending save of `appid` (it was just forgotten). */
+    /** `appid` was forgotten: drop its pending save and ignore the answer of one in flight. */
     cancel(appid: number) {
+      const j = inflight.get(appid);
+      if (j) forgotten.add(j);
       if (pending?.appid !== appid) return;
       clearTimeout(timer);
       pending = null;
     },
+    /** Resolves once the save of `appid` that is in flight (if any) is over. */
+    settled: (appid: number) => inflight.get(appid) ?? Promise.resolve(),
   };
 }
 
 /** The saver the Stream page uses: writes through to the store once hostd has it. */
 export const saver = prefSaver({ put: api.putPrefs, onSaved: (id, p) => prefs.update((m) => ({ ...m, [id]: p })) });
 
-export async function forgetPrefs(appid: number, d: { del: (id: number) => Promise<void>; cancel: (id: number) => void } = { del: api.deletePrefs, cancel: saver.cancel }) {
+export async function forgetPrefs(appid: number, d: { del: (id: number) => Promise<void>; cancel: (id: number) => void; settled: (id: number) => Promise<void> } = { del: api.deletePrefs, cancel: saver.cancel, settled: saver.settled }) {
   d.cancel(appid);
+  await d.settled(appid); // a PUT still on its way must land before the DELETE, or it would bring the entry back
   await d.del(appid);
   prefs.update((m) => {
     const { [appid]: _, ...rest } = m;

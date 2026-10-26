@@ -17,7 +17,7 @@
     if (!g) return;
     busy = true;
     try {
-      await startGame(g.appid);
+      await startGame(g.appid, toast);
       await navigate('/stream');
     } catch (e) {
       toast(`Could not start ${g.name}: ${(e as Error).message}`, { error: true });

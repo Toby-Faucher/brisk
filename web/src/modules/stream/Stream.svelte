@@ -91,7 +91,7 @@
   async function start() {
     starting = true;
     try {
-      const info = await startGame(undefined); // the Desktop: no saved quality
+      const info = await startGame(undefined, toast); // the Desktop: no saved quality
       if (destroyed) return; // left the page during the POST: the session is closed anyway
       appid = info.appid;
       preset = info.preset;
@@ -297,9 +297,12 @@
       else if (page === 'session' && c.preset !== preset) void quality({ preset: c.preset });
     });
     void boot();
+    const flushPrefs = () => saver.flush();
+    window.addEventListener('pagehide', flushPrefs); // closing the tab never runs the cleanup below
     const unwatchPrefs = watchPrefs();
     const unwatchGames = watchGames(); // the game's name for "Saved for …"
     return () => {
+      window.removeEventListener('pagehide', flushPrefs);
       unwatchPrefs();
       unwatchGames();
       // Leaving /stream (the island unmounts on navigation): release keys, close everything.

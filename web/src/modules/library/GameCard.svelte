@@ -12,7 +12,10 @@
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');
   const sub = $derived(game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
-  const label = $derived(game.installed ? (game.running ? `Resume ${game.name}, running on the host` : `Play ${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`);
+  const label = $derived(
+    (game.installed ? (game.running ? `Resume ${game.name}, running on the host` : `Play ${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`) +
+      (saved ? `, saved quality ${prefsChip(saved)}` : ''),
+  );
 </script>
 
 <div class="wrap">
@@ -47,7 +50,7 @@
   .badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   .badge.off i { background: var(--muted); }
   .badge.run i { background: var(--accent); }
-  .pchip { position: absolute; left: 10px; top: 36px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: #0009; backdrop-filter: blur(6px); white-space: nowrap; }
+  .pchip { position: absolute; left: 10px; top: 36px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: #000c; backdrop-filter: blur(6px); white-space: nowrap; }
   .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; background: radial-gradient(80% 60% at 50% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%); pointer-events: none; z-index: 1; }
   .play { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(12px); opacity: 0; transition: all .35s var(--ease); z-index: 3; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }
   .g:hover .glow, .g:hover .play, .g:focus-visible .glow, .g:focus-visible .play, .g[aria-disabled='true'] .play, .sel .glow { opacity: 1; }
