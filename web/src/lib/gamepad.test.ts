@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ACTIVE_RESEND_MS, attachGamepads, BUTTON_FLAGS, FrameSplitter, GamepadSender, goneFrame, IDLE_RESEND_MS, KIND_GAMEPAD,
+  ACTIVE_RESEND_MS, STICK_STEP, TRIGGER_STEP, attachGamepads, BUTTON_FLAGS, FrameSplitter, GamepadSender, goneFrame, IDLE_RESEND_MS, KIND_GAMEPAD,
   KIND_GAMEPAD_GONE, KIND_RUMBLE, MAX_PADS, onBridgeFrame, padFrame, padName, POLL_MS, readPad, RUMBLE_MS, RUMBLE_REFRESH_MS, type PadState,
 } from './gamepad';
 
@@ -34,8 +34,18 @@ function rig(pads: (Fake | null)[] = [fakePad(0)]) {
   const sent: [number, number, PadState?][] = [];
   const list = { pads };
   const onpads = vi.fn();
-  const s = new GamepadSender((f) => void sent.push(decode(f)), () => list.pads, onpads);
-  return { s, sent, list, onpads, take: () => sent.splice(0) };
+  // `full`: the stream is backed up, droppable frames are refused (and not recorded).
+  const w = { full: false, refused: 0 };
+  const s = new GamepadSender(
+    (f, droppable) => {
+      if (droppable && w.full) return void w.refused++, false;
+      sent.push(decode(f));
+      return true;
+    },
+    () => list.pads,
+    onpads,
+  );
+  return { s, sent, list, onpads, w, take: () => sent.splice(0) };
 }
 
 describe('mapping', () => {
@@ -146,6 +156,84 @@ describe('GamepadSender', () => {
     // Gamepad 2 (slot 1) went: it was neutral, so only the removal; then gamepad 4 takes slot 1.
     expect(take()).toEqual([[KIND_GAMEPAD_GONE, 1], [KIND_GAMEPAD, 0, { ...N, buttons: 0x1000 }], [KIND_GAMEPAD, 1, N]]);
     expect(MAX_PADS).toBe(4);
+  });
+
+  it('a resting stick drifting under the step waits for the resend; values are sent untouched', () => {
+    const { s, list, take } = rig();
+    const p = list.pads[0]!;
+    p.axes = [0.5, 0, 0, 0];
+    s.poll();
+    const at = readPad(p);
+    take();
+    p.axes = [0.5 + (STICK_STEP - 1) / 32767, 0, 0, 0]; // just under a step
+    p.press(7, (TRIGGER_STEP - 1) / 255);
+    s.poll();
+    expect(take()).toEqual([]);
+    p.axes = [0.5 + STICK_STEP / 32767, 0, 0, 0];
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
+    expect(readPad(p).lx - at.lx).toBe(STICK_STEP);
+    p.press(7, (TRIGGER_STEP - 1 + TRIGGER_STEP) / 255); // a step from the 1 already sent
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
+    p.axes = [0.5 + (STICK_STEP + 3) / 32767, 0, 0, 0]; // drift: sent with the next resend
+    s.poll();
+    expect(take()).toEqual([]);
+    vi.advanceTimersByTime(ACTIVE_RESEND_MS);
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
+    // A button always goes at once, and so does a return to exactly neutral.
+    p.press(2);
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]]);
+    p.press(2, 0);
+    p.press(7, 0);
+    p.axes = [0, 0, 0, 0];
+    s.poll();
+    take();
+    p.axes = [10 / 32767, 0, 0, 0];
+    s.poll();
+    expect(take()).toEqual([], 'small drift off neutral waits');
+  });
+
+  it('when the stream is backed up stick-only frames wait, button changes and removals do not', () => {
+    const { s, list, w, take } = rig();
+    const p = list.pads[0]!;
+    s.poll();
+    take();
+    w.full = true;
+    p.axes = [1, 0, 0, 0];
+    s.poll();
+    s.poll();
+    expect(take()).toEqual([]);
+    expect(w.refused).toBe(2); // tried each poll, not marked sent
+    p.press(0);
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]], 'a button change is never skipped');
+    p.axes = [-1, 0, 0, 0];
+    s.poll();
+    expect(take()).toEqual([]);
+    w.full = false;
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, readPad(p)]], 'the newest state once there is room');
+    w.full = true;
+    list.pads = [];
+    s.poll();
+    expect(take()).toEqual([[KIND_GAMEPAD, 0, N], [KIND_GAMEPAD_GONE, 0]], 'release and removal go anyway');
+  });
+
+  it('rumble that came before the pad is played when it appears; none while unfocused', () => {
+    const p = fakePad(0);
+    const { s, list } = rig([]);
+    s.rumble(0, 0xffff, 0, 0, 0);
+    list.pads = [p];
+    s.poll();
+    expect(p.vibrationActuator.playEffect).toHaveBeenCalledTimes(1);
+    s.release(); // focus lost
+    s.rumble(0, 0x8000, 0, 0, 0);
+    expect(p.vibrationActuator.playEffect).toHaveBeenCalledTimes(1);
+    s.poll(); // focus back: the newest values play
+    expect(p.vibrationActuator.playEffect).toHaveBeenLastCalledWith('dual-rumble', expect.objectContaining({ strongMagnitude: 0x8000 / 0xffff }));
   });
 
   it('skips pads without the standard mapping', () => {
@@ -298,6 +386,20 @@ describe('attachGamepads', () => {
     e.doc.dispatchEvent(new Event('visibilitychange'));
     expect(take()).toEqual([[KIND_GAMEPAD, 0, N]]);
     close();
+  });
+
+  it('a transport that closes with an error still stops, without an unhandled rejection', async () => {
+    const { s, take } = rig();
+    const e = env();
+    let fail!: (e: Error) => void;
+    attachGamepads(s, e, new Promise<void>((_, r) => (fail = r)));
+    vi.advanceTimersByTime(POLL_MS);
+    take();
+    fail(new Error('connection lost'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(take()).toEqual([[KIND_GAMEPAD_GONE, 0]]);
+    vi.advanceTimersByTime(100);
+    expect(take()).toEqual([]);
   });
 
   it('pagehide, a disconnect event and the transport closing detach pads', async () => {

@@ -137,8 +137,9 @@
 >
   <span class="hostchip"><span class="dot"></span><b>{host}</b><span class="mono muted">{rttMs === null ? '–' : `${rttMs.toFixed(0)} ms`}</span></span>
   {#if pads.length}
-    <span class="padchip" role="status" aria-label={pads.map((p) => `Controller: ${p.name} · slot ${p.slot + 1}`).join(', ')}>
-      <Icon name="pad" /><span class="tip">{pads.map((p) => `${p.name} · slot ${p.slot + 1}`).join(' / ')}</span>
+    <!-- Not a live region (it would announce every replug); the tooltip text is in the DOM. -->
+    <span class="padchip">
+      <Icon name="pad" /><span class="tip">{pads.map((p) => `Controller: ${p.name} · slot ${p.slot + 1}`).join(' / ')}</span>
     </span>
   {/if}
   <span class="sep"></span>

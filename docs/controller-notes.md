@@ -65,9 +65,17 @@ page cannot back the control loop up; each stream gets the current values when i
 - Mapping: buttons by the standard index table above (6/7 are the analog triggers, 0..1 ->
   0..255); axes 0/1 left stick, 2/3 right stick, -1..1 -> i16 (negative x 32768, positive x
   32767), Y negated.
-- Sends a pad's state on any change, again every 100 ms while anything is off neutral and every
-  250 ms idle. The stream is reliable, so the resends are belt and braces (and keep the bridge's
-  1 s held-input watchdog quiet); the bridge drops exact repeats.
+- Sends a pad's state on a button change, on a return to exactly neutral, or when a stick axis
+  moved at least 64/32768 (`STICK_STEP`) or a trigger 2/255 (`TRIGGER_STEP`) since the last
+  frame; and again every 100 ms while anything is off neutral and every 250 ms idle (with the
+  current values, so a slow drift still lands). This is a send threshold, not a deadzone: values
+  are never altered. The stream is reliable, so the resends are belt and braces (they repair a
+  state the bridge's full queue dropped, and keep its 1 s held-input watchdog quiet); the bridge
+  drops exact repeats.
+- Backpressure: the pad shares the keyboard/mouse writer. While it is backed up
+  (`desiredSize <= 0`) a frame whose buttons did not change is refused and not marked sent (the
+  next poll tries the newest state); button changes, releases and removals always go. So a pad
+  cannot starve keys, which are never refused either.
 - Release: window `blur` and a hidden tab send neutral for every pad off neutral (still
   attached; polling resumes with the real state on focus). `pagehide`, `gamepaddisconnected`, the
   stream stopping (`Input.release`) and the transport closing send neutral (if needed) and
@@ -76,7 +84,10 @@ page cannot back the control loop up; each stream gets the current values when i
   strongMagnitude: low/65535, weakMagnitude: high/65535})`; with trigger values and an actuator
   listing `trigger-rumble` (Chrome on Windows), `trigger-rumble` with `leftTrigger`/`rightTrigger`
   too. Replayed every 500 ms while on, so a long rumble lasts and a lost page stops within 1 s.
-  All zero, blur, gone: `reset()`.
+  All zero, blur, gone: `reset()`. Nothing plays while the page is unfocused; the newest values
+  play on the next focused poll. Values for a slot are kept while no pad sits there (the bridge
+  sends the current values when the stream opens, maybe before the first poll) and played when
+  the pad appears.
 - UI: a small controller icon in the ghost bar while a pad is attached; its tooltip says
   "<name> · slot N" (name = `Gamepad.id` without Chrome's "(STANDARD GAMEPAD Vendor ...)" tail).
 
@@ -89,12 +100,19 @@ page cannot back the control loop up; each stream gets the current values when i
   change is always its own packet, so a press-and-release inside one send window both reach
   Sunshine. Pad states count against the 32 droppable events; a state dropped there is not
   remembered, so the page's next resend brings it back. Removals are never dropped.
-- Send loop: a pad state that times out (`Timeout`) is retried like a key-up (it may carry a
-  button release) unless a newer state of that pad is already queued.
-- Held: a pad off neutral counts as held, so a stream silent for 1 s (`HOLD_TIMEOUT`) sends it
-  neutral (still attached; the next state from the page goes through).
-- Stream end (tab closed, reload, lost connection): neutral for pads off neutral, then a removal
-  per pad; the rumble state is cleared (Sunshine sends no stop for a pad it freed).
+- Send loop: a pad state that times out (`Timeout`, `InputQueue::timed_out`) goes back to the
+  front unless the next queued state of that pad has the same buttons (then only analog values are
+  lost and newer ones follow). A press whose release is already queued is therefore retried: both
+  edges reach Sunshine.
+- Ownership: each key, button and pad remembers the stream (`StreamId`) that last sent it (a
+  repeat or resend moves it to that stream). A stream's end or its 1 s silence touches only its
+  own: a reloaded page's new stream keeps its keys and its pads even while the old stream is still
+  timing out.
+- Held: a pad off neutral counts as held, so a stream silent for 1 s (`HOLD_TIMEOUT`) sends its
+  pads neutral (still attached; the next state from the page goes through).
+- Stream end (tab closed, reload, lost connection): neutral for its pads off neutral, then a
+  removal per pad it owns; the rumble of every detached slot (also after `0x16`) is cleared
+  (Sunshine sends no stop for a pad it freed).
 - Shutdown: after the key and button releases, a removal (bit clear) for every slot attached this
   session. Not a neutral with the bit set: on a pad Sunshine already freed that would attach a
   fresh one for a moment.
@@ -104,9 +122,13 @@ page cannot back the control loop up; each stream gets the current values when i
 
 ## M3 gate: "5% controller input loss causes no stuck inputs"
 
-Queue-level test `five_percent_loss_leaves_nothing_stuck`: 60 s of 4 ms polls over two pads with 5%
-of the page's frames dropped before the queue (as if they were datagrams), the page resending every
-100 ms; after the player lets go, Sunshine's view of both pads is neutral. In the real path page to
+Queue-level test `five_percent_loss_leaves_nothing_stuck`: 60 s of 4 ms polls over two pads where
+pad states are lost the ways the bridge can lose them: 5% of sends time out (`timed_out`) and
+keyboard bursts fill the queue so pad states are dropped there (`make_room`); the page resends every
+100 ms. After the player lets go, Sunshine's view of both pads is neutral.
+`every_a_press_and_release_reaches_sunshine_despite_merging_and_timeouts` counts A edges: 500 taps,
+each inside one coalescing window with stick motion around it, 20% send timeouts: every press and
+release reaches Sunshine. In the real path page to
 bridge is a QUIC stream and bridge to Sunshine is reliable ENet, so loss shows up as delay, not as
 lost presses. A netem run on the real path is still to do [U].
 
@@ -119,6 +141,4 @@ lost presses. A netem run on the real path is still to do [U].
 - Rumble end to end: that a game's rumble reaches Sunshine's feedback queue for slot 0, and that
   the 8BitDo vibrates through `dual-rumble` over the 2.4G receiver; that replaying the effect every
   500 ms is seamless (no felt gaps).
-- Reload: the old stream's end detaches every pad, possibly just after the new page attached its
-  pad; the next resend (<= 250 ms) attaches it again, so a game may see one quick reconnect.
 - Input-to-photon latency for controller input (M3 gate's first half): not measured here.

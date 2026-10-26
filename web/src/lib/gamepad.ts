@@ -2,8 +2,9 @@
 //
 // Same stream as keys and mouse (input.ts): frames `len u8, kind u8, fields`, little-endian
 // (docs/controller-notes.md). Each pad sends its whole state, so the newest frame always tells the
-// truth: on every change, again every 100 ms while anything is off neutral and every 250 ms
-// idle. The bridge drops repeats and keeps every button change; the resend also keeps its 1 s
+// truth: on a button change or a stick/trigger step (STICK_STEP, TRIGGER_STEP), again every
+// 100 ms while anything is off neutral and every 250 ms idle. When the stream is backed up,
+// stick-only frames are skipped (the next poll sends the newest); button changes never are. The bridge drops repeats and keeps every button change; the resend also keeps its 1 s
 // held-input watchdog quiet. The Gamepad API only updates for a focused page, so pads are polled
 // (4 ms timer, rAF as a backup) only while the document is focused and visible; leaving releases
 // every pad (neutral, still attached). pagehide, a pad's disconnect and the transport closing
@@ -86,20 +87,41 @@ export const padName = (id: string) => id.replace(/\s*\(.*$/, '').replace(/\s*Ve
 const same = (a: PadState, b: PadState) => (Object.keys(a) as (keyof PadState)[]).every((k) => a[k] === b[k]);
 const neutral = (s: PadState) => same(s, NEUTRAL);
 
-type Slot = { index: number; name: string; sent: PadState; at: number; rumble: number[]; rumbleAt: number };
+type Slot = { index: number; name: string; sent: PadState; at: number };
+
+/// Below these an axis-only change waits for the next resend (a resting stick drifts by a few
+/// counts and would otherwise send at the poll rate). Values are never altered: no deadzone.
+export const STICK_STEP = 64;
+export const TRIGGER_STEP = 2;
+
+/// Worth sending now: buttons changed, back to exactly neutral, or an axis moved a step.
+function moved(st: PadState, sent: PadState) {
+  if (st.buttons !== sent.buttons || (neutral(st) && !neutral(sent))) return true;
+  const d = (k: keyof PadState) => Math.abs(st[k] - sent[k]);
+  return d('lx') >= STICK_STEP || d('ly') >= STICK_STEP || d('rx') >= STICK_STEP || d('ry') >= STICK_STEP || d('lt') >= TRIGGER_STEP || d('rt') >= TRIGGER_STEP;
+}
 
 export class GamepadSender {
   private slots: (Slot | null)[] = Array(MAX_PADS).fill(null);
+  /// Newest motor values per slot from the bridge, kept while the slot is empty too (the bridge
+  /// sends the current values when the stream opens, maybe before the first poll).
+  private rumbles = Array.from({ length: MAX_PADS }, () => [0, 0, 0, 0]);
+  /// When each slot's effect was last played; -Infinity: not playing.
+  private rumbleAt: number[] = Array(MAX_PADS).fill(-Infinity);
+  /// Focus lost (release ran, no poll since): no rumble plays.
+  private paused = false;
 
+  /// `write` returns false when it refused a `droppable` frame (the stream is backed up).
   constructor(
-    private write: (f: Uint8Array) => void,
+    private write: (f: Uint8Array, droppable: boolean) => boolean,
     private getGamepads: () => readonly (PadLike | null)[],
     private onpads: (p: PadInfo[]) => void = () => {},
   ) {}
 
   /// Reads every pad and sends what changed or is due again.
   poll() {
-    const now = Date.now();
+    const now = performance.now();
+    this.paused = false;
     const live = (this.getGamepads() ?? []).filter((g): g is PadLike => !!g && g.connected && g.mapping === 'standard');
     let changed = false;
     this.slots.forEach((s, i) => {
@@ -110,25 +132,26 @@ export class GamepadSender {
       if (i < 0) {
         i = this.slots.indexOf(null);
         if (i < 0) continue; // a fifth pad: ignored
-        this.slots[i] = { index: g.index, name: padName(g.id), sent: NEUTRAL, at: -Infinity, rumble: [0, 0, 0, 0], rumbleAt: 0 };
+        this.slots[i] = { index: g.index, name: padName(g.id), sent: NEUTRAL, at: -Infinity };
         changed = true;
       }
       const s = this.slots[i]!;
       const st = readPad(g);
-      if (!same(st, s.sent) || s.at === -Infinity || now - s.at >= (neutral(st) ? IDLE_RESEND_MS : ACTIVE_RESEND_MS)) this.send(i, st, now);
-      if (s.rumble.some((v) => v) && now - s.rumbleAt >= RUMBLE_REFRESH_MS) this.play(i, g);
+      const due = s.at === -Infinity || now - s.at >= (neutral(st) ? IDLE_RESEND_MS : ACTIVE_RESEND_MS);
+      if (due || moved(st, s.sent)) this.send(i, st, now, st.buttons === s.sent.buttons && !(neutral(st) && !neutral(s.sent)));
+      if (this.rumbles[i].some((v) => v) && now - this.rumbleAt[i] >= RUMBLE_REFRESH_MS) this.play(i, g);
     }
     if (changed) this.report();
   }
 
   /// Neutral for every pad off neutral (focus lost: nothing must stay pressed); still attached.
+  /// Rumble stops until the next focused poll.
   release() {
+    this.paused = true;
     this.slots.forEach((s, i) => {
       if (!s) return;
-      if (!neutral(s.sent)) this.send(i, NEUTRAL, Date.now());
-      if (s.rumbleAt === 0) return;
-      this.pad(i)?.vibrationActuator?.reset().catch(() => {});
-      s.rumbleAt = 0; // replayed by the next focused poll if still on
+      if (!neutral(s.sent)) this.send(i, NEUTRAL, performance.now(), false);
+      this.stopRumble(i);
     });
   }
 
@@ -147,25 +170,29 @@ export class GamepadSender {
 
   /// Motor values from Sunshine for `slot` (u16 each; 0 everywhere = stop).
   rumble(slot: number, low: number, high: number, left: number, right: number) {
-    const s = this.slots[slot];
-    if (!s) return;
-    s.rumble = [low, high, left, right];
+    if (!(slot >= 0 && slot < MAX_PADS)) return;
+    this.rumbles[slot] = [low, high, left, right];
     const g = this.pad(slot);
-    if (g) this.play(slot, g);
+    if (g && !this.paused) this.play(slot, g);
   }
 
   private play(i: number, g: PadLike) {
-    const s = this.slots[i]!;
     const act = g.vibrationActuator;
-    s.rumbleAt = Date.now();
-    const [low, high, left, right] = s.rumble.map((v) => v / 0xffff);
-    if (!(low || high || left || right)) s.rumbleAt = 0;
+    const [low, high, left, right] = this.rumbles[i].map((v) => v / 0xffff);
+    if (!(low || high || left || right)) return this.stopRumble(i, true);
+    this.rumbleAt[i] = performance.now();
     if (!act) return;
     const base = { duration: RUMBLE_MS, startDelay: 0, strongMagnitude: low, weakMagnitude: high };
     const triggers = (left || right) && act.effects?.includes('trigger-rumble');
     if (triggers) act.playEffect('trigger-rumble', { ...base, leftTrigger: left, rightTrigger: right }).catch(() => {});
     else if (low || high) act.playEffect('dual-rumble', base).catch(() => {});
-    else act.reset().catch(() => {});
+  }
+
+  /// Resets the actuator if an effect is playing (or `always`).
+  private stopRumble(i: number, always = false) {
+    if (this.rumbleAt[i] === -Infinity && !always) return;
+    this.rumbleAt[i] = -Infinity;
+    this.pad(i)?.vibrationActuator?.reset().catch(() => {});
   }
 
   private pad(i: number) {
@@ -173,20 +200,22 @@ export class GamepadSender {
     return s ? (this.getGamepads() ?? []).find((g) => g?.index === s.index) ?? null : null;
   }
 
-  private send(i: number, st: PadState, now: number) {
+  /// A refused droppable frame leaves `sent` as it was: the next poll tries the newest state.
+  private send(i: number, st: PadState, now: number, droppable: boolean) {
     const s = this.slots[i]!;
+    if (!this.write(padFrame(i, st), droppable)) return;
     s.sent = st;
     s.at = now;
-    this.write(padFrame(i, st));
   }
 
   /// Neutral (if needed), removal, rumble off. False if the slot was empty.
   private drop(i: number) {
     const s = this.slots[i];
     if (!s) return false;
-    if (!neutral(s.sent)) this.write(padFrame(i, NEUTRAL));
-    this.write(goneFrame(i));
-    if (s.rumble.some((v) => v)) this.pad(i)?.vibrationActuator?.reset().catch(() => {});
+    if (!neutral(s.sent)) this.write(padFrame(i, NEUTRAL), false);
+    this.write(goneFrame(i), false);
+    this.stopRumble(i);
+    this.rumbles[i] = [0, 0, 0, 0]; // the bridge clears a detached slot's rumble too
     this.slots[i] = null;
     return true;
   }
@@ -247,10 +276,11 @@ export function attachGamepads(s: GamepadSender, { doc, win, raf, caf }: Gamepad
   on(doc, 'visibilitychange', () => doc.visibilityState === 'hidden' && s.release());
   on(win, 'pagehide', () => s.detachAll());
   on(win, 'gamepaddisconnected', (e: { gamepad: { index: number } }) => s.disconnected(e.gamepad.index));
-  closed.finally(() => {
+  const stop = () => {
     clearInterval(timer);
     caf(frame);
     gone.abort();
     s.detachAll();
-  });
+  };
+  closed.then(stop, stop); // a failed close too, without an unhandled rejection
 }

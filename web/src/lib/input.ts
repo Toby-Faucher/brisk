@@ -255,10 +255,11 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
   on(doc, 'visibilitychange', () => {
     if (doc.visibilityState === 'hidden') leave();
   });
-  closed.finally(() => {
+  const stop = () => {
     s.releaseAll();
     gone.abort();
-  });
+  };
+  closed.then(stop, stop); // a failed close too, without an unhandled rejection
 }
 
 export interface Input {
@@ -273,14 +274,17 @@ export interface Input {
 export async function startInput(transport: WebTransport, canvas: HTMLCanvasElement, onpads?: (p: PadInfo[]) => void): Promise<Input> {
   const stream = await transport.createBidirectionalStream();
   const w = stream.writable.getWriter();
-  const s = new InputSender((f, droppable) => {
+  // Keys, buttons and pad button changes always go; motion, wheel and stick-only pad frames are
+  // refused while the stream is backed up, so a pad cannot starve the keyboard.
+  const write = (f: Uint8Array, droppable: boolean) => {
     if (droppable && (w.desiredSize ?? 1) <= 0) return false;
     w.write(f).catch(() => {}); // a closed stream ends the session, which the page reports
     return true;
-  });
+  };
+  const s = new InputSender(write);
   canvas.tabIndex = 0;
   attach(s, { canvas, doc: document, win: window }, transport.closed);
-  const pads = new GamepadSender((f) => void w.write(f).catch(() => {}), () => navigator.getGamepads(), onpads);
+  const pads = new GamepadSender(write, () => navigator.getGamepads(), onpads);
   attachGamepads(pads, { doc: document, win: window, raf: requestAnimationFrame, caf: cancelAnimationFrame }, transport.closed);
   void (async () => {
     const split = new FrameSplitter();
