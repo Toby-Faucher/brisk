@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { travel } from '../../ui/motion-base';
+  import { travel } from '../../ui/motion';
   import Icon from '../../ui/Icon.svelte';
 
   /** bawn -> this laptop. Decoration only (aria-hidden): the Network row next to it says the same in words. */

@@ -32,36 +32,13 @@ export const box = (el: Element): Box => {
 };
 
 /**
- * One soft ring sent out by a status dot when the host state changes (`<span class="ring">` sibling, resting at
+ * One soft ring sent out by a status dot when the host state changes (`<span class="halo">` sibling, resting at
  * opacity 0): native `Element.animate` on `scale` + `opacity`, no library and no loop. The Shell calls this on every
  * page, so /stream is a silent no-op as well (nothing animates there). Null when nothing ran.
  */
 export function ringPulse(ring: Element): Animation | null {
   if (onStreamRoute() || reducedMotion()) return null;
   return ring.animate([{ scale: 1, opacity: 0.5 }, { scale: 2.2, opacity: 0 }], { duration: 700, easing: cssVar('--ease') });
-}
-
-/**
- * A packet dot travelling along a lane forever (`el` is as wide as the lane with the dot at its right edge, inside an
- * `overflow: hidden` lane): ONE native compositor animation of `translate` (percent of its own width, so nothing is
- * measured and a resize needs nothing), paused while the tab is hidden, ended by reduced motion switching on. Returns
- * the stop function, or null when nothing runs (reduced motion, /stream); the caller calls it on destroy.
- */
-export function travel(el: Element, ms: number): (() => void) | null {
-  if (onStreamRoute() || reducedMotion()) return null;
-  const a = el.animate({ translate: ['-100% 0', '0 0'], opacity: [1, 1] }, { duration: ms, iterations: Infinity, easing: 'linear' });
-  const mq = matchMedia(REDUCE);
-  const sync = () => (document.hidden ? a.pause() : a.play());
-  const stop = () => {
-    a.cancel();
-    document.removeEventListener('visibilitychange', sync);
-    mq.removeEventListener('change', onMq);
-  };
-  const onMq = (e: { matches: boolean }) => e.matches && stop();
-  sync();
-  document.addEventListener('visibilitychange', sync);
-  mq.addEventListener('change', onMq);
-  return stop;
 }
 
 /**

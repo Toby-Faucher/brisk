@@ -70,7 +70,7 @@ const nav = async (page, href) => {
 const rafIn = async (page, ms) => { const a = await page.evaluate(() => window.__raf); await sleep(ms); return (await page.evaluate(() => window.__raf)) - a; };
 const poll = (page) => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); // HostPill refreshes $host on it
 const shot = (page, name, clip) => page.screenshot({ path: path.join(OUT, `${name}.png`), clip });
-const rings = (page) => page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('ring')).map((a) => ({ where: a.effect.target.closest('aside') ? 'pill' : 'card', props: [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join(), dur: a.effect.getTiming().duration, iter: a.effect.getTiming().iterations, ease: a.effect.getTiming().easing })));
+const rings = (page) => page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).map((a) => ({ where: a.effect.target.closest('aside') ? 'pill' : 'card', props: [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join(), dur: a.effect.getTiming().duration, iter: a.effect.getTiming().iterations, ease: a.effect.getTiming().easing })));
 
 // ---- 0. build: the import graph of the Stream page and chunk sizes
 if (want('graph')) {
@@ -109,17 +109,17 @@ if (want('ring')) {
   const { page, anime, state, errs } = await mk();
   await page.goto(BASE + '/machines'); await page.waitForSelector('.grid .dotw'); await sleep(900);
   check('ring: none on first paint', (await rings(page)).length === 0);
-  check('ring: aria-hidden sibling, resting opacity 0', await page.evaluate(() => [...document.querySelectorAll('.ring')].length === 2 && [...document.querySelectorAll('.ring')].every((r) => r.getAttribute('aria-hidden') === 'true' && getComputedStyle(r).opacity === '0')));
+  check('ring: aria-hidden sibling, resting opacity 0', await page.evaluate(() => [...document.querySelectorAll('.halo')].length === 2 && [...document.querySelectorAll('.halo')].every((r) => r.getAttribute('aria-hidden') === 'true' && getComputedStyle(r).opacity === '0')));
   state.host = { ...state.host, sunshine: 'busy' }; await poll(page); await sleep(120);
   const r1 = await rings(page);
   check('ring: ready -> busy gives one ring on the pill and one on the card', r1.length === 2 && r1.some((r) => r.where === 'pill') && r1.some((r) => r.where === 'card'), JSON.stringify(r1));
   check('ring: scale + opacity only, 700 ms, no loop, --ease', r1.every((r) => r.props === 'opacity,scale' && r.dur === 700 && r.iter === 1 && /cubic-bezier/.test(r.ease)), JSON.stringify(r1[0]));
-  await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('ring')).forEach((a) => { a.pause(); a.currentTime = 280; }));
+  await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).forEach((a) => { a.pause(); a.currentTime = 280; }));
   await shot(page, 'ring-mid-card', { x: 250, y: 60, width: 330, height: 60 });
   await shot(page, 'ring-mid-pill', { x: 0, y: 820, width: 240, height: 80 });
-  await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('ring')).forEach((a) => a.play()));
+  await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.classList?.contains('halo')).forEach((a) => a.play()));
   await sleep(900);
-  check('ring: gone after 700 ms, resting opacity 0 again, no inline style left', (await rings(page)).length === 0 && await page.evaluate(() => [...document.querySelectorAll('.ring')].every((r) => getComputedStyle(r).opacity === '0' && !r.getAttribute('style'))));
+  check('ring: gone after 700 ms, resting opacity 0 again, no inline style left', (await rings(page)).length === 0 && await page.evaluate(() => [...document.querySelectorAll('.halo')].every((r) => getComputedStyle(r).opacity === '0' && !r.getAttribute('style'))));
   await poll(page); await sleep(150);
   check('ring: same state polled again makes no ring', (await rings(page)).length === 0);
   state.host = { ...state.host, sunshine: 'down' }; await poll(page); await sleep(100);
@@ -148,7 +148,8 @@ const svgAnims = (page) => page.evaluate(() => document.getAnimations().filter((
 if (want('morph')) {
   const { page, anime, state, errs } = await mk();
   await page.goto(BASE + '/library'); await page.waitForSelector('.hero .btn svg path'); await sleep(900);
-  check('swap: first paint is the plain play triangle, nothing animating, no chunk', (await heroPath(page)) === TRI && (await svgAnims(page)).length === 0 && anime.length === 0);
+  check('swap: first paint is the plain play triangle, nothing animating, no chunk', (await heroPath(page)) === TRI && (await svgAnims(page)).length === 0 && !anime.some((f) => /^(animation|svg|easings|scope)\./.test(f)));
+  const animeBefore = anime.length; // the hero title's text chunk is already in
   const name0 = await page.evaluate(() => document.querySelector('.hero .btn').textContent.trim());
   let release; state.hold = new Promise((r) => (release = r));
   await page.click('.hero .btn');
@@ -160,7 +161,7 @@ if (want('morph')) {
   const a2 = await svgAnims(page);
   check('swap: ring in place, one native linear infinite rotate (compositor) is the only animation left', a2.length === 1 && a2[0].props === 'rotate' && a2[0].inf && a2[0].ease === 'linear', JSON.stringify(a2));
   check('swap: text says Starting…, icon still aria-hidden, one path, no inline style or will-change left', await page.evaluate(() => { const b = document.querySelector('.hero .btn'), s = b.querySelector('svg'); return b.textContent.trim() === 'Starting…' && s.getAttribute('aria-hidden') === 'true' && s.querySelectorAll('path').length === 1 && !s.getAttribute('style') && getComputedStyle(s).willChange === 'auto'; }));
-  check('swap: no library', anime.length === 0, anime.join());
+  check('swap: no library', anime.length === animeBefore, anime.slice(animeBefore).join());
   state.startStatus = 500; release(); // the start fails: back to the triangle
   await page.waitForFunction((t) => document.querySelector('.hero .btn svg path').getAttribute('d') === t, TRI, { timeout: 3000 });
   await sleep(250);
