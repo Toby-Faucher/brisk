@@ -3,9 +3,8 @@
 // recoloured to the accent (A, linear RGB). Feature size, speed and detail are fixed at the showcase defaults.
 precision highp float;
 uniform vec2 R; uniform float T; uniform vec3 A;
-uniform vec4 U_TRAIL[24];  // recent pointer samples: xy = position (view units), zw = velocity already faded by age
 out vec4 o;
-const float U_SPEED = 1.0, U_SCALE = 2.2, U_DETAIL = 6.0, U_MOUSE = 1.0;
+const float U_SPEED = 1.0, U_SCALE = 2.2, U_DETAIL = 6.0;
 uint rotl(uint x, uint k){ return (x << k) | (x >> (32u - k)); }
 uint hash_uint3(uint kx, uint ky, uint kz){
   uint a = 0xdeadbeefu + (3u << 2u) + 13u, b = a, c = a;
@@ -77,10 +76,6 @@ void main(){
   float dir = 0.6 + 0.5*sin(t*0.23);
   vec2 drift = vec2(cos(dir), sin(dir)) * t * 0.55;
   vec2 p = uv*U_SCALE;
-  // the pointer pushes the flow: each recent sample drags nearby smoke along its velocity (soft falloff)
-  vec2 push = vec2(0.0);
-  for (int i=0;i<24;i++){ vec2 d = uv - U_TRAIL[i].xy; push += U_TRAIL[i].zw * exp(-dot(d,d)*9.0); }
-  p -= push * 0.11 * U_SCALE * U_MOUSE;
   // the original's folded sine layers
   vec3 Q = vec3(p + drift*0.5, t*0.6);
   Q = cos(vec3(Q.y,Q.z,Q.x)*0.56 + Q.z)*0.6 + Q;

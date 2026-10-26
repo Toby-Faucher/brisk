@@ -23,7 +23,7 @@ const VS = '#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
 export type SmokeRun = { setActive(on: boolean): void; destroy(): void };
 
 /** Draw the smoke into `cv` at 30 fps while active and the tab is visible. `accent()` is read every frame. */
-export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, accent: () => string, interactive: boolean): SmokeRun | null {
+export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, accent: () => string): SmokeRun | null {
   const sh = (t: number, s: string) => {
     const x = gl.createShader(t)!;
     gl.shaderSource(x, s);
@@ -42,24 +42,6 @@ export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, acce
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const uR = gl.getUniformLocation(pr, 'R'), uT = gl.getUniformLocation(pr, 'T'), uA = gl.getUniformLocation(pr, 'A');
-  const uTrail = gl.getUniformLocation(pr, 'U_TRAIL[0]');
-
-  // pointer trail (from the research showcase): the smoke follows the hand
-  const trail: { x: number; y: number; vx: number; vy: number; t: number }[] = [];
-  const buf = new Float32Array(24 * 4);
-  let lastM: { x: number; y: number; t: number } | null = null;
-  const onMove = (e: PointerEvent) => {
-    const r = cv.getBoundingClientRect(), now = performance.now();
-    if (!r.height) return;
-    const x = ((e.clientX - r.left) / r.width * 2 - 1) * (r.width / r.height), y = 1 - (e.clientY - r.top) / r.height * 2;
-    if (lastM) {
-      const dt = Math.max(now - lastM.t, 8) / 1000;
-      trail.push({ x, y, vx: (x - lastM.x) / dt, vy: (y - lastM.y) / dt, t: now });
-      if (trail.length > 24) trail.shift();
-    }
-    lastM = { x, y, t: now };
-  };
-  if (interactive) addEventListener('pointermove', onMove, { passive: true });
 
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const seed = Math.random() * 50;
@@ -75,13 +57,6 @@ export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, acce
     gl.uniform2f(uR, w, h);
     gl.uniform1f(uT, ts / 1000 + seed);
     gl.uniform3f(uA, ...accentLinear(accent()));
-    const now = performance.now();
-    buf.fill(0);
-    trail.forEach((e, i) => {
-      const k = Math.exp(-(now - e.t) / 1600);
-      buf.set([e.x, e.y, e.vx * k, e.vy * k], i * 4);
-    });
-    gl.uniform4fv(uTrail, buf);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     drawn = true;
   }
@@ -106,25 +81,8 @@ export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, acce
     destroy() {
       active = false;
       cancelAnimationFrame(raf);
-      removeEventListener('pointermove', onMove);
       document.removeEventListener('visibilitychange', kick);
       (gl.getExtension('WEBGL_lose_context') as WEBGL_lose_context | null)?.loseContext();
     },
-  };
-}
-
-/** A card's smoke: on() mounts it, off() unmounts it after `ms` (once the fade-out is done), so only the hovered card holds a context. */
-export function hoverRelease(set: (mounted: boolean) => void, ms = 600) {
-  let t: ReturnType<typeof setTimeout> | undefined;
-  return {
-    on() {
-      clearTimeout(t);
-      set(true);
-    },
-    off() {
-      clearTimeout(t);
-      t = setTimeout(() => set(false), ms);
-    },
-    stop: () => clearTimeout(t),
   };
 }

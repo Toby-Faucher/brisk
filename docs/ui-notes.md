@@ -21,3 +21,6 @@ BRISK_DIST, BRISK_DATA_DIR, BRISK_BRIDGE_BIN, BRISK_STEAM_DIR, BRISK_STEAM_KEY_F
 ## [U]
 `[U]` in code comments marks an unverified assumption about bawn (for example the graphical
 environment taken from a running steam process, or the 127.0.0.1 default for BRISK_LISTEN).
+
+## Shaders
+- Background smoke only (Home, accent colour, drifts on its own). No pointer interaction and no card shaders; cards only lift and brighten their border on hover. Off on /stream, when the shaders setting is off, and without WebGL2 (CSS gradient instead). Toby's steer, 2026-10-25.

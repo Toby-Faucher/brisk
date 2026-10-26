@@ -22,7 +22,7 @@
   });
 </script>
 
-<div class="bg" aria-hidden="true"><Smoke accent={ACCENT_HEX[$settings.accent]} interactive /></div>
+<div class="bg" aria-hidden="true"><Smoke accent={ACCENT_HEX[$settings.accent]} /></div>
 
 <div class="bento">
   <HostCard />
@@ -40,7 +40,7 @@
 </div>
 
 <style>
-  /* Faint full-window smoke behind everything (the sidebar is translucent). Much quieter than the card glow. */
+  /* Faint full-window smoke behind everything (the sidebar is translucent). */
   .bg { position: fixed; inset: 0; z-index: -1; opacity: .1; pointer-events: none; }
   .bento { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 120px; grid-auto-flow: dense; gap: 12px; }
   .bento :global(.soon) { opacity: .7; }
