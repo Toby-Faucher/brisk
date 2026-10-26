@@ -291,13 +291,16 @@ impl AudioFec {
             Some(i) => i,
             None => {
                 if self.blocks.len() == MAX_BLOCKS {
-                    let oldest = (0..MAX_BLOCKS)
-                        .max_by_key(|&i| base.wrapping_sub(self.blocks[i].base))
-                        .unwrap();
+                    let Some(oldest) =
+                        (0..MAX_BLOCKS).max_by_key(|&i| base.wrapping_sub(self.blocks[i].base))
+                    else {
+                        return Ok(Vec::new()); // unreachable: MAX_BLOCKS > 0
+                    };
                     let b = self.blocks.remove(oldest);
                     self.stats.lost += b.missing();
-                    self.floor = Some(b.base.wrapping_add(DATA_SHARDS as u16));
-                    if is_before16(base, self.floor.unwrap()) {
+                    let floor = b.base.wrapping_add(DATA_SHARDS as u16);
+                    self.floor = Some(floor);
+                    if is_before16(base, floor) {
                         return Ok(Vec::new());
                     }
                 }
