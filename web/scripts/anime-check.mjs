@@ -365,6 +365,7 @@ if (want('tour')) {
   const t = await page.evaluate(() => ({ maxAnims: window.__maxAnims, long: window.__long }));
   report.tour = t;
   check('tour: no long task over 50 ms after the first load (pages, tweens, glides, chart draw, chip)', t.long.slice(1).every((d) => d < 50), JSON.stringify(t));
+  check('tour: no inline --accent on <html>, no inline will-change or transition left anywhere', await page.evaluate(() => !document.documentElement.style.getPropertyValue('--accent') && ![...document.querySelectorAll('[style]')].some((e) => /will-change|transition/.test(e.getAttribute('style')))));
   check('no errors', errs.length === 0, errs.join('|'));
   await page.context().close();
 }
