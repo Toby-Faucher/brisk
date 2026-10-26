@@ -147,7 +147,7 @@
   .gate { font: 600 10.5px var(--mono); letter-spacing: .06em; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
   .gate.pass { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
   .gate.fail { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
-  .big { font-size: 30px; font-weight: 650; letter-spacing: -.03em; margin: 6px 0 10px; }
+  .big { font-size: 30px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ letter-spacing: -.03em; margin: 6px 0 10px; }
   .stats { display: grid; grid-template-columns: auto 1fr; gap: 7px 22px; margin: 0 2px 8px; max-width: 560px; }
   dt { color: var(--muted); font-size: 13px; }
   dd { margin: 0; font-size: 13px; text-align: right; }

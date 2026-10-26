@@ -18,5 +18,5 @@
 <style>
   .fill { position: absolute; inset: 0; }
   .n { font-variant-numeric: tabular-nums; }
-  .big { font-size: 24px; font-weight: 650; letter-spacing: -.03em; margin-top: 6px; }
+  .big { font-size: 24px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ letter-spacing: -.03em; margin-top: 6px; }
 </style>

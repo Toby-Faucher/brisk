@@ -29,7 +29,7 @@
 </Card>
 
 <style>
-  .big { font-size: 30px; font-weight: 650; letter-spacing: -.03em; margin-top: 6px; }
+  .big { font-size: 30px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ letter-spacing: -.03em; margin-top: 6px; }
   .stats { display: flex; gap: 16px; margin-top: 26px; align-items: center; flex-wrap: wrap; }
   .ring { width: 52px; height: 52px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p, 0) * 1%), color-mix(in srgb, #fff 10%, transparent) 0); display: grid; place-items: center; }
   .ring b { width: 40px; height: 40px; border-radius: 50%; background: #0f1116; display: grid; place-items: center; font-size: 12px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
