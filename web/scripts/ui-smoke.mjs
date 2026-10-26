@@ -1,7 +1,8 @@
 // UI smoke test: hostd (fixtures + fake bridge + mock Steam API, sentinel key) serving web/dist,
 // driven by headless Chrome. Needs 127.0.0.1:8443 free (hostd binds it and checks Host against it; both are fixed in
-// code) and a built web/dist. When 8443 is taken (the live hostd service), it skips with exit 0 and says so; the axe
-// rules it applies are also checked without hostd by scripts/axe-check.mjs.
+// code) and a built web/dist. Exit codes: 0 pass, 1 fail, 3 skipped because 8443 is taken (the live hostd service;
+// BRISK_SMOKE_ALLOW_SKIP=1 turns a skip into exit 0). The axe rules it applies are also checked without hostd by
+// scripts/axe-check.mjs.
 //   node scripts/ui-smoke.mjs        (env: BRISK_HOSTD=path to brisk-hostd, BRISK_CHROMIUM=chrome-headless-shell)
 // It cannot prove video: a real WebTransport connect fails against the fake bridge, so the Stream
 // page is only checked for degrading to its reconnecting/failed state without page errors.
@@ -16,8 +17,9 @@ import { axe } from './axe.mjs';
 
 const free = await new Promise((r) => { const s = net.createServer().once('error', () => r(false)).listen(8443, '127.0.0.1', () => s.close(() => r(true))); });
 if (!free) {
-  console.log('SMOKE SKIPPED: 127.0.0.1:8443 is in use (the live hostd service?). Stop it first, or run scripts/axe-check.mjs for the a11y part.');
-  process.exit(0);
+  const code = process.env.BRISK_SMOKE_ALLOW_SKIP === '1' ? 0 : 3;
+  console.log(`SMOKE SKIPPED (exit ${code}): 127.0.0.1:8443 is in use (the live hostd service?). Stop it first, or run scripts/axe-check.mjs for the a11y part.`);
+  process.exit(code);
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');

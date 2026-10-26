@@ -5,7 +5,7 @@
   import { api, type StreamInfo } from '../../state/api';
   import { games, watchGames } from '../../state/games';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
-  import { host, refreshHost } from '../../state/host';
+  import { host as hostStore, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
@@ -19,7 +19,7 @@
   let busy = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const machines = $derived($host ? machinesFrom($host) : []);
+  const machines = $derived($hostStore ? machinesFrom($hostStore) : []);
   const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
 
   let arrived = false; // the host card lands after hydration: entrance once

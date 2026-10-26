@@ -419,13 +419,15 @@ drives headless Chrome through Home, Library, Machines, History, Settings (every
 accent, the 403 guard, a launch to `live` and the ghost bar, runs axe (see Dev tooling) on each of those views, then
 prints PASS/FAIL (exit 0 only if all pass) and screenshot paths. It cannot prove video: WebTransport to the fake bridge
 fails, so Stream is only checked for degrading to "Lost the connection" without page errors. hostd's listen port and Host
-check are fixed at 8443, so while the live service holds 8443 the smoke prints `SMOKE SKIPPED` and exits 0; use
-`scripts/axe-check.mjs` for the a11y part meanwhile.
+check are fixed at 8443, so while the live service holds 8443 the smoke prints `SMOKE SKIPPED (exit 3)` and exits 3
+(exit codes: 0 pass, 1 fail, 3 skipped; `BRISK_SMOKE_ALLOW_SKIP=1` makes a skip exit 0). It is not part of `npm run ci`.
+Use `scripts/axe-check.mjs` for the a11y part meanwhile.
 
 ## Dev tooling
 - Commands (in web/): `npm run ci` = `npm run check` + `npm test` + `npm run build` (run it before merging);
-  `npm run check` = `astro check` + `svelte-check` (fails on errors; the two known svelte-check warnings in Machines and
-  GhostBar are left as they are, fixing them would change reactivity); `npm test` = the node unit project only (fast, no
+  `npm run check` = `astro check` + `svelte-check` (fails on errors; one known svelte-check warning is left: GhostBar's
+  `fileInput` is set by `bind:this` and only read in click handlers, never in the template or an effect, so it does not
+  need `$state`; making it `$state` would only add reactivity nothing uses); `npm test` = the node unit project only (fast, no
   DOM); `npm run test:browser` = Svelte component tests in real Chrome (separate, not in `ci`).
 - Pinning: `web/.npmrc` has `save-exact=true` and every dependency in package.json is an exact version. New packages and
   bumps take the newest version that is at least 14 days old on npm (`npm view <pkg> time --json`; for new transitive
@@ -433,16 +435,18 @@ check are fixed at 8443, so while the live service holds 8443 the smoke prints `
   browser packages, fast-uri 3.1.9). Check `npm audit`, `npm ls` and `hasInstallScript` in the lock after a change
   (today only `fsevents`, optional, macOS).
 - TypeScript is pinned to 6.0.3: TypeScript 7 (the Go port) is out, but `svelte-check` and `@astrojs/check` declare
-  `typescript ^5 || ^6`. Retry when they widen. `web/tsconfig.json` extends `astro/tsconfigs/strict`; vite defines are
-  declared in `src/env.d.ts`. `@ts-expect-error` only with a one-line reason; no blanket `any`.
+  `typescript ^5 || ^6`. Retry when they widen. `web/tsconfig.json` extends `astro/tsconfigs/strict` and includes src,
+  `scripts/**/*.mjs` and `vitest.config.ts`; vite defines are declared in `src/env.d.ts`. The scripts are included without
+  `checkJs`: turning it on gives about 450 errors, mostly the untyped `window.__x` probes inside `page.evaluate`. `@ts-expect-error` only with a one-line reason; no blanket `any`.
 - Accessibility: `scripts/axe.mjs` (`@axe-core/playwright`, MPL-2.0) runs the WCAG 2.0/2.1/2.2 A and AA rules and fails
   on serious or critical violations; exceptions live in its `EXCEPTIONS` list with a one-line reason (today: the command
   menu listbox, scrolled from the input through aria-activedescendant). Used by ui-smoke and by
   `node scripts/axe-check.mjs` (against `npx astro preview --host 127.0.0.1 --port 4424`, mocked /api; Home, Library,
   Machines, History list + session, every Settings tab, Stream idle and failed, command menu, Quit and restart dialogs).
 - Browser tests: `*.browser.test.ts` next to the component, run by the `browser` project in `web/vitest.config.ts`
-  (`@vitest/browser-playwright` + `vitest-browser-svelte`, the Playwright chrome-headless-shell, override with
-  `BRISK_CHROMIUM`). Its API server is pinned to `127.0.0.1:4460` (strictPort): Vitest browser mode had critical advisories
+  (`@vitest/browser-playwright` + `vitest-browser-svelte`, Playwright's own chrome-headless-shell; `BRISK_CHROMIUM`
+  overrides it, and a missing one prints how to install it). Reduced motion is forced in the test browser, so no dialog or
+  menu animation can make a test wait or flake. Its API server is pinned to `127.0.0.1:4460` (strictPort): Vitest browser mode had critical advisories
   for an exposed API, so never 0.0.0.0. `astro:transitions/client` is aliased to `src/test/astro-transitions.ts` (a `navigate`
   spy). Covered: CommandMenu (Ctrl+K, filter, Enter navigates, Esc returns focus), the Quit confirm (focus in, Tab trap,
   Esc, focus back), Settings tabs (arrows/Home/End and the hash), GameCard (a click on a not-installed card never installs).

@@ -33,6 +33,11 @@ try {
       : {};
     await r.fulfill({ json });
   });
+  // One standard pad, so the Controller tab draws its diagram (and the faint extra-button legend) for axe to see.
+  await ctx.addInitScript(() => {
+    const pad = { id: 'Xbox 360 Controller (STANDARD GAMEPAD Vendor: 045e Product: 028e)', index: 0, connected: true, mapping: 'standard', timestamp: 1, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
+    navigator.getGamepads = () => [pad, null, null, null];
+  });
   const page = await ctx.newPage();
   const scan = async (name) => {
     await sleep(600); // entrance animations settle (contrast is measured on the final colours)
