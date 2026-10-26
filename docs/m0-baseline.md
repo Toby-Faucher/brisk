@@ -126,3 +126,17 @@ Toby on the laptop (Chrome, hardware decode) through the new UI and `brisk-hostd
 | page stats card (screenshot) | delay 8.8 ms (estimate: bridge + RTT/2 + queue + decode + draw), 60 fps, 1920x1080 avc1.640c2a, hw decode, ~18 Mbps |
 
 Not captured: separate client decode / present p50 with the new stats card, and a clean 10 min run. The host and bridge side did not regress; the page's decode/draw path was changed only by closing the decoder on disconnect and counting bytes.
+
+### HEVC vs H.264, same bitrate (branch `hevc`)
+
+Toby on the laptop (Chrome, hardware decode), same game and scene, Advanced: 1920x1080, 60 fps, same bitrate for both, one run each.
+
+| quantity | H.264 | HEVC |
+|---|---|---|
+| bitrate (kbps), resolution, fps | PENDING (Toby) | PENDING (Toby) |
+| stats card codec string, hw/sw decode | PENDING (Toby) | PENDING (Toby) |
+| `bridge_write - capture` / `frame_processing_latency` p50 / p99 (bridge report) | PENDING (Toby) | PENDING (Toby) |
+| client decode p50 / p99 (stats card) | PENDING (Toby) | PENDING (Toby) |
+| delay estimate p50 (stats card) | PENDING (Toby) | PENDING (Toby) |
+| decode errors, key requests, IDR frame size | PENDING (Toby) | PENDING (Toby) |
+| picture quality at this bitrate (Toby's eye, fast motion) | PENDING (Toby) | PENDING (Toby) |

@@ -36,3 +36,20 @@ It starts hostd on fixtures, the fake bridge, a fake `steam` and a mock Steam AP
 drives headless Chrome through Home, Library, Machines, Settings, Ctrl+K, accent, the 403 guard, a launch to `live` and
 the ghost bar, then prints PASS/FAIL (exit 0 only if all pass) and screenshot paths. It cannot prove video: WebTransport
 to the fake bridge fails, so Stream is only checked for degrading to "Lost the connection" without page errors.
+
+## HEVC
+- Select: ghost bar, Quality, Advanced..., Codec: HEVC, Apply. It reconnects like any custom quality
+  (`POST /api/stream` with `codec: "hevc"`, hostd starts the bridge with `--codec hevc`, the SDP asks
+  Sunshine for `bitStreamFormat` 1). H.264 stays the default; the preset chips always ask for H.264.
+- HEVC is offered only when `VideoDecoder.isConfigSupported({codec: 'hvc1.1.6.L120.B0'})` says yes, else
+  the option is disabled ("not supported on this browser").
+- The page does not trust the request: it reads the codec from the first key frame (H.264 SPS -> `avc1.*`,
+  HEVC VPS/SPS/PPS -> `hvc1.*` from the SPS profile_tier_level, ISO 14496-15 E.3). The stats card shows it.
+- The bridge refuses a tap whose codec field differs from the one it asked for (error in the bridge log).
+- [U] Chrome decodes Annex B HEVC with no `description` (the WebCodecs HEVC registration says Annex B when it
+  is absent; Sunshine sends VPS/SPS/PPS in-band on every IDR). [U] Chrome's key-frame check accepts the IDR
+  that VAAPI hevc makes on an IDR request (it should be NAL type 19/20; the flag is Sunshine's key-frame flag,
+  nothing in Brisk parses slice types). [U] `hvc1` vs `hev1` makes no difference to Chrome for Annex B.
+  [U] the level Sunshine's VAAPI SPS carries (1080p60 needs 4.1, `L123`) is within the laptop decoder's limit.
+- Toby to measure: the HEVC vs H.264 rows in docs/m0-baseline.md (same bitrate), and whether the stats card
+  says `hvc1.*` with hw decode and 0 decode errors over a few quality switches.
