@@ -2,10 +2,11 @@ import type { Game } from '../../state/api';
 
 export const DASH = '–';
 
-/** The installed game played most recently (lastPlayed is unix seconds), or null. */
+/** The installed game running on the host, else the one played most recently (lastPlayed is unix seconds), or null. */
 export function pickResume(games: Game[]): Game | null {
   let best: Game | null = null;
-  for (const g of games) if (g.installed && g.lastPlayed != null && (!best || g.lastPlayed > best.lastPlayed!)) best = g;
+  const better = (a: Game, b: Game) => (a.running !== b.running ? a.running : a.lastPlayed! > b.lastPlayed!);
+  for (const g of games) if (g.installed && g.lastPlayed != null && (!best || better(g, best))) best = g;
   return best;
 }
 

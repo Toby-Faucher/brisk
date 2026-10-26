@@ -45,6 +45,9 @@ export function visibleRange(scrollLeft: number, width: number, stride: number, 
 
 export const fmtSize = (b: number | null) => (b ? `${(b / 1e9).toFixed(b < 1e10 ? 1 : 0)} GB` : null);
 export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
+/** A game still running on the host is resumed (streamed as is), not launched again. */
+export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
+export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));
 
 /** Installed cards play on one click; a not-installed card only toggles its Install button, it never installs by itself. */
 export function cardClick(g: Game, selected: number | null): { action: 'play' | 'select'; selected: number | null } {
