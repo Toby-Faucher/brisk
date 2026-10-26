@@ -207,7 +207,7 @@ describe('glide', () => {
     const [kf, opt] = e.animate.mock.calls[0];
     expect(kf).toEqual([{ translate: '0px -40px', scale: '2 1' }, { translate: '0 0', scale: '1 1' }]);
     expect(Object.keys(kf[0]).sort()).toEqual(['scale', 'translate']);
-    expect(opt).toEqual({ duration: 700, easing: 'linear(0, 1)' });
+    expect(opt).toEqual({ duration: 700, easing: 'linear(0, 1)', pseudoElement: undefined });
   });
   it('no move, reduced motion: no animation', () => {
     const e = el();

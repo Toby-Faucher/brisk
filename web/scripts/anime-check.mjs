@@ -179,6 +179,74 @@ if (want('reduce')) {
   await page.context().close();
 }
 
+// ---- 4. glide: sidebar highlight slides from the previous item across the Shell remount; chips; compositor-only props
+const glides = (page, scope) => page.evaluate((scope) => document.getAnimations().filter((a) => a.effect?.pseudoElement === '::before' && a.effect.target.closest(scope)).map((a) => ({ href: a.effect.target.getAttribute('href'), txt: a.effect.target.textContent.trim(), props: [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join(), from: a.effect.getKeyframes()[0].translate, scale: a.effect.getKeyframes()[0].scale, dur: a.effect.getTiming().duration, easing: a.effect.getTiming().easing.slice(0, 7), state: a.playState })), scope);
+if (want('glide')) {
+  const { ctx, page, errs } = await mk();
+  await page.goto(BASE + '/library'); await sleep(1200);
+  check('first load: no glide in the sidebar', (await glides(page, 'aside')).length === 0);
+  // which frame first shows the new page, and does it already have the glide? (rAF runs before each paint)
+  await page.evaluate(() => document.addEventListener('astro:after-swap', () => {
+    window.__frames = [];
+    let n = 0;
+    const f = () => { const a = document.querySelector('aside [aria-current="page"]'); window.__frames.push([a?.getAttribute('href'), document.getAnimations().some((x) => x.effect?.pseudoElement === '::before' && x.effect.target === a)]); if (++n < 4) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  }));
+  const rl = await page.locator('aside a[href="/library"]').boundingBox();
+  const rs = await page.locator('aside a[href="/settings"]').boundingBox();
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('Tracing.start', { categories: 'devtools.timeline,blink.animations,cc,disabled-by-default-devtools.timeline', transferMode: 'ReturnAsStream' });
+  await nav(page, '/settings');
+  const g = await glides(page, 'aside');
+  check('library -> settings: one glide on the Settings item, translate+scale only, spring easing', g.length === 1 && g[0].href === '/settings' && g[0].props === 'scale,translate' && g[0].easing === 'linear(', JSON.stringify(g));
+  const dy = parseFloat(g[0]?.from.split(' ')[1]);
+  check('glide starts exactly at the previous (Library) item', Math.abs(dy - (rl.y - rs.y)) < 1, `from dy ${dy}, items ${rl.y - rs.y}`);
+  const frames = await page.evaluate(() => window.__frames);
+  check('the first frame after the swap that shows the new active item already has the glide (no snap frame)', frames.length > 0 && frames.every(([h, has]) => h !== '/settings' || has), JSON.stringify(frames));
+  // seek and look
+  for (const [t, label] of [[0, '000'], [0.1, '010'], [0.2, '020'], [0.5, '050'], [1, '100']]) {
+    await page.evaluate((t) => { const a = document.getAnimations().find((x) => x.effect?.pseudoElement === '::before' && x.effect.target.closest('aside')); if (a) { a.pause(); a.currentTime = a.effect.getTiming().duration * t; } }, t);
+    await sleep(50);
+    await page.screenshot({ path: `${OUT}/sidebar-glide-${label}.png`, clip: { x: 0, y: 0, width: 230, height: 330 } });
+  }
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.effect?.pseudoElement && a.finish()));
+  const done = await new Promise((res) => {
+    let chunks = '';
+    cdp.on('Tracing.tracingComplete', async ({ stream }) => {
+      for (;;) { const r = await cdp.send('IO.read', { handle: stream }); chunks += r.data; if (r.eof) break; }
+      res(JSON.parse(chunks));
+    });
+    void cdp.send('Tracing.end');
+  });
+  const evs = (done.traceEvents ?? done).filter((e) => e.name === 'Animation');
+  // pair each event with the animation that began under its id (ids are reused), keep the ::before glides
+  const cur = {}; const ours = []; const failed = [];
+  for (const e of evs) {
+    const id = e.id2?.local ?? e.id;
+    if (e.ph === 'b') cur[id] = e.args?.data?.nodeName;
+    if (cur[id] === '::before') { if (e.ph === 'b') ours.push(id); if (e.args?.data?.compositeFailed) failed.push(e.args.data); }
+  }
+  const others = evs.filter((e) => e.args?.data?.compositeFailed).length - failed.length;
+  check('Chrome trace: the ::before glide animations never report compositeFailed (compositor)', ours.length >= 1 && failed.length === 0, `${ours.length} glide animations traced, ${failed.length} failed; ${others} unrelated pre-existing CSS transitions (nav color etc.) not composited`);
+  await nav(page, '/library'); await sleep(50);
+  check('settings -> library: glides back', (await glides(page, 'aside')).some((x) => x.href === '/library'));
+  await sleep(1000);
+  await page.click('.filters button:has-text("Installed")');
+  const c = await glides(page, '.filters');
+  check('library filter chip: the selected fill glides from All to Installed (translate+scale)', c.length === 1 && c[0].txt === 'Installed' && c[0].props === 'scale,translate' && parseFloat(c[0].from) < 0, JSON.stringify(c));
+  await page.evaluate(() => { const a = document.getAnimations().find((x) => x.effect?.pseudoElement && x.effect.target.closest('.filters')); a.pause(); a.currentTime = a.effect.getTiming().duration * 0.3; });
+  await page.screenshot({ path: `${OUT}/library-chip-030.png`, clip: { x: 218, y: 50, width: 520, height: 70 } });
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.effect?.pseudoElement && a.finish()));
+  await page.goto(BASE + '/settings#streaming'); await sleep(1000);
+  await page.click('[aria-label="Default quality"] button:has-text("crisp")');
+  const q = await glides(page, '[aria-label="Default quality"]');
+  check('settings default quality: the fill glides to the clicked chip', q.length === 1 && q[0].txt === 'crisp' && q[0].props === 'scale,translate', JSON.stringify(q));
+  await sleep(900);
+  check('no glide left running, no inline styles or will-change left on the chips/nav', await page.evaluate(() => document.getAnimations().every((a) => !a.effect?.pseudoElement) && [...document.querySelectorAll('aside a.nav, .fchip')].every((e) => !e.getAttribute('style') && getComputedStyle(e).willChange === 'auto')));
+  check('no errors', errs.length === 0, errs.join('|'));
+  await page.context().close();
+}
+
 // ---- CSS springs (zero runtime): hover lift, game card, dialog entrance, ghost bar
 if (want('spring')) {
   const { page, anime, errs } = await mk();

@@ -1,7 +1,8 @@
 // The one place anime.js enters the app (docs/ui-notes.md, Motion: what uses it and the rules). Nothing here imports the
 // library statically: each helper loads the sub-path it needs the first time it really animates, never on /stream and
 // never under reduced motion. Page modules import this file; the Shell imports only ./motion-base.
-import { easeParams, motionAllowed, ms, onReduceChange, onStreamRoute, reducedMotion } from './motion-base';
+import { flushSync } from 'svelte';
+import { box, cssVar, glide, motionAllowed, ms, onStreamRoute, REDUCE, reducedMotion } from './motion-base';
 import type { Scope } from 'animejs/scope';
 
 export * from './motion-base';
@@ -28,12 +29,19 @@ export function load<K extends keyof Mods>(...names: K[]): Promise<Pick<Lib, key
   return Promise.all(names.map((n) => MODS[n]())).then((m) => Object.assign({}, ...m));
 }
 
+/** `--ease` as numbers, for JS easings (cubic-bezier(.2, .8, .2, 1) -> [.2, .8, .2, 1]). */
+export function easeParams(v = cssVar('--ease')): [number, number, number, number] {
+  const m = v.match(/cubic-bezier\(([^)]+)\)/);
+  const p = m ? m[1].split(',').map(Number) : [];
+  return p.length === 4 && p.every(Number.isFinite) ? (p as [number, number, number, number]) : [0.2, 0.8, 0.2, 1];
+}
+
 /** `--ease` as an anime.js easing function. */
 export const ease = (lib: Pick<Lib, 'cubicBezier'>) => lib.cubicBezier(...easeParams());
 
 // Running JS tweens: switching to reduced motion mid-flight jumps them to their end state.
 const live = new Set<{ complete(): unknown }>();
-if (typeof window !== 'undefined') onReduceChange((r) => r && [...live].forEach((a) => a.complete()));
+if (typeof window !== 'undefined') matchMedia(REDUCE).addEventListener('change', (e) => e.matches && [...live].forEach((a) => a.complete()));
 
 export type Tween = { cancel(): number };
 
@@ -131,3 +139,14 @@ export const motionScope = (setup: (m: MotionScope, node: HTMLElement) => void) 
   setup(m, node);
   return () => m.revert();
 };
+
+/** A selection change inside `root`: the `sel` item's `::before` highlight glides from the old item to the new one. */
+export function glideSwap(root: Element | undefined, sel: string, change: () => void) {
+  const old = root?.querySelector(sel);
+  const from = old && box(old);
+  change();
+  if (!root || !from) return;
+  flushSync();
+  const now = root.querySelector(sel);
+  if (now && now !== old) glide(now, from, box(now), { pseudo: '::before' });
+}

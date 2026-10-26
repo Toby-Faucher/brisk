@@ -7,6 +7,7 @@
   import { startGame, watchPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import { glideSwap } from '../../ui/motion';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
   import { cardClick, filterGames, searchGames, shelves, type Filter } from './library';
@@ -29,6 +30,7 @@
 
   // Search/filter: the results cross-fade quickly, at most once per 150 ms so typing never strobes.
   let body: HTMLElement | undefined = $state();
+  let chips: HTMLElement | undefined = $state();
   let fadedAt = 0;
   let firstRun = true;
   $effect(() => {
@@ -81,8 +83,8 @@
   <h2>Library</h2>
   <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} placeholder="Search games" aria-label="Search games" /></label>
 </div>
-<div class="filters reveal" role="group" aria-label="Filter games">
-  {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => (f = id)}>{label}</button>{/each}
+<div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
+  {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => glideSwap(chips, '[aria-pressed="true"]', () => (f = id))}>{label}</button>{/each}
 </div>
 
 <div class="body" bind:this={body}>
@@ -118,10 +120,12 @@
   .search { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); min-width: 210px; }
   .search:focus-within { border-color: #3a4152; }
   .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; }
-  .filters { display: flex; gap: 6px; padding: 12px 0 0; flex-wrap: wrap; }
-  .fchip { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; transition: all .2s var(--ease); }
+  .filters { isolation: isolate; display: flex; gap: 6px; padding: 12px 0 0; flex-wrap: wrap; }
+  .fchip { position: relative; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; transition: color .2s var(--ease), border-color .2s var(--ease); }
   .fchip:hover { color: var(--fg); border-color: #3a4152; }
-  .fchip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); color: var(--fg); }
+  /* the selected fill is a pseudo-element, so it can glide between chips (motion glideSwap) */
+  .fchip[aria-pressed='true'] { border-color: transparent; color: var(--fg); }
+  .fchip[aria-pressed='true']::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--accent) 20%, transparent); border: 1px solid var(--accent); transform-origin: 0 0; }
   .body { padding-top: 16px; }
   .banner { margin-bottom: 14px; padding: 9px 14px; border-radius: 12px; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
   .empty { padding: 48px 0; display: grid; gap: 6px; justify-items: center; text-align: center; }
