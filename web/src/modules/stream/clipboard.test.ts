@@ -150,6 +150,17 @@ describe('ClipSync', () => {
     expect(r.writes).toEqual([]);
   });
 
+  it('size_is_utf8_bytes', async () => {
+    const r = rig();
+    r.st.local = text('a'.repeat(CLIP_MAX / 2)); // 8 MiB of ASCII: under the cap
+    await r.sync.focus();
+    expect(r.posts).toHaveLength(1);
+    r.st.local = text('é'.repeat(CLIP_MAX / 2 + 1)); // 2 bytes each: over
+    await r.sync.focus();
+    expect(r.posts).toHaveLength(1);
+    expect(r.notify).toHaveBeenCalledTimes(1);
+  });
+
   it('toggle_off_reads_and_sends_nothing', async () => {
     const r = rig();
     r.st.enabled = false;
@@ -259,6 +270,25 @@ describe('uploadQueue', () => {
     expect(order).toEqual(['start a', 'end a', 'start b', 'end b', 'start c', 'end c']);
     expect(done.mock.calls).toEqual([['a', '/dl/a'], ['b', '/dl/b'], ['c', '/dl/c']]);
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it('cancel_aborts_the_active_upload_and_drops_the_queue', async () => {
+    const signals: AbortSignal[] = [];
+    const send = vi.fn(
+      (_f: File, _p: (n: number) => void, signal: AbortSignal) =>
+        new Promise<{ path: string; size: number }>((_ok, no) => {
+          signals.push(signal);
+          signal.addEventListener('abort', () => no(new Error('cancelled')));
+        }),
+    );
+    const on = { progress: vi.fn(), done: vi.fn(), error: vi.fn() };
+    const q = uploadQueue(send, on);
+    q.add([file('a'), file('b')]);
+    q.cancel();
+    await vi.waitFor(() => expect(on.progress).toHaveBeenLastCalledWith(null, 0));
+    expect(signals[0].aborted).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(on.error).not.toHaveBeenCalled();
   });
 
   it('an_error_does_not_stop_the_queue', async () => {

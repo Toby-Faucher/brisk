@@ -134,9 +134,11 @@
     toast(kbLocked ? 'Fullscreen: hold Esc to get your mouse back' : `Esc lock is off (${why}): a tap on Esc will free the mouse`, { error: !kbLocked });
   }
 
+  const clipboardSync = $derived($settings.clipboardSync);
   $effect(() => {
-    if ($phase === 'live' && $settings.clipboardSync) clip.start();
-    else clip.stop();
+    if ($phase !== 'live' || !clipboardSync) return;
+    clip.start();
+    return () => clip.stop();
   });
 
   // Mount the session's canvas (a fresh one per connection) into the stage.
@@ -184,21 +186,29 @@
     const clipFocus = () => void clip.focus();
     // Drag and drop of files from the laptop (needs a free pointer: not while it is locked).
     const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
-    const over = (e: DragEvent) => {
+    // dragenter/dragleave fire per element crossed: count them, the overlay shows while > 0.
+    let depth = 0;
+    const enter = (e: DragEvent) => {
       if (!hasFiles(e)) return;
-      e.preventDefault(); // else Chrome opens the file
-      dropping = true;
+      e.preventDefault();
+      dropping = ++depth > 0;
+    };
+    const over = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault(); // else Chrome opens the file
     };
     const leave = (e: DragEvent) => {
-      if (!e.relatedTarget) dropping = false; // left the window
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      dropping = depth > 0;
     };
     const drop = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
+      depth = 0;
       dropping = false;
       uploads.add(Array.from(e.dataTransfer!.files));
     };
-    const drag: [string, (e: DragEvent) => void][] = [['dragenter', over], ['dragover', over], ['dragleave', leave], ['drop', drop]];
+    const drag: [string, (e: DragEvent) => void][] = [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop]];
     for (const [k, f] of drag) window.addEventListener(k, f as EventListener);
     window.addEventListener('focus', clipFocus);
     document.addEventListener('visibilitychange', clipFocus);
@@ -220,6 +230,7 @@
       destroyed = true;
       session.disconnect();
       clip.stop();
+      uploads.cancel();
       for (const [k, f] of drag) window.removeEventListener(k, f as EventListener);
       window.removeEventListener('focus', clipFocus);
       document.removeEventListener('visibilitychange', clipFocus);

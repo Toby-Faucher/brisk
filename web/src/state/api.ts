@@ -109,9 +109,11 @@ async function postClipboard(c: Clip): Promise<void> {
 }
 
 /** XHR, not fetch: fetch has no upload progress. hostd streams the body to ~/Downloads/brisk. */
-function uploadFile(f: File, progress: (loaded: number) => void): Promise<Saved> {
+function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortSignal): Promise<Saved> {
   return new Promise((ok, no) => {
     const x = new XMLHttpRequest();
+    signal?.addEventListener('abort', () => x.abort());
+    x.onabort = () => no(new ApiError('cancelled', 0));
     x.open('PUT', `/api/files/${encodeURIComponent(f.name)}`);
     for (const [k, v] of Object.entries(auth())) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => progress(e.loaded);

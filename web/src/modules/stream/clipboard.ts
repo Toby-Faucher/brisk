@@ -19,7 +19,7 @@ export type ClipDeps = {
   onstatus?: (s: 'ok' | 'denied') => void;
 };
 
-const size = (c: Clip) => (c.kind === 'text' ? c.text.length * 3 : c.blob.size); // UTF-8 upper bound
+const size = (c: Clip) => (c.kind === 'text' ? new TextEncoder().encode(c.text).length : c.blob.size);
 
 export async function clipHash(c: Clip): Promise<string> {
   const data = c.kind === 'text' ? new TextEncoder().encode(c.text) : new Uint8Array(await c.blob.arrayBuffer());
@@ -172,23 +172,26 @@ export function browserClipboard(cb?: Clipboard): LocalClipboard {
 
 export type Upload = { name: string; loaded: number; total: number };
 
-/** Files go up one at a time, in the order they were added. `progress(null, 0)` once all are done. */
+/** Files go up one at a time, in the order they were added. `progress(null, 0)` once all are done.
+ * `cancel` (leaving the page) aborts the active one and drops the rest; hostd removes the partial. */
 export function uploadQueue(
-  send: (f: File, progress: (loaded: number) => void) => Promise<Saved>,
+  send: (f: File, progress: (loaded: number) => void, signal: AbortSignal) => Promise<Saved>,
   on: { progress(u: Upload | null, queued: number): void; done(name: string, path: string): void; error(name: string, msg: string): void },
 ) {
   const q: File[] = [];
   let running = false;
+  let ctl = new AbortController();
   async function run() {
     running = true;
     while (q.length) {
       const f = q.shift()!;
       const report = (loaded: number) => on.progress({ name: f.name, loaded, total: f.size }, q.length);
       report(0);
+      const signal = ctl.signal;
       try {
-        on.done(f.name, (await send(f, report)).path);
+        on.done(f.name, (await send(f, report, signal)).path);
       } catch (e) {
-        on.error(f.name, (e as Error).message);
+        if (!signal.aborted) on.error(f.name, (e as Error).message);
       }
     }
     running = false;
@@ -198,6 +201,11 @@ export function uploadQueue(
     add(files: Iterable<File>) {
       q.push(...files);
       if (!running) void run();
+    },
+    cancel() {
+      q.length = 0;
+      ctl.abort();
+      ctl = new AbortController();
     },
   };
 }
