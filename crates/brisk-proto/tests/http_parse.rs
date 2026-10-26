@@ -154,3 +154,13 @@ fn pair_reply_fields() {
         Err(HttpError::Status { code: 400, .. })
     ));
 }
+
+#[test]
+fn codec_support_from_server_codec_mode_support() {
+    use brisk_proto::sdp::Codec;
+    let s = parse_serverinfo(&SERVERINFO.replace("PS", "0")).unwrap(); // 259 = H.264 | HEVC | HEVC Main10
+    assert!(s.supports(Codec::H264) && s.supports(Codec::Hevc));
+    let no_hevc = SERVERINFO.replace("PS", "0").replace(">259<", ">1<");
+    let s = parse_serverinfo(&no_hevc).unwrap();
+    assert!(s.supports(Codec::H264) && !s.supports(Codec::Hevc));
+}

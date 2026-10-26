@@ -36,6 +36,7 @@
   let page = $state<'boot' | 'idle' | 'unsupported' | 'session'>('boot');
   let statsOn = $state(false);
   let preset = $state<StreamInfo['preset']>(null);
+  let codec = $state<StreamInfo['codec']>(null);
   let captured = $state(false);
   let starting = $state(false);
   let hold = $state<Hold>({ progress: 0, fired: false });
@@ -56,6 +57,7 @@
     if (!info) return; // left the page while waiting
     if (info.state !== 'live') return void (page = 'idle');
     preset = info.preset;
+    codec = info.codec;
     page = 'session';
     await session.connect(info);
   }
@@ -66,6 +68,7 @@
       const info = await api.startStream({ preset: $settings.defaultPreset });
       if (destroyed) return; // left the page during the POST: the session is closed anyway
       preset = info.preset;
+      codec = info.codec;
       page = 'session';
       await session.connect(info);
     } catch (e) {
@@ -79,6 +82,7 @@
     toast(`Switching to ${r.preset === 'custom' ? 'custom quality' : r.preset}…`);
     await session.changeQuality(r);
     preset = session.info?.preset ?? r.preset;
+    codec = session.info?.codec ?? codec;
   }
 
   async function disconnect() {
@@ -190,6 +194,7 @@
       host={$host?.name ?? 'host'}
       rttMs={$stats.rttMs}
       {preset}
+      {codec}
       {captured}
       bind:statsOn
       onvolume={(v) => session.setVolume(v)}

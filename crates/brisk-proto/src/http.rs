@@ -166,6 +166,17 @@ pub struct ServerInfo {
     pub server_state: String,
 }
 
+impl ServerInfo {
+    /// `ServerCodecModeSupport` bits (moonlight-common-c `SCM_H264` 0x1, `SCM_HEVC` 0x100).
+    pub fn supports(&self, c: crate::sdp::Codec) -> bool {
+        let bit = match c {
+            crate::sdp::Codec::H264 => 0x1,
+            crate::sdp::Codec::Hevc => 0x100,
+        };
+        self.codec_mode_support & bit != 0
+    }
+}
+
 pub fn parse_serverinfo(xml: &str) -> Result<ServerInfo, HttpError> {
     let d = ok(parse(xml)?)?;
     Ok(ServerInfo {

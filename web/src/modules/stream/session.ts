@@ -94,9 +94,11 @@ export class StreamSession {
     this.end();
     this.state.set('connecting');
     const { appid: _, ...rest } = req;
+    // A preset change keeps the live codec; only the Advanced panel names one.
+    const codec = rest.codec ?? this.info?.codec ?? undefined;
     let info: StreamInfo;
     try {
-      info = await this.d.api.startStream(rest);
+      info = await this.d.api.startStream(codec ? { ...rest, codec } : rest);
     } catch (e) {
       if (gen === this.gen) {
         this.d.notify(`Couldn't change quality: ${(e as Error).message}`, true);

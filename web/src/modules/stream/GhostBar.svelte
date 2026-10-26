@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Preset, StreamReq } from '../../state/api';
+  import type { Codec, Preset, StreamReq } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
   import { hevcSupported } from '../../lib/video';
   import { EDGE_PX, HIDE_MS, advancedReq, edgeReveal, type Advanced } from './ghostbar';
@@ -9,6 +9,7 @@
     host,
     rttMs,
     preset,
+    codec,
     captured,
     statsOn = $bindable(false),
     onvolume,
@@ -20,6 +21,7 @@
     host: string;
     rttMs: number | null;
     preset: Preset | null;
+    codec: Codec | null;
     captured: boolean;
     statsOn?: boolean;
     onvolume: (v: number) => void;
@@ -89,6 +91,7 @@
 
   const toggle = (m: 'quality' | 'clip') => {
     menu = menu === m ? null : m;
+    if (menu === 'quality') adv.codec = codec ?? 'h264'; // start from the live codec
     update();
   };
   const pick = (p: Preset) => {
@@ -102,6 +105,7 @@
     onquality(advancedReq(adv));
   };
   const current = $derived(PRESETS.find((p) => p.id === preset));
+  const codecName = $derived(codec === 'hevc' ? 'HEVC' : 'H.264');
 </script>
 
 <div
@@ -153,7 +157,7 @@
         {/each}
         <button class="chip" aria-pressed={advanced || preset === 'custom'} aria-expanded={advanced} onclick={() => (advanced = !advanced)}>Advanced…</button>
       </div>
-      <p class="mono muted line">{current ? `1080p · 60 fps · H.264 · ${current.mbps} Mbps` : 'custom'}</p>
+      <p class="mono muted line">{current ? `1080p · 60 fps · ${codecName} · ${current.mbps} Mbps` : `custom · ${codecName}`}</p>
       {#if advanced}
         <div class="adv">
           <label>Resolution

@@ -167,6 +167,13 @@ async fn run(a: Args) -> brisk_client::Result<()> {
     let ident = load_identity(&dir)?;
     let mut s = Session::new(&a.host);
     let info = s.serverinfo(None).await?;
+    // H.264 is not checked, so its path stays as it was.
+    if a.codec == Codec::Hevc && !info.supports(Codec::Hevc) {
+        return Err(setup(format!(
+            "Sunshine reports no HEVC support on this GPU (ServerCodecModeSupport {:#x})",
+            info.codec_mode_support
+        )));
+    }
     let cfg = StreamConfig {
         width: a.width,
         height: a.height,

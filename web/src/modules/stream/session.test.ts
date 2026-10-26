@@ -99,13 +99,31 @@ describe('StreamSession', () => {
     expect(f.transports[0].close).toHaveBeenCalledTimes(1);
   });
 
+  it('change_quality_keeps_the_live_codec_unless_asked', async () => {
+    const f = fakeDeps();
+    f.failAfterFirst.on = false;
+    const s = new StreamSession(f.deps);
+    await s.connect({ ...LIVE, codec: 'hevc' });
+    await s.changeQuality({ preset: 'fast' });
+    expect(f.deps.api.startStream).toHaveBeenLastCalledWith({ preset: 'fast', codec: 'hevc' });
+    await s.changeQuality({ preset: 'custom', width: 1280, height: 720, codec: 'h264' });
+    expect(f.deps.api.startStream).toHaveBeenLastCalledWith({ preset: 'custom', width: 1280, height: 720, codec: 'h264' });
+  });
+
+  it('change_quality_without_a_live_session_sends_no_codec', async () => {
+    const f = fakeDeps();
+    const s = new StreamSession(f.deps);
+    await s.changeQuality({ preset: 'fast' });
+    expect(f.deps.api.startStream).toHaveBeenCalledWith({ preset: 'fast' });
+  });
+
   it('change_quality_restarts_with_no_appid', async () => {
     const f = fakeDeps();
     f.failAfterFirst.on = false;
     const s = new StreamSession(f.deps);
     await s.connect(LIVE);
     await s.changeQuality({ preset: 'crisp', appid: 42 });
-    expect(f.deps.api.startStream).toHaveBeenCalledWith({ preset: 'crisp' });
+    expect(f.deps.api.startStream).toHaveBeenCalledWith({ preset: 'crisp', codec: 'h264' });
     expect(f.transports[0].close).toHaveBeenCalledTimes(1);
     expect((f.deps.open as any).mock.calls[1][0]).toBe('https://h:4433/new');
     expect(get(s.state)).toBe('live');

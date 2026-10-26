@@ -92,15 +92,13 @@ export function codecFromHevcSps(sps: Uint8Array): string {
   return [...parts, ...cons.map((b) => b.toString(16).toUpperCase())].join('.');
 }
 
-/// The decoder codec string of a key frame's access unit: its first parameter set says which
-/// codec it is (H.264 SPS = type 7; HEVC VPS/SPS/PPS = types 32-34, header bytes 0x40-0x45, which
-/// read as H.264 types 0-5, never 7). Null without one, or HEVC without its SPS.
+/// The decoder codec string of a key frame's access unit: an H.264 SPS (type 7) gives avc1, as
+/// on main; else an HEVC SPS (type 33) gives hvc1. HEVC headers with nuh_layer_id 0 are even bytes,
+/// so they never read as H.264 type 7. Null without either.
 export function codecFromAccessUnit(annexb: Uint8Array): string | null {
-  const all = nals(annexb);
-  const first = all.find((n) => n.length && ((n[0] & 0x1f) === 7 || (hevcType(n[0]) >= 32 && hevcType(n[0]) <= 34)));
-  if (!first) return null;
-  if ((first[0] & 0x1f) === 7) return codecFromSps(first);
-  const sps = all.find((n) => n.length && hevcType(n[0]) === 33);
+  const avc = findSps(annexb);
+  if (avc) return codecFromSps(avc);
+  const sps = nals(annexb).find((n) => n.length && hevcType(n[0]) === 33);
   return sps ? codecFromHevcSps(sps) : null;
 }
 

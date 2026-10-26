@@ -40,12 +40,14 @@ to the fake bridge fails, so Stream is only checked for degrading to "Lost the c
 ## HEVC
 - Select: ghost bar, Quality, Advanced..., Codec: HEVC, Apply. It reconnects like any custom quality
   (`POST /api/stream` with `codec: "hevc"`, hostd starts the bridge with `--codec hevc`, the SDP asks
-  Sunshine for `bitStreamFormat` 1). H.264 stays the default; the preset chips always ask for H.264.
+  Sunshine for `bitStreamFormat` 1). H.264 stays the default for fresh launches; a preset change (chips, Ctrl+K) keeps the live codec.
 - HEVC is offered only when `VideoDecoder.isConfigSupported({codec: 'hvc1.1.6.L120.B0'})` says yes, else
   the option is disabled ("not supported on this browser").
 - The page does not trust the request: it reads the codec from the first key frame (H.264 SPS -> `avc1.*`,
   HEVC VPS/SPS/PPS -> `hvc1.*` from the SPS profile_tier_level, ISO 14496-15 E.3). The stats card shows it.
-- The bridge refuses a tap whose codec field differs from the one it asked for (error in the bridge log).
+- The bridge refuses a tap whose codec field differs from the one it asked for (error in the bridge log), and
+  with `--codec hevc` stops at once if Sunshine's serverinfo `ServerCodecModeSupport` lacks the HEVC bit 0x100
+  ("Sunshine reports no HEVC support on this GPU").
 - [U] Chrome decodes Annex B HEVC with no `description` (the WebCodecs HEVC registration says Annex B when it
   is absent; Sunshine sends VPS/SPS/PPS in-band on every IDR). [U] Chrome's key-frame check accepts the IDR
   that VAAPI hevc makes on an IDR request (it should be NAL type 19/20; the flag is Sunshine's key-frame flag,
