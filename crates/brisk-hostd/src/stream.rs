@@ -4,7 +4,7 @@
 
 use crate::config::Config;
 use crate::host::Runner;
-use crate::sessions::{now_ms, SessionRec, Sessions};
+use crate::sessions::{now_ms, SessionRec, Sessions, Stats};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
@@ -99,6 +99,8 @@ pub struct StreamInfo {
     pub appid: Option<u32>,
     pub wt: Option<String>,
     pub hash: Option<String>,
+    /// The live session's id (its record's `started`), for `PUT /api/sessions/<started>/series`.
+    pub started: Option<u64>,
 }
 
 const IDLE: StreamInfo = StreamInfo {
@@ -108,6 +110,7 @@ const IDLE: StreamInfo = StreamInfo {
     appid: None,
     wt: None,
     hash: None,
+    started: None,
 };
 
 /// What the bridge's watcher task and the request path share. `gen` bumps whenever a request
@@ -121,6 +124,8 @@ struct Shared {
 struct Running {
     pid: u32,
     done: watch::Receiver<bool>,
+    /// The bridge's end-of-session report, complete once `done`.
+    report: Arc<Mutex<Stats>>,
 }
 
 pub struct Supervisor {
@@ -131,7 +136,7 @@ pub struct Supervisor {
     cert: PathBuf,
     key: PathBuf,
     runner: Arc<dyn Runner>,
-    sessions: Arc<Sessions>,
+    pub sessions: Arc<Sessions>,
     shared: Arc<Mutex<Shared>>,
     /// Set by `shutdown`: no bridge may start after it.
     closing: std::sync::atomic::AtomicBool,
@@ -156,9 +161,7 @@ impl Supervisor {
             cert: tls.join("bridge.pem"),
             key: tls.join("bridge.key.pem"),
             runner,
-            sessions: Arc::new(Sessions {
-                path: cfg.data_dir.join("sessions.jsonl"),
-            }),
+            sessions: Arc::new(Sessions::new(cfg.data_dir.join("sessions.jsonl"))),
             shared: Arc::new(Mutex::new(Shared {
                 gen: 0,
                 info: IDLE,
@@ -259,6 +262,8 @@ impl Supervisor {
         );
         let mut launch = req.appid;
         let proc = self.proc_dir.clone();
+        let report = Arc::new(Mutex::new(Stats::default()));
+        let rep = report.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
         // the tap connects, and on exit flips to idle unless a request already took over.
         tokio::spawn(async move {
@@ -279,6 +284,7 @@ impl Supervisor {
                                     tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), id));
                                 }
                             }
+                            rep.lock().unwrap().line(&l);
                             forward(l);
                         }
                         _ => eof = true,
@@ -287,6 +293,16 @@ impl Supervisor {
                 }
             }
             drop(page_tx);
+            // The exit report may still be in the pipe: read it before the session is handed over.
+            let rest = async {
+                while let Ok(Some(l)) = lines.next_line().await {
+                    rep.lock().unwrap().line(&l);
+                    forward(l);
+                }
+            };
+            if !eof {
+                let _ = tokio::time::timeout(Duration::from_secs(1), rest).await;
+            }
             let rec = {
                 let mut s = shared.lock().unwrap();
                 if s.gen != gen {
@@ -297,18 +313,16 @@ impl Supervisor {
                 }
             };
             let _ = done_tx.send(true);
-            if let Some(r) = rec {
+            if let Some(mut r) = rec {
+                r.add_stats(std::mem::take(&mut *rep.lock().unwrap()));
                 sessions.close(r);
             }
-            // The exit report may still be in the pipe.
-            let rest = async {
-                while let Ok(Some(l)) = lines.next_line().await {
-                    forward(l);
-                }
-            };
-            let _ = tokio::time::timeout(Duration::from_secs(1), rest).await;
         });
-        *slot = Some(Running { pid, done: done_rx });
+        *slot = Some(Running {
+            pid,
+            done: done_rx,
+            report,
+        });
         let (wt, hash) = match tokio::time::timeout(self.page_wait, page_rx).await {
             Ok(Ok(wh)) => wh,
             res => {
@@ -320,18 +334,27 @@ impl Supervisor {
                 });
             }
         };
-        let rec = rec.unwrap_or_else(|| {
-            let r = SessionRec {
-                appid,
-                name: game.unwrap_or_else(|| "Desktop".into()),
-                started: now_ms(),
-                ended: None,
-                host: hostname(),
-                preset: req.preset,
-            };
-            self.sessions.append(&r);
-            r
-        });
+        let rec = match rec {
+            Some(mut r) => {
+                (r.preset, r.codec, r.bitrate_kbps) = (req.preset, Some(req.codec), Some(kbps));
+                r
+            }
+            None => {
+                let r = SessionRec {
+                    appid,
+                    name: game.unwrap_or_else(|| "Desktop".into()),
+                    started: now_ms(),
+                    ended: None,
+                    host: hostname(),
+                    preset: req.preset,
+                    codec: Some(req.codec),
+                    bitrate_kbps: Some(kbps),
+                    stats: None,
+                };
+                self.sessions.append(&r);
+                r
+            }
+        };
         let mut s = self.shared.lock().unwrap();
         s.info = StreamInfo {
             state: State::Live,
@@ -340,6 +363,7 @@ impl Supervisor {
             appid,
             wt: Some(wt),
             hash: Some(hash),
+            started: Some(rec.started),
         };
         s.rec = Some(rec);
         Ok(s.info.clone())
@@ -376,7 +400,7 @@ impl Supervisor {
     /// Takes over the state (watcher then leaves it alone), SIGTERMs the child and waits for it;
     /// SIGKILL after `stop_wait`. Returns what was running.
     async fn stop_locked(&self, slot: &mut Option<Running>) -> (StreamInfo, Option<SessionRec>) {
-        let prev = {
+        let mut prev = {
             let mut s = self.shared.lock().unwrap();
             s.gen += 1;
             (std::mem::replace(&mut s.info, IDLE), s.rec.take())
@@ -396,6 +420,9 @@ impl Supervisor {
                 );
                 signal(r.pid, "KILL");
                 let _ = r.done.wait_for(|d| *d).await;
+            }
+            if let Some(rec) = &mut prev.1 {
+                rec.add_stats(std::mem::take(&mut *r.report.lock().unwrap()));
             }
         }
         prev

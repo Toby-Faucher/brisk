@@ -4,6 +4,7 @@ use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
+use crate::sessions::{valid_point, Point, SeriesError, MAX_POINTS};
 use crate::steam::{self, GamesResult};
 use crate::stream::{Codec, Preset, StreamReq, Supervisor};
 use axum::extract::{DefaultBodyLimit, Path as UrlPath, Request, State};
@@ -235,7 +236,49 @@ async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response 
 }
 
 async fn sessions(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(serde_json::json!({ "sessions": s.stream.sessions(20) })).into_response()
+    axum::Json(serde_json::json!({ "sessions": s.stream.sessions(100) })).into_response()
+}
+
+/// `{session, series}`; 404 for a session hostd has no record of.
+async fn session_get(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u64>) -> Response {
+    match s.stream.sessions.get(id) {
+        Some(r) => {
+            axum::Json(serde_json::json!({ "session": r, "series": s.stream.sessions.series(id) }))
+                .into_response()
+        }
+        None => err(StatusCode::NOT_FOUND, "no such session"),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SeriesBody {
+    points: Vec<Point>,
+}
+
+/// `{points: [[t, delayMs, fps, mbps], ...]}` merged by t; 400 for a bad or implausible point
+/// (JSON has no NaN), 413 past MAX_POINTS (in the request or once merged) or 1 MiB, 404 for an
+/// unknown session.
+async fn series_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u64>,
+    b: axum::body::Bytes,
+) -> Response {
+    let b = match parse::<SeriesBody>(&b) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    if b.points.len() > MAX_POINTS {
+        return err(StatusCode::PAYLOAD_TOO_LARGE, "too many points");
+    }
+    if !b.points.iter().all(valid_point) {
+        return err(StatusCode::BAD_REQUEST, "bad point");
+    }
+    match s.stream.sessions.put_series(id, &b.points) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(SeriesError::NoSession) => err(StatusCode::NOT_FOUND, "no such session"),
+        Err(SeriesError::TooMany) => err(StatusCode::PAYLOAD_TOO_LARGE, "too many points"),
+    }
 }
 
 /// No `since`: 204 with only the seq (the page starts from it without writing anything). Newer
@@ -339,7 +382,10 @@ async fn prefs_put(
     b: axum::body::Bytes,
 ) -> Response {
     if id == 0 || id == s.cfg.app_id {
-        return err(StatusCode::BAD_REQUEST, "the Desktop has no per-game quality");
+        return err(
+            StatusCode::BAD_REQUEST,
+            "the Desktop has no per-game quality",
+        );
     }
     let b = match parse::<PrefsBody>(&b) {
         Ok(b) => b,
@@ -390,6 +436,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/install", post(install))
         .route("/quit", post(quit))
         .route("/sessions", get(sessions))
+        .route("/sessions/{started}", get(session_get))
+        .route(
+            "/sessions/{started}/series",
+            put(series_put).layer(DefaultBodyLimit::max(1 << 20)),
+        )
         .route("/prefs", get(prefs_get))
         .route("/prefs/{appid}", put(prefs_put).delete(prefs_delete))
         .route("/clipboard", get(clip_get).post(clip_post))

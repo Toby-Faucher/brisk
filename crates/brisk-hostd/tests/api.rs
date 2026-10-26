@@ -992,6 +992,12 @@ async fn delete_stops_and_records_session() {
     assert_eq!(s0["preset"], "crisp");
     assert!(s0["host"].is_string());
     assert!(s0["ended"].as_u64().unwrap() >= s0["started"].as_u64().unwrap());
+    // The fake bridge prints the real report on SIGTERM; hostd keeps it in the record.
+    assert_eq!(s0["codec"], "h264");
+    assert_eq!(s0["bitrateKbps"], 40000);
+    assert_eq!(s0["stats"]["frames"], 58193);
+    assert_eq!(s0["stats"]["bridgeP50"], 4.3);
+    assert_eq!(s0["stats"]["gate"], "pass");
     // DELETE with nothing running is fine
     assert_eq!(r.call("DELETE", "/api/stream", "").await.0, StatusCode::OK);
 }
@@ -1015,6 +1021,38 @@ async fn bridge_exiting_by_itself_goes_idle_and_closes_session() {
     let s = r.call("GET", "/api/sessions", "").await.1;
     assert_eq!(s["sessions"][0]["name"], "Desktop");
     assert!(s["sessions"][0]["ended"].is_u64(), "{s}");
+    assert_eq!(s["sessions"][0]["stats"]["durationS"], 970.2, "{s}");
+}
+
+/// The page PUTs its series to `started`; a quality change keeps the session and adds up both reports.
+#[tokio::test]
+async fn live_info_names_the_session_and_quality_change_merges_reports() {
+    let r = rig("");
+    let (_, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"fast","appid":10}"#)
+        .await;
+    let started = v["started"].as_u64().expect("started while live");
+    assert_eq!(r.call("GET", "/api/stream", "").await.1["started"], started);
+    let (_, v) = r
+        .call(
+            "POST",
+            "/api/stream",
+            r#"{"preset":"crisp","codec":"hevc"}"#,
+        )
+        .await;
+    assert_eq!(v["started"], started, "same session after a quality change");
+    let (_, v) = r.call("DELETE", "/api/stream", "").await;
+    assert_eq!(v["started"], serde_json::Value::Null);
+    let s = r.call("GET", "/api/sessions", "").await.1;
+    let s0 = &s["sessions"][0];
+    assert_eq!(s["sessions"].as_array().unwrap().len(), 1, "{s}");
+    assert_eq!(s0["started"], started);
+    assert_eq!(
+        (&s0["preset"], &s0["codec"]),
+        (&"crisp".into(), &"hevc".into())
+    );
+    assert_eq!(s0["stats"]["frames"], 2 * 58193, "{s}");
+    assert_eq!(s0["stats"]["durationS"], 1940.4);
 }
 
 #[tokio::test]
@@ -1022,8 +1060,8 @@ async fn sessions_returns_latest_first() {
     let r = rig("");
     std::fs::create_dir_all(&r.data).unwrap();
     let mut lines = String::new();
-    for i in 1..=25u64 {
-        let ended = if i == 25 {
+    for i in 1..=125u64 {
+        let ended = if i == 125 {
             "null".to_string()
         } else {
             (i * 1000 + 5).to_string()
@@ -1035,18 +1073,21 @@ async fn sessions_returns_latest_first() {
         lines += "\n";
     }
     lines += "garbage line\n";
-    // the open record of 25 is closed by a later line with the same start
-    lines +=
-        r#"{"appid":25,"name":"g25","started":25000,"ended":25009,"host":"bawn","preset":"fast"}"#;
+    // the open record of 125 is closed by a later line with the same start
+    lines += r#"{"appid":125,"name":"g125","started":125000,"ended":125009,"host":"bawn","preset":"fast"}"#;
     lines += "\n";
     std::fs::write(r.data.join("sessions.jsonl"), lines).unwrap();
     let s = r.call("GET", "/api/sessions", "").await.1;
     let s = s["sessions"].as_array().unwrap();
-    assert_eq!(s.len(), 20);
-    assert_eq!(s[0]["started"], 25000);
-    assert_eq!(s[0]["ended"], 25009);
-    assert_eq!(s[1]["started"], 24000);
-    assert_eq!(s[19]["started"], 6000);
+    assert_eq!(s.len(), 100);
+    assert_eq!(s[0]["started"], 125000);
+    assert_eq!(s[0]["ended"], 125009);
+    assert_eq!(s[1]["started"], 124000);
+    assert_eq!(s[99]["started"], 26000);
+    // old records (no codec, bitrate or stats) still read, as nulls
+    assert_eq!(s[1]["stats"], serde_json::Value::Null);
+    assert_eq!(s[1]["codec"], serde_json::Value::Null);
+    assert!(s.iter().all(|r| r.get("series").is_none()));
 }
 
 #[tokio::test]
