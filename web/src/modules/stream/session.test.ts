@@ -216,4 +216,45 @@ describe('StreamSession', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect((await p)?.state).toBe('live');
   });
+
+  describe('replay buffer', () => {
+    const KEY = Uint8Array.of(0, 0, 0, 1, 0x67, 0x64, 0, 0x28, 0, 0, 0, 1, 0x68, 0xee, 0, 0, 0, 1, 0x65, 0x88);
+    function replayDeps(seconds: number) {
+      const taps: ((au: Uint8Array, h: any, at: number) => void)[] = [];
+      const audioTaps: unknown[] = [];
+      const f = fakeDeps({
+        replaySeconds: () => seconds,
+        startVideo: (_t, _c, onDecode) => (onDecode && taps.push(onDecode), { stats: { framesPresented: 0 } as any, done: new Promise(() => {}) }),
+        startAudio: async (_t, _c, _o, onPacket) => (audioTaps.push(onPacket), {}),
+      });
+      return { f, taps, audioTaps };
+    }
+
+    it('off_passes_no_callbacks_and_has_no_clip', async () => {
+      const { f, taps, audioTaps } = replayDeps(0);
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      expect(taps).toHaveLength(0);
+      expect(audioTaps).toEqual([undefined]);
+      expect(s.clip()).toBeNull();
+    });
+
+    it('records_while_live_and_drops_on_quality_change_and_disconnect', async () => {
+      const { f, taps } = replayDeps(30);
+      f.failAfterFirst.on = false;
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      const now = performance.now();
+      taps[0](KEY, { idr: true, bridgeNs: 1n }, now);
+      expect(s.clip()?.video).toHaveLength(1);
+      await s.changeQuality({ preset: 'crisp' });
+      expect(s.clip()).toBeNull(); // a new connection, a new (empty) ring
+      taps[0](KEY, { idr: true, bridgeNs: 2n }, now); // the old connection's late frame goes nowhere
+      expect(s.clip()).toBeNull();
+      taps[1](KEY, { idr: true, bridgeNs: 3n }, performance.now());
+      expect(s.clip()?.video).toHaveLength(1);
+      s.disconnect();
+      expect(s.clip()).toBeNull();
+    });
+  });
 });

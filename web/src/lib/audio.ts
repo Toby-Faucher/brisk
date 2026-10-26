@@ -243,7 +243,8 @@ const DECODER_CONFIG = { codec: 'opus', sampleRate: RATE, numberOfChannels: 2 };
 /// Plays the bridge's audio datagrams from `transport` through `ctx`. Create `ctx` in a user
 /// gesture (the connect click), or Chrome's autoplay policy keeps it suspended.
 /// `workletUrl`: the bundled audio-worklet.ts. `out`: where the playout connects (a volume GainNode).
-export async function startAudio(transport: WebTransport, ctx: AudioContext, workletUrl: string, out: AudioNode = ctx.destination): Promise<Audio> {
+/// `onPacket` (replay buffer) gets each parsed packet, by reference.
+export async function startAudio(transport: WebTransport, ctx: AudioContext, workletUrl: string, out: AudioNode = ctx.destination, onPacket?: (h: AudioHeader) => void): Promise<Audio> {
   const stats: AudioStats = {
     underruns: 0, underrunMs: [], lost: 0, late: 0, pauses: 0, overflows: 0, dropped: 0, repeated: 0, bufferMs: 0,
     packets: 0, decoded: 0, nonSilent: 0, decodeErrors: 0, contextState: ctx.state, outputMs: 0, lastError: null,
@@ -307,6 +308,7 @@ export async function startAudio(transport: WebTransport, ctx: AudioContext, wor
         stats.lastError = String(e);
         continue;
       }
+      onPacket?.(h);
       seqs.push(h.seq);
       try {
         // Timestamps only need to increase; 5 ms per packet.

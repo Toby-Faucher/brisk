@@ -26,6 +26,9 @@
     onforget,
     onfullscreen,
     ondisconnect,
+    replaySeconds = 0,
+    onshot,
+    onreplay,
   }: {
     host: string;
     rttMs: number | null;
@@ -45,6 +48,10 @@
     onforget: () => void;
     onfullscreen: () => void;
     ondisconnect: () => void;
+    /** Settings' replay buffer length; 0 = off (the button is disabled). */
+    replaySeconds?: number;
+    onshot: () => void;
+    onreplay: () => void;
   } = $props();
 
   const PRESETS: { id: Preset; label: string; mbps: number }[] = [
@@ -161,6 +168,12 @@
   <button class="ic" aria-expanded={menu === 'quality'} aria-label="Quality" onclick={() => toggle('quality')} style="color:var(--c-agent)">
     <Icon name="quality" /><span class="tip">Quality: {current?.label ?? 'Custom'}</span>
   </button>
+  <button class="ic" aria-label="Screenshot" onclick={onshot} style="color:var(--c-stream)">
+    <Icon name="shot" /><span class="tip">Screenshot · Ctrl+Alt+S</span>
+  </button>
+  <button class="ic" aria-label={replaySeconds ? `Save last ${replaySeconds} s` : 'Save replay (off)'} disabled={!replaySeconds} onclick={onreplay} style="color:var(--c-lib)">
+    <Icon name="replay" /><span class="tip">{replaySeconds ? `Save last ${replaySeconds} s · Ctrl+Alt+R` : 'Replay buffer is off (Settings)'}</span>
+  </button>
   <button class="ic" aria-pressed={statsOn} aria-label="Stats" onclick={() => (statsOn = !statsOn)} style="color:var(--accent)">
     <Icon name="chart" /><span class="tip">Stats</span>
   </button>
@@ -242,6 +255,8 @@
   .ic:hover { background: color-mix(in srgb, #fff 10%, transparent); transform: translateY(-1px); }
   .ic[aria-pressed='true'], .ic[aria-expanded='true'] { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .tip { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(-4px); background: #000c; color: #fff; font-size: 11.5px; padding: 3px 8px; border-radius: 7px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all .18s var(--ease); }
+  .ic:disabled { opacity: .4; cursor: default; }
+  .ic:disabled:hover { background: transparent; transform: none; }
   .ic:hover .tip, .ic:focus-visible .tip { opacity: 1; transform: translateX(-50%); }
   .ic[aria-expanded='true'] .tip { opacity: 0; }
   .sep { width: 1px; height: 20px; background: color-mix(in srgb, #fff 14%, transparent); margin: 0 4px; }

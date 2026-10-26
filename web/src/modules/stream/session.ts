@@ -3,7 +3,9 @@
 // samples stats for the ghost bar and the stats card. Everything browser-side is injected (Deps).
 import { writable } from 'svelte/store';
 import type { StreamInfo, StreamReq } from '../../state/api';
-import type { VideoStats } from '../../lib/video';
+import { MSG_WANT_KEY, type FrameHeader, type VideoStats } from '../../lib/video';
+import type { AudioHeader } from '../../lib/audio';
+import { Replay, type Clip } from './replay';
 import type { PadInfo } from '../../lib/gamepad';
 
 export type SessionState = 'connecting' | 'live' | 'reconnecting' | 'failed';
@@ -29,6 +31,7 @@ type Transport = {
   ready: Promise<unknown>;
   closed: Promise<unknown>;
   close(): void;
+  createUnidirectionalStream?(): Promise<WritableStream<Uint8Array>>;
   getStats?(): Promise<{ bytesReceived?: number; smoothedRtt?: number }>;
 };
 type Gain = { gain: { value: number }; connect(n: unknown): unknown };
@@ -39,15 +42,17 @@ export interface Deps {
   api: { stream(): Promise<StreamInfo>; startStream(r: StreamReq): Promise<StreamInfo> };
   open(url: string, hash: string): Transport;
   audioContext(): Ctx;
-  startVideo(t: Transport, c: Canvas): { stats: VideoStats; done: Promise<void> };
-  startAudio(t: Transport, ctx: Ctx, out?: Gain): Promise<unknown>;
+  startVideo(t: Transport, c: Canvas, onDecode?: (au: Uint8Array, h: FrameHeader, at: number) => void): { stats: VideoStats; done: Promise<void> };
+  startAudio(t: Transport, ctx: Ctx, out?: Gain, onPacket?: (h: AudioHeader) => void): Promise<unknown>;
+  /** Replay buffer length, read at each connect; 0 or absent = off. */
+  replaySeconds?(): number;
   startInput(t: Transport, c: Canvas, onpads: (p: PadInfo[]) => void): Promise<{ release(): void }>;
   /** A fresh canvas per connection, so the old connection's input listeners see a dead element. */
   canvas(): Canvas;
   notify(text: string, error?: boolean): void;
 }
 
-type Conn = { t: Transport; ctx: Ctx; gain?: Gain; video?: { stats: VideoStats }; input?: { release(): void }; ours: boolean; liveAt: number };
+type Conn = { t: Transport; ctx: Ctx; gain?: Gain; video?: { stats: VideoStats }; input?: { release(): void }; replay?: Replay; ours: boolean; liveAt: number };
 
 /** hostd's stream, waiting up to 10 s while it is 'starting'; null as soon as `alive()` turns false. */
 export async function pollLive(api: Deps['api'], alive: () => boolean): Promise<StreamInfo | null> {
@@ -125,6 +130,11 @@ export class StreamSession {
     if (this.conn?.gain) this.conn.gain.gain.value = v;
   }
 
+  /** The last N s of this connection (references into the replay ring), or null: off, or no key frame yet. */
+  clip(): Clip | null {
+    return this.conn?.replay?.clip() ?? null;
+  }
+
   async resumeSound() {
     await this.conn?.ctx.resume();
     this.needsSound.set(this.conn?.ctx.state === 'suspended');
@@ -150,7 +160,10 @@ export class StreamSession {
     this.conn = conn;
     const canvas = this.d.canvas();
     this.canvasEl.set(canvas);
-    conn.video = this.d.startVideo(t, canvas);
+    // One ring per connection: a reconnect, quality change or disconnect drops it (end()).
+    const replay = (conn.replay = new Replay(this.d.replaySeconds?.() ?? 0));
+    const on = replay.seconds > 0;
+    conn.video = this.d.startVideo(t, canvas, on ? (au, h, at) => replay.video(au, h.idr, h.bridgeNs, at) : undefined);
     const onpads = (p: PadInfo[]) => conn === this.conn && this.pads.set(p);
     this.d.startInput(t, canvas, onpads).then((i) => (conn.input = i), () => {});
     conn.gain = ctx.createGain?.();
@@ -158,7 +171,7 @@ export class StreamSession {
       conn.gain.gain.value = this.volume;
       conn.gain.connect(ctx.destination);
     }
-    this.d.startAudio(t, ctx, conn.gain).catch(() => {});
+    this.d.startAudio(t, ctx, conn.gain, on ? (h) => replay.audio(h) : undefined).catch(() => {});
     this.needsSound.set(ctx.state === 'suspended');
     this.stats.set(empty());
     this.startSampling(conn);
@@ -210,6 +223,8 @@ export class StreamSession {
     this.conn = null;
     c.ours = true;
     c.input?.release();
+    c.replay?.clear();
+    c.replay = undefined;
     this.pads.set([]);
     try {
       c.t.close();
@@ -223,6 +238,14 @@ export class StreamSession {
     this.timer = setInterval(async () => {
       const s = conn.video!.stats;
       const at = performance.now();
+      // Sunshine sends no periodic IDR; a clip has to start at one.
+      if (conn.replay?.wantKey(at)) {
+        conn.t.createUnidirectionalStream?.().then(async (u) => {
+          const w = u.getWriter();
+          await w.write(Uint8Array.of(MSG_WANT_KEY));
+          await w.close();
+        }).catch(() => {});
+      }
       const ts = await conn.t.getStats?.().catch(() => undefined);
       if (conn !== this.conn) return;
       const dt = (at - prev.at) / 1000;

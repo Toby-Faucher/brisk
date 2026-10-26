@@ -33,7 +33,7 @@ export function parseHeader(b: Uint8Array): FrameHeader {
 }
 
 /// The NAL units (header included, start code not) of an Annex B access unit.
-function nals(annexb: Uint8Array): Uint8Array[] {
+export function nals(annexb: Uint8Array): Uint8Array[] {
   const starts: number[] = [];
   for (let i = 0; i + 2 < annexb.length; i++) {
     if (annexb[i] === 0 && annexb[i + 1] === 0 && annexb[i + 2] === 1) {
@@ -217,8 +217,9 @@ export interface Video {
   done: Promise<void>;
 }
 
-/// Plays the bridge's video from `transport` onto `canvas`.
-export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): Video {
+/// Plays the bridge's video from `transport` onto `canvas`. `onDecode` (replay buffer) gets each
+/// access unit that goes to the decoder, by reference.
+export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement, onDecode?: (annexb: Uint8Array, h: FrameHeader, arrival: number) => void): Video {
   const stats: VideoStats = {
     codec: null, supported: null, hardwareAcceleration: null, width: 0, height: 0,
     framesReceived: 0, bytesReceived: 0, framesDecoded: 0, framesPresented: 0, framesDropped: 0, framesSkipped: 0,
@@ -359,6 +360,7 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
     const timestamp = Math.round(h.idx * US_PER_FRAME);
     decodeStart.set(timestamp, performance.now());
     if (decodeStart.size > 64) decodeStart.delete(decodeStart.keys().next().value!);
+    onDecode?.(annexb, h, arrival);
     try {
       decoder!.decode(new EncodedVideoChunk({ type: h.idr ? 'key' : 'delta', timestamp, data: annexb }));
     } catch (e) {

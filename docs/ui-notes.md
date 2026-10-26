@@ -107,6 +107,49 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   real image copy both ways, were not tried on hardware; the hostd side was checked live against bawn's sway
   (`cargo test -p brisk-hostd -- --ignored live_`: sets text, reads it with wl-paste, clears it).
 
+## Screenshot and replay clip
+- All in the browser, nothing on the host: files download to the laptop (`a[download]`) as
+  `brisk-<game or desktop>-<YYYYMMDD-HHMMSS>.png|.mp4` (local time; the game name slugged). Nothing shows on
+  screen while playing except the toast ("Saved <name> · copied", "Saved <name> · 29 s · 148.2 MB").
+- Ghost bar: Screenshot, and "Save last N s" (N from Settings; disabled when Off). Hotkeys Ctrl+Alt+S
+  (screenshot) and Ctrl+Alt+R (clip) are caught on `window` in the capture phase
+  (Stream.svelte), so input.ts (window, bubble phase) never sees them and they never reach the game; their
+  keyup is swallowed too. The Ctrl and Alt presses before them do reach the game. Chrome has no Ctrl+Alt+S/R
+  shortcut on Linux, Windows or macOS (Shift or Meta held = not ours: GNOME's Ctrl+Alt+Shift+R recorder is
+  untouched). On Windows Ctrl+Alt is also AltGr, so on a layout where AltGr+S types a letter (Polish: ś)
+  that letter cannot be typed into the game.
+- Screenshot: `canvas.toBlob('image/png')` of the video canvas, which is the stream's native size (video.ts
+  sizes it to each frame) and holds the last drawn frame (frames are drawn on arrival). Also written to the
+  laptop clipboard as PNG when Chrome allows it (ClipboardItem with the PNG promise, inside the key/click
+  gesture). With clipboard sync on, that image then also syncs to bawn like any copy.
+- Replay buffer (Settings: Off / 15 / 30 / 60 s, default 30, key `replaySeconds`; read at each connect):
+  web/src/modules/stream/replay.ts. video.ts hands every access unit that goes to the decoder (Annex B,
+  key flag, the frame header's bridge_ns) and audio.ts every parsed Opus packet (ts_48k) to one optional
+  callback each, by reference (no copy, no await; when Off no callback is passed). The ring evicts by
+  arrival time (older than N s, then through to the next key frame: deltas without their IDR are useless)
+  and by bytes (160 MiB for video + audio + 64 B per entry, oldest first). One ring per connection, cleared on
+  disconnect, reconnect, quality change and leaving /stream. Sunshine sends no periodic IDR, so while replay
+  is on the page asks the bridge for a key frame (`0x01`) whenever none came for 5 s: the clip starts at
+  one, so it is N-5..N s long. Cost: one IDR every 5 s (a burst of a few hundred KB at Crisp).
+- Clip: from the first key frame at or after now - N s (else the earliest) whose SPS/PPS(/VPS) equal the
+  newest key frame's (a resolution change mid-buffer clips only the last config); video times from
+  bridge_ns. Audio: packets overlapping that video, placed by their own ts_48k (no drift, u32 wrap and
+  reordering handled), mapped to the video clock by the least-queued packet and frame (min arrival - send
+  of each); gaps (lost, or a silent host that stops sending) are filled with 1-byte Opus packets (the TOC
+  only = a lost frame: the decoder conceals, then silence). Opus pre-skip is 120 (libopus lookahead in
+  RESTRICTED_LOWDELAY, 2.5 ms). Muxed in a Worker (clip-worker.ts, mp4.ts) with mediabunny 1.61.4
+  (MPL-2.0; mp4-muxer is deprecated in its favour): given Annex B and no description it builds the avcC /
+  hvcC from the key frame's in-band parameter sets and rewrites the NAL units length-prefixed. Packets go
+  to the worker in 8 MB batches (one copy each, then transferred) with a yield between batches.
+- Checks: `npm test` (replay.test.ts: ring eviction, key frame choice, config change, audio gaps, and a
+  mux of the ffmpeg fixtures in fixtures/ (gen.sh) probed with ffprobe and decoded by ffmpeg, both codecs).
+  `node scripts/clip-check.mjs [x.mp4 ...]`: headless Chrome screenshot of the latest frame, a Crisp-size
+  ring (155 MB) clipped while a 60 fps canvas loop runs (no long task over 50 ms; clip() about 20 ms, the rest
+  in the worker), and MP4s played in a `<video>`.
+- [U] Not tried with a real stream: clip A/V sync on bawn, the IDR-every-5-s cost at Crisp, Chrome's
+  download prompt and clipboard permission while pointer-locked/fullscreen, and HEVC clip playback (headless
+  Chromium has no HEVC decoder: the HEVC MP4 loads with duration 3 s but 0x0 video; ffmpeg decodes it clean).
+
 ## Env vars
 BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),
 BRISK_DIST, BRISK_DATA_DIR, BRISK_BRIDGE_BIN, BRISK_STEAM_DIR, BRISK_STEAM_KEY_FILE

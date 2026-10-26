@@ -16,6 +16,7 @@
   import { StreamSession, pollLive } from './session';
   import { holdEsc, type Hold } from './ghostbar';
   import { ClipSync, browserClipboard, uploadQueue, type Upload } from './clipboard';
+  import { download, fileName, hotkey, muxInWorker, screenshot } from './capture';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
 
@@ -24,8 +25,9 @@
     api,
     open: (url, hash) => new WebTransport(url, { serverCertificateHashes: [{ algorithm: 'sha-256', value: hexBytes(hash) }] }),
     audioContext: () => new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' }),
-    startVideo: (t, c) => startVideo(t as WebTransport, c),
-    startAudio: (t, ctx, out) => startAudio(t as WebTransport, ctx as AudioContext, workletUrl, out as unknown as AudioNode),
+    startVideo: (t, c, onDecode) => startVideo(t as WebTransport, c, onDecode),
+    startAudio: (t, ctx, out, onPacket) => startAudio(t as WebTransport, ctx as AudioContext, workletUrl, out as unknown as AudioNode, onPacket),
+    replaySeconds: () => get(settings).replaySeconds,
     startInput: (t, c, onpads) => startInput(t as WebTransport, c, onpads),
     canvas: () => {
       const c = document.createElement('canvas');
@@ -116,6 +118,41 @@
   const gameName = $derived($games?.games.find((g) => g.appid === appid)?.name ?? 'this game');
   const savedFor = $derived(appid !== null && $prefs[appid] ? gameName : null);
 
+  const gameOrNull = () => (appid === null ? null : ($games?.games.find((g) => g.appid === appid)?.name ?? `app-${appid}`));
+
+  async function shot() {
+    const c = $canvasEl;
+    if (!c || !c.width) return toast('Nothing on screen yet');
+    const name = fileName(gameOrNull(), 'png');
+    try {
+      const { blob, copied } = await screenshot(c);
+      download(blob, name);
+      toast(`Saved ${name}${copied ? ' · copied' : ''}`);
+    } catch (e) {
+      toast(`Couldn't take the screenshot: ${(e as Error).message}`, { error: true });
+    }
+  }
+
+  let saving = false;
+  async function saveReplay() {
+    if (!$settings.replaySeconds) return toast('Replay buffer is off: turn it on in Settings');
+    if (saving) return toast('Already saving a clip…');
+    const c = $canvasEl;
+    const clip = session.clip();
+    if (!clip || !c?.width) return toast('Nothing to save yet');
+    saving = true;
+    const name = fileName(gameOrNull(), 'mp4');
+    try {
+      const blob = await muxInWorker(clip, c.width, c.height);
+      download(blob, name);
+      toast(`Saved ${name} · ${Math.round(clip.seconds)} s · ${(blob.size / 1e6).toFixed(1)} MB`, { ms: 5000 });
+    } catch (e) {
+      toast(`Couldn't save the clip: ${(e as Error).message}`, { error: true });
+    } finally {
+      saving = false;
+    }
+  }
+
   async function forget() {
     if (appid === null) return;
     try {
@@ -192,6 +229,20 @@
       cancelAnimationFrame(raf);
       hold = esc.release(performance.now());
     };
+    // Reserved hotkeys, in the capture phase so input.ts (window, bubble phase) never sees them.
+    const swallowed = new Set<string>();
+    const hot = (e: KeyboardEvent) => {
+      if (page !== 'session') return;
+      const k = e.type === 'keydown' ? hotkey(e) : null;
+      if (!k && !(e.type === 'keyup' && swallowed.delete(e.code))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!k) return;
+      swallowed.add(e.code);
+      if (!e.repeat) void (k === 'shot' ? shot() : saveReplay());
+    };
+    window.addEventListener('keydown', hot, true);
+    window.addEventListener('keyup', hot, true);
     let hinted = false;
     const cap = () => {
       captured = !!document.pointerLockElement || document.activeElement?.id === 'video';
@@ -263,6 +314,8 @@
       document.removeEventListener('pointerlockchange', clipFocus);
       off();
       cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', hot, true);
+      window.removeEventListener('keyup', hot, true);
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
       document.removeEventListener('pointerlockchange', cap);
@@ -297,6 +350,9 @@
       onforget={forget}
       onfullscreen={fullscreen}
       ondisconnect={disconnect}
+      replaySeconds={$settings.replaySeconds}
+      onshot={shot}
+      onreplay={saveReplay}
     />
     {#if statsOn}<StatsCard stats={$stats} path={$host?.path === 'relay' ? 'Relay' : $host?.path === 'direct' ? 'Direct' : null} />{/if}
     {#if $phase === 'connecting'}

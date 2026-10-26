@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ACCENT_HEX, settings, type Accent, type Settings } from '../../state/settings';
+  import { ACCENT_HEX, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
   import type { Preset } from '../../state/api';
   import Card from '../../ui/Card.svelte';
 
@@ -38,6 +38,15 @@
     <p class="note">On: every copy on this laptop goes to the host's clipboard while the stream has focus, passwords from a password manager included.</p>
   </Card>
   <Card cols={2}>
+    <h4>Replay buffer</h4>
+    <label class="opt"><span>Keep the last <small class="lab">for Save replay, Ctrl+Alt+R</small></span>
+      <select value={$settings.replaySeconds} onchange={(e) => set({ replaySeconds: Number(e.currentTarget.value) as ReplaySeconds })}>
+        {#each REPLAY_SECONDS as n (n)}<option value={n}>{n ? `${n} s` : 'Off'}</option>{/each}
+      </select>
+    </label>
+    <p class="note">Held in this browser's memory only (at most 160 MB), dropped when the stream disconnects or changes quality. While on, the page asks the host for a key frame every 5 s. Applies from the next connect.</p>
+  </Card>
+  <Card cols={2}>
     <h4>Default quality</h4>
     <div class="row" role="group" aria-label="Default quality">
       {#each PRESETS as p (p)}
@@ -56,6 +65,7 @@
   .sw[aria-checked='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }
   .opt { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
   .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  .opt select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 13px; }
   .opt input { accent-color: var(--accent); width: 18px; height: 18px; }
   .fchip { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; text-transform: capitalize; }
   .fchip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); color: var(--fg); }
