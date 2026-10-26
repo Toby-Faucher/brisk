@@ -1,11 +1,13 @@
-//! POST /api/quit against a fake /proc and a fake Runner. Nothing here signals a real process:
-//! `kill` and `swaymsg` only reach `Fake`, which edits the fake /proc. Time is paused (tokio
+//! POST /api/quit against a fake /proc, a fake Runner and a fake Signaller. Nothing here signals
+//! a real process: signals and `swaymsg` only reach `Fake`, which edits the fake /proc (the real
+//! pidfd Signaller is tested on a real child in running.rs). Time is paused (tokio
 //! test-util), so the 10 s waits run instantly and in a fixed order.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::config::Config;
 use brisk_hostd::http::{AppState, router};
+use brisk_hostd::running::{Sent, Sig, Signaller};
 use brisk_hostd::steam::{Game, GamesResult};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -63,12 +65,17 @@ fn fake_procs(root: &Path, procs: &[(u32, u32, &[&str])]) {
         let d = root.join(pid.to_string());
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(d.join("cmdline"), argv.join("\0") + "\0").unwrap();
-        std::fs::write(d.join("stat"), format!("{pid} (a b) S {ppid} 1 1 0")).unwrap();
+        std::fs::write(d.join("stat"), stat(*pid, "a b", 'S', *ppid, 1000 + pid)).unwrap();
     }
     let z = root.join(ZOMBIE.to_string());
     std::fs::create_dir_all(&z).unwrap();
     std::fs::write(z.join("cmdline"), "").unwrap();
-    std::fs::write(z.join("stat"), format!("{ZOMBIE} (Chowdren) Z 511 1 1 0")).unwrap();
+    std::fs::write(z.join("stat"), stat(ZOMBIE, "Chowdren", 'Z', 511, 1520)).unwrap();
+}
+
+/// A /proc/<pid>/stat line; `start` is field 22 (starttime).
+fn stat(pid: u32, comm: &str, state: char, ppid: u32, start: u32) -> String {
+    format!("{pid} ({comm}) {state} {ppid} 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {start} 0 0")
 }
 
 /// What makes a game exit: its windows closing, SIGTERM, SIGKILL, or nothing.
@@ -80,12 +87,28 @@ enum Exits {
     Never,
 }
 
+/// How the fake signaller answers.
+#[derive(Clone, Copy, PartialEq)]
+enum Fail {
+    No,
+    /// EPERM: nothing delivered.
+    Eperm,
+    /// The signal lands but the process was already exiting: ESRCH.
+    Esrch,
+    /// A kernel without pidfd: ENOSYS.
+    Enosys,
+}
+
 struct Fake {
     proc: PathBuf,
     exits: Exits,
-    /// `kill` exits non-zero (a pid already gone, EPERM, no binary).
-    kill_fails: bool,
+    fail: Fail,
+    /// This pid is handed to an unrelated process between the scan and the signal.
+    recycle: Option<u32>,
+    /// Every swaymsg call and every signal asked for, in order.
     calls: Mutex<Vec<String>>,
+    /// Signals that reached a process.
+    delivered: Mutex<Vec<String>>,
 }
 
 impl Fake {
@@ -112,24 +135,49 @@ impl brisk_hostd::host::Runner for Fake {
         if p == "swaymsg" && self.exits == Exits::OnClose && a.last() == Some(&"[con_id=16] kill") {
             self.gone(GAME_10);
         }
-        if p == "kill" {
-            let hit = match a[0] {
-                "-TERM" => self.exits == Exits::OnTerm,
-                "-KILL" => self.exits == Exits::OnKill,
-                _ => false,
-            };
-            if hit {
-                let pids: Vec<u32> = a[1..].iter().map(|p| p.parse().unwrap()).collect();
-                self.gone(&pids);
-                if pids.contains(&502) {
-                    self.gone(GAME_10); // its reaper exits once the game has
-                }
-            }
-            if self.kill_fails {
-                return None;
+        Some(String::new())
+    }
+}
+
+impl Signaller for Fake {
+    fn signal(&self, pid: u32, sig: Sig, same: &dyn Fn() -> bool) -> Sent {
+        let line = format!(
+            "kill -{} {pid}",
+            if sig == Sig::Term { "TERM" } else { "KILL" }
+        );
+        self.calls.lock().unwrap().push(line.clone());
+        let d = self.proc.join(pid.to_string());
+        if self.recycle == Some(pid) {
+            std::fs::write(d.join("cmdline"), "innocent\0").unwrap();
+            std::fs::write(d.join("stat"), stat(pid, "innocent", 'S', 1, 999_999)).unwrap();
+        }
+        if self.fail == Fail::Enosys {
+            return Sent::Failed("pidfd_open: Function not implemented".into());
+        }
+        if !d.exists() {
+            return Sent::Gone;
+        }
+        if !same() {
+            return Sent::Recycled;
+        }
+        if self.fail == Fail::Eperm {
+            return Sent::Denied;
+        }
+        self.delivered.lock().unwrap().push(line);
+        let hit = match sig {
+            Sig::Term => self.exits == Exits::OnTerm,
+            Sig::Kill => self.exits == Exits::OnKill,
+        };
+        if hit {
+            self.gone(&[pid]);
+            if pid == 502 {
+                self.gone(GAME_10); // its reaper exits once the game has
             }
         }
-        Some(String::new())
+        if self.fail == Fail::Esrch {
+            return Sent::Gone;
+        }
+        Sent::Signalled
     }
 }
 
@@ -159,7 +207,11 @@ fn game(appid: u32, name: &str) -> Game {
     }
 }
 
-fn rig_with(exits: Exits, kill_fails: bool, as_root: bool) -> Rig {
+fn rig_with(exits: Exits, fail: Fail, as_root: bool) -> Rig {
+    rig_full(exits, fail, None, as_root)
+}
+
+fn rig_full(exits: Exits, fail: Fail, recycle: Option<u32>, as_root: bool) -> Rig {
     let d = tempfile::tempdir().unwrap();
     let proc = d.path().join("proc");
     fake_procs(&proc, PROCS);
@@ -173,11 +225,14 @@ fn rig_with(exits: Exits, kill_fails: bool, as_root: bool) -> Rig {
     let fake = Arc::new(Fake {
         proc,
         exits,
-        kill_fails,
+        fail,
+        recycle,
         calls: Mutex::default(),
+        delivered: Mutex::default(),
     });
     let mut st = AppState::with_host(cfg, fake.clone(), Arc::new(Clock0));
     st.quit.as_root = as_root;
+    st.quit.signaller = fake.clone();
     *st.games.lock().unwrap() = Some(GamesResult {
         games: vec![
             game(10, "Pepper Grinder"),
@@ -195,7 +250,7 @@ fn rig_with(exits: Exits, kill_fails: bool, as_root: bool) -> Rig {
 }
 
 fn rig(exits: Exits) -> Rig {
-    rig_with(exits, false, false)
+    rig_with(exits, Fail::No, false)
 }
 
 fn req(body: &str, secret: Option<&str>) -> Request<Body> {
@@ -238,11 +293,21 @@ impl Rig {
 const CLOSE: [&str; 2] = ["swaymsg [con_id=15] kill", "swaymsg [con_id=16] kill"];
 const BYSTANDERS: [u32; 7] = [400, 410, 411, 412, 450, 600, 601];
 
-fn term10() -> String {
-    format!("kill -TERM {KIDS_10}")
+/// One signal per pid, lowest first.
+fn each(sig: &str) -> Vec<String> {
+    KIDS_10
+        .split(' ')
+        .map(|p| format!("kill -{sig} {p}"))
+        .collect()
 }
-fn kill10() -> String {
-    format!("kill -KILL {KIDS_10}")
+fn term10() -> Vec<String> {
+    each("TERM")
+}
+fn kill10() -> Vec<String> {
+    each("KILL")
+}
+fn close() -> Vec<String> {
+    CLOSE.map(String::from).to_vec()
 }
 
 #[tokio::test(start_paused = true)]
@@ -274,7 +339,7 @@ async fn escalation_sigterms_only_the_reapers_descendants() {
         "waited for the close first"
     );
     // wineserver (505, reparented to the reaper) and the zombie are the game's too; the reaper is not.
-    assert_eq!(r.calls(), [CLOSE[0].into(), CLOSE[1].into(), term10()]);
+    assert_eq!(r.calls(), [close(), term10()].concat());
     for pid in BYSTANDERS {
         assert!(r.alive(pid), "{pid} must stay untouched");
     }
@@ -308,7 +373,7 @@ async fn force_skips_the_close_and_sigkills_3s_after_sigterm() {
         (StatusCode::OK, Some("closed")),
         "{v}"
     );
-    assert_eq!(r.calls(), [term10(), kill10()]);
+    assert_eq!(r.calls(), [term10(), kill10()].concat());
     assert!(
         took >= Duration::from_secs(3) && took < Duration::from_secs(4),
         "{took:?}"
@@ -359,21 +424,49 @@ async fn a_stuck_lone_reaper_is_sigkilled_only_with_force() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn kill_failing_is_still_running() {
-    let r = rig_with(Exits::Never, true, false);
+async fn eperm_is_still_running() {
+    let r = rig_with(Exits::OnTerm, Fail::Eperm, false);
     let (st, v) = r.quit(r#"{"appid":10,"force":true}"#).await;
     assert_eq!(
         (st, v["state"].as_str()),
         (StatusCode::OK, Some("still-running"))
     );
+    assert!(r.fake.delivered.lock().unwrap().is_empty());
+    assert!(r.alive(502));
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_pid_vanishing_before_the_signal_is_fine() {
-    // kill reports failure because the processes went away under it: closed, no panic.
-    let r = rig_with(Exits::OnTerm, true, false);
+    // ESRCH because the processes went away under it: closed, no panic.
+    let r = rig_with(Exits::OnTerm, Fail::Esrch, false);
     let (st, v) = r.quit(r#"{"appid":10}"#).await;
     assert_eq!((st, v["state"].as_str()), (StatusCode::OK, Some("closed")));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_pid_recycled_between_scan_and_signal_is_not_signalled() {
+    let r = rig_full(Exits::OnTerm, Fail::No, Some(502), false);
+    let (st, v) = r.quit(r#"{"appid":10,"force":true}"#).await;
+    assert_eq!(
+        (st, v["state"].as_str()),
+        (StatusCode::OK, Some("still-running")),
+        "{v}"
+    );
+    let d = r.fake.delivered.lock().unwrap().clone();
+    assert!(!d.iter().any(|c| c.ends_with(" 502")), "{d:?}");
+    // The other game processes were signalled; the unrelated owner of 502 lives on.
+    assert!(d.contains(&"kill -TERM 501".to_string()), "{d:?}");
+    assert!(r.alive(502) && r.alive(500));
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_pidfd_support_stops_with_an_error_and_no_fallback() {
+    let r = rig_with(Exits::OnTerm, Fail::Enosys, false);
+    let (_, v) = r.quit(r#"{"appid":10,"force":true}"#).await;
+    assert_eq!(v["state"], "still-running");
+    // TERM then KILL, each round stopping at its first pid.
+    assert_eq!(r.calls(), ["kill -TERM 501", "kill -KILL 501"]);
+    assert!(r.fake.delivered.lock().unwrap().is_empty());
 }
 
 #[tokio::test(start_paused = true)]
@@ -413,7 +506,7 @@ async fn no_or_wrong_secret_is_403() {
 
 #[tokio::test(start_paused = true)]
 async fn hostd_as_root_refuses_to_quit() {
-    let r = rig_with(Exits::OnClose, false, true);
+    let r = rig_with(Exits::OnClose, Fail::No, true);
     let (st, _) = r.quit(r#"{"appid":10}"#).await;
     assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
     assert!(r.calls().is_empty());
@@ -470,5 +563,5 @@ async fn a_client_that_hangs_up_does_not_stop_the_quit() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert!(!r.alive(502));
-    assert!(r.calls().contains(&term10()));
+    assert!(r.calls().ends_with(&term10()));
 }

@@ -156,8 +156,7 @@ pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> 
 /// (not a symlink) owned by us that only we can write (0600 or 0644): anyone else editing it
 /// could let themselves in.
 pub fn load_users(file: &Path) -> Vec<String> {
-    // SAFETY: getuid has no preconditions and cannot fail.
-    load_users_as(file, unsafe { libc::getuid() })
+    load_users_as(file, rustix::process::getuid().as_raw())
 }
 
 /// `load_users` for an expected owner `uid`. Opened with O_NOFOLLOW (a symlink fails to open) and

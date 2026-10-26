@@ -194,6 +194,7 @@ dependencies = [
  "http-body-util",
  "libc",
  "rand_core 0.6.4",
+ "rustix",
  "rustls-graviola",
  "serde",
  "serde_json",
