@@ -55,6 +55,8 @@ stub curl 'a="$*"; case $a in
   *https*) echo -n "${CODE_NOAUTH:-403}";;
 esac'
 stub cargo ''
+# RUSTUP=fail exits 1; RUSTUP=hang outlives BRISK_RUSTUP_TIMEOUT
+stub rustup 'case ${RUSTUP:-ok} in fail) exit 1;; hang) exec sleep 30;; esac; exit 0'
 # npm run build -- --outDir X: makes X/index.html like astro would
 # NPM_FAIL: leaves a partial dir and fails; NPM_EMPTY: "succeeds" without an index.html
 stub npm 'o=""; while [ $# -gt 0 ]; do [ "$1" = --outDir ] && o=$2; shift; done; [ -n "$o" ] || exit 0
@@ -123,8 +125,14 @@ grep -q '^sb ' "$L" && fail "sunshine-permanent not idempotent"
 touch -d '2 days ago' "$t/root/web/src/a.ts" "$t/root/web/package-lock.json"; touch "$t/root/web/dist/index.html" "$t/root/web/node_modules/.package-lock.json"
 : > "$L"; SVC_ACTIVE=0 STREAM=live "$B" update >/dev/null 2>&1 && fail "update restarted over a live stream"
 grep -q 'ionice -c3 cargo build --release -q -p brisk-hostd -p brisk-bridge' "$L" || fail "build not capped"
+grep -q '^rustup toolchain install --no-self-update' "$L" || fail "toolchain not installed before the build"
 grep -q '^npm' "$L" && fail "npm ran with web/dist up to date"
 grep -q 'restart' "$L" && fail "restart over a live stream"
+# a failed or hung toolchain install stops update before the build, the web swap and any restart
+for m in fail hang; do
+  : > "$L"; RUSTUP=$m BRISK_RUSTUP_TIMEOUT=1 SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 && fail "update went on after rustup $m"
+  grep -qE 'cargo build|^npm|restart' "$L" && fail "update built or restarted after rustup $m"
+done
 : > "$L"; SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 || fail "update failed"
 grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "update did not restart"
 touch "$t/root/web/src/a.ts"; touch -d '1 day ago' "$t/root/web/dist/index.html"

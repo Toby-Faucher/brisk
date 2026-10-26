@@ -137,6 +137,10 @@ cmd_install() {
 cmd_update() {
   # shellcheck source=scripts/capped.sh
   . "$src/scripts/capped.sh"
+  # A bumped rust-toolchain.toml would otherwise download inside the capped nice-19 build with no
+  # timeout; fetch it first, and stop before anything is built, swapped or restarted if that fails.
+  ( cd "$here" && PATH=$HOME/.cargo/bin:$PATH timeout "${BRISK_RUSTUP_TIMEOUT:-900}" rustup toolchain install --no-self-update ) \
+    || die "pinned toolchain not installed; service unchanged"
   cap_check || die "no enforced resource cap; not building"
   ( cd "$here" && PATH=$HOME/.cargo/bin:$PATH CARGO_BUILD_JOBS=4 capped cargo build --release -q -p brisk-hostd -p brisk-bridge )
   local w=$here/web

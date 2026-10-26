@@ -308,9 +308,10 @@ impl Supervisor {
                                     }
                                 }
                             } else if l.starts_with("tap\tconnected")
-                                && let Some(id) = launch.take() {
-                                    tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), id));
-                                }
+                                && let Some(id) = launch.take()
+                            {
+                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), id));
+                            }
                             rep.lock().unwrap().line(&l);
                             forward(bridge_line(l, quiet, tok.as_deref()));
                         }

@@ -20,24 +20,30 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # Only crates that are workspace dependencies are checked for "unmaintained".
 unmaintained = "workspace"
 yanked = "deny"
-# Each ignore is an advisory we have read and found unreachable. All come from the RustCrypto 0.x
-# generation pinned by `rustls-rustcrypto` 0.0.2-alpha (research/ecosystem-rust-2026-10.md section 8).
+# Seven advisories are accepted on purpose; each reason says whether it is reachable.
 # paste (RUSTSEC-2024-0436, unmaintained) needs no entry: unmaintained = "workspace" skips transitive deps.
-# TODO: remove every entry below when rustls-rustcrypto, rsa and num-bigint-dig leave the
-# lock (planned: graviola spike, queue item "ureq + rustls-graviola" and the bridge QUIC crypto).
+# exclude-dev (above) means advisories in dev-only crates are not reported.
 ignore = [
-    # rustls-webpki 0.102.8 (via rustls-rustcrypto): only its `alg_id` constants are imported; the
-    # certificate/CRL logic that runs is rustls' own rustls-webpki 0.103.x. TODO: remove with the root cause.
-    { id = "RUSTSEC-2026-0049", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: only alg_id constants imported, real verifier is rustls-webpki 0.103; TODO remove with rustls-rustcrypto" },
-    { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
-    { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
-    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
-    { id = "RUSTSEC-2026-0382", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
-    # rsa 0.9.10 Marvin timing attack, no fixed release. Local-timing only, needs an attacker
-    # measuring our pairing signatures on a tailnet-only client key. TODO: remove when rsa 0.10 is stable or graviola RSA replaces it.
-    { id = "RUSTSEC-2023-0071", reason = "rsa Marvin timing: local attacker only, tailnet-only client key, no fix exists; TODO remove with rsa 0.10 or graviola" },
-    # crypto-bigint 0.5.5 timing, same RustCrypto generation as rsa. TODO: remove with rsa/rustls-rustcrypto.
-    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 timing via rsa/p256 0.1x chain; same class as rsa Marvin; TODO remove with rustls-rustcrypto" },
+    # rustls-webpki 0.102.8 comes only from rustls-rustcrypto 0.0.2-alpha, which imports just the
+    # `alg_id` constants from it (verify/{ecdsa,eddsa,rsa}.rs). No chain, CRL or name-constraint code
+    # of 0.102.8 runs: the bridge uses with_no_client_auth (quic_crypto.rs) and the client's pinned
+    # verifier only checks signatures (brisk-client/src/session.rs). Not reachable.
+    # TODO: remove all five when rustls-rustcrypto leaves the lock.
+    { id = "RUSTSEC-2026-0049", reason = "rustls-webpki 0.102.8: only alg_id constants are used, no verifier code runs; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 0.102.8: only alg_id constants are used, no verifier code runs; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.102.8: only alg_id constants are used, no verifier code runs; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.102.8: only alg_id constants are used, no verifier code runs; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0382", reason = "rustls-webpki 0.102.8: only alg_id constants are used, no verifier code runs; TODO remove with rustls-rustcrypto" },
+    # rsa 0.9.10 (Marvin timing, no fixed release) is a DIRECT dependency of brisk-proto and
+    # brisk-client. RSA private-key operations happen only in the client (pairing signatures, TLS
+    # client auth to Sunshine at 127.0.0.1), so measuring them needs a local attacker or a malicious host.
+    # TODO: keep until a fixed rsa (0.10 stable) or a replacement exists.
+    { id = "RUSTSEC-2023-0071", reason = "rsa Marvin timing: private-key ops only in the client (pairing, Sunshine mTLS on loopback); needs a local attacker or malicious host; no fix exists; TODO until fix or replacement" },
+    # crypto-bigint 0.5.5 comes via elliptic-curve/p256/p384 from rustls-rustcrypto (not via rsa).
+    # REACHABLE: the bridge signs with its P-256 ECDSA key (quic_crypto.rs with_single_cert, with_no_client_auth)
+    # in every TLS handshake, and any tailnet peer can start handshakes before the token check.
+    # Accepted: remote timing exploitation is impractical.
+    { id = "RUSTSEC-2026-0387", reason = "REACHABLE: P-256 signing per bridge handshake by any tailnet peer; accepted risk, remote timing impractical; TODO replace rustls-rustcrypto (graviola has no QUIC yet)" },
 ]
 
 [licenses]

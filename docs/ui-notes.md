@@ -407,16 +407,18 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
 
 ## Rust dev tooling
 - **Toolchain pin**: `rust-toolchain.toml` names an exact release (1.99.1) with `profile = "minimal"` and
-  `components = ["clippy", "rustfmt"]`. rustup installs a missing pinned toolchain automatically on the next
-  `cargo` call, non-interactively (verified), so `scripts/brisk-service.sh update` on the main checkout
-  downloads it on first build after a bump (needs network once; `RUSTUP_AUTO_INSTALL=0` would block it).
+  `components = ["clippy", "rustfmt"]`. rustup can install a missing pinned toolchain on the next
+  `cargo` call, but `scripts/brisk-service.sh update` does not rely on that: before the capped build it runs
+  `rustup toolchain install` (reads rust-toolchain.toml, 900 s timeout, needs network once after a bump) and
+  aborts before any swap or restart if that fails.
   Bump deliberately about every 6 weeks: edit the version, `cargo update`, run the checks below.
   Docs and build tools are not in `minimal`; add a component to the list if a build needs it.
 - **Edition 2024** for all crates (`edition.workspace`); `publish = false` on all of them.
 - **Lints**: `[workspace.lints]` in the root `Cargo.toml`, inherited with `[lints] workspace = true`.
   `unsafe_op_in_unsafe_fn = deny`; clippy `dbg_macro`, `todo`, `unimplemented`, `undocumented_unsafe_blocks`
   = warn (every `unsafe` needs a `// SAFETY:` comment right above the statement). No print lints (bridge and
-  hostd print on purpose); `unwrap_used` is off until the ~110 unwraps in src are gone.
+  hostd print on purpose); `unwrap_used` is skipped on purpose: src has 112 `unwrap()`s today, so the lint would only add noise.
+  nextest runs one process per test, which also avoids races on the env vars one `tap_live.rs` test sets.
 - **Checks** (all must pass; use `. scripts/capped.sh; capped cargo ...` for builds on bawn):
   `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo nextest run --workspace` (profile `ci` = no fail-fast, config in `.config/nextest.toml`),
@@ -425,8 +427,12 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
 - **cargo-deny** (`deny.toml`): graph limited to the six native targets (quinn-proto's wasm-only `ring` edge is
   out of scope); allowed licences MIT, Apache-2.0, BSD-2/3, ISC, Unicode-3.0, Zlib, CC0; bans `proc-macro1`
   (the Aug 2026 typosquat), `openssl-sys`, `aws-lc-sys`, `ring`, wildcards; sources crates.io only. Seven advisories
-  are ignored on purpose (five `rustls-webpki 0.102.8`, `rsa` Marvin, `crypto-bigint`), all from
-  `rustls-rustcrypto`, each with a reason and a TODO in `deny.toml`; delete them when that crate goes.
+  are ignored on purpose, each with a reason and a TODO in `deny.toml`: five `rustls-webpki 0.102.8` (from
+  `rustls-rustcrypto`, only `alg_id` constants are used: unreachable), `rsa` Marvin (a direct dependency of
+  brisk-proto and brisk-client; private-key use only in the client, so it needs a local attacker; kept until a
+  fix or replacement) and `crypto-bigint` 0.5.5 (via p256/p384 from `rustls-rustcrypto`; REACHABLE: every
+  bridge handshake signs with P-256 for any tailnet peer, accepted because remote timing is impractical).
+  `exclude-dev = true` means advisories in dev-only crates are not reported.
   Duplicate-version warnings are expected. Install: `cargo install --locked cargo-nextest cargo-deny`
   (cargo-deny's `zstd-sys` needs a C compiler and free space in /tmp; the tool is not part of the product).
 - **Purity allowlist**: `scripts/check-pure-rust.sh` fails on any `*-sys`/`*_sys` crate or `cc`, `cmake`,

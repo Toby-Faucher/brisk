@@ -135,15 +135,18 @@ async fn tap_conn_rejects_garbage() {
 
 #[test]
 fn tap_path_prefers_brisk_tap_sock() {
-    // SAFETY: this is the only test in the binary that touches these variables.
+    // SAFETY: std serialises its own env access, and nothing in this binary reads the environment
+    // through C (getenv); nextest also runs each test in its own process.
     unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/4242") };
-    // SAFETY: this is the only test in the binary that touches these variables.
+    // SAFETY: std serialises its own env access, and nothing in this binary reads the environment
+    // through C (getenv); nextest also runs each test in its own process.
     unsafe { std::env::remove_var("BRISK_TAP_SOCK") };
     assert_eq!(
         brisk_client::tap::tap_path().unwrap(),
         Path::new("/run/user/4242/brisk/tap.sock")
     );
-    // SAFETY: this is the only test in the binary that touches these variables.
+    // SAFETY: std serialises its own env access, and nothing in this binary reads the environment
+    // through C (getenv); nextest also runs each test in its own process.
     unsafe { std::env::set_var("BRISK_TAP_SOCK", "/tmp/x.sock") };
     assert_eq!(
         brisk_client::tap::tap_path().unwrap(),
