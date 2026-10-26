@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod clipboard;
 pub mod config;
+#[cfg(feature = "embed")]
+pub mod embed;
 pub mod files;
 pub mod host;
 pub mod http;
@@ -8,5 +10,6 @@ pub mod notify;
 pub mod prefs;
 pub mod running;
 pub mod sessions;
+pub mod site;
 pub mod steam;
 pub mod stream;

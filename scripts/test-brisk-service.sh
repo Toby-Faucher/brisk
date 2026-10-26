@@ -12,7 +12,7 @@ stub() { printf '#!/bin/bash\necho "%s $*" >> "%s"\n%s\n' "$1" "$L" "$2" > "$t/b
 # ACT_FAIL: a unit without the "# old" mark (the new one) fails to start; the old one starts.
 stub systemctl 'case $2 in
   show) case "$*" in
-    *brisk-hostd*) printf "Type=%s\nSubState=%s\nStatusText=%s\nWatchdogUSec=%s\nActiveEnterTimestamp=%s\n" "${S_TYPE-notify}" "${S_SUB-running}" "${S_STATUS-serving 127.0.0.1:8443, stream idle}" "${S_WD-1min}" "${S_START:+@$S_START}";;
+    *brisk-hostd*) printf "Type=%s\nSubState=%s\nStatusText=%s\nWatchdogUSec=%s\nActiveEnterTimestamp=%s\n" "${S_TYPE-notify}" "${S_SUB-running}" "${S_STATUS-serving 127.0.0.1:8443, static=disk, stream idle}" "${S_WD-1min}" "${S_START:+@$S_START}";;
     *) echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }";;
   esac;;
   is-active) [ -f "$T/state" ] && exit "$(cat "$T/state")"; exit "${SVC_ACTIVE:-3}";;

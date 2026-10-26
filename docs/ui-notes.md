@@ -217,7 +217,8 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   answers `idle`: a live stream or no answer keeps the old page and binary running, drops the new
   build and fails (FORCE=1 overrides). `install`'s restart of a changed unit follows the same rule. hostd
   canonicalizes `dist` per request and only serves files that canonicalize inside it (a symlink out of
-  the build is a 404); a missing path with an extension is a 404, never index.html. `update` does not
+  the build is a 404); a missing path with an extension is a 404, never index.html (see Static files
+  below). `update` does not
   re-sync the unit file: after a change to deploy/brisk-hostd.service run `install` again (it restarts
   the unit when the file changed). `install` = copy the unit (the previous one is kept as
   `brisk-hostd.service.bak`), daemon-reload, enable --now, and a restart if the unit changed while it ran
@@ -265,6 +266,88 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   https but fine on localhost: the Host header is not allowed (hostd learns the ts.net name from
   `tailscale status --json` at startup and again, at most every 30 s, when an unknown *.ts.net name
   arrives; or set `BRISK_ALLOWED_HOSTS`).
+
+### Static files (web/dist)
+`crates/brisk-hostd/src/site.rs`: tower-http 0.7.1 `ServeDir` behind a small backend and wrapper.
+Static pages need no secret or login (only the Host check); /api/* is unchanged.
+
+| Request | Answer |
+|---|---|
+| `/`, `/library`, `/library/`, `/library/index.html` | the page; a directory serves its index.html, no trailing-slash redirect |
+| unknown path without an extension (`/stream/deep`, `/Library`, a directory without index.html) | root `index.html` (client-side routes) |
+| missing path with an extension (`/_astro/gone.js`, `/INDEX.HTML`, `/favicon.ico`) | 404, never index.html |
+| `..`, `.`, `%2e%2e`, encoded `/` `\` NUL (`%2f` `%5c` `%00`), a literal `\` or NUL, bad UTF-8 | 404 (before 2026-10-26 the encoded forms got index.html) |
+| a path whose real file is outside the current build (symlink out, `/up/...`), a dangling symlink with an extension | 404 |
+| a FIFO, socket or device with an extension, a directory named like a file (`x/index.html/`), a symlink loop, a name over 255 bytes | 404 (a FIFO without an extension is an unknown page: the index) |
+| method other than GET/HEAD | 404 (as before) |
+| `Range: bytes=a-b` | 206 + `Content-Range`; unsatisfiable 416; multi-range refused (416); `If-Range` is ignored by tower-http (a range is served even if the validator changed) |
+| `If-None-Match` matching the ETag (weak comparison, lists and `*` handled), or `If-Modified-Since` >= Last-Modified | 304 (the ETag is strong, no `W/`: size + mtime in ns) |
+| HEAD | headers and Content-Length, no body |
+| `Accept-Encoding: br` / `gzip` and a `<file>.br` / `.gz` sibling exists | the sibling, `Content-Encoding`, original Content-Type, `Vary: accept-encoding` (nothing compresses at build time yet) |
+| a `.br`/`.gz` sibling that is refused (escapes, FIFO) | 404 for the plain file too, for clients that accept that encoding: tower-http falls back to the plain file only on NotFound. Fail-closed on purpose |
+
+Headers on every static answer: `Cache-Control: public, max-age=31536000, immutable` for a 2xx/304 of a
+file with an extension under `_astro/` (Astro's hashed names; an extensionless miss there gets the index
+with `no-cache`), `no-cache` (always revalidate, cheap with the 304) for everything else,
+404s included; `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
+`Cross-Origin-Resource-Policy: same-origin`. Content-Type from mime_guess, with `text/html; charset=utf-8`
+and `text/javascript` for `.mjs` (woff2, svg, json, wasm are right as guessed). API answers (and every
+403 from the guard) gain only `nosniff`. Measured 2026-10-26 on the real build in-process: `/` 200 with
+ETag + Last-Modified, then 304 with the ETag; a JS chunk `Range: bytes=0-99` 206 `bytes 0-99/479`;
+`HEAD /library` 200 with Content-Length 14753.
+
+Containment: `web/dist` is canonicalized once per request (so a request never mixes two builds and the
+`update` symlink swap needs no restart; tests/hosting.rs swaps it between requests), and the backend
+canonicalizes every file it opens or stats, precompressed siblings included, refusing anything not inside
+that root. It then opens the canonical path by name with `O_NONBLOCK | O_NOFOLLOW` (a FIFO cannot block a
+thread, a final component turned into a symlink is ELOOP) and reads only if fstat says regular file;
+stat answers report only regular files and directories. Honest limit: canonicalize-then-open is two steps,
+so a writer with toby's uid swapping a directory component inside the build between them could redirect
+the open. Builds are not written after the swap and such a writer can read everything anyway: accepted.
+Cheap improvement when wanted: rustix with its `fs` feature, `openat2(root_fd, rel, RESOLVE_BENEATH |
+RESOLVE_NO_MAGICLINKS)` + fstat `is_file` and our own File wrapper (already there: `DiskFile`), which
+removes the race and the canonicalize. Tests: tests/static_files.rs.
+
+**Embedded build (optional, cargo feature `embed`)**: compiles the web build into the binary with
+`include_dir` 0.7.4 and serves it through the same `ServeDir` code (an in-memory tower-http `Backend`), so
+the rules and headers above are identical; tests/static_files.rs runs every case against both backends.
+- Single-binary release: `cd web && npm run build`, then
+  `cargo build --release -p brisk-hostd --features embed` (copy just `target/release/brisk-hostd`).
+  `BRISK_EMBED_DIR=<dir>` (absolute, or relative to the repo root) embeds another built dist. build.rs never
+  runs npm; without an index.html it fails with "feature `embed`: ... has no index.html", and it refuses a
+  tree with a dangling symlink, a symlink out of it, a symlinked directory, or a FIFO/socket/device (any
+  non-directory must be a regular file, or include_dir would hang the compile). Last-Modified of every
+  embedded file is `BRISK_EMBED_STAMP`, else `SOURCE_DATE_EPOCH` (reproducible builds; set it per commit,
+  `git log -1 --format=%ct`, because the ETag is size + that time), else the time build.rs ran (it reruns
+  whenever the tree changes).
+- Runtime: `BRISK_STATIC=embed|disk`, default disk even when compiled in; embed when asked or when the
+  dist dir is missing at startup (unless `BRISK_STATIC=disk`). hostd logs which on stderr ("static files
+  from disk: ..." / "static files embedded in the binary (N entries)"); the missing-dist fallback adds a
+  `WARNING: ... serving the build EMBEDDED in this binary until hostd restarts` line, because it sticks
+  for the process lifetime (a later `update` swap is not seen). The systemd status text says which:
+  `serving 127.0.0.1:8443, static=disk|embed, stream idle` (`brisk-service.sh doctor` prints it).
+  Without the feature, `BRISK_STATIC=embed` warns and uses disk.
+- Size: +1.34 MiB on a 1.6 MB build (release hostd 8.34 MB disk-only, 9.74 MB with the embed of the
+  2026-10-26 build). The embedded build is memory-mapped with the binary, no copy per request.
+- Not used by the service: deploy/brisk-hostd.service and `brisk-service.sh update` stay on disk mode,
+  because update/rollback is the atomic `web/dist` swap. A changed page needs a new binary in embed mode.
+- Tests: `BRISK_EMBED_DIR=crates/brisk-hostd/tests/fixtures/embed-dist cargo nextest run -p brisk-hostd --features embed`
+  (any built dist works; the fixture keeps it runnable without npm).
+- Why not rust-embed (what the research doc proposed): on 2026-10-26 its crates.io owner is a deleted
+  GitHub account (`ghost_5546`), the repo moved off GitHub to a self-hosted forge, and 8.13.0
+  (2026-10-07) has no matching release commit there (the newest says v8.12.0). include_dir is older
+  (2024-06-17, MIT, owner and repo on GitHub still match) but small (proc-macro2 + quote, already in our
+  graph) and has no runtime code we rely on beyond a static tree.
+
+**CSP follow-up (not set yet, on purpose)**: a wrong policy blanks the page or the stream with nobody
+awake to notice. Plan: (1) list what the build needs: Astro's inline `<script>`/hydration islands, inline
+styles from Svelte/anime.js, WebGL shaders (no eval), workers (`worker-src 'self' blob:`?), wasm
+(`'wasm-unsafe-eval'`), the WebTransport/HTTPS URL of the bridge on `<tailscale-ip>:4433`
+(`connect-src 'self' https://<ip>:4433`, dynamic per stream) and fetch to /api. (2) Ship it as
+`Content-Security-Policy-Report-Only` from site.rs `finish()` with hashes of the inline scripts (computed
+at startup from the html files, or `'unsafe-inline'` for scripts first), check the browser console on every
+page, the stream page in a real session and the UI smoke test. (3) Enforce once a week of use shows no
+reports; then add `frame-ancestors 'none'` and drop X-Frame-Options.
 
 ### Auth model and its limits
 - Host header (DNS rebinding): exactly `localhost:8443`, `127.0.0.1:8443`, `BRISK_ALLOWED_HOSTS`
@@ -504,7 +587,8 @@ BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; default th
 BRISK_DIST, BRISK_DATA_DIR, BRISK_BRIDGE_BIN, BRISK_STEAM_DIR, BRISK_STEAM_KEY_FILE
 (`~/.config/brisk/steam-api-key`, never printed or committed), BRISK_STEAM_API_BASE, BRISK_SECRET_FILE
 (default `~/.config/brisk/secret`), BRISK_SECRET (tests), BRISK_TLS_DIR (default `~/.config/brisk/tls`),
-BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its own systemd-run scope; set by the unit).
+BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its own systemd-run scope; set by the unit),
+BRISK_STATIC (`disk` default, `embed` with the embed feature; see Static files). Build time only: BRISK_EMBED_DIR.
 
 ## Rust dev tooling
 - **Toolchain pin**: `rust-toolchain.toml` names an exact release (1.99.1) with `profile = "minimal"` and
@@ -524,7 +608,10 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
   `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo nextest run --workspace` (profile `ci` = no fail-fast, config in `.config/nextest.toml`),
   `cargo test --doc --workspace` (nextest does not run doc-tests), `cargo deny check`,
-  `scripts/check-pure-rust.sh`, `scripts/test-*.sh`.
+  `scripts/check-pure-rust.sh`, `scripts/test-*.sh`. The optional `embed` feature needs a built dist at
+  compile time, so its checks set one: `BRISK_EMBED_DIR=crates/brisk-hostd/tests/fixtures/embed-dist cargo
+  clippy --workspace --all-targets --features brisk-hostd/embed -- -D warnings` and the same for
+  `cargo nextest run -p brisk-hostd --features embed`.
 - **cargo-deny** (`deny.toml`): graph limited to the six native targets (quinn-proto's wasm-only `ring` edge is
   out of scope); allowed licences MIT, Apache-2.0, BSD-2/3, ISC, Unicode-3.0, Zlib, CC0; bans `proc-macro1`
   (the Aug 2026 typosquat), `openssl-sys`, `aws-lc-sys`, `ring`, wildcards; sources crates.io only. Seven advisories
@@ -545,7 +632,10 @@ BRISK_ALLOWED_HOSTS, BRISK_ALLOWED_USERS, BRISK_SPAWN_SCOPE (1 = `steam` in its 
 - **New crates: 14-day rule.** Pin new dependencies exactly (`=x.y.z`) to the newest release at least 14
   days old (crates.io publish date), including new transitive crates (`cargo update -p <crate> --precise`),
   unless it is a security fix. 2026-10-26: ureq 3.4.2 (3.5.0 too new), rustls-graviola 0.4.0, graviola
-  0.4.1, rustls-platform-verifier 0.7.1, rustix 1.1.5, sd-notify 0.5.0; transitive ureq-proto 0.6.4,
+  0.4.1, rustls-platform-verifier 0.7.1, rustix 1.1.5, sd-notify 0.5.0, tower-http 0.7.1 (2026-08-31,
+  feature `fs` only), include_dir 0.7.4 (optional, `embed`); new transitive with tower-http: tokio-util
+  0.7.20 (2026-10-09), unicase 2.10.0 (2026-10-05), mime_guess 2.0.5, http-range-header 0.4.2,
+  futures-sink 0.3.34, all MIT or MIT/Apache; transitive ureq-proto 0.6.4,
   rustls-native-certs 0.8.4, webpki-root-certs 1.0.9, combine 4.6.8, schannel 0.1.29 held back. `scripts/test-check-pure-rust.sh`
   proves the script with a stub `cargo`.
 
