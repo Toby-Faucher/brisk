@@ -256,7 +256,11 @@ pub struct ControlSession {
     /// Loss-triggered IDR requests are at most one per this (a field so tests can shrink it).
     pub idr_min_interval: Duration,
     pub stats: Stats,
+    /// Gets every rumble / trigger-rumble message from the host ([`Self::on_feedback`]).
+    feedback: Option<Feedback>,
 }
+
+type Feedback = Box<dyn Fn(&ControlMsg) + Send + Sync>;
 
 impl ControlSession {
     /// ENet connect (10 s), then IDR request + Start B. `connect_id` must be random. `av`
@@ -296,6 +300,7 @@ impl ControlSession {
             last_idr: None,
             idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),
+            feedback: None,
         };
         s.sock.send(&hello).await?;
         let deadline = epoch + CONNECT_WAIT;
@@ -324,6 +329,12 @@ impl ControlSession {
 
     fn now(&self) -> u32 {
         self.epoch.elapsed().as_millis() as u32
+    }
+
+    /// `f` gets each `Rumble` and `RumbleTriggers` the host sends, as it is decoded (so it must not
+    /// block: the control loop is waiting).
+    pub fn on_feedback(&mut self, f: impl Fn(&ControlMsg) + Send + Sync + 'static) {
+        self.feedback = Some(Box::new(f));
     }
 
     /// A sender for IDR requests and input from other tasks.
@@ -551,6 +562,13 @@ impl ControlSession {
                             } => self.stats.last_rumble = Some((controller, low, high)),
                             _ => {}
                         }
+                        if let (
+                            Some(f),
+                            ControlMsg::Rumble { .. } | ControlMsg::RumbleTriggers { .. },
+                        ) = (&self.feedback, &m)
+                        {
+                            f(&m);
+                        }
                     }
                     Err(_) => self.stats.bad_msgs += 1,
                 },
@@ -633,6 +651,7 @@ mod tests {
             last_idr: None,
             idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),
+            feedback: None,
         };
         let mut got = Vec::new();
         c.run_until_with(t0, &mut |i, d, at| {

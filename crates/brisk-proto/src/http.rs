@@ -248,14 +248,17 @@ pub fn parse_launch(xml: &str) -> Result<LaunchReply, HttpError> {
     })
 }
 
-/// Fixed launch options beyond mode/keys; `Default` is stereo, no HDR, guest audio muted on host.
+/// Fixed launch options beyond mode/keys; `Default` is stereo, no HDR, guest audio muted on host,
+/// one gamepad.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchOpts {
     /// `localAudioPlayMode`: play audio on the host too.
     pub host_audio: bool,
     /// `surroundAudioInfo`: (channel mask << 16) | channel count; Sunshine default 196610 = stereo.
     pub surround_info: u32,
-    /// `gcmap`: gamepad bitmask.
+    /// `gcmap`: attached-gamepad bitmask (moonlight sends its pads at launch). Sunshine only exports
+    /// it to the app as `SUNSHINE_CLIENT_GCMAP` (nvhttp.cpp, process.cpp); a pad is created by its
+    /// first multi-controller packet whatever this says (input.cpp `passthrough`).
     pub gcmap: u32,
     /// `sops`: let the host optimise game settings for the mode.
     pub sops: bool,
@@ -267,7 +270,7 @@ impl Default for LaunchOpts {
         LaunchOpts {
             host_audio: false,
             surround_info: 196610,
-            gcmap: 0,
+            gcmap: 1, // pad 0: the one controller Brisk expects
             sops: false,
             hdr: false,
         }

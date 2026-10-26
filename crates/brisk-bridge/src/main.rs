@@ -210,6 +210,11 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             };
             println!("tap\tconnected at {:.1}s", start.elapsed().as_secs_f32());
             let h = c.handle();
+            let inp = std::sync::Arc::new(input::Shared::default());
+            c.on_feedback({
+                let inp = inp.clone();
+                move |m| inp.rumble(m) // to the viewer's input stream (input::write_rumble)
+            });
             // Audio stays on Sunshine's RTP path; RTP video must stay at 0 in tap mode.
             let (atx, mut arx_q) = tokio::sync::mpsc::channel(AUDIO_QUEUE);
             let mut queue_full = 0;
@@ -221,7 +226,6 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             };
             let run = c.run_until_with(deadline, &mut sink);
             let mut arx = AudioRx::new(p.enc_flags, p.key.rikey, p.key.rikeyid);
-            let inp = std::sync::Arc::new(input::Shared::default());
             let r = tokio::select! {
                 r = run => r,
                 r = forward(&mut tap, ep, token, &h, &mut arx_q, &mut arx, &inp, rep) => r,

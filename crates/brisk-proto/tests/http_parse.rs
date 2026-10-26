@@ -136,6 +136,9 @@ fn launch_query_has_required_params() {
         ("42", "7", "0", "UID")
     );
     assert_eq!((g("surroundAudioInfo"), g("corever")), ("196610", "1"));
+    // Pad 0 attached, as moonlight sends its attached-pad mask. Sunshine 7.1.431 only exports it
+    // to the app (SUNSHINE_CLIENT_GCMAP); pads attach on their multi-controller packets.
+    assert_eq!(g("gcmap"), "1");
 }
 
 #[test]

@@ -21,6 +21,11 @@ async fn control_session_against_fake_sunshine() {
     let mut c = ControlSession::connect(f.addr, CONNECT_DATA, KEY, 0xC0DE, av(&f).await)
         .await
         .unwrap();
+    let fb = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    c.on_feedback({
+        let fb = fb.clone();
+        move |m| fb.lock().unwrap().push(m.clone())
+    });
     settle(&mut c, 450).await;
     {
         let l = f.log.lock().unwrap();
@@ -49,6 +54,15 @@ async fn control_session_against_fake_sunshine() {
     .unwrap();
     settle(&mut c, 200).await;
     assert_eq!(c.stats.last_rumble, Some((1, 0x1234, 0xFFFF)));
+    // The bridge's hook gets every rumble and nothing else (pings, IDR replies).
+    assert_eq!(
+        *fb.lock().unwrap(),
+        vec![brisk_proto::control::ControlMsg::Rumble {
+            controller: 1,
+            low: 0x1234,
+            high: 0xFFFF
+        }]
+    );
     assert_eq!(c.stats.host_msgs.get(&0x010b), Some(&1));
     {
         let l = f.log.lock().unwrap();

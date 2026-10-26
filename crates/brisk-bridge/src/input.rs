@@ -1,4 +1,4 @@
-//! Browser keyboard and mouse to Sunshine.
+//! Browser keyboard, mouse and gamepads to Sunshine; rumble back to the browser.
 //!
 //! The page opens one WebTransport bidirectional stream and writes frames on it: `len u8`, then
 //! `len` bytes of body, `kind u8` + fields (little-endian; docs/m2-notes.md "Input"). One stream
@@ -9,15 +9,21 @@
 //! [`MAX_PENDING`] events that may be dropped (motion, scroll, presses). Releases are never dropped,
 //! and it knows what is held down, so [`InputQueue::release_all`] can let go of everything when
 //! the stream or the bridge ends: no stuck keys on the host.
+//!
+//! Gamepads: the page sends each pad's whole state (latest wins); the queue merges stick and
+//! trigger changes but keeps every button change, sets Sunshine's `activeGamepadMask`, and sends a
+//! neutral state and a removal when the stream ends. Rumble from Sunshine goes back on the same
+//! stream ([`write_rumble`]), as the newest motor values per pad.
 
 use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use brisk_client::Error;
+use brisk_proto::control::ControlMsg;
 use brisk_proto::input::{InputEvent, MAX_MOUSE_DELTA};
-use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::sync::Notify;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::sync::{watch, Notify};
 
 use crate::wt;
 
@@ -32,6 +38,21 @@ pub const KIND_SCROLL: u8 = 0x13;
 /// No fields: "something is still held" (the page sends it every 250 ms while a key or button is
 /// down). Never reaches Sunshine.
 pub const KIND_HEARTBEAT: u8 = 0x14;
+/// `slot u8 (0..MAX_PADS), buttons u16 (Moonlight buttonFlags), lt u8, rt u8, lx i16, ly i16,
+/// rx i16, ry i16` (sticks up = positive): one pad's whole state. The page resends it every 100 ms
+/// while anything is off neutral and every 250 ms otherwise; a repeat of the last state is dropped.
+pub const KIND_GAMEPAD: u8 = 0x15;
+/// `slot u8`: the pad is gone (neutral, then a removal to Sunshine).
+pub const KIND_GAMEPAD_GONE: u8 = 0x16;
+/// Bridge to page, on the same stream: `slot u8, low u16, high u16, left u16, right u16`, the
+/// newest motor values Sunshine sent for that pad (0 = stop).
+pub const KIND_RUMBLE: u8 = 0x20;
+/// Pad slots the page may use (Sunshine has 16).
+pub const MAX_PADS: u8 = 4;
+/// Moonlight buttonFlags bits a pad may set (0x0800 is unused in the low word).
+const PAD_BUTTONS: u16 = 0xF7FF;
+/// Per slot `[low, high, left trigger, right trigger]` motor values.
+pub type Rumble = [[u16; 4]; MAX_PADS as usize];
 /// With something held, a stream silent this long (no frame, heartbeat included) is taken as a
 /// lost page: everything is released.
 pub const HOLD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
@@ -102,15 +123,59 @@ pub fn parse(b: &[u8]) -> Option<InputEvent> {
             down: flag(b[2])?,
         }),
         (&KIND_SCROLL, 3) => Some(InputEvent::Scroll { amount: i16_at(1) }),
+        (&KIND_GAMEPAD, 14)
+            if b[1] < MAX_PADS && u16::from_le_bytes([b[2], b[3]]) & !PAD_BUTTONS == 0 =>
+        {
+            Some(InputEvent::Gamepad {
+                index: b[1],
+                active_mask: 1 << b[1],
+                buttons: u16::from_le_bytes([b[2], b[3]]).into(),
+                lt: b[4],
+                rt: b[5],
+                lx: i16_at(6),
+                ly: i16_at(8),
+                rx: i16_at(10),
+                ry: i16_at(12),
+            })
+        }
+        (&KIND_GAMEPAD_GONE, 2) if b[1] < MAX_PADS => Some(neutral(b[1], 0)),
         _ => None,
     }
 }
 
+/// Pad `index` at rest; with its bit clear in `active_mask` this is Sunshine's removal.
+fn neutral(index: u8, active_mask: u16) -> InputEvent {
+    InputEvent::Gamepad {
+        index,
+        active_mask,
+        buttons: 0,
+        lt: 0,
+        rt: 0,
+        lx: 0,
+        ly: 0,
+        rx: 0,
+        ry: 0,
+    }
+}
+
+fn is_neutral(e: &InputEvent) -> bool {
+    match *e {
+        InputEvent::Gamepad {
+            index, active_mask, ..
+        } => *e == neutral(index, active_mask),
+        _ => false,
+    }
+}
+
+/// Never dropped: key-ups, button-ups and pad removals.
 fn is_release(e: &InputEvent) -> bool {
-    matches!(
-        e,
-        InputEvent::Key { down: false, .. } | InputEvent::MouseButton { down: false, .. }
-    )
+    match *e {
+        InputEvent::Key { down, .. } | InputEvent::MouseButton { down, .. } => !down,
+        InputEvent::Gamepad {
+            index, active_mask, ..
+        } => active_mask & (1 << index) == 0,
+        _ => false,
+    }
 }
 
 #[derive(Default)]
@@ -122,6 +187,10 @@ pub struct InputQueue {
     /// Every key and button pressed this session, for [`Self::shutdown`].
     ever_keys: Vec<u8>,
     ever_buttons: [bool; 6],
+    /// Per attached pad: its last state queued (mask = its own bit).
+    pads: [Option<InputEvent>; MAX_PADS as usize],
+    /// Bit per pad attached this session, for [`Self::shutdown`].
+    ever_pads: u16,
     pub stats: InputStats,
 }
 
@@ -189,9 +258,72 @@ impl InputQueue {
                     return;
                 }
             }
-            InputEvent::Gamepad { .. } => return,
+            InputEvent::Gamepad { .. } => return self.push_pad(e),
         }
         self.q.push_back(e);
+    }
+
+    /// Sunshine's `activeGamepadMask`: a bit per attached pad.
+    fn mask(&self) -> u16 {
+        (0..MAX_PADS)
+            .filter(|&i| self.pads[i as usize].is_some())
+            .fold(0, |m, i| m | 1 << i)
+    }
+
+    fn push_pad(&mut self, e: InputEvent) {
+        let InputEvent::Gamepad {
+            index, active_mask, ..
+        } = e
+        else {
+            return;
+        };
+        if index >= MAX_PADS {
+            return;
+        }
+        let bit = 1u16 << index;
+        if active_mask & bit == 0 {
+            return self.detach(index);
+        }
+        let own = with_mask(&e, bit);
+        if self.pads[index as usize].as_ref() == Some(&own) {
+            return; // the page's resend of a state already queued or sent
+        }
+        let out = with_mask(&e, self.mask() | bit);
+        // Sticks and triggers: latest wins over this pad's newest queued state, if that has the
+        // same buttons (Sunshine reads only the pad's own mask bit). A button change is always its own packet, so no press is lost.
+        let last = self
+            .q
+            .iter_mut()
+            .rev()
+            .find(|x| matches!(x, InputEvent::Gamepad { index: i, .. } if *i == index));
+        if let Some(x) = last.filter(|x| !is_release(x) && buttons(x) == buttons(&out)) {
+            *x = out;
+            self.stats.coalesced += 1;
+        } else if self.make_room() {
+            self.q.push_back(out);
+        } else {
+            return; // dropped: the page's next resend brings it back
+        }
+        self.pads[index as usize] = Some(own);
+        self.ever_pads |= bit;
+    }
+
+    /// Pad `index` is gone: neutral (if it was not) while still attached, then the removal.
+    fn detach(&mut self, index: u8) {
+        let Some(p) = self.pads[index as usize].take() else {
+            return;
+        };
+        if !is_neutral(&p) {
+            self.q.push_back(neutral(index, self.mask() | 1 << index));
+        }
+        self.q.push_back(neutral(index, self.mask()));
+    }
+
+    /// Detaches every pad (after [`Self::release_all`], so each goes neutral first).
+    pub fn detach_pads(&mut self) {
+        for i in 0..MAX_PADS {
+            self.detach(i);
+        }
     }
 
     /// Room for one more droppable event: evicts the oldest motion or scroll if full. False (and
@@ -222,12 +354,15 @@ impl InputQueue {
         self.q.is_empty()
     }
 
-    /// A key or button is down.
+    /// A key or button is down, or a pad is off neutral.
     pub fn held(&self) -> bool {
-        !self.keys.is_empty() || self.buttons.contains(&true)
+        !self.keys.is_empty()
+            || self.buttons.contains(&true)
+            || self.pads.iter().flatten().any(|p| !is_neutral(p))
     }
 
-    /// Queues a release for every key (in vk order) and button that is down.
+    /// Queues a release for every key (in vk order) and button that is down, and a neutral state
+    /// for every pad off neutral (still attached: the stream may come back).
     pub fn release_all(&mut self) {
         let mut keys = std::mem::take(&mut self.keys);
         keys.sort_unstable();
@@ -248,13 +383,24 @@ impl InputQueue {
                 });
             }
         }
+        for i in 0..MAX_PADS {
+            if self.pads[i as usize]
+                .as_ref()
+                .is_some_and(|p| !is_neutral(p))
+            {
+                self.stats.released += 1;
+                self.pads[i as usize] = Some(neutral(i, 1 << i));
+                self.q.push_back(neutral(i, self.mask()));
+            }
+        }
     }
 
     /// The bridge is stopping: a release for every key and button pressed this session (in vk
     /// order, then buttons), and an empty queue. A superset on purpose: a release the send loop
     /// already handed to `ControlHandle` may still sit unsent in its channel (up to 64 commands)
     /// when the control loop stops, so "released" is never known for sure. Releasing a key the
-    /// host does not hold does nothing.
+    /// host does not hold does nothing. Then a removal for every pad attached this session (not a
+    /// neutral state: with its bit set that would attach a fresh pad); Sunshine frees the pad.
     pub fn shutdown(&mut self) -> Vec<InputEvent> {
         self.release_all();
         self.q.clear();
@@ -271,18 +417,77 @@ impl InputQueue {
                 button,
                 down: false,
             });
-        keys.chain(buttons.collect::<Vec<_>>()).collect()
+        let ever = std::mem::take(&mut self.ever_pads);
+        self.pads = Default::default();
+        let pads = (0..MAX_PADS)
+            .filter(|i| ever & 1 << i != 0)
+            .map(|i| neutral(i, 0));
+        keys.chain(buttons.collect::<Vec<_>>())
+            .chain(pads)
+            .collect()
     }
 }
 
-/// The queue shared by the browser stream readers and the one send loop.
+fn with_mask(e: &InputEvent, m: u16) -> InputEvent {
+    let mut e = e.clone();
+    if let InputEvent::Gamepad { active_mask, .. } = &mut e {
+        *active_mask = m;
+    }
+    e
+}
+
+fn buttons(e: &InputEvent) -> Option<u32> {
+    match *e {
+        InputEvent::Gamepad { buttons, .. } => Some(buttons),
+        _ => None,
+    }
+}
+
+/// The queue shared by the browser stream readers and the one send loop, and the rumble state
+/// the control session feeds and the stream writers read.
 #[derive(Default)]
 pub struct Shared {
     q: Mutex<InputQueue>,
     wake: Notify,
+    rumble: watch::Sender<Rumble>,
 }
 
 impl Shared {
+    /// A `Rumble` or `RumbleTriggers` from Sunshine (its `controller` is our pad slot); anything
+    /// else, or a slot the page cannot have, is ignored.
+    pub fn rumble(&self, m: &ControlMsg) {
+        let (c, at, v) = match *m {
+            ControlMsg::Rumble {
+                controller,
+                low,
+                high,
+            } => (controller, 0, [low, high]),
+            ControlMsg::RumbleTriggers {
+                controller,
+                left,
+                right,
+            } => (controller, 2, [left, right]),
+            _ => return,
+        };
+        if c >= MAX_PADS as u16 {
+            return;
+        }
+        self.rumble.send_if_modified(|r| {
+            let s = &mut r[c as usize][at..at + 2];
+            let changed = *s != v;
+            s.copy_from_slice(&v);
+            changed
+        });
+    }
+
+    pub fn rumble_state(&self) -> watch::Ref<'_, Rumble> {
+        self.rumble.borrow()
+    }
+
+    pub fn rumble_rx(&self) -> watch::Receiver<Rumble> {
+        self.rumble.subscribe()
+    }
+
     pub fn with<R>(&self, f: impl FnOnce(&mut InputQueue) -> R) -> R {
         f(&mut self.q.lock().unwrap_or_else(|e| e.into_inner()))
     }
@@ -301,10 +506,36 @@ pub fn frame(body: &[u8]) -> Vec<u8> {
     f
 }
 
+/// One [`KIND_RUMBLE`] frame.
+pub fn rumble_frame(slot: u8, v: [u16; 4]) -> Vec<u8> {
+    let mut b = vec![KIND_RUMBLE, slot];
+    for x in v {
+        b.extend_from_slice(&x.to_le_bytes());
+    }
+    frame(&b)
+}
+
+/// Writes a [`KIND_RUMBLE`] frame for each pad whose motors changed (on start: each that is not
+/// still), until the write fails. Only the newest values are sent, so a slow page cannot back up.
+pub async fn write_rumble<W: AsyncWrite + Unpin>(mut w: W, mut rx: watch::Receiver<Rumble>) {
+    let mut last = Rumble::default();
+    rx.mark_changed();
+    while rx.changed().await.is_ok() {
+        let now = *rx.borrow_and_update();
+        for (i, (n, l)) in now.iter().zip(&last).enumerate() {
+            if n != l && w.write_all(&rumble_frame(i as u8, *n)).await.is_err() {
+                return;
+            }
+        }
+        last = now;
+    }
+}
+
 /// Reads frames until the stream ends or fails, then releases everything held down. While
 /// something is held, a stream silent for [`HOLD_TIMEOUT`] (a lost network, a frozen or closed
 /// laptop: the QUIC idle timeout alone would take 10 s while Sunshine repeats the key) also
-/// releases everything. The timer runs only while something is held.
+/// releases everything. The timer runs only while something is held. At the end every pad is
+/// detached and the rumble state cleared (Sunshine sends no stop for a pad it freed).
 pub async fn read_stream<R: AsyncRead + Unpin>(mut r: R, sh: &Shared) {
     let mut b = [0u8; 255];
     loop {
@@ -326,7 +557,11 @@ pub async fn read_stream<R: AsyncRead + Unpin>(mut r: R, sh: &Shared) {
         let Some(n) = n else { break };
         sh.push(|q| q.on_message(&b[..n]));
     }
-    sh.push(InputQueue::release_all);
+    sh.push(|q| {
+        q.release_all();
+        q.detach_pads();
+    });
+    sh.rumble.send_replace(Rumble::default());
 }
 
 async fn read_frame<R: AsyncRead + Unpin>(r: &mut R, b: &mut [u8; 255]) -> Option<usize> {
@@ -337,8 +572,9 @@ async fn read_frame<R: AsyncRead + Unpin>(r: &mut R, b: &mut [u8; 255]) -> Optio
 
 /// Hands queued events to `send` (the control session) one by one, until it returns `Closed`.
 /// `Timeout` (the session took nothing for 1 s) drops that event, except a release, which goes
-/// back to the front of the queue and is retried. Any other error drops the event (no retry, so
-/// it cannot spin).
+/// back to the front of the queue and is retried, as is a pad state (it may hold a button
+/// release) unless a newer state of that pad is queued. Any other error drops the event (no
+/// retry, so it cannot spin).
 pub async fn send_loop<F, Fut>(sh: &Shared, mut send: F) -> brisk_client::Result<()>
 where
     F: FnMut(InputEvent) -> Fut,
@@ -356,7 +592,15 @@ where
             Err(err @ Error::Timeout(_)) => sh.with(|q| {
                 tracing::warn!("input: {err}");
                 q.stats.timeouts += 1;
-                if is_release(&e) {
+                let newer = |i: u8| {
+                    q.q.iter()
+                        .any(|x| matches!(x, InputEvent::Gamepad { index, .. } if *index == i))
+                };
+                let retry = match e {
+                    InputEvent::Gamepad { index, .. } => is_release(&e) || !newer(index),
+                    _ => is_release(&e),
+                };
+                if retry {
                     q.q.push_front(e);
                 }
             }),
@@ -368,14 +612,16 @@ where
     }
 }
 
-/// Reads every input stream the viewer opens until its connection ends.
+/// Reads every input stream the viewer opens until its connection ends; rumble goes back on
+/// each.
 pub async fn serve(s: Arc<wt::Session>, sh: Arc<Shared>) {
     while let Ok((send, mut recv)) = s.accept_bi().await {
         let sh = sh.clone();
         tokio::spawn(async move {
-            let _send = send; // kept open while reading
             if wt::is_webtransport_bi(&mut recv).await {
+                let w = tokio::spawn(write_rumble(send, sh.rumble_rx()));
                 read_stream(recv, &sh).await;
+                w.abort();
             }
         });
     }
