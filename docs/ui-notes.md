@@ -273,3 +273,10 @@ to the fake bridge fails, so Stream is only checked for degrading to "Lost the c
 - Chrome shows a pad only after its first button press, hence the hint when none is listed. Readings use the raw axes (y down
   is positive on screen); the table says what Brisk sends (y flipped). Headless-checked with a scripted fake
   `navigator.getGamepads`; [U] not tried with the real 8BitDo Ultimate 2 (rumble feel, real poll rate, real stick noise).
+- The diagram (PadDiagram.svelte, geometry in pad.svg.ts, 1 unit = 1 mm, viewBox -80 -60 160 120) is the 8BitDo Ultimate 2
+  Wireless to scale: body 147 x 103 mm (official spec), every position and size scaled from the official manual's front
+  diagram (vector line art, body box set to 147 mm; outline within about 0.6 mm of it, controls within 0.3 mm). Our own
+  geometry, no 8BitDo artwork or logo. Triggers, L4/R4 and the USB-C are a top-down projection above the top edge (from the
+  manual's top view). L4/R4, PL/PR and Square/Star/Profile are drawn faint with a caption: Chrome's standard mapping only
+  reports the 17 standard buttons. Sources and open questions: research/8bitdo-ultimate-2-dimensions.md. pad.svg.test.ts
+  checks the body aspect, one element per standard button 0..16, and unique ids.
