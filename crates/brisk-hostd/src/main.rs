@@ -1,10 +1,12 @@
 //! brisk-hostd: the host agent behind the Brisk web UI. Binds 127.0.0.1:8443 only; reach it with
 //! `ssh -N -L 8443:127.0.0.1:8443 bawn` or through `tailscale serve` (docs/ui-notes.md, Hosting).
 //!   brisk-hostd [DIST_DIR]      (default ./web/dist, or BRISK_DIST)
+//! BRISK_STATIC=embed serves the build compiled in with `--features embed` (default: disk).
 
 use brisk_hostd::config::{Config, load_secret, load_users, page_line};
 use brisk_hostd::http::{AppState, router};
 use brisk_hostd::notify;
+use brisk_hostd::site::Site;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,6 +18,11 @@ async fn main() -> std::process::ExitCode {
         .or_else(|| std::env::var_os("BRISK_DIST"))
         .unwrap_or_else(|| "web/dist".into());
     let mut cfg = Config::from_env(dist.into());
+    let site = Site::choose(
+        cfg.dist.clone(),
+        std::env::var("BRISK_STATIC").ok().as_deref(),
+    );
+    eprintln!("{}", site.describe());
     let conf = std::env::var_os("HOME")
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".config/brisk");
@@ -44,7 +51,9 @@ async fn main() -> std::process::ExitCode {
         }
     };
     println!("{}", page_line(&cfg.secret, cfg.service));
-    let state = Arc::new(AppState::new(cfg));
+    let mut state = AppState::new(cfg);
+    state.site = site;
+    let state = Arc::new(state);
     state.hosts.refresh().await;
     state.clip.start_watch();
     state.files.clean_partials();

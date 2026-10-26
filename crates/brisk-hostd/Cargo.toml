@@ -21,7 +21,14 @@ sd-notify = { version = "=0.5.0", default-features = false }
 # Static files (web/dist): Range, ETag/Last-Modified + 304, precompressed .br/.gz, HEAD.
 percent-encoding = "2"
 tower-http = { version = "=0.7.1", default-features = false, features = ["fs"] }
+# Feature `embed` only: web/dist compiled into the binary (build.rs, docs/ui-notes.md Hosting).
+include_dir = { version = "=0.7.4", optional = true }
 tokio = { version = "1", features = ["rt", "net", "macros", "fs", "signal", "process", "io-util"] }
+
+[features]
+# Single-binary release (BRISK_STATIC=embed). Off by default: the service's update/rollback flow
+# swaps the on-disk web/dist symlink.
+embed = ["dep:include_dir"]
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false }

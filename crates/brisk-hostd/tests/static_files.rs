@@ -1,4 +1,5 @@
-//! Static serving (web/dist): pages, containment, cache/security headers, 304, Range, HEAD.
+//! Static serving (web/dist), written once and run against every backend: disk always, the
+//! embedded build too with `--features embed` (built from the same fixture at runtime).
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::Response;
@@ -52,7 +53,14 @@ fn apps(dist: &Path) -> Vec<(&'static str, axum::Router)> {
         }
         router(Arc::new(st))
     };
-    vec![("disk", app(None))]
+    #[allow(unused_mut)]
+    let mut v = vec![("disk", app(None))];
+    #[cfg(feature = "embed")]
+    v.push((
+        "embed",
+        app(Some(Site::Mem(brisk_hostd::site::Mem::from_dir(dist)))),
+    ));
+    v
 }
 
 async fn get(app: &axum::Router, method: &str, uri: &str, hdrs: &[(&str, &str)]) -> Response {
@@ -138,12 +146,17 @@ async fn nothing_outside_the_current_build_is_served() {
             // symlinks inside the build that point out of it
             "/_astro/leak.js",
             "/up/outside.js",
-            "/up",
         ] {
             let r = get(&app, "GET", p, &[]).await;
             assert_eq!(r.status(), StatusCode::NOT_FOUND, "{name} {p}");
             assert!(!text(r).await.contains("secret"), "{name} {p}");
         }
+        // An extensionless path that exists but escapes is refused on disk; the embedded build
+        // never holds it (build.rs refuses such trees), so there it is an unknown page.
+        let r = get(&app, "GET", "/up", &[]).await;
+        let want = if name == "disk" { 404 } else { 200 };
+        assert_eq!(r.status().as_u16(), want, "{name}");
+        assert!(!text(r).await.contains("secret"), "{name}");
     }
 }
 
@@ -272,4 +285,31 @@ async fn api_answers_only_gain_nosniff() {
             }
         }
     }
+}
+
+#[cfg(feature = "embed")]
+#[test]
+fn compiled_in_build_matches_its_source_dir() {
+    let m = brisk_hostd::site::Mem::embedded();
+    let src = brisk_hostd::site::Mem::embedded_dir();
+    let want = std::fs::read(Path::new(src).join("index.html")).unwrap();
+    assert_eq!(m.file("index.html").as_deref(), Some(&want[..]));
+}
+
+#[test]
+fn brisk_static_picks_disk_unless_embed_is_asked_or_dist_is_missing() {
+    let (_t, dist) = fixture();
+    let gone = dist.join("missing");
+    let disk = |s: Site| matches!(s, Site::Disk(_));
+    assert!(disk(Site::choose(dist.clone(), None)));
+    assert!(disk(Site::choose(dist.clone(), Some("disk"))));
+    assert!(disk(Site::choose(gone.clone(), Some("disk"))));
+    assert!(disk(Site::choose(dist.clone(), Some("bogus"))));
+    // without the feature there is nothing to embed: always disk
+    let compiled_in = cfg!(feature = "embed");
+    assert_eq!(
+        disk(Site::choose(dist.clone(), Some("embed"))),
+        !compiled_in
+    );
+    assert_eq!(disk(Site::choose(gone, None)), !compiled_in);
 }

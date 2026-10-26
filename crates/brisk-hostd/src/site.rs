@@ -17,13 +17,45 @@ use tower_http::services::fs::{Backend, Metadata as _, TokioBackend, TokioFile};
 pub enum Site {
     /// `web/dist`, a symlink `update` swaps atomically; resolved again on every request.
     Disk(PathBuf),
+    /// Compiled into the binary (feature `embed`).
+    #[cfg(feature = "embed")]
+    Mem(Mem),
 }
+
+#[cfg(feature = "embed")]
+pub use crate::embed::Mem;
 
 impl Site {
     pub fn describe(&self) -> String {
         match self {
             Site::Disk(d) => format!("static files from disk: {}", d.display()),
+            #[cfg(feature = "embed")]
+            Site::Mem(m) => format!("static files embedded in the binary ({} entries)", m.len()),
         }
+    }
+
+    /// `BRISK_STATIC`: disk (the default) or embed. With the embed feature, a missing `dist` also
+    /// falls back to the embedded build unless disk was asked for.
+    pub fn choose(dist: PathBuf, mode: Option<&str>) -> Site {
+        let embed = match mode {
+            Some("embed") => true,
+            None | Some("" | "disk") => false,
+            Some(m) => {
+                eprintln!("warning: BRISK_STATIC={m} is neither embed nor disk; using disk");
+                false
+            }
+        };
+        #[cfg(feature = "embed")]
+        if embed || (matches!(mode, None | Some("")) && !dist.exists()) {
+            return Site::Mem(Mem::embedded());
+        }
+        #[cfg(not(feature = "embed"))]
+        if embed {
+            eprintln!(
+                "warning: BRISK_STATIC=embed but hostd was built without the embed feature; using disk"
+            );
+        }
+        Site::Disk(dist)
     }
 
     /// GET/HEAD only; a hostile or unknown path is a 404, an unknown page (no extension) the root index.
@@ -40,6 +72,8 @@ impl Site {
                 };
                 serve_from(root.clone(), Contained(Arc::new(root)), &rel, req).await
             }
+            #[cfg(feature = "embed")]
+            Site::Mem(m) => serve_from(PathBuf::new(), m.clone(), &rel, req).await,
         };
         finish(res, rel.starts_with("_astro"))
     }
