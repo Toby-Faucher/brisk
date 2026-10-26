@@ -75,7 +75,8 @@ impl Site {
             #[cfg(feature = "embed")]
             Site::Mem(m) => serve_from(PathBuf::new(), m.clone(), &rel, req).await,
         };
-        finish(res, rel.starts_with("_astro"))
+        // Extensionless paths may have fallen back to index.html: never cache those for a year.
+        finish(res, rel.starts_with("_astro") && rel.extension().is_some())
     }
 }
 

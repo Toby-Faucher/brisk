@@ -217,8 +217,9 @@ Static pages need no secret or login (only the Host check); /api/* is unchanged.
 | HEAD | headers and Content-Length, no body |
 | `Accept-Encoding: br` / `gzip` and a `<file>.br` / `.gz` sibling exists | the sibling, `Content-Encoding`, original Content-Type, `Vary: accept-encoding` (nothing compresses at build time yet) |
 
-Headers on every static answer: `Cache-Control: public, max-age=31536000, immutable` for a 2xx/304 under
-`_astro/` (Astro's hashed names), `no-cache` (always revalidate, cheap with the 304) for everything else,
+Headers on every static answer: `Cache-Control: public, max-age=31536000, immutable` for a 2xx/304 of a
+file with an extension under `_astro/` (Astro's hashed names; an extensionless miss there gets the index
+with `no-cache`), `no-cache` (always revalidate, cheap with the 304) for everything else,
 404s included; `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
 `Cross-Origin-Resource-Policy: same-origin`. Content-Type from mime_guess, with `text/html; charset=utf-8`
 and `text/javascript` for `.mjs` (woff2, svg, json, wasm are right as guessed). API answers (and every

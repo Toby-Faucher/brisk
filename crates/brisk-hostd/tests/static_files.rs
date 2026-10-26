@@ -167,6 +167,8 @@ async fn cache_type_and_security_headers() {
         for (p, ct, cache) in [
             ("/", "text/html; charset=utf-8", "no-cache"),
             ("/nope", "text/html; charset=utf-8", "no-cache"),
+            // the index served for an unknown page under _astro/ is not cached for a year
+            ("/_astro/nope", "text/html; charset=utf-8", "no-cache"),
             (
                 "/_astro/app.js",
                 "text/javascript",
