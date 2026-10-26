@@ -7,11 +7,16 @@
 - On the laptop: `ssh -N -L 8443:127.0.0.1:8443 bawn`, then open that URL in Chrome.
 - Stop: Ctrl-C (hostd stops its bridge first), then `scripts/brisk-down.sh` (restores stock Sunshine).
 
-## API (hostd, 127.0.0.1:8443 only; Host header checked; non-GET needs the secret)
+## API (hostd, 127.0.0.1:8443 only; Host header checked; every /api request, GET included, needs the `x-brisk-secret` header, because GET /api/stream carries the bridge URL and session token; static pages and assets do not)
 - GET /api/games, GET /api/host, GET /api/sessions
 - GET/POST/DELETE /api/stream (state / start / stop the bridge)
 - POST /api/launch, POST /api/install, POST /api/sunshine/restart
 - anything else: the static page from `web/dist`
+
+Guard: the Host header must be `localhost:8443` or `127.0.0.1:8443` (DNS rebinding). There is no Origin check; that is
+safe because the secret is required and hostd sends no CORS headers, so other origins cannot read or send it.
+Disconnect (ghost bar) stops the host stream (DELETE /api/stream); leaving the Stream page only detaches the viewer and
+the bridge keeps running.
 
 ## Env vars
 BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),

@@ -184,13 +184,13 @@ name = "brisk-hostd"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "libc",
  "rand_core 0.6.4",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "tower",
- "tracing",
 ]
 
 [[package]]

@@ -59,10 +59,8 @@ function secret(): string | null {
 
 async function call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
-  if (method !== 'GET') {
-    const s = secret();
-    if (s) headers['x-brisk-secret'] = s;
-  }
+  const s = secret();
+  if (s) headers['x-brisk-secret'] = s;
   if (body !== undefined) headers['content-type'] = 'application/json';
   const r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!r.ok) {

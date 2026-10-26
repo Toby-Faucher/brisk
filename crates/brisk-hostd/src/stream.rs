@@ -110,6 +110,8 @@ pub struct Supervisor {
     runner: Arc<dyn Runner>,
     sessions: Arc<Sessions>,
     shared: Arc<Mutex<Shared>>,
+    /// Set by `shutdown`: no bridge may start after it.
+    closing: std::sync::atomic::AtomicBool,
     /// Held for a whole start/stop, so requests run one after another.
     child: tokio::sync::Mutex<Option<Running>>,
     /// SIGTERM to exit: the bridge cancels its Sunshine session (Sunshine lingers ~10 s).
@@ -138,6 +140,7 @@ impl Supervisor {
                 info: IDLE,
                 rec: None,
             })),
+            closing: Default::default(),
             child: tokio::sync::Mutex::new(None),
             stop_wait: Duration::from_secs(12),
             page_wait: Duration::from_secs(20),
@@ -157,6 +160,9 @@ impl Supervisor {
     pub async fn start(&self, req: StreamReq, game: Option<String>) -> Result<StreamInfo, String> {
         let [w, h, fps, kbps] = req.flags()?;
         let mut slot = self.child.lock().await;
+        if self.shutting_down() {
+            return Err("hostd is shutting down".into());
+        }
         let (prev, prev_rec) = self.stop_locked(&mut slot).await;
         let quality_change = req.appid.is_none() && prev.state == State::Live;
         let appid = req.appid.or(prev.appid.filter(|_| quality_change));
@@ -177,7 +183,15 @@ impl Supervisor {
             s.gen
         };
         let n = |v: u32| v.to_string();
-        let mut child = tokio::process::Command::new(&self.bin)
+        let mut cmd = tokio::process::Command::new(&self.bin);
+        // SAFETY: prctl is async-signal-safe; the bridge dies with hostd even on SIGKILL.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        let mut child = cmd
             .args([
                 "--host",
                 "127.0.0.1",
@@ -301,6 +315,17 @@ impl Supervisor {
         };
         s.rec = Some(rec);
         Ok(s.info.clone())
+    }
+
+    pub fn shutting_down(&self) -> bool {
+        self.closing.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Refuses further starts, then stops the bridge.
+    pub async fn shutdown(&self) -> StreamInfo {
+        self.closing
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.stop().await
     }
 
     /// Stops the bridge (if any) and closes its session record.

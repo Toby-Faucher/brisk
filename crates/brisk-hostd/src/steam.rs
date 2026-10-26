@@ -264,7 +264,10 @@ async fn fetch_owned(cfg: &Config) -> Option<Vec<Owned>> {
         .ok()?
         .ok()?;
     if !out.status.success() {
-        tracing::warn!("GetOwnedGames failed (curl exit {:?})", out.status.code());
+        eprintln!(
+            "warning: GetOwnedGames failed (curl exit {:?})",
+            out.status.code()
+        );
         return None;
     }
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
@@ -288,6 +291,8 @@ fn steam_id(steam_dir: &Path) -> Option<String> {
         })
         .max_by_key(|(recent, t, _)| (*recent, *t))
         .map(|(_, _, id)| id.clone())
+        // It goes into a curl config line: digits only.
+        .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
 }
 
 async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
@@ -394,6 +399,16 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
 #[cfg(test)]
 mod steam_id_tests {
     use super::steam_id;
+
+    #[test]
+    fn hostile_id_is_rejected() {
+        let d = std::env::temp_dir().join(format!("brisk-sid-bad-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("config")).unwrap();
+        let vdf = "\"users\"\n{\n\t\"1\\\"\\nurl=x\"\n\t{\n\t\t\"timestamp\"\t\"5\"\n\t}\n}\n";
+        std::fs::write(d.join("config/loginusers.vdf"), vdf).unwrap();
+        assert_eq!(steam_id(&d), None);
+        std::fs::remove_dir_all(&d).ok();
+    }
 
     #[test]
     fn newest_timestamp_when_no_mostrecent() {

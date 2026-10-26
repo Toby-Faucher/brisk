@@ -128,7 +128,17 @@ async fn stream_start(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> R
         tokio::spawn(async move { s2.stream.start(req, name).await })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e))
+            .map_err(|e| {
+                let down = s.stream.shutting_down();
+                err(
+                    if down {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    },
+                    &e,
+                )
+            })
     };
     match run.await {
         Ok(i) => axum::Json(i).into_response(),
@@ -200,14 +210,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-/// Host check on everything (DNS rebinding), secret on every non-GET /api request.
+/// Host check on everything (DNS rebinding), secret on every /api request (GET too: /api/stream carries the session token).
 async fn guard(State(s): State<Arc<AppState>>, req: Request, next: Next) -> Response {
     let host_ok = req
         .headers()
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .is_some_and(|h| h == "localhost:8443" || h == "127.0.0.1:8443");
-    let needs_secret = req.method() != Method::GET && req.uri().path().starts_with("/api");
+    let needs_secret = req.uri().path().starts_with("/api");
     let secret_ok = !needs_secret
         || req
             .headers()
@@ -238,6 +248,10 @@ async fn static_file(State(s): State<Arc<AppState>>, req: Request) -> Response {
         path.push("index.html");
     }
     // Unknown page: the root index, so client-side routes still load.
+    // A missing file with an extension is a missing asset, not a page.
+    if !path.is_file() && Path::new(rel).extension().is_some() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     if !path.is_file() {
         path = dist.join("index.html");
     }

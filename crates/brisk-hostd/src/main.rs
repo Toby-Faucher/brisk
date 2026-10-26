@@ -31,7 +31,7 @@ async fn main() -> std::process::ExitCode {
             _ = term.recv() => {}
         }
         // Bridge first, so it cancels its Sunshine session before we go.
-        state.stream.stop().await;
+        state.stream.shutdown().await;
     };
     match axum::serve(l, app).with_graceful_shutdown(stop).await {
         Ok(()) => std::process::ExitCode::SUCCESS,

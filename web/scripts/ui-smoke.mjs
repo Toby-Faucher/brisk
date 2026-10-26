@@ -105,6 +105,8 @@ try {
   // Secret guard
   const st = await page.evaluate(async () => (await fetch('/api/stream', { method: 'POST', body: '{}' })).status);
   check('POST /api/stream without the secret is 403', st === 403, String(st));
+  const stGet = await page.evaluate(async () => (await fetch('/api/stream')).status);
+  check('GET /api/stream without the secret is 403', stGet === 403, String(stGet));
 
   // Launch Portal 2 from the Library (fake bridge: no video, WebTransport will fail)
   await page.goto(new URL('/library', pageUrl).href);
@@ -112,7 +114,7 @@ try {
   await page.waitForURL(/\/stream/);
   let live = null;
   for (let i = 0; i < 40 && live?.state !== 'live'; i++) {
-    live = await page.evaluate(async () => (await fetch('/api/stream')).json());
+    live = await page.evaluate(async (sec) => (await fetch('/api/stream', { headers: { 'x-brisk-secret': sec } })).json(), secret);
     await sleep(250);
   }
   check("stream state reaches 'live'", live?.state === 'live', live?.state);

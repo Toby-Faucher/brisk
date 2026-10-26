@@ -65,7 +65,9 @@ async fn serves_index_from_dist() {
         "<h1>home</h1>"
     );
     assert_eq!(
-        send(d.path(), "GET", "/api/nope", H, None).await.status(),
+        send(d.path(), "GET", "/api/nope", H, Some(SECRET))
+            .await
+            .status(),
         StatusCode::NOT_FOUND
     );
     // no escaping dist
@@ -118,20 +120,74 @@ async fn post_with_secret_passes_auth() {
 }
 
 #[tokio::test]
-async fn get_needs_no_secret() {
+async fn get_needs_secret_on_api_only() {
     let d = dist();
     assert_eq!(
         send(d.path(), "GET", "/api/unknown", H, None)
             .await
             .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(d.path(), "GET", "/api/unknown", H, Some(SECRET))
+            .await
+            .status(),
         StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(d.path(), "GET", "/", H, None).await.status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn get_stream_needs_secret() {
+    let r = rig("");
+    r.call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
+    let no = Request::builder()
+        .uri("/api/stream")
+        .header("host", H)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        r.app.clone().oneshot(no).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(r.call("GET", "/api/stream", "").await.0, StatusCode::OK);
+    r.call("DELETE", "/api/stream", "").await;
+}
+
+#[tokio::test]
+async fn start_after_shutdown_is_refused_and_spawns_nothing() {
+    let r = rig("");
+    r.state.stream.shutdown().await;
+    let (st, _) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
+    assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(r.log().is_empty(), "no bridge may be spawned");
+}
+
+#[tokio::test]
+async fn missing_asset_is_404_but_unknown_page_falls_back() {
+    let d = dist();
+    for p in ["/_astro/gone.js", "/a/b.css", "/favicon.ico"] {
+        assert_eq!(
+            send(d.path(), "GET", p, H, None).await.status(),
+            StatusCode::NOT_FOUND,
+            "{p}"
+        );
+    }
+    assert_eq!(
+        body(send(d.path(), "GET", "/stream/deep", H, None).await).await,
+        "<h1>home</h1>"
     );
 }
 
 // ---- Steam library ----
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 const KEY: &str = "TESTKEY-0123456789abcdef";
 const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/steam");
@@ -225,6 +281,7 @@ async fn games_json(cfg: &Config, uri: &str) -> (serde_json::Value, String) {
             Request::builder()
                 .uri(uri)
                 .header("host", H)
+                .header("x-brisk-secret", cfg.secret.as_str())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -370,38 +427,8 @@ async fn is_known_appid_uses_cached_library() {
     assert!(!st.is_known_appid(999).await);
 }
 
-struct Capture(Arc<Mutex<String>>);
-impl tracing::field::Visit for Capture {
-    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
-        self.0
-            .lock()
-            .unwrap()
-            .push_str(&format!("{}={v:?} ", f.name()));
-    }
-}
-struct Sub(Arc<Mutex<String>>);
-impl tracing::Subscriber for Sub {
-    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
-        true
-    }
-    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-        tracing::span::Id::from_u64(1)
-    }
-    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
-    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
-    fn event(&self, e: &tracing::Event<'_>) {
-        self.0.lock().unwrap().push_str(e.metadata().target());
-        e.record(&mut Capture(self.0.clone()));
-    }
-    fn enter(&self, _: &tracing::span::Id) {}
-    fn exit(&self, _: &tracing::span::Id) {}
-}
-
 #[tokio::test]
-async fn key_never_in_response_or_logs() {
-    // Global (not thread-local) so other tests' callsite caches cannot hide our events.
-    let logs = Arc::new(Mutex::new(String::new()));
-    tracing::subscriber::set_global_default(Sub(logs.clone())).unwrap();
+async fn key_never_in_response() {
     let mut out = String::new();
     for status in [200, 500] {
         let s = steam(&mock_steam(status).await, Some(KEY));
@@ -409,12 +436,6 @@ async fn key_never_in_response_or_logs() {
         out += &format!("{:?}", s.cfg);
     }
     assert!(!out.is_empty() && !out.contains(KEY) && !out.contains("0123456789abcdef"));
-    let logs = logs.lock().unwrap();
-    assert!(
-        logs.contains("GetOwnedGames failed"),
-        "expected a log line: {logs}"
-    );
-    assert!(!logs.contains("0123456789abcdef"));
 }
 
 #[tokio::test]
@@ -464,6 +485,7 @@ async fn sunshine_restart_204_then_429_and_host_is_json() {
             Request::builder()
                 .uri("/api/host")
                 .header("host", H)
+                .header("x-brisk-secret", SECRET)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -506,6 +528,7 @@ impl brisk_hostd::host::Clock for Clock0 {
 
 struct Rig {
     app: axum::Router,
+    state: Arc<AppState>,
     runner: Arc<Calls>,
     log: PathBuf,
     data: PathBuf,
@@ -551,8 +574,10 @@ fn rig(mode: &str) -> Rig {
         }],
         owned_available: true,
     });
+    let state = Arc::new(st);
     Rig {
-        app: router(Arc::new(st)),
+        app: router(state.clone()),
+        state,
         runner,
         log,
         data,
