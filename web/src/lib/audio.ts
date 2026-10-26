@@ -242,15 +242,15 @@ const DECODER_CONFIG = { codec: 'opus', sampleRate: RATE, numberOfChannels: 2 };
 
 /// Plays the bridge's audio datagrams from `transport` through `ctx`. Create `ctx` in a user
 /// gesture (the connect click), or Chrome's autoplay policy keeps it suspended.
-/// `workletUrl`: the bundled audio-worklet.ts.
-export async function startAudio(transport: WebTransport, ctx: AudioContext, workletUrl: string): Promise<Audio> {
+/// `workletUrl`: the bundled audio-worklet.ts. `out`: where the playout connects (a volume GainNode).
+export async function startAudio(transport: WebTransport, ctx: AudioContext, workletUrl: string, out: AudioNode = ctx.destination): Promise<Audio> {
   const stats: AudioStats = {
     underruns: 0, underrunMs: [], lost: 0, late: 0, pauses: 0, overflows: 0, dropped: 0, repeated: 0, bufferMs: 0,
     packets: 0, decoded: 0, nonSilent: 0, decodeErrors: 0, contextState: ctx.state, outputMs: 0, lastError: null,
   };
   await ctx.audioWorklet.addModule(workletUrl);
   const node = new AudioWorkletNode(ctx, 'brisk-playout', { numberOfInputs: 0, outputChannelCount: [2] });
-  node.connect(ctx.destination);
+  node.connect(out);
   node.port.onmessage = (e: MessageEvent<PlayoutStats>) => {
     Object.assign(stats, e.data);
     stats.contextState = ctx.state;

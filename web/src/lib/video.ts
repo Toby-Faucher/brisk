@@ -322,8 +322,11 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
       if (stats.stalls.length > 6) stats.stalls.shift();
     }
     lastRaf = t;
-    requestAnimationFrame(paint);
+    if (!ended) requestAnimationFrame(paint);
   };
+  // The rAF probe stops with the session, so a closed stream costs nothing per frame.
+  let ended = false;
+  transport.closed.then(() => (ended = true), () => (ended = true));
   requestAnimationFrame(paint);
 
   const readStream = async (s: ReadableStream<Uint8Array>) => {

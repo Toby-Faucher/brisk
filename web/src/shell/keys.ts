@@ -60,6 +60,7 @@ export function attachShortcuts(target: EventTarget, h: { open(): void; go(path:
   const seq = sequenceMatcher({ 'g h': () => h.go('/'), 'g l': () => h.go('/library'), 'g s': () => h.go('/stream') });
   const on = (ev: Event) => {
     const e = ev as unknown as KeyLike;
+    if ((e.target as { tagName?: string } | null)?.tagName === 'CANVAS') return; // the stream holds the keyboard
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       h.open();

@@ -254,6 +254,8 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
 
 export interface Input {
   stats: InputStats;
+  /// Key-ups and button-ups for everything held, sent before the page closes the transport.
+  release(): void;
 }
 
 /// Opens the input stream on `transport` and captures input on `canvas`.
@@ -267,5 +269,5 @@ export async function startInput(transport: WebTransport, canvas: HTMLCanvasElem
   });
   canvas.tabIndex = 0;
   attach(s, { canvas, doc: document, win: window }, transport.closed);
-  return { stats: s.stats };
+  return { stats: s.stats, release: () => s.releaseAll() };
 }

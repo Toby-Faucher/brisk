@@ -1,0 +1,245 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { navigate } from 'astro:transitions/client';
+  import { api, type StreamInfo, type StreamReq } from '../../state/api';
+  import { host } from '../../state/host';
+  import { settings } from '../../state/settings';
+  import { onCommand } from '../../state/commands';
+  import { toast } from '../../shell/Toasts.svelte';
+  import { startVideo } from '../../lib/video';
+  import { startAudio } from '../../lib/audio';
+  import { startInput } from '../../lib/input';
+  import workletUrl from '../../lib/audio-worklet.ts?worker&url';
+  import { StreamSession } from './session';
+  import { holdEsc, type Hold } from './ghostbar';
+  import GhostBar from './GhostBar.svelte';
+  import StatsCard from './StatsCard.svelte';
+
+  const hexBytes = (h: string) => Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
+  const session = new StreamSession({
+    api,
+    open: (url, hash) => new WebTransport(url, { serverCertificateHashes: [{ algorithm: 'sha-256', value: hexBytes(hash) }] }),
+    audioContext: () => new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' }),
+    startVideo: (t, c) => startVideo(t as WebTransport, c),
+    startAudio: (t, ctx, out) => startAudio(t as WebTransport, ctx as AudioContext, workletUrl, out as unknown as AudioNode),
+    startInput: (t, c) => startInput(t as WebTransport, c),
+    canvas: () => {
+      const c = document.createElement('canvas');
+      c.id = 'video';
+      return c;
+    },
+    notify: (text, error) => toast(text, { error }),
+  });
+  const { state: phase, stats, needsSound, canvasEl } = session;
+
+  // 'boot' = asking hostd; 'idle' = nothing streaming; 'unsupported' = no WebTransport/WebCodecs.
+  let page = $state<'boot' | 'idle' | 'unsupported' | 'session'>('boot');
+  let statsOn = $state(false);
+  let preset = $state<StreamInfo['preset']>(null);
+  let captured = $state(false);
+  let starting = $state(false);
+  let hold = $state<Hold>({ progress: 0, fired: false });
+  let kbLocked = false;
+  let stage: HTMLElement;
+
+  async function boot() {
+    page = 'boot';
+    if (!('WebTransport' in window) || !('VideoDecoder' in window)) return void (page = 'unsupported');
+    let info: StreamInfo;
+    try {
+      info = await api.stream();
+      // hostd is still starting the bridge (Library/Resume just asked): wait for it, up to 10 s.
+      for (let i = 0; info.state === 'starting' && i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        info = await api.stream();
+      }
+    } catch (e) {
+      toast(`Couldn't reach the host: ${(e as Error).message}`, { error: true });
+      return void (page = 'idle');
+    }
+    if (info.state !== 'live') return void (page = 'idle');
+    preset = info.preset;
+    page = 'session';
+    await session.connect(info);
+  }
+
+  async function start() {
+    starting = true;
+    try {
+      const info = await api.startStream({ preset: $settings.defaultPreset });
+      preset = info.preset;
+      page = 'session';
+      await session.connect(info);
+    } catch (e) {
+      toast(`Couldn't start the stream: ${(e as Error).message}`, { error: true });
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function quality(r: StreamReq) {
+    toast(`Switching to ${r.preset === 'custom' ? 'custom quality' : r.preset}…`);
+    await session.changeQuality(r);
+    preset = session.info?.preset ?? r.preset;
+  }
+
+  async function disconnect() {
+    session.disconnect();
+    try {
+      await api.stopStream();
+    } catch {}
+    toast('Disconnected');
+    await navigate('/library');
+  }
+
+  function capture() {
+    const c = $canvasEl;
+    if (!c) return;
+    if (captured) {
+      document.exitPointerLock();
+      c.blur();
+    } else c.click(); // input.ts: the click focuses the canvas and asks for Pointer Lock
+  }
+
+  async function fullscreen() {
+    if (document.fullscreenElement) return void document.exitFullscreen();
+    await document.documentElement.requestFullscreen().catch(() => {});
+    // Keyboard Lock: Esc goes to the page (hold Esc releases), not to Chrome.
+    const kb = (navigator as Navigator & { keyboard?: { lock(keys?: string[]): Promise<void> } }).keyboard;
+    kbLocked = !!kb && (await kb.lock(['Escape']).then(() => true, () => false));
+  }
+
+  // Mount the session's canvas (a fresh one per connection) into the stage.
+  $effect(() => {
+    const c = $canvasEl;
+    if (c && stage && c.parentElement !== stage) stage.replaceChildren(c);
+  });
+
+  onMount(() => {
+    const esc = holdEsc();
+    let raf = 0;
+    const tick = () => {
+      hold = esc.tick(performance.now());
+      if (hold.fired) {
+        document.exitPointerLock(); // input.ts releases keys on the lock change
+        $canvasEl?.blur();
+        hold = esc.release(performance.now());
+        return;
+      }
+      raf = requestAnimationFrame(tick); // only while Esc is held
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Escape' || !kbLocked || !document.pointerLockElement) return;
+      const first = !e.repeat && hold.progress === 0;
+      hold = esc.press(performance.now());
+      if (first) raf = requestAnimationFrame(tick);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Escape') return;
+      cancelAnimationFrame(raf);
+      hold = esc.release(performance.now());
+    };
+    const cap = () => (captured = !!document.pointerLockElement || document.activeElement?.id === 'video');
+    const fs = () => {
+      if (!document.fullscreenElement) kbLocked = false;
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    document.addEventListener('pointerlockchange', cap);
+    document.addEventListener('focusin', cap);
+    const out = () => setTimeout(cap);
+    document.addEventListener('focusout', out);
+    document.addEventListener('fullscreenchange', fs);
+    const off = onCommand((c) => {
+      if (c.type === 'stats') statsOn = !statsOn;
+      else if (page === 'session' && c.preset !== preset) void quality({ preset: c.preset });
+    });
+    void boot();
+    return () => {
+      // Leaving /stream (the island unmounts on navigation): release keys, close everything.
+      session.disconnect();
+      off();
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      document.removeEventListener('pointerlockchange', cap);
+      document.removeEventListener('focusin', cap);
+      document.removeEventListener('focusout', out);
+      document.removeEventListener('fullscreenchange', fs);
+      if (document.pointerLockElement) document.exitPointerLock();
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+  });
+</script>
+
+<div class="stream" data-state={page === 'session' ? $phase : page}>
+  <div class="stage" bind:this={stage}></div>
+
+  {#if page === 'session'}
+    <GhostBar
+      host={$host?.name ?? 'host'}
+      rttMs={$stats.rttMs}
+      {preset}
+      {captured}
+      bind:statsOn
+      onvolume={(v) => session.setVolume(v)}
+      oncapture={capture}
+      onquality={quality}
+      onfullscreen={fullscreen}
+      ondisconnect={disconnect}
+    />
+    {#if statsOn}<StatsCard stats={$stats} path={$host?.path === 'relay' ? 'Relay' : $host?.path === 'direct' ? 'Direct' : null} />{/if}
+    {#if $phase === 'connecting'}
+      <div class="center glass pill"><span class="spin"></span> Connecting to {$host?.name ?? 'the host'}…</div>
+    {:else if $phase === 'failed'}
+      <div class="center glass card">
+        <h3>Lost the connection</h3>
+        <p class="muted">The stream stopped answering. It may still be running on the host.</p>
+        <div class="row"><button class="btn" onclick={boot}>Reconnect</button><a class="btn ghost" href="/library">Library</a></div>
+      </div>
+    {/if}
+    {#if $needsSound}
+      <button class="sound glass" onclick={() => session.resumeSound()}><span class="ic-s"></span> Tap to start sound</button>
+    {/if}
+    {#if hold.progress > 0}
+      <div class="esc glass" role="status">
+        <div class="ring" style="--p:{hold.progress * 100}"><b>{((1 - hold.progress) * 0.8).toFixed(1)}</b></div>
+        <div><b>Hold Esc</b> to give your mouse back<div class="muted small">Release in {((1 - hold.progress) * 0.8).toFixed(1)} s</div></div>
+      </div>
+    {/if}
+  {:else if page === 'idle'}
+    <div class="center glass card">
+      <h3>Nothing is streaming</h3>
+      <p class="muted">Start the desktop of {$host?.name ?? 'your host'}, or pick a game in the Library.</p>
+      <div class="row">
+        <button class="btn" disabled={starting} onclick={start}>{starting ? 'Starting…' : 'Start'}</button>
+        <a class="btn ghost" href="/library">Library</a>
+      </div>
+    </div>
+  {:else if page === 'unsupported'}
+    <div class="center glass card">
+      <h3>This browser can't stream</h3>
+      <p class="muted">Brisk needs WebTransport and WebCodecs: use Chrome on http://localhost.</p>
+    </div>
+  {/if}
+</div>
+
+<style>
+  /* Covers the shell (sidebar included): the stream is the whole window. */
+  .stream { position: fixed; inset: 0; z-index: 30; background: #000; }
+  .stage { position: absolute; inset: 0; display: grid; }
+  .stage :global(canvas) { width: 100%; height: 100%; object-fit: contain; outline: none; display: block; }
+  .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  .pill { display: flex; gap: 10px; align-items: center; padding: 10px 18px; border-radius: 999px; font-weight: 500; }
+  .card { padding: 22px 24px; width: min(420px, calc(100vw - 32px)); display: grid; gap: 10px; border-radius: var(--r-card); }
+  .card p { margin: 0; }
+  .row { display: flex; gap: 10px; margin-top: 6px; }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, #fff 25%, transparent); border-top-color: var(--accent); animation: sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .sound { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); padding: 10px 18px; border-radius: 999px; font-weight: 600; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .ic-s { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .esc { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 12px 18px; border-radius: 18px; display: flex; gap: 12px; align-items: center; z-index: 36; }
+  .ring { width: 34px; height: 34px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p, 0) * 1%), color-mix(in srgb, #fff 14%, transparent) 0); display: grid; place-items: center; }
+  .ring b { width: 26px; height: 26px; border-radius: 50%; background: #12151b; display: grid; place-items: center; font-size: 10.5px; font-family: var(--mono); }
+  .small { font-size: 12px; }
+</style>

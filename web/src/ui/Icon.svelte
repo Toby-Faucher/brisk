@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  // Filled 24x24 icons from the mockups (docs/ui-mockups/round1b-bento-shaders.html).
+  // Filled 24x24 icons from the mockups (docs/ui-mockups/round1b-bento-shaders.html, round2-stream-library.html).
   const PATHS: Record<string, string> = {
     bolt: '<path d="M13.2 2 4.5 13.5h6L9.6 22l9.9-12.2h-6.4z"/>',
     home: '<path d="M12 3 3 10.5V21h6.5v-6h5v6H21V10.5z"/>',
@@ -15,6 +15,14 @@
     chev: '<path d="M9 5.5 15.5 12 9 18.5 7.4 16.9 12.3 12 7.4 7.1z"/>',
     plus: '<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/>',
     fit: '<path d="M4 9.5c0-1 .8-1.8 1.8-1.8H7v8.6H5.8c-1 0-1.8-.8-1.8-1.8zM20 9.5c0-1-.8-1.8-1.8-1.8H17v8.6h1.2c1 0 1.8-.8 1.8-1.8zM8.5 11h7v2h-7z"/>',
+    vol: '<path d="M3 9.5v5h3.6L11 18.5v-13L6.6 9.5z"/><path d="M14 8.5a5 5 0 0 1 0 7M16.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
+    mute: '<path d="M3 9.5v5h3.6L11 18.5v-13L6.6 9.5z"/><path d="M15 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round"/>',
+    kbd: '<rect x="2" y="6" width="20" height="12" rx="3.2"/><rect x="5" y="9.4" width="2.2" height="2" rx=".6" fill="#0b0c0f"/><rect x="8.8" y="9.4" width="2.2" height="2" rx=".6" fill="#0b0c0f"/><rect x="12.6" y="9.4" width="2.2" height="2" rx=".6" fill="#0b0c0f"/><rect x="16.4" y="9.4" width="2.2" height="2" rx=".6" fill="#0b0c0f"/><rect x="7" y="13.2" width="10" height="2" rx=".8" fill="#0b0c0f"/>',
+    clip: '<rect x="5" y="4" width="14" height="17" rx="3"/><rect x="8.5" y="2.3" width="7" height="4" rx="1.6" fill="#0b0c0f" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="10" width="8" height="1.8" rx=".9" fill="#0b0c0f"/><rect x="8" y="13.6" width="5.5" height="1.8" rx=".9" fill="#0b0c0f"/>',
+    quality: '<path d="M12 3l2.1 5.2 5.5.4-4.2 3.6 1.3 5.4L12 14.6 7.3 17.6l1.3-5.4L4.4 8.6l5.5-.4z"/>',
+    chart: '<rect x="3" y="12" width="4.2" height="8" rx="1.4"/><rect x="9.9" y="6" width="4.2" height="14" rx="1.4"/><rect x="16.8" y="9" width="4.2" height="11" rx="1.4"/>',
+    full: '<path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+    power: '<path d="M12 3v8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M7 6.5a8 8 0 1 0 10 0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>',
   };
 </script>
 

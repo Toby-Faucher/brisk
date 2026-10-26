@@ -67,4 +67,14 @@ describe('shortcuts', () => {
     press('/');
     expect(open).toHaveBeenCalledTimes(2);
   });
+  it('shortcuts_ignored_while_the_stream_canvas_has_the_keyboard', () => {
+    const open = vi.fn();
+    const go = vi.fn();
+    const t = new EventTarget();
+    attachShortcuts(t, { open, go });
+    const canvas = { tagName: 'CANVAS' };
+    for (const k of ['/', 'g', 'l']) t.dispatchEvent(Object.defineProperties(new Event('keydown'), { key: { value: k }, target: { value: canvas } }));
+    expect(open).not.toHaveBeenCalled();
+    expect(go).not.toHaveBeenCalled();
+  });
 });

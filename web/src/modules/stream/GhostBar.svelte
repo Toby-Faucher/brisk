@@ -1,0 +1,214 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import type { Preset, StreamReq } from '../../state/api';
+  import Icon from '../../ui/Icon.svelte';
+  import { EDGE_PX, HIDE_MS, edgeReveal } from './ghostbar';
+
+  let {
+    host,
+    rttMs,
+    preset,
+    captured,
+    statsOn = $bindable(false),
+    onvolume,
+    oncapture,
+    onquality,
+    onfullscreen,
+    ondisconnect,
+  }: {
+    host: string;
+    rttMs: number | null;
+    preset: Preset | null;
+    captured: boolean;
+    statsOn?: boolean;
+    onvolume: (v: number) => void;
+    oncapture: () => void;
+    onquality: (r: StreamReq) => void;
+    onfullscreen: () => void;
+    ondisconnect: () => void;
+  } = $props();
+
+  const PRESETS: { id: Preset; label: string; mbps: number }[] = [
+    { id: 'fast', label: 'Fast', mbps: 10 },
+    { id: 'balanced', label: 'Balanced', mbps: 20 },
+    { id: 'crisp', label: 'Crisp', mbps: 40 },
+  ];
+
+  let bar: HTMLElement;
+  let visible = $state(false);
+  let menu = $state<null | 'quality' | 'clip'>(null);
+  let advanced = $state(false);
+  let vol = $state(70);
+  let muted = $state(false);
+  let adv = $state({ res: '1920x1080', fps: 60, bitrateKbps: 20000 });
+
+  // Pointer state for edgeReveal: last y, whether it is on the bar, when it left the bar or edge.
+  let y = 999;
+  let hovering = false;
+  let inside = false;
+  let leftAt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const update = () => {
+    const now = performance.now();
+    const isIn = hovering || y <= EDGE_PX;
+    if (inside && !isIn) leftAt = now;
+    inside = isIn;
+    visible = edgeReveal(y, visible, hovering, menu !== null, now - leftAt);
+    clearTimeout(timer);
+    if (visible && !isIn && menu === null) timer = setTimeout(update, HIDE_MS - (now - leftAt) + 5);
+  };
+
+  onMount(() => {
+    const move = (e: MouseEvent) => {
+      if (document.pointerLockElement) return; // playing: the bar stays away
+      y = e.clientY;
+      hovering = bar.contains(e.target as Node);
+      update();
+    };
+    const lock = () => {
+      if (!document.pointerLockElement) return;
+      menu = null;
+      hovering = false;
+      y = 999;
+      visible = false;
+    };
+    document.addEventListener('mousemove', move, { passive: true });
+    document.addEventListener('pointerlockchange', lock);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('pointerlockchange', lock);
+    };
+  });
+
+  $effect(() => onvolume(muted ? 0 : vol / 100));
+
+  const toggle = (m: 'quality' | 'clip') => {
+    menu = menu === m ? null : m;
+    update();
+  };
+  const pick = (p: Preset) => {
+    menu = null;
+    update();
+    if (p !== preset) onquality({ preset: p });
+  };
+  const applyAdvanced = () => {
+    const [width, height] = adv.res.split('x').map(Number);
+    menu = null;
+    update();
+    onquality({ preset: 'custom', width, height, fps: adv.fps, bitrateKbps: adv.bitrateKbps });
+  };
+  const current = $derived(PRESETS.find((p) => p.id === preset));
+</script>
+
+<div
+  class="bar glass"
+  class:on={visible}
+  bind:this={bar}
+  role="toolbar"
+  aria-label="Stream controls"
+  tabindex="-1"
+  onfocusin={() => ((hovering = true), update())}
+  onfocusout={(e) => {
+    if (!bar.contains(e.relatedTarget as Node)) (hovering = false), update();
+  }}
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && menu) (menu = null), update();
+  }}
+>
+  <span class="hostchip"><span class="dot"></span><b>{host}</b><span class="mono muted">{rttMs === null ? '–' : `${rttMs.toFixed(0)} ms`}</span></span>
+  <span class="sep"></span>
+  <button class="ic" aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} onclick={() => (muted = !muted)} style="color:var(--c-power)">
+    <Icon name={muted ? 'mute' : 'vol'} /><span class="tip">{muted ? 'Unmute' : 'Mute'}</span>
+  </button>
+  <input class="vol" type="range" min="0" max="100" bind:value={vol} aria-label="Volume" />
+  <button class="ic" aria-pressed={captured} aria-label="Keyboard capture" onclick={oncapture} style="color:var(--c-stream)">
+    <Icon name="kbd" /><span class="tip">{captured ? 'Release keyboard and mouse' : 'Capture keyboard and mouse'}</span>
+  </button>
+  <button class="ic" aria-expanded={menu === 'clip'} aria-label="Clipboard and files" onclick={() => toggle('clip')} style="color:var(--c-lib)">
+    <Icon name="clip" /><span class="tip">Clipboard · drop files</span>
+  </button>
+  <button class="ic" aria-expanded={menu === 'quality'} aria-label="Quality" onclick={() => toggle('quality')} style="color:var(--c-agent)">
+    <Icon name="quality" /><span class="tip">Quality: {current?.label ?? 'Custom'}</span>
+  </button>
+  <button class="ic" aria-pressed={statsOn} aria-label="Stats" onclick={() => (statsOn = !statsOn)} style="color:var(--accent)">
+    <Icon name="chart" /><span class="tip">Stats</span>
+  </button>
+  <button class="ic" aria-label="Fullscreen" onclick={onfullscreen} style="color:var(--c-set)">
+    <Icon name="full" /><span class="tip">Fullscreen</span>
+  </button>
+  <span class="sep"></span>
+  <button class="ic" aria-label="Disconnect" onclick={ondisconnect} style="color:var(--bad)">
+    <Icon name="power" /><span class="tip">Disconnect</span>
+  </button>
+
+  {#if menu === 'quality'}
+    <div class="menu glass" role="dialog" aria-label="Quality">
+      <div class="chips">
+        {#each PRESETS as p (p.id)}
+          <button class="chip" aria-pressed={preset === p.id} onclick={() => pick(p.id)}>{p.label}</button>
+        {/each}
+        <button class="chip" aria-pressed={advanced || preset === 'custom'} aria-expanded={advanced} onclick={() => (advanced = !advanced)}>Advanced…</button>
+      </div>
+      <p class="mono muted line">1080p · 60 fps · H.264 · {current ? `${current.mbps} Mbps` : 'custom'}</p>
+      {#if advanced}
+        <div class="adv">
+          <label>Resolution
+            <select bind:value={adv.res}>
+              <option value="1280x720">1280×720</option>
+              <option value="1920x1080">1920×1080</option>
+              <option value="2560x1440">2560×1440</option>
+            </select>
+          </label>
+          <label>Frame rate
+            <select bind:value={adv.fps}>
+              <option value={30}>30 fps</option>
+              <option value={60}>60 fps</option>
+              <option value={120}>120 fps</option>
+            </select>
+          </label>
+          <label>Bitrate (kbps)
+            <input type="number" min="1000" max="150000" step="1000" bind:value={adv.bitrateKbps} />
+          </label>
+          <label>Codec
+            <select disabled><option>H.264 (HEVC soon)</option></select>
+          </label>
+          <button class="btn sm" onclick={applyAdvanced}>Apply</button>
+        </div>
+      {/if}
+    </div>
+  {:else if menu === 'clip'}
+    <div class="menu glass" role="dialog" aria-label="Clipboard and files">
+      <p class="line">Shared clipboard and file drop are coming soon.</p>
+      <button class="btn ghost sm" disabled>Send a file…</button>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .bar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px); padding: 6px 8px; display: flex; align-items: center; gap: 2px; transition: transform .45s var(--ease); z-index: 35; border-radius: 999px; }
+  .bar.on { transform: translateX(-50%) translateY(0); }
+  .hostchip { display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; white-space: nowrap; }
+  .hostchip b { font-weight: 600; }
+  .ic { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; position: relative; transition: background .18s, transform .2s var(--ease); }
+  .ic:hover { background: color-mix(in srgb, #fff 10%, transparent); transform: translateY(-1px); }
+  .ic[aria-pressed='true'], .ic[aria-expanded='true'] { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .tip { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(-4px); background: #000c; color: #fff; font-size: 11.5px; padding: 3px 8px; border-radius: 7px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all .18s var(--ease); }
+  .ic:hover .tip, .ic:focus-visible .tip { opacity: 1; transform: translateX(-50%); }
+  .ic[aria-expanded='true'] .tip { opacity: 0; }
+  .sep { width: 1px; height: 20px; background: color-mix(in srgb, #fff 14%, transparent); margin: 0 4px; }
+  .vol { width: 90px; accent-color: var(--accent); height: 4px; }
+  .menu { position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); padding: 12px; min-width: 320px; display: grid; gap: 10px; animation: drop .3s var(--ease); }
+  @keyframes drop { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-flex; padding: 5px 11px; border-radius: 999px; background: color-mix(in srgb, #fff 8%, transparent); font-size: 12.5px; border: 0; cursor: pointer; transition: background .18s; }
+  .chip:hover { background: color-mix(in srgb, #fff 14%, transparent); }
+  .chip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent) inset; }
+  .line { margin: 0; font-size: 12px; }
+  .adv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: end; }
+  .adv label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .adv select, .adv input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 12.5px; }
+  .adv select:disabled { opacity: .55; }
+  .btn.sm { padding: 6px 12px; font-size: 12.5px; border-radius: 9px; justify-content: center; }
+</style>
