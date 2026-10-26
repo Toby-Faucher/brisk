@@ -326,7 +326,11 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
   };
   // The rAF probe stops with the session, so a closed stream costs nothing per frame.
   let ended = false;
-  transport.closed.then(() => (ended = true), () => (ended = true));
+  const onClosed = () => {
+    ended = true;
+    if (decoder && decoder.state !== 'closed') decoder.close();
+  };
+  transport.closed.then(onClosed, onClosed);
   requestAnimationFrame(paint);
 
   const readStream = async (s: ReadableStream<Uint8Array>) => {

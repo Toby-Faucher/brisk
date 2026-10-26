@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { codecFromSps, findSps, KeyGate, parseHeader, Window, HEADER_LEN } from './video';
+import { describe, expect, it, vi } from 'vitest';
+import { codecFromSps, findSps, KeyGate, parseHeader, startVideo, Window, HEADER_LEN } from './video';
 
 const hex = (s: string) => Uint8Array.from(s.match(/../g)!.map((b) => parseInt(b, 16)));
 
@@ -129,5 +129,33 @@ describe('Window', () => {
     expect(w.pct(50)).toBe(2);
     expect(w.pct(100)).toBe(4);
     expect(w.min()).toBe(1);
+  });
+});
+
+describe('startVideo', () => {
+  it('closes the decoder when the transport closes', async () => {
+    const decoder = { state: 'configured', decodeQueueSize: 0, configure() {}, decode() {}, close: vi.fn(() => { decoder.state = 'closed'; }) };
+    vi.stubGlobal('VideoDecoder', Object.assign(function () { return decoder; }, { isConfigSupported: async () => ({ supported: true }) }));
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    let closeTransport!: () => void;
+    const closed = new Promise<void>((r) => (closeTransport = r));
+    const frame = new Uint8Array([...new Uint8Array(HEADER_LEN), 0, 0, 0, 1, ...SUNSHINE_SPS]);
+    frame[4] = 1;
+    const incoming = new ReadableStream({
+      start(c) {
+        c.enqueue(new ReadableStream({ start(s) { s.enqueue(frame); s.close(); } }));
+      },
+    });
+    const transport = {
+      closed,
+      incomingUnidirectionalStreams: incoming,
+      createUnidirectionalStream: async () => ({ getWriter: () => ({ write: async () => {}, close: async () => {} }) }),
+    } as unknown as WebTransport;
+    const canvas = { getContext: () => ({}) } as unknown as HTMLCanvasElement;
+    startVideo(transport, canvas);
+    await new Promise((r) => setTimeout(r, 20));
+    closeTransport();
+    await vi.waitFor(() => expect(decoder.close).toHaveBeenCalledTimes(1));
+    vi.unstubAllGlobals();
   });
 });
