@@ -1,7 +1,7 @@
 // Brisk video: brisk-bridge frame streams -> WebCodecs -> canvas. Framework-free.
 //
 // Each frame arrives on its own WebTransport uni stream: a 21-byte little-endian header
-// {frame_idx u32, flags u8, capture_ns u64, bridge_ns u64}, then Annex B H.264, then FIN.
+// {frame_idx u32, flags u8, capture_ns u64, bridge_ns u64}, then Annex B H.264 or HEVC, then FIN.
 // capture_ns and bridge_ns are both CLOCK_MONOTONIC on the bridge host, so their difference is
 // meaningful here; neither is compared with this machine's clock.
 
@@ -32,8 +32,8 @@ export function parseHeader(b: Uint8Array): FrameHeader {
   };
 }
 
-/// The first SPS NAL unit (header byte included) of an Annex B access unit, or null.
-export function findSps(annexb: Uint8Array): Uint8Array | null {
+/// The NAL units (header included, start code not) of an Annex B access unit.
+function nals(annexb: Uint8Array): Uint8Array[] {
   const starts: number[] = [];
   for (let i = 0; i + 2 < annexb.length; i++) {
     if (annexb[i] === 0 && annexb[i + 1] === 0 && annexb[i + 2] === 1) {
@@ -41,14 +41,16 @@ export function findSps(annexb: Uint8Array): Uint8Array | null {
       i += 2;
     }
   }
-  for (let k = 0; k < starts.length; k++) {
-    const s = starts[k];
-    if ((annexb[s] & 0x1f) !== 7) continue;
+  return starts.map((s, k) => {
     let end = k + 1 < starts.length ? starts[k + 1] - 3 : annexb.length;
     if (end > s && annexb[end - 1] === 0) end--; // 4-byte start code of the next NAL
     return annexb.subarray(s, end);
-  }
-  return null;
+  });
+}
+
+/// The first SPS NAL unit (header byte included) of an Annex B access unit, or null.
+export function findSps(annexb: Uint8Array): Uint8Array | null {
+  return nals(annexb).find((n) => (n[0] & 0x1f) === 7) ?? null;
 }
 
 /// RFC 6381 `avc1.PPCCLL` from an SPS: profile_idc, the constraint-flags byte, level_idc.
@@ -58,6 +60,58 @@ export function codecFromSps(sps: Uint8Array): string {
   }
   const hex = (x: number) => x.toString(16).padStart(2, '0');
   return `avc1.${hex(sps[1])}${hex(sps[2])}${hex(sps[3])}`;
+}
+
+const hevcType = (b: number) => (b >> 1) & 0x3f;
+
+/// ISO 14496-15 E.3 `hvc1.<space><profile>.<compat reversed>.<L|H><level>.<constraint bytes>`
+/// from an HEVC SPS (NAL type 33). The general profile_tier_level fields come first and are byte
+/// aligned whatever sps_max_sub_layers is (sub-layer fields follow general_level_idc).
+export function codecFromHevcSps(sps: Uint8Array): string {
+  if (sps.length < 3 || hevcType(sps[0]) !== 33) throw new Error('not an HEVC SPS');
+  // RBSP after the 2-byte NAL header, emulation-prevention bytes (00 00 03) removed.
+  const r: number[] = [];
+  for (let i = 2, zeros = 0; i < sps.length && r.length < 13; i++) {
+    if (zeros >= 2 && sps[i] === 3) {
+      zeros = 0;
+      continue;
+    }
+    r.push(sps[i]);
+    zeros = sps[i] === 0 ? zeros + 1 : 0;
+  }
+  if (r.length < 13) throw new Error('HEVC SPS too short');
+  // r[0]: vps id, max_sub_layers_minus1, temporal nesting; r[1]: space(2) tier(1) profile_idc(5).
+  const space = ['', 'A', 'B', 'C'][r[1] >> 6];
+  const tier = r[1] & 0x20 ? 'H' : 'L';
+  const compat = ((r[2] << 24) | (r[3] << 16) | (r[4] << 8) | r[5]) >>> 0;
+  let rev = 0;
+  for (let j = 0; j < 32; j++) if (compat & (1 << j)) rev |= 1 << (31 - j);
+  const cons = r.slice(6, 12);
+  while (cons.length && cons[cons.length - 1] === 0) cons.pop();
+  const parts = [`hvc1`, `${space}${r[1] & 0x1f}`, (rev >>> 0).toString(16).toUpperCase(), `${tier}${r[12]}`];
+  return [...parts, ...cons.map((b) => b.toString(16).toUpperCase())].join('.');
+}
+
+/// The decoder codec string of a key frame's access unit: its first parameter set says which
+/// codec it is (H.264 SPS = type 7; HEVC VPS/SPS/PPS = types 32-34, header bytes 0x40-0x45, which
+/// read as H.264 types 0-5, never 7). Null without one, or HEVC without its SPS.
+export function codecFromAccessUnit(annexb: Uint8Array): string | null {
+  const all = nals(annexb);
+  const first = all.find((n) => n.length && ((n[0] & 0x1f) === 7 || (hevcType(n[0]) >= 32 && hevcType(n[0]) <= 34)));
+  if (!first) return null;
+  if ((first[0] & 0x1f) === 7) return codecFromSps(first);
+  const sps = all.find((n) => n.length && hevcType(n[0]) === 33);
+  return sps ? codecFromHevcSps(sps) : null;
+}
+
+/// Whether this browser can decode HEVC (Main, level 4.0), to offer it at all. Annex B in-band
+/// parameter sets, so no `description` (WebCodecs HEVC registration).
+export async function hevcSupported(vd: Pick<typeof VideoDecoder, 'isConfigSupported'> | undefined = globalThis.VideoDecoder): Promise<boolean> {
+  try {
+    return !!vd && !!(await vd.isConfigSupported({ codec: 'hvc1.1.6.L120.B0' })).supported;
+  } catch {
+    return false;
+  }
 }
 
 /// Which frames may go to the decoder. It starts waiting for a key frame (WebCodecs needs one
@@ -291,8 +345,8 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement): 
     const annexb = b.subarray(HEADER_LEN);
     if (!config) {
       if (h.idr && !configuring) {
-        const sps = findSps(annexb);
-        if (sps) configure(codecFromSps(sps)).catch((e) => (stats.lastError = String(e)));
+        const codec = codecFromAccessUnit(annexb);
+        if (codec) configure(codec).catch((e) => (stats.lastError = String(e)));
       }
       stats.framesDropped++;
       return;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { codecFromSps, findSps, KeyGate, parseHeader, startVideo, Window, HEADER_LEN } from './video';
+import { codecFromAccessUnit, codecFromHevcSps, codecFromSps, findSps, hevcSupported, KeyGate, parseHeader, startVideo, Window, HEADER_LEN } from './video';
 
 const hex = (s: string) => Uint8Array.from(s.match(/../g)!.map((b) => parseInt(b, 16)));
 
@@ -17,6 +17,60 @@ describe('codecFromSps', () => {
     expect(() => codecFromSps(hex('68ce3c80'))).toThrow(); // PPS
     expect(() => codecFromSps(hex('6764'))).toThrow();
     expect(() => codecFromSps(hex('67000000'))).toThrow(); // profile 0
+  });
+});
+
+// x265-style Main profile 1080p SPS (decodes to 1920x1080, 4:2:0, level 4.0); the two 0x000003
+// emulation-prevention bytes sit inside the compatibility and constraint flags.
+const HEVC_MAIN_SPS = hex('420101016000000300b00000030000030078a003c08010e596666924cae010000003001000000301e080');
+const HEVC_VPS = hex('40010c01ffff016000000300b0000003000003007895');
+const HEVC_PPS = hex('4401c172b46240');
+const HEVC_IDR = hex('2601af0880');
+
+describe('codecFromHevcSps (ISO 14496-15 E.3)', () => {
+  it('builds hvc1.1.6.L120.B0 for Main profile level 4.0, through emulation-prevention bytes', () => {
+    expect(codecFromHevcSps(HEVC_MAIN_SPS)).toBe('hvc1.1.6.L120.B0');
+  });
+  it('Main 10 level 5.1: profile 2, compatibility flag 2 reversed = 4', () => {
+    expect(codecFromHevcSps(hex('420101022000000300900000030000030099a001e020021c59'))).toBe('hvc1.2.4.L153.90');
+  });
+  it('profile space, high tier, 3 sub-layers, and only trailing zero constraint bytes dropped', () => {
+    // vps 0, max_sub_layers_minus1 2, nesting 1 = 0x05; space 1, tier 1, profile 1 = 0x61
+    expect(codecFromHevcSps(hex('420105616000000300800000030000030196'))).toBe('hvc1.A1.6.H150.80.0.0.0.0.1');
+  });
+  it('rejects what is not an HEVC SPS', () => {
+    expect(() => codecFromHevcSps(HEVC_VPS)).toThrow();
+    expect(() => codecFromHevcSps(SUNSHINE_SPS)).toThrow();
+    expect(() => codecFromHevcSps(hex('42010101600000'))).toThrow(); // cut short
+  });
+});
+
+describe('codecFromAccessUnit', () => {
+  const sc = hex('00000001');
+  const join = (...n: Uint8Array[]) => new Uint8Array(n.flatMap((x) => [...sc, ...x]));
+  it('H.264: the SPS decides (avc1)', () => {
+    expect(codecFromAccessUnit(join(hex('09f0'), SUNSHINE_SPS, hex('68ce3c80'), hex('6588840021')))).toBe('avc1.640c2a');
+  });
+  it('HEVC: VPS first, then the SPS gives hvc1', () => {
+    expect(codecFromAccessUnit(join(HEVC_VPS, HEVC_MAIN_SPS, HEVC_PPS, HEVC_IDR))).toBe('hvc1.1.6.L120.B0');
+    expect(codecFromAccessUnit(join(hex('4601'), hex('4e01'), HEVC_VPS, HEVC_MAIN_SPS, HEVC_PPS, HEVC_IDR))).toBe('hvc1.1.6.L120.B0'); // AUD, SEI first
+  });
+  it('null without parameter sets, or HEVC without its SPS', () => {
+    expect(codecFromAccessUnit(join(hex('6588840021')))).toBeNull();
+    expect(codecFromAccessUnit(join(HEVC_IDR))).toBeNull();
+    expect(codecFromAccessUnit(join(HEVC_VPS, HEVC_PPS, HEVC_IDR))).toBeNull();
+  });
+});
+
+describe('hevcSupported', () => {
+  it('asks isConfigSupported for hvc1 and is false when it says no or throws', async () => {
+    const calls: VideoDecoderConfig[] = [];
+    const mk = (r: boolean | Error) => ({ isConfigSupported: async (c: VideoDecoderConfig) => (calls.push(c), r instanceof Error ? Promise.reject(r) : { supported: r }) });
+    expect(await hevcSupported(mk(true))).toBe(true);
+    expect(calls[0].codec).toBe('hvc1.1.6.L120.B0');
+    expect(await hevcSupported(mk(false))).toBe(false);
+    expect(await hevcSupported(mk(new Error('x')))).toBe(false);
+    expect(await hevcSupported(undefined)).toBe(false);
   });
 });
 
