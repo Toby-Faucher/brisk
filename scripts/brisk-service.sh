@@ -50,28 +50,45 @@ serve_mapped() {
     /"Proxy": *"http:\/\/127\.0\.0\.1:8443\/?"/ && host ~ /:8443$/ { found = 1 }
     END { exit !found }'
 }
-# A live or starting stream on the running hostd (a restart would end it).
-stream_live() {
+# May the running hostd be restarted? Only when its API answers "idle". Live, starting, no
+# answer, no secret: no (fail closed); FORCE=1 overrides. Prints why when it refuses.
+restart_ok() {
+  [ "${FORCE:-}" = 1 ] && return 0
   local h st=""
   if h=$(secret_header); then st=$(curl -s --max-time 5 -H "@$h" http://127.0.0.1:8443/api/stream || true); rm -f "$h"; fi
-  case $st in *'"state":"live"'*|*'"state":"starting"'*) return 0 ;; esac
+  case $st in
+    *'"state":"idle"'*) return 0 ;;
+    *'"state":"live"'*|*'"state":"starting"'*) echo "a stream is live" ;;
+    *) echo "hostd's API did not answer (stream state unknown)" ;;
+  esac
   return 1
 }
-# web/dist is a symlink to web/dist.<stamp>: a build goes to a new dir and the link is renamed
-# over the old one (atomic), so hostd never serves a half-written build. The previous build is kept.
+# Builds the page into a new web/dist.<stamp> (printed); nothing is swapped yet. A failed or
+# empty build is removed, so it never counts as a build.
 build_web() {
   local w=$here/web new
   new=$w/dist.$(date +%Y%m%d-%H%M%S)
   [ -e "$new" ] && new=$new-$$
-  ( cd "$w" && capped npm run build -- --outDir "$new" )
-  [ -f "$new/index.html" ] || die "the web build made no $new/index.html; web/dist left as it was"
-  # One-time move of a plain dist dir (brisk-up's build) aside; it sorts first, so it goes first.
-  if [ -d "$w/dist" ] && [ ! -L "$w/dist" ]; then mv "$w/dist" "$w/dist.00000000-000000"; fi
+  if ! ( cd "$w" && capped npm run build -- --outDir "$new" ) >&2; then rm -rf "$new"; die "web build failed; web/dist unchanged"; fi
+  [ -f "$new/index.html" ] || { rm -rf "$new"; die "the web build made no index.html; web/dist unchanged"; }
+  echo "$new"
+}
+# web/dist is a symlink to a build dir, renamed over the old link (atomic), so hostd never serves
+# a half-written build. Keeps the live build and the most recent other one (by mtime).
+swap_web() {
+  local w=$here/web new=$1 live d kept=0
+  # One-time move of a plain dist dir (brisk-up's build) aside, under a name of its own.
+  if [ -d "$w/dist" ] && [ ! -L "$w/dist" ]; then mv -T "$w/dist" "$w/dist.plain-$(date +%s)-$$"; fi
   ln -sfn "$(basename "$new")" "$w/dist.link"
   mv -T "$w/dist.link" "$w/dist"
   echo "web/dist -> $(basename "$new")"
-  local d
-  for d in $(find "$w" -maxdepth 1 -name 'dist.[0-9]*' -type d | sort | head -n -2); do rm -rf "$d"; done
+  live=$(readlink -f "$w/dist")
+  # Newest first by mtime, so a clock step or an odd name never decides; the live build is never touched.
+  while IFS= read -r d; do
+    [ "$(readlink -f "$d")" = "$live" ] && continue
+    if [ -f "$d/index.html" ] && [ $kept = 0 ]; then kept=1; continue; fi
+    rm -rf "$d"
+  done < <(find "$w" -maxdepth 1 -name 'dist.*' -type d -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
 }
 # Runs a tailscale serve command if we may; else says why and prints the sudoq line for Toby.
 ts_root() {
@@ -106,10 +123,11 @@ cmd_install() {
   systemctl --user enable --now "$UNIT"
   # enable --now leaves a running unit alone: a changed unit needs a restart to apply.
   if [ $changed = 1 ] && [ $was = 1 ]; then
-    if stream_live && [ "${FORCE:-}" != 1 ]; then
-      echo "unit changed but a stream is live: not restarting; run $0 install again afterwards (or FORCE=1)"
-    else
+    local why
+    if why=$(restart_ok); then
       systemctl --user restart "$UNIT"; echo "restarted $UNIT (unit changed)"
+    else
+      echo "unit changed but not restarting ($why); run $0 install again later (or FORCE=1)"
     fi
   fi
   echo "enabled and started $UNIT. Next: $0 serve-on, then $0 doctor"
@@ -125,13 +143,22 @@ cmd_update() {
   if [ ! -f "$w/node_modules/.package-lock.json" ] || [ "$w/package-lock.json" -nt "$w/node_modules/.package-lock.json" ]; then
     ( cd "$w" && capped npm ci --no-audit --no-fund )
   fi
+  local new="" why
   if [ ! -f "$w/dist/index.html" ] || [ -n "$(find "$w/src" "$w/public" "$w/package-lock.json" "$w"/astro.config.* -newer "$w/dist/index.html" 2>/dev/null | head -1)" ]; then
-    build_web
+    new=$(build_web) || exit 1
   else
     echo "web/dist is up to date"
   fi
-  systemctl --user is-active -q "$UNIT" || { echo "$UNIT is not running; built only (install starts it)"; return; }
-  if stream_live && [ "${FORCE:-}" != 1 ]; then die "a stream is live; not restarting (FORCE=1 to end it)"; fi
+  if ! systemctl --user is-active -q "$UNIT"; then
+    [ -z "$new" ] || swap_web "$new"
+    echo "$UNIT is not running; built only (install starts it)"; return
+  fi
+  # The page is swapped only together with the restart: never a new page against the old API.
+  if ! why=$(restart_ok); then
+    [ -z "$new" ] || { rm -rf "$new"; echo "kept the old page (the new build is dropped)"; }
+    die "$why; not restarting (FORCE=1 to end it); run update again later"
+  fi
+  [ -z "$new" ] || swap_web "$new"
   systemctl --user restart "$UNIT"
   echo "restarted $UNIT"
 }

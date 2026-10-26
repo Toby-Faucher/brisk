@@ -41,7 +41,8 @@ grep -q '^\(cargo\|systemd-run\)' "$L" && fail "brisk-up built beside the servic
 : > "$t/d/brisk.conf"; SVC_ACTIVE=0 "$s/brisk-down.sh" >/dev/null 2>&1 && fail "brisk-down ran beside the service"
 no_sb "service active"
 # ... and when it is only enabled (crashed, or between restarts).
-: > "$L"; SVC_ENABLED=0 "$s/brisk-up.sh" >/dev/null 2>&1 && fail "brisk-up ran beside an enabled service"
+: > "$L"; out=$(SVC_ENABLED=0 "$s/brisk-up.sh" 2>&1) && fail "brisk-up ran beside an enabled service"
+grep -q 'systemctl --user disable --now brisk-hostd' <<<"$out" || fail "enabled-service message: $out"
 grep -q '^\(cargo\|systemd-run\)' "$L" && fail "brisk-up built beside an enabled service"
 SVC_ENABLED=0 "$s/brisk-down.sh" >/dev/null 2>&1 && fail "brisk-down ran beside an enabled service"
 no_sb "service enabled"; rm -f "$t/d/brisk.conf"

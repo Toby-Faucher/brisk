@@ -572,10 +572,17 @@ pub fn ensure_cert(
         .map_err(|e| fail(e.to_string()))?;
     // One mtime for the pair, whatever order openssl wrote them in (see `fresh` above).
     if let Some(c) = mtime(&cert) {
-        let _ = std::fs::File::options()
+        if let Err(e) = std::fs::File::options()
             .write(true)
             .open(&key)
-            .and_then(|f| f.set_modified(c));
+            .and_then(|f| f.set_modified(c))
+        {
+            // Harmless but noisy: the next start sees a mismatched pair and renews once more.
+            eprintln!(
+                "warning: couldn't align {}'s mtime with the cert: {e}",
+                key.display()
+            );
+        }
     }
     eprintln!(
         "new bridge certificate {} ({CERT_DAYS} days)",

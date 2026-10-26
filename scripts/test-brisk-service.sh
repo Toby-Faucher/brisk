@@ -49,14 +49,18 @@ stub ss 'for a in ${SS_ADDR:-127.0.0.1:8443}; do case $a in *:8443) echo "LISTEN
 stub journalctl 'echo "page	http://localhost:8443/?s=0123456789abcdef0123456789abcdef&x=1"; echo "bridge	page	http://localhost:8443/?wt=https://100.64.0.9:4433/abcdef0123&hash=ab12"'
 stub curl 'a="$*"; case $a in
   *47989/serverinfo*) echo "<currentgame>${GAME:-0}</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>";;
-  *api/stream*) echo "{\"state\":\"${STREAM:-idle}\"}";;
+  *api/stream*) [ "${STREAM:-idle}" = down ] || echo "{\"state\":\"${STREAM:-idle}\"}";;
   *"-H @"*) echo -n "${CODE_AUTH:-200}";;
   *x-brisk-csrf*) echo -n 403;;
   *https*) echo -n "${CODE_NOAUTH:-403}";;
 esac'
 stub cargo ''
 # npm run build -- --outDir X: makes X/index.html like astro would
-stub npm 'o=""; while [ $# -gt 0 ]; do [ "$1" = --outDir ] && o=$2; shift; done; [ -n "$o" ] && mkdir -p "$o" && echo built > "$o/index.html"; exit 0'
+# NPM_FAIL: leaves a partial dir and fails; NPM_EMPTY: "succeeds" without an index.html
+stub npm 'o=""; while [ $# -gt 0 ]; do [ "$1" = --outDir ] && o=$2; shift; done; [ -n "$o" ] || exit 0
+mkdir -p "$o/_astro"; [ -n "${NPM_FAIL:-}" ] && exit 1; [ -n "${NPM_EMPTY:-}" ] && exit 0; echo built > "$o/index.html"'
+# date +%Y%m%d-%H%M%S returns DATE_STAMP when set (a clock stepped back)
+printf '#!/bin/sh\n[ -n "${DATE_STAMP:-}" ] && [ "$1" = +%%Y%%m%%d-%%H%%M%%S ] && { echo "$DATE_STAMP"; exit 0; }\nexec /usr/bin/date "$@"\n' > "$t/bin/date"
 printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/nice"; cp "$t/bin/nice" "$t/bin/ionice"
 printf '#!/bin/sh\necho "systemd-run $*" >> "%s"\nwhile [ "$1" != -c3 ]; do shift; done; shift\n[ "$1" = sh ] && { echo 9663676416; exit 0; }\nexec "$@"\n' "$L" > "$t/bin/systemd-run"
 printf '#!/bin/sh\necho "sb $*" >> "%s"\n' "$L" > "$t/sb"
@@ -87,6 +91,10 @@ grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "changed un
 : > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "unchanged unit restarted"
 echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 STREAM=live "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted over a live stream"
+echo '# old' >> "$U"
+: > "$L"; SVC_ACTIVE=0 STREAM=down "$B" install >/dev/null 2>&1; grep -q 'restart' "$L" && fail "changed unit restarted with the API down"
+echo '# old' >> "$U"
+: > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" install >/dev/null 2>&1; grep -q '^systemctl --user restart' "$L" || fail "FORCE=1 did not restart"
 
 # serve-on/off: only ever the :8443 mapping; without operator rights a sudoq line, no call.
 want='tailscale serve --bg --https=8443 http://127.0.0.1:8443'
@@ -122,15 +130,41 @@ grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "update did
 touch "$t/root/web/src/a.ts"; touch -d '1 day ago' "$t/root/web/dist/index.html"
 : > "$L"; "$B" update >/dev/null 2>&1; grep -q '^npm run build -- --outDir '"$t/root/web/dist."'[0-9]' "$L" || fail "web not rebuilt into a new dir after a source change"
 grep -q '^npm ci' "$L" && fail "npm ci with node_modules up to date"
-# the build dir is swapped in by renaming a symlink; the old plain dist is kept aside, then pruned
+# the build dir is swapped in by renaming a symlink; the old plain dist is kept aside
 w=$t/root/web
 [ -L "$w/dist" ] && [ "$(cat "$w/dist/index.html")" = built ] || fail "web/dist is not a symlink to the new build"
-[ -f "$w/dist.00000000-000000/index.html" ] || fail "old plain dist not kept for rollback"
-for i in 1 2; do sleep 1.1; touch "$w/src/a.ts"; touch -d '1 day ago' "$w/dist/"index.html; "$B" update >/dev/null 2>&1 || fail "update $i"; done
-n=$(find "$w" -maxdepth 1 -name 'dist.[0-9]*' -type d | wc -l)
-[ "$n" = 2 ] || fail "want the current + one previous build, have $n: $(ls "$w")"
+ls -d "$w"/dist.plain-* >/dev/null 2>&1 && [ -f "$(ls -d "$w"/dist.plain-* | head -1)/index.html" ] || fail "old plain dist not kept for rollback: $(ls "$w")"
+builds() { find "$w" -maxdepth 1 -name 'dist.*' -type d | sort; }
+src_changed() { sleep 1.1; touch "$w/src/a.ts"; touch -d '1 day ago' "$w/dist/index.html"; }
+for i in 1 2; do src_changed; "$B" update >/dev/null 2>&1 || fail "update $i"; done
+[ "$(builds | wc -l)" = 2 ] || fail "want the live + one previous build, have: $(builds)"
 [ -e "$w/dist.link" ] && fail "temp link left"
 cur=$(readlink "$w/dist"); [ -f "$w/$cur/index.html" ] || fail "dist points at a missing build ($cur)"
+# a failed or empty build: removed, web/dist and both kept builds untouched, update fails
+before=$(builds); live=$(readlink "$w/dist")
+for e in NPM_FAIL=1 NPM_EMPTY=1; do
+  src_changed; env "$e" "$B" update >/dev/null 2>&1 && fail "update succeeded with $e"
+  [ "$(readlink "$w/dist")" = "$live" ] || fail "$e: web/dist moved"
+  [ "$(builds)" = "$before" ] || fail "$e: builds changed: $(builds)"
+done
+# the page is swapped only with the restart: a live stream or a silent API keeps the old page
+for e in STREAM=live STREAM=down; do
+  src_changed; : > "$L"; env SVC_ACTIVE=0 "$e" "$B" update >/dev/null 2>&1 && fail "update went on with $e"
+  [ "$(readlink "$w/dist")" = "$live" ] || fail "$e: new page against the old hostd"
+  [ "$(builds)" = "$before" ] || fail "$e: new build left behind: $(builds)"
+  grep -q restart "$L" && fail "$e: restarted"
+done
+src_changed; : > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" update >/dev/null 2>&1 || fail "FORCE=1 update"
+[ "$(readlink "$w/dist")" != "$live" ] && grep -q '^systemctl --user restart' "$L" || fail "FORCE=1: no swap + restart"
+# clock stepped back: the new (live) build sorts oldest by name; it and the newest other one stay
+prev=$(readlink "$w/dist"); src_changed
+DATE_STAMP=19990101-000000 "$B" update >/dev/null 2>&1 || fail "update with an old clock"
+[ "$(readlink "$w/dist")" = dist.19990101-000000 ] || fail "not swapped to the old-stamped build"
+[ "$(builds)" = "$(printf '%s\n' "$w/dist.19990101-000000" "$w/$prev" | sort)" ] || fail "prune by name, not by mtime/live: $(builds)"
+# the same old stamp again (exists: gets -PID) is still the live one afterwards
+src_changed; DATE_STAMP=19990101-000000 "$B" update >/dev/null 2>&1 || fail "update with a taken stamp"
+cur=$(readlink "$w/dist"); [ -f "$w/$cur/index.html" ] && [ "$cur" != dist.19990101-000000 ] || fail "taken stamp: dist -> $cur"
+[ "$(builds | wc -l)" = 2 ] || fail "taken stamp: $(builds)"
 
 # doctor: all good, then each broken check fails it.
 : > "$t/home/.config/brisk/tls/bridge.pem"

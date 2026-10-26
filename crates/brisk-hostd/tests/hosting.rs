@@ -5,7 +5,7 @@ use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::auth::Hosts;
-use brisk_hostd::config::{list, load_secret, load_users, Config};
+use brisk_hostd::config::{list, load_secret, load_users, load_users_as, Config};
 use brisk_hostd::host::{Clock, Runner};
 use brisk_hostd::http::{router, AppState};
 use brisk_hostd::stream::{ensure_cert, resolve_listen};
@@ -127,11 +127,17 @@ fn users_file_comments_and_permissions() {
     let link = t.path().join("link");
     std::os::unix::fs::symlink(&f, &link).unwrap();
     assert!(load_users(&link).is_empty(), "a symlink is ignored");
-    // owned by someone else: /etc/hostname is root's, 0644
-    assert!(
-        load_users(Path::new("/etc/hostname")).is_empty(),
-        "not our uid"
-    );
+    // owned by someone else: the same file checked against another uid than its owner's
+    use std::os::unix::fs::MetadataExt;
+    let owner = std::fs::metadata(&f).unwrap().uid();
+    assert_eq!(load_users_as(&f, owner), ["toby@example.com", "other@x.y"]);
+    assert!(load_users_as(&f, owner + 1).is_empty(), "not our uid");
+    // a FIFO is not a regular file and must not block the open
+    let fifo = t.path().join("fifo");
+    let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    // SAFETY: c is a valid NUL-terminated path.
+    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+    assert!(load_users(&fifo).is_empty(), "a FIFO is ignored");
     assert_eq!(
         list("a.ts.net:8443, a.ts.net,,"),
         ["a.ts.net:8443", "a.ts.net"]

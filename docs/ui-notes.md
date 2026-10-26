@@ -100,8 +100,12 @@
   `sudoq run ...` line). `update` = capped release build of hostd + bridge, `npm ci` only when the lock
   changed, and only when web sources are newer than web/dist a build into a new `web/dist.<stamp>`
   (`npm run build -- --outDir`), swapped in by renaming a `web/dist` symlink over the old one (`ln -sfn`
-  + `mv -T`, atomic; a first plain dist is moved to `web/dist.00000000-000000`; the current and one
-  previous build are kept), then a restart, refused while a stream is live (FORCE=1 ends it). hostd
+  + `mv -T`, atomic; a first plain dist is moved to `web/dist.plain-<time>-<pid>`). A failed or empty
+  build is deleted and web/dist stays. Pruning never touches the build web/dist points at and keeps the
+  most recent other build with an index.html by mtime (not by name, so a clock step cannot pick the
+  live one). The swap happens only together with the restart, and the restart only when hostd's API
+  answers `idle`: a live stream or no answer keeps the old page and binary running, drops the new
+  build and fails (FORCE=1 overrides). `install`'s restart of a changed unit follows the same rule. hostd
   canonicalizes `dist` per request and only serves files that canonicalize inside it (a symlink out of
   the build is a 404); a missing path with an extension is a 404, never index.html. `update` does not
   re-sync the unit file: after a change to deploy/brisk-hostd.service run `install` again (it restarts

@@ -156,18 +156,40 @@ pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> 
 /// (not a symlink) owned by us that only we can write (0600 or 0644): anyone else editing it
 /// could let themselves in.
 pub fn load_users(file: &Path) -> Vec<String> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-    let Ok(m) = std::fs::symlink_metadata(file) else {
-        return vec![];
-    };
     // SAFETY: getuid has no preconditions and cannot fail.
-    let me = unsafe { libc::getuid() };
-    if !m.file_type().is_file() || m.uid() != me || m.permissions().mode() & 0o022 != 0 {
+    load_users_as(file, unsafe { libc::getuid() })
+}
+
+/// `load_users` for an expected owner `uid`. Opened with O_NOFOLLOW (a symlink fails to open) and
+/// checked with fstat on that same descriptor, so nothing can be swapped in between check and read.
+pub fn load_users_as(file: &Path, uid: u32) -> Vec<String> {
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK) // NONBLOCK: a FIFO must not hang startup
+        .open(file);
+    let warn = || {
         eprintln!(
-            "warning: ignoring {} (must be a regular file owned by uid {me}, writable only by it: 0600 or 0644)",
+            "warning: ignoring {} (must be a regular file, not a symlink, owned by uid {uid} and writable only by it: 0600 or 0644)",
             file.display()
         );
-        return vec![];
+        vec![]
+    };
+    let mut f = match f {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return vec![],
+        Err(_) => return warn(),
+    };
+    let Ok(m) = f.metadata() else {
+        return warn();
+    };
+    if !m.file_type().is_file() || m.uid() != uid || m.permissions().mode() & 0o022 != 0 {
+        return warn();
     }
-    list(&std::fs::read_to_string(file).unwrap_or_default())
+    let mut s = String::new();
+    if f.read_to_string(&mut s).is_err() {
+        return warn();
+    }
+    list(&s)
 }

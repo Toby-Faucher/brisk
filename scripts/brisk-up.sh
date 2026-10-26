@@ -16,8 +16,11 @@ RUN=${XDG_RUNTIME_DIR:?}/brisk
 SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
 die() { echo "brisk-up: $*" >&2; exit 1; }
 # Two hostds would fight over 8443 (and the service's restart would undo brisk-down).
-if systemctl --user is-active -q brisk-hostd.service 2>/dev/null || systemctl --user is-enabled -q brisk-hostd.service 2>/dev/null; then
+if systemctl --user is-active -q brisk-hostd.service 2>/dev/null; then
   die "hostd is running as a service: use scripts/brisk-service.sh (status, logs, link)"
+fi
+if systemctl --user is-enabled -q brisk-hostd.service 2>/dev/null; then
+  die "brisk-hostd.service is enabled (it would start again and fight over 8443). To use brisk-up: systemctl --user disable --now brisk-hostd (or scripts/brisk-service.sh uninstall)"
 fi
 # Checked before anything else: a bad address would only fail in the bridge, after Sunshine
 # was already switched and restarted.
