@@ -21,6 +21,8 @@ pub struct Game {
     pub last_played: Option<u64>,
     pub playtime_min: u64,
     pub cover: String,
+    /// Steam is running it now (its launcher reaper is alive).
+    pub running: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -346,6 +348,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 last_played: (o.rtime_last_played > 0).then_some(o.rtime_last_played),
                 playtime_min: o.playtime_forever,
                 cover: cover(o.appid),
+                running: false,
             },
         );
     }
@@ -375,6 +378,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             last_played: None,
             playtime_min: 0,
             cover: cover(i.appid),
+            running: false,
         });
         g.installed = i.state_flags & 4 != 0;
         if g.installed {
@@ -384,7 +388,14 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             g.last_played = Some(i.last_played);
         }
     }
+    let proc = cfg.proc_dir.clone();
+    let running = tokio::task::spawn_blocking(move || crate::running::running_appids(&proc))
+        .await
+        .unwrap_or_default();
     let mut games: Vec<Game> = by_id.into_values().collect();
+    for g in &mut games {
+        g.running = running.contains(&g.appid);
+    }
     games.sort_by(|a, b| {
         b.last_played
             .cmp(&a.last_played)
