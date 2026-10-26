@@ -86,8 +86,10 @@ fn new_secret() -> String {
 
 /// Comma or newline separated; trimmed, `#` comments and empty entries dropped.
 pub fn list(s: &str) -> Vec<String> {
-    s.split([',', '\n'])
-        .map(|l| l.split('#').next().unwrap_or("").trim())
+    // A `#` comment runs to the end of its line, commas included.
+    s.lines()
+        .flat_map(|l| l.split('#').next().unwrap_or("").split(','))
+        .map(str::trim)
         .filter(|l| !l.is_empty())
         .map(String::from)
         .collect()
