@@ -25,7 +25,7 @@ pub struct Config {
     pub secret: String,
     /// Running under systemd (`INVOCATION_ID`): stdout is the journal, so no secrets or tokens in it.
     pub service: bool,
-    /// File drop target, created on the first upload.
+    /// File drop target, created on the first upload (`BRISK_DOWNLOADS_DIR`).
     pub downloads_dir: PathBuf,
     /// Where running games are looked up; tests point it at a fake.
     pub proc_dir: PathBuf,
@@ -61,7 +61,8 @@ impl Config {
                 .unwrap_or(870779643),
             secret: new_secret(),
             service: std::env::var_os("INVOCATION_ID").is_some(),
-            downloads_dir: home.join("Downloads/brisk"),
+            downloads_dir: env_path("BRISK_DOWNLOADS_DIR")
+                .unwrap_or_else(|| home.join("Downloads/brisk")),
             proc_dir: "/proc".into(),
         }
     }

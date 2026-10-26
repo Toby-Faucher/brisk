@@ -2,7 +2,11 @@
 //! to a browser over WebTransport (one uni stream per frame, see `session.rs`).
 //!
 //!   brisk-bridge --host HOST --app ID --listen IP:PORT --cert PEM --key PEM
-//!                [--config DIR] [--secs N] [--page URL] [--take-over] [--codec h264|hevc]
+//!                [--config DIR] [--secs N] [--page URL] [--take-over]
+//!                [--width N] [--height N] [--fps N] [--bitrate-kbps N] [--codec h264|hevc]
+//!
+//! Stream settings, with defaults: --width and --height 320..=3840 (1920x1080), --fps 24..=144
+//! (60), --bitrate-kbps 1000..=150000 (20000), --codec h264 or hevc (h264).
 //!
 //! --listen must be a Tailscale or loopback IP (not 0.0.0.0). --cert/--key: an ECDSA P-256
 //! certificate valid for at most 14 days (Chrome's rule for `serverCertificateHashes`; see

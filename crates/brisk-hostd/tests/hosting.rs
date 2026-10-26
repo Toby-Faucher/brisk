@@ -17,8 +17,7 @@ use std::time::{Duration, SystemTime};
 use tower::ServiceExt;
 
 const SECRET: &str = "0123456789abcdef0123";
-const STATUS: &str =
-    r#"{"Self":{"DNSName":"bawn.tail0.ts.net.","TailscaleIPs":["100.64.0.9"]}}"#;
+const STATUS: &str = r#"{"Self":{"DNSName":"bawn.tail0.ts.net.","TailscaleIPs":["100.64.0.9"]}}"#;
 
 /// Answers `tailscale status --json` / `tailscale ip -4` from `ts` (None = tailscale down);
 /// `openssl` writes PEM files to its -keyout/-out unless `openssl_ok` is false.
@@ -142,6 +141,34 @@ fn users_file_comments_and_permissions() {
         list("a.ts.net:8443, a.ts.net,,"),
         ["a.ts.net:8443", "a.ts.net"]
     );
+}
+
+#[test]
+fn list_handles_crlf_comments_and_mixed_separators() {
+    assert_eq!(list("a\r\nb\r\n"), ["a", "b"]);
+    assert_eq!(list("a # one, b\nc,d # e\n# only\n"), ["a", "c", "d"]);
+    assert_eq!(list("a,b\nc,\n,d"), ["a", "b", "c", "d"]);
+}
+
+#[test]
+fn secret_of_15_chars_or_non_ascii_is_refused() {
+    let t = tempfile::tempdir().unwrap();
+    let f = t.path().join("secret");
+    assert!(load_secret(Some("a".repeat(15)), &f).is_err());
+    assert!(load_secret(Some("a".repeat(16)), &f).is_ok());
+    assert!(load_secret(Some("é".repeat(16)), &f).is_err());
+    std::fs::write(&f, format!("{}\n", "é".repeat(16))).unwrap();
+    assert!(load_secret(None, &f).is_err());
+}
+
+#[test]
+fn downloads_dir_env_overrides_default() {
+    // SAFETY: no other test in this binary reads or writes BRISK_DOWNLOADS_DIR.
+    unsafe { std::env::set_var("BRISK_DOWNLOADS_DIR", "/x/dl") };
+    let c = Config::from_env(".".into());
+    // SAFETY: as above.
+    unsafe { std::env::remove_var("BRISK_DOWNLOADS_DIR") };
+    assert_eq!(c.downloads_dir, Path::new("/x/dl"));
 }
 
 // ---- 2 + 3. guard: Host allowlist and tailnet identity ----

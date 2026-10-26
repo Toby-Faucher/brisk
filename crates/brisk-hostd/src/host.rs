@@ -265,7 +265,8 @@ pub struct Restarter {
 
 #[derive(Debug, PartialEq)]
 pub enum RestartError {
-    TooSoon,
+    /// Seconds until the next restart is allowed (the `Retry-After`).
+    TooSoon(u64),
     Failed,
 }
 
@@ -283,8 +284,10 @@ impl Restarter {
         let now = self.clock.now_s();
         let prev = {
             let mut last = self.last.lock().unwrap();
-            if last.is_some_and(|l| now < l + RESTART_GAP_S) {
-                return Err(RestartError::TooSoon);
+            if let Some(l) = *last
+                && now < l + RESTART_GAP_S
+            {
+                return Err(RestartError::TooSoon(l + RESTART_GAP_S - now));
             }
             last.replace(now) // claimed before running, so a double click cannot slip through
         };
@@ -299,18 +302,16 @@ impl Restarter {
                 ],
             )
         });
-        let ok = tokio::time::timeout(self.timeout, job)
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .flatten()
-            .is_some();
-        if ok {
-            Ok(())
-        } else {
-            *self.last.lock().unwrap() = prev;
-            Err(RestartError::Failed)
-        }
+        // The runner keeps no exit status or stderr, so "failed" is all it can say.
+        let why = match tokio::time::timeout(self.timeout, job).await {
+            Err(_) => "timeout",
+            Ok(Err(_)) => "restart task panicked",
+            Ok(Ok(None)) => "systemctl failed (not found, non-zero exit or over 30 s)",
+            Ok(Ok(Some(_))) => return Ok(()),
+        };
+        eprintln!("sunshine restart failed: {why}");
+        *self.last.lock().unwrap() = prev;
+        Err(RestartError::Failed)
     }
 }
 
@@ -414,7 +415,7 @@ mod tests {
         let r = Restarter::new(Fake::new(Some("")), clock.clone());
         assert_eq!(r.restart().await, Ok(()));
         clock.0.store(1099, Ordering::SeqCst);
-        assert_eq!(r.restart().await, Err(RestartError::TooSoon));
+        assert_eq!(r.restart().await, Err(RestartError::TooSoon(1)));
         clock.0.store(1100, Ordering::SeqCst);
         assert_eq!(r.restart().await, Ok(()));
     }
