@@ -1,6 +1,6 @@
 # Queued work: tooling, Rust hardening, platform pass
 
-Status: QUEUED by Toby on 2026-10-25 ("queue up changes 1-11 frontend and 1-10 for the rust side ... done afterwards").
+Status: IN PROGRESS overnight 2026-10-26 (Toby: 'do all of the things in the queue including this stuff here ... I am going to sleep so just continue implementing'). Originally QUEUED by Toby on 2026-10-25 ("queue up changes 1-11 frontend and 1-10 for the rust side ... done afterwards").
 Do NOT start until `hosting` and `anime-pass` are merged (they touch package.json / lockfile / hostd). Sources:
 `research/ecosystem-frontend-2026-10.md`, `research/ecosystem-rust-2026-10.md`, `research/anime-feature-map.md`.
 
@@ -39,3 +39,24 @@ Do NOT start until `hosting` and `anime-pass` are merged (they touch package.jso
 
 Deferred with their modules: `tantivy` (Agents memory), xterm.js + `portable-pty` (Terminal), `marked` + Sanitizer + Svelte Flow (Agents), jassub + media-chrome + mediabunny HLS (Media).
 Known risks to remember: 7 unreachable advisories from `rustls-rustcrypto` (no replacement for the bridge's QUIC crypto yet); the Aug 2026 crates.io malware campaign (use cargo-deny, review new build scripts).
+
+## Motion pass 2 (added 2026-10-26, Toby: do all of it)
+
+From research/anime-feature-map.md tier 1-2 ideas not yet built, with the rules in docs/ui-notes.md 'Motion rules' (anime.js never on /stream, lazy, revert on destroy, reduced motion, end-state fallback on load failure):
+- #6 status-dot ring (host pill, Machines) - S
+- #5 icon morphs (mute slash, play to spinner; NOT on /stream) - S-M
+- #11 split-text Library headline - S
+- #15 controller-test result chips stagger + drift % count-up - S
+- #12 connection path dot on Machines (bawn to laptop, direct/relay) - S-M
+- #13 Machines status transitions - M
+- #9 'Add a module' card swells into the picker (layout animation) - M-L
+- #14 session cover grows into detail header (shared element) - L
+- #10 Home card drag-to-reorder (default: drag handle, spring drop, order saved in hostd prefs, 'Reset layout' button) - L
+
+## Overnight rulings (made without Toby)
+- Merging reviewed, fully green branches into LOCAL main is authorised by 'just continue implementing' (no push: no remote is configured).
+- rust-embed ships as an OPTIONAL cargo feature `embed`; the default build keeps serving web/dist from disk because the hosting update/rollback flow (atomic dist symlink swap) depends on it.
+- sd-notify: hostd calls sd_notify only when NOTIFY_SOCKET is set; the unit moves to Type=notify only after a transient-unit test; deploy keeps a backup of the previous unit file and `doctor` must pass or the previous unit is restored.
+- npm packages: pick the newest exact version that is at least 14 days old (supply-chain caution after the Aug 2026 crates.io campaign), unless it is a security fix.
+- ntfy: still no topic from Toby; phone push (Remote Control) inactive: results are written to docs/plans/overnight-2026-10-26-report.md and the chat.
+- Nothing needing root/sudoq is run overnight; no reboot test; no live service restart except `scripts/brisk-service.sh update` which fails closed when a stream is live.
