@@ -1,7 +1,7 @@
 ---
 import Layout from '../shell/Layout.astro';
+import Settings from '../modules/settings/Settings.svelte';
 ---
 <Layout title="Settings">
-  <h1>Settings</h1>
-  <p class="lab">Accent, sounds, shaders and default quality, coming up.</p>
+  <Settings client:load />
 </Layout>
