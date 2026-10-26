@@ -6,7 +6,8 @@
     "dev": "astro dev --host 127.0.0.1",
     "build": "astro build",
     "test": "vitest run",
-    "headless": "node scripts/headless.mjs"
+    "headless": "node scripts/headless.mjs",
+    "smoke": "node scripts/ui-smoke.mjs"
   },
   "dependencies": {
     "@astrojs/svelte": "^9.1.1",
