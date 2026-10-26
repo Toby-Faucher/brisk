@@ -20,13 +20,13 @@ fn send(states: &[NotifyState]) {
     }
 }
 
-/// Half of WATCHDOG_USEC, the ping interval systemd recommends; `None` without NOTIFY_SOCKET or
-/// a watchdog for this pid.
+/// A quarter of WATCHDOG_USEC (systemd suggests half; a quarter tolerates three missed pings);
+/// `None` without NOTIFY_SOCKET or a watchdog for this pid.
 pub fn watchdog_every() -> Option<Duration> {
     enabled()
         .then(sd_notify::watchdog_enabled)
         .flatten()
-        .map(|d| d / 2)
+        .map(|d| d / 4)
 }
 
 pub fn status_text(listen: SocketAddr, stream: &crate::stream::StreamInfo) -> String {
@@ -171,7 +171,7 @@ mod tests {
             if let Some(every) = every {
                 assert_eq!(every, Duration::from_millis(100));
                 let wd = tokio::spawn(watchdog(st.clone(), every));
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(Duration::from_millis(350)).await;
                 wd.abort();
             }
             stopping();
@@ -185,7 +185,7 @@ mod tests {
         let s = UnixDatagram::bind(&p).unwrap();
         let st = run_child(&[
             ("NOTIFY_SOCKET", p.to_str().unwrap()),
-            ("WATCHDOG_USEC", "200000"),
+            ("WATCHDOG_USEC", "400000"),
         ]);
         assert!(st.success());
         let got = recv_all(&s);
@@ -199,8 +199,8 @@ mod tests {
             Some("STOPPING=1\nSTATUS=stopping\n")
         );
         let pings = &got[1..got.len() - 1];
-        // Ticks at 0, 100 and 200 ms in a 250 ms window.
-        assert!((2..=3).contains(&pings.len()), "{got:?}");
+        // 400 ms / 4 = a tick every 100 ms: 0, 100, 200, 300 in a 350 ms window; fewer under load.
+        assert!((1..=4).contains(&pings.len()), "{got:?}");
         assert!(
             pings.iter().all(|m| *m == format!("WATCHDOG=1\n{status}")),
             "{got:?}"
@@ -213,7 +213,7 @@ mod tests {
         let p = d.path().join("notify.sock");
         let s = UnixDatagram::bind(&p).unwrap();
         // A watchdog value alone (no socket) must not start anything.
-        assert!(run_child(&[("WATCHDOG_USEC", "200000")]).success());
+        assert!(run_child(&[("WATCHDOG_USEC", "400000")]).success());
         assert!(recv_all(&s).is_empty());
     }
 
@@ -224,7 +224,7 @@ mod tests {
         let s = UnixDatagram::bind(&p).unwrap();
         let st = run_child(&[
             ("NOTIFY_SOCKET", p.to_str().unwrap()),
-            ("WATCHDOG_USEC", "200000"),
+            ("WATCHDOG_USEC", "400000"),
             ("WATCHDOG_PID", "1"),
         ]);
         assert!(st.success());

@@ -115,8 +115,9 @@
   ~/.config/systemd/user (WantedBy=default.target; with linger it starts at boot without a login).
   Type=notify + NotifyAccess=main: hostd sends `READY=1` with `STATUS=serving 127.0.0.1:8443, stream idle`
   only once its own HTTP probe of 127.0.0.1:8443 gets an answer (TimeoutStartSec=30 fails a start that
-  never gets there), `STOPPING=1` on SIGTERM before it stops the bridge, and with WatchdogSec=30 a
-  `WATCHDOG=1` (plus a fresh STATUS with the stream state) every 15 s, but only while a freshly spawned
+  never gets there), `STOPPING=1` on SIGTERM before it stops the bridge, and with WatchdogSec=60 a
+  `WATCHDOG=1` (plus a fresh STATUS with the stream state) every 15 s (a quarter, so three missed pings
+  are tolerated), but only while a freshly spawned
   tokio task runs and the library and stream state locks can be taken within 1 s: a wedged runtime or a
   stuck lock stops the pings and systemd restarts hostd. Without NOTIFY_SOCKET (manual runs, brisk-up)
   none of this runs (crates/brisk-hostd/src/notify.rs, `sd-notify` crate).
@@ -153,12 +154,16 @@
   re-sync the unit file: after a change to deploy/brisk-hostd.service run `install` again (it restarts
   the unit when the file changed). `install` = copy the unit (the previous one is kept as
   `brisk-hostd.service.bak`), daemon-reload, enable --now, and a restart if the unit changed while it ran
-  (not over a live stream). Whenever a changed unit was (re)started, `install` waits up to 45 s for
+  (not over a live stream: then a changed unit is not even written and the manager is not reloaded, so
+  the running hostd never gets the new unit's settings, e.g. a watchdog it would not ping; install exits
+  non-zero, run it again when idle). A unit file newer than the running process (same content) counts as
+  "installed but not restarted yet" and is restarted when idle. Whenever a changed unit was (re)started, `install` waits up to 45 s for
   `is-active` and an HTTP answer on 127.0.0.1:8443 (403 is fine); otherwise it copies the .bak back,
-  daemon-reloads, restarts it and exits non-zero with "new unit failed; previous unit restored" (no .bak,
-  as on a first install: it says so and exits non-zero). `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
+  daemon-reloads, restarts it, checks it the same way and exits non-zero with "new unit failed; previous
+  unit restored" (or "... did not come up either"). No .bak, as on a first install: the unit is disabled
+  (no restart loop at boot) and install exits non-zero. `sunshine-permanent` = sunshine-brisk.sh install + enable (100 s
   spaced restarts, refuses unless Sunshine is FREE). `doctor` checks linger, the unit (enabled, active,
-  Type=notify, SubState running with a status text, a watchdog configured), the listener
+  Type=notify, SubState running with a status text, watchdog 60 s), the listener
   (127.0.0.1:8443 required; tailscaled's own `…%tailscale0:8443` sockets in TUN mode are fine; 0.0.0.0, [::],
   * or any other address FAIL), the serve mapping (`<name>:8443` -> `http://127.0.0.1:8443` exactly), 403
   without and 200 with the secret over https, the certificate age and the Sunshine drop-in/binary/state.

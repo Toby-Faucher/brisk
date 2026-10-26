@@ -279,7 +279,8 @@ cmd_doctor() {
   if grep -qx 'SubState=running' <<<"$sh" && [ -n "$st" ]; then ok "running: $st"
   else no "not running with a status text ($(grep '^SubState=' <<<"$sh"), status '$st')"; fi
   wd=$(sed -n 's/^WatchdogUSec=//p' <<<"$sh")
-  if [ -n "$wd" ] && [ "$wd" != 0 ] && [ "$wd" != infinity ]; then ok "watchdog $wd"; else no "no watchdog (WatchdogSec) on $UNIT ($0 install)"; fi
+  # WatchdogSec=60 shows as 1min.
+  if [ "$wd" = 1min ]; then ok "watchdog 60s"; else no "watchdog '$wd' on $UNIT, want 60s (WatchdogSec=60; $0 install)"; fi
   # tailscaled (TUN mode) binds its serve ports on tailscale0 (`100.x%tailscale0:8443`, `[fd7a:…]%tailscale0:8443`):
   # those are fine. Anything else besides hostd's 127.0.0.1:8443 (0.0.0.0, [::], *, a LAN address) is not.
   l=$(ss -Hltn 'sport = :8443' 2>/dev/null | awk '{print $4}')

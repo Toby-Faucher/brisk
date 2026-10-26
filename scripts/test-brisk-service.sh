@@ -238,7 +238,7 @@ out=$(dr "SS_ADDR=127.0.0.1:8443 100.64.0.9%tailscale0:443 100.64.0.9%tailscale0
   || fail "doctor failed with tailscaled's tailscale0 listeners: $out"
 for e in SS_ADDR=0.0.0.0:8443 "SS_ADDR=127.0.0.1:8443 [::]:8443" "SS_ADDR=127.0.0.1:8443 *:8443" "SS_ADDR=127.0.0.1:8443 192.168.1.5:8443" \
     SS_ADDR=100.64.0.9%tailscale0:8443 TS_MAPPED=wrong CODE_NOAUTH=200 CODE_AUTH=403 LINGER=no TS_MAPPED= SVC_ACTIVE=3 \
-    S_TYPE=simple S_SUB=start-pre S_STATUS= S_WD=0; do
+    S_TYPE=simple S_SUB=start-pre S_STATUS= S_WD=0 S_WD=30s; do
   out=$(dr "$e") && fail "doctor passed with $e"
   grep -q '^FAIL' <<<"$out" || fail "no FAIL line with $e"
 done

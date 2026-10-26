@@ -14,11 +14,12 @@ StartLimitBurst=10
 
 [Service]
 # hostd sends READY=1 once 127.0.0.1:8443 answers HTTP, STOPPING=1 on SIGTERM, and WATCHDOG=1
-# every 15 s while its runtime and state locks respond; a wedged hostd is restarted after 30 s.
+# every 15 s (WatchdogSec/4) while its runtime and state locks respond; a hostd that misses four
+# pings in a row (60 s) is restarted.
 # NotifyAccess=main: the bridge, Steam and other children inherit NOTIFY_SOCKET but are ignored.
 Type=notify
 NotifyAccess=main
-WatchdogSec=30
+WatchdogSec=60
 TimeoutStartSec=30
 ExecStart=%h/Projects/brisk/target/release/brisk-hostd %h/Projects/brisk/web/dist
 Environment=BRISK_BRIDGE_BIN=%h/Projects/brisk/target/release/brisk-bridge
