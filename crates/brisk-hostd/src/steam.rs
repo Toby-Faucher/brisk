@@ -5,9 +5,7 @@ use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::io::AsyncWriteExt;
 
 const OWNED_TTL_S: u64 = 6 * 3600;
 
@@ -228,52 +226,95 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// One GetOwnedGames call. curl takes the URL (and so the key) on stdin, never in argv.
-/// shortcut: shells out to curl for TLS, since the dependency graph must stay pure Rust; swap in
-/// a rustls client if hostd ever ships where curl is absent.
-async fn fetch_owned(cfg: &Config) -> Option<Vec<Owned>> {
-    let key = std::fs::read_to_string(&cfg.steam_key_file).ok()?;
+const MAX_BODY: u64 = 8 << 20;
+
+/// HTTPS only, except plain http to loopback (the tests' mock server).
+fn base_ok(base: &str) -> bool {
+    if base.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = base.strip_prefix("http://") else {
+        return false;
+    };
+    let host = rest.split([':', '/']).next().unwrap_or("");
+    host == "127.0.0.1" || host == "localhost"
+}
+
+/// Error text safe to log: only the kind of failure. ureq's own messages can embed the URL, and
+/// the URL carries the key, so they are never passed on.
+fn safe_err(e: &ureq::Error) -> String {
+    match e {
+        ureq::Error::StatusCode(c) => format!("HTTP {c}"),
+        ureq::Error::Timeout(_) => "timed out".into(),
+        // rustls handshake failures (bad certificate included) surface as InvalidData.
+        ureq::Error::Io(e) if e.kind() == std::io::ErrorKind::InvalidData => "TLS error".into(),
+        ureq::Error::Io(e) => format!("i/o error ({:?})", e.kind()),
+        ureq::Error::HostNotFound => "host not found".into(),
+        ureq::Error::BodyExceedsLimit(_) => "response too large".into(),
+        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => "TLS error".into(),
+        _ => "request failed".into(),
+    }
+}
+
+/// Blocking GET with strict limits: connect 5 s, total 15 s, no redirects, no proxy, 8 MiB body,
+/// certificates checked against the system roots (/etc/ssl/certs via rustls-platform-verifier).
+fn https_get(url: &str) -> Result<Vec<u8>, String> {
+    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+    let tls = TlsConfig::builder()
+        .provider(TlsProvider::Rustls)
+        .root_certs(RootCerts::PlatformVerifier)
+        .unversioned_rustls_crypto_provider(
+            std::sync::Arc::new(rustls_graviola::default_provider()),
+        )
+        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .tls_config(tls)
+        .proxy(None)
+        .max_redirects(0)
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_global(Some(Duration::from_secs(15)))
+        .build()
+        .into();
+    let mut r = agent.get(url).call().map_err(|e| safe_err(&e))?;
+    if r.status() != 200 {
+        return Err(format!("HTTP {}", r.status().as_u16()));
+    }
+    r.body_mut()
+        .with_config()
+        .limit(MAX_BODY)
+        .read_to_vec()
+        .map_err(|e| safe_err(&e))
+}
+
+/// One GetOwnedGames call. The key is read from its file here and goes only into the request's
+/// query string (that is how Steam's Web API takes it); errors never carry the URL.
+async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
+    let base = cfg.steam_api_base.trim_end_matches('/');
+    if !base_ok(base) {
+        return Err("steam_api_base must be https (or http to loopback)".into());
+    }
+    let key = std::fs::read_to_string(&cfg.steam_key_file).map_err(|_| "no API key file")?;
     let key = key.trim();
-    // The key goes into a curl config line: only plain key characters are allowed.
+    // Only plain key characters, so the key cannot change the shape of the URL.
     if key.is_empty()
         || !key
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return None;
+        return Err("API key file is not a plain key".into());
     }
     let url = format!(
-        "{}/IPlayerService/GetOwnedGames/v1/?key={key}&steamid={}&include_appinfo=1&include_played_free_games=1&format=json",
-        cfg.steam_api_base.trim_end_matches('/'),
-        steam_id(&cfg.steam_dir)?
+        "{base}/IPlayerService/GetOwnedGames/v1/?key={key}&steamid={}&include_appinfo=1&include_played_free_games=1&format=json",
+        steam_id(&cfg.steam_dir).ok_or("no Steam account id")?
     );
-    let mut child = tokio::process::Command::new("curl")
-        .args(["-sSf", "--max-time", "15", "-K", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .ok()?;
-    let mut stdin = child.stdin.take()?;
-    stdin
-        .write_all(format!("url = \"{url}\"\n").as_bytes())
+    let body = tokio::task::spawn_blocking(move || https_get(&url))
         .await
-        .ok()?;
-    drop(stdin);
-    let out = tokio::time::timeout(Duration::from_secs(20), child.wait_with_output())
-        .await
-        .ok()?
-        .ok()?;
-    if !out.status.success() {
-        eprintln!(
-            "warning: GetOwnedGames failed (curl exit {:?})",
-            out.status.code()
-        );
-        return None;
-    }
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
-    serde_json::from_value(v.get("response")?.get("games")?.clone()).ok()
+        .map_err(|_| "request task failed")??;
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|_| "response is not JSON")?;
+    v.get("response")
+        .and_then(|r| r.get("games"))
+        .and_then(|g| serde_json::from_value(g.clone()).ok())
+        .ok_or_else(|| "response has no games list".into())
 }
 
 /// Steam account id: the entry marked MostRecent, else (newer clients drop that field) the one
@@ -293,7 +334,7 @@ fn steam_id(steam_dir: &Path) -> Option<String> {
         })
         .max_by_key(|(recent, t, _)| (*recent, *t))
         .map(|(_, _, id)| id.clone())
-        // It goes into a curl config line: digits only.
+        // It goes into the query string: digits only.
         .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
 }
 
@@ -310,7 +351,7 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
         return (c.games.clone(), true);
     }
     match fetch_owned(cfg).await {
-        Some(games) => {
+        Ok(games) => {
             let c = OwnedCache {
                 fetched: now(),
                 games,
@@ -320,7 +361,10 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
             (c.games, true)
         }
         // Stale cache is better than nothing, but the UI still says Steam was unreachable.
-        None => (cache.map(|c| c.games).unwrap_or_default(), false),
+        Err(e) => {
+            eprintln!("warning: GetOwnedGames failed: {e}");
+            (cache.map(|c| c.games).unwrap_or_default(), false)
+        }
     }
 }
 
@@ -431,5 +475,92 @@ mod steam_id_tests {
         std::fs::write(d.join("config/loginusers.vdf"), vdf).unwrap();
         assert_eq!(steam_id(&d).as_deref(), Some("222"));
         std::fs::remove_dir_all(&d).ok();
+    }
+}
+
+#[cfg(test)]
+mod fetch_tests {
+    use super::*;
+
+    const KEY: &str = "SENTINELKEY-feedfacecafe";
+
+    fn cfg_with(base: &str, d: &Path) -> Config {
+        std::fs::create_dir_all(d.join("steam/config")).unwrap();
+        std::fs::write(
+            d.join("steam/config/loginusers.vdf"),
+            "\"users\"\n{\n\t\"76561198000000000\"\n\t{\n\t\t\"MostRecent\"\t\"1\"\n\t}\n}\n",
+        )
+        .unwrap();
+        std::fs::write(d.join("key"), format!("{KEY}\n")).unwrap();
+        let mut c = Config::from_env(d.join("dist"));
+        c.steam_dir = d.join("steam");
+        c.steam_key_file = d.join("key");
+        c.steam_api_base = base.into();
+        c
+    }
+
+    #[test]
+    fn only_https_or_loopback_http() {
+        for ok in [
+            "https://api.steampowered.com",
+            "http://127.0.0.1:9",
+            "http://localhost",
+            "http://localhost/x",
+        ] {
+            assert!(base_ok(ok), "{ok}");
+        }
+        for bad in [
+            "http://api.steampowered.com",
+            "http://127.0.0.1.evil.example",
+            "http://127.0.0.1@evil.example",
+            "http://localhost.evil.example:80",
+            "ftp://127.0.0.1",
+            "",
+        ] {
+            assert!(!base_ok(bad), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn errors_never_contain_the_key() {
+        let d = tempfile::tempdir().unwrap();
+        // Refused connection, unresolvable host, TLS to a plain listener, non-loopback http,
+        // and a malformed URL.
+        let plain = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let tls_to_plain = format!("https://{}", plain.local_addr().unwrap());
+        std::thread::spawn(move || {
+            use std::io::Write;
+            if let Ok((mut c, _)) = plain.accept() {
+                let _ = c.write_all(b"HTTP/1.1 400 not tls\r\n\r\n");
+            }
+        });
+        for base in [
+            "http://127.0.0.1:1",
+            "https://nonexistent.invalid",
+            tls_to_plain.as_str(),
+            "http://example.com",
+            "https://[::1",
+        ] {
+            let Err(e) = fetch_owned(&cfg_with(base, d.path())).await else {
+                panic!("{base}: fetch succeeded");
+            };
+            assert!(!e.contains(KEY) && !e.contains("feedface"), "{base}: {e}");
+        }
+    }
+
+    /// Real network: proves the graviola + platform-verifier TLS stack against Steam's public,
+    /// keyless endpoint. Run with `cargo test -p brisk-hostd -- --ignored`.
+    #[test]
+    #[ignore = "needs the internet"]
+    fn live_tls_to_steam() {
+        let b = https_get("https://api.steampowered.com/ISteamWebAPIUtil/GetServerInfo/v1/")
+            .expect("GET over TLS");
+        let v: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        assert!(v["servertime"].as_u64().unwrap() > 1_700_000_000, "{v}");
+        // Verification is on: an untrusted certificate is refused.
+        assert_eq!(
+            https_get("https://self-signed.badssl.com/").unwrap_err(),
+            "TLS error"
+        );
     }
 }
