@@ -7,8 +7,17 @@
       {"id": 4, "type": "workspace", "name": "1", "nodes": [
         {"id": 6, "type": "con", "name": "Steam Big Picture Mode", "pid": 400, "app_id": null, "shell": "xwayland",
          "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "steam", "title": "Steam Big Picture Mode"},
+         "nodes": [], "floating_nodes": []},
+        {"id": 7, "type": "con", "name": "Steam Big Picture Mode", "pid": 411, "app_id": null, "shell": "xwayland",
+         "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "steam", "title": "Steam Big Picture Mode"},
+         "nodes": [], "floating_nodes": []},
+        {"id": 26, "type": "con", "name": "Other Game", "pid": 601, "app_id": null, "shell": "xwayland",
+         "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "steam_app_20", "title": "Other Game"},
          "nodes": [], "floating_nodes": []}
       ], "floating_nodes": [
+        {"id": 15, "type": "floating_con", "name": "Mewgenics launcher", "pid": 502, "app_id": null, "shell": "xwayland",
+         "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "steam_app_10", "title": "Mewgenics launcher"},
+         "nodes": [], "floating_nodes": []},
         {"id": 16, "type": "floating_con", "name": "Mewgenics!", "pid": 502, "app_id": null, "shell": "xwayland",
          "fullscreen_mode": 0, "focused": true, "window_properties": {"class": "steam_app_10", "title": "Mewgenics!"},
          "nodes": [], "floating_nodes": []}

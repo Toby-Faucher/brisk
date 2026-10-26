@@ -2,10 +2,11 @@
 //! (`reaper SteamLaunch AppId=<id> -- ...`); the reaper's descendants are the game's processes.
 
 use crate::host::Runner;
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// `(pid, ppid, argv)` of every process under `proc` (normally `/proc`) that can be read.
@@ -54,14 +55,19 @@ pub fn running_appids(proc: &Path) -> HashSet<u32> {
         .collect()
 }
 
-/// The reaper of `appid` and all its descendants; empty when the game is not running.
-fn game_pids(proc: &Path, appid: u32) -> HashSet<u32> {
+/// The descendants of `appid`'s reapers, not the reapers themselves (so never Steam, their
+/// parent); `None` when the game is not running.
+fn game_pids(proc: &Path, appid: u32) -> Option<HashSet<u32>> {
     let ps = procs(proc);
-    let mut pids: HashSet<u32> = ps
+    let reapers: HashSet<u32> = ps
         .iter()
         .filter(|(_, _, a)| reaper_appid(a) == Some(appid))
         .map(|p| p.0)
         .collect();
+    if reapers.is_empty() {
+        return None;
+    }
+    let mut pids = reapers.clone();
     loop {
         let n = pids.len();
         for (pid, ppid, _) in &ps {
@@ -70,13 +76,14 @@ fn game_pids(proc: &Path, appid: u32) -> HashSet<u32> {
             }
         }
         if pids.len() == n {
-            return pids;
+            break;
         }
     }
+    Some(&pids - &reapers)
 }
 
-/// The newest window (highest con id) whose pid is one of `pids`.
-fn find_window(tree: &Value, pids: &HashSet<u32>) -> Option<u64> {
+/// Every window (con id) whose pid is one of `pids`, in tree order.
+fn windows(tree: &Value, pids: &HashSet<u32>, out: &mut Vec<u64>) {
     let own = tree
         .get("pid")
         .and_then(Value::as_u64)
@@ -85,13 +92,37 @@ fn find_window(tree: &Value, pids: &HashSet<u32>) -> Option<u64> {
                 && pids.contains(&(*p as u32))
         })
         .and_then(|_| tree["id"].as_u64());
-    ["nodes", "floating_nodes"]
+    out.extend(own);
+    for n in ["nodes", "floating_nodes"]
         .iter()
         .filter_map(|k| tree.get(k)?.as_array())
         .flatten()
-        .filter_map(|n| find_window(n, pids))
-        .chain(own)
-        .max()
+    {
+        windows(n, pids, out);
+    }
+}
+
+/// The newest window (highest con id) whose pid is one of `pids`.
+#[cfg(test)]
+fn find_window(tree: &Value, pids: &HashSet<u32>) -> Option<u64> {
+    let mut v = vec![];
+    windows(tree, pids, &mut v);
+    v.into_iter().max()
+}
+
+/// The game's windows in sway's tree, lowest con id first.
+fn game_windows(runner: &dyn Runner, sock: &[String], pids: &HashSet<u32>) -> Vec<u64> {
+    let mut a: Vec<&str> = sock.iter().map(String::as_str).collect();
+    a.extend(["-t", "get_tree"]);
+    let mut v = vec![];
+    if let Some(t) = runner
+        .run("swaymsg", &a)
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+    {
+        windows(&t, pids, &mut v);
+    }
+    v.sort_unstable();
+    v
 }
 
 /// `-s <socket>` for swaymsg: SWAYSOCK of the desktop session, else the first sway socket in the
@@ -121,22 +152,13 @@ fn sway_sock(env: &[(String, String)]) -> Vec<String> {
 
 /// One try: focus and fullscreen the game's window. False if the game, its window or sway is missing.
 fn focus_once(runner: &dyn Runner, proc: &Path, sock: &[String], appid: u32) -> bool {
-    let pids = game_pids(proc, appid);
-    if pids.is_empty() {
+    let Some(pids) = game_pids(proc, appid) else {
         return false;
-    }
+    };
+    let Some(&id) = game_windows(runner, sock, &pids).last() else {
+        return false;
+    };
     let mut args: Vec<&str> = sock.iter().map(String::as_str).collect();
-    let tree = {
-        let mut a = args.clone();
-        a.extend(["-t", "get_tree"]);
-        runner.run("swaymsg", &a)
-    };
-    let Some(id) = tree
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|t| find_window(&t, &pids))
-    else {
-        return false;
-    };
     // `id` is a number from sway's JSON, so the criteria cannot carry anything else.
     let cmd = format!("[con_id={id}] focus, fullscreen enable");
     args.push(&cmd);
@@ -165,6 +187,138 @@ pub async fn focus_game(
             return;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum Quit {
+    Closed,
+    StillRunning,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum QuitError {
+    NotRunning,
+    /// A quit of this game is already under way.
+    Busy,
+}
+
+/// Quits running games: sway's polite close on the game's windows, then SIGTERM, then (forced
+/// only) SIGKILL, each to the reaper's descendants only. One quit per game at a time.
+pub struct Quitter {
+    runner: Arc<dyn Runner>,
+    proc: PathBuf,
+    busy: Mutex<HashSet<u32>>,
+    /// How long each of the close and SIGTERM steps waits for the game to exit.
+    pub wait: Duration,
+}
+
+/// Frees the game's slot however the quit ends.
+struct Claim<'a>(&'a Mutex<HashSet<u32>>, u32);
+impl Drop for Claim<'_> {
+    fn drop(&mut self) {
+        self.0.lock().unwrap().remove(&self.1);
+    }
+}
+
+impl Quitter {
+    pub fn new(runner: Arc<dyn Runner>, proc: PathBuf) -> Self {
+        Quitter {
+            runner,
+            proc,
+            busy: Mutex::default(),
+            wait: Duration::from_secs(10),
+        }
+    }
+
+    /// Off the async threads: every step reads /proc or runs a command.
+    async fn blocking<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&dyn Runner, &Path) -> T + Send + 'static,
+    ) -> Option<T> {
+        let (r, p) = (self.runner.clone(), self.proc.clone());
+        tokio::task::spawn_blocking(move || f(&*r, &p)).await.ok()
+    }
+
+    /// True once the game's reapers are gone, polling every 100 ms up to `wait`.
+    async fn gone_within(&self, appid: u32, wait: Duration) -> bool {
+        let end = Instant::now() + wait;
+        loop {
+            let gone = self.blocking(move |_, p| game_pids(p, appid).is_none());
+            if gone.await.unwrap_or(false) {
+                return true;
+            }
+            if Instant::now() >= end {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    /// `kill <sig>` to the game's processes as they are now (a fresh scan, so pids gone since the
+    /// last step are not reused). shortcut: a pid can still be recycled between this scan and the
+    /// signal (microseconds); upgrade to pidfd_send_signal if that ever matters.
+    async fn signal(&self, appid: u32, sig: &'static str) {
+        let me = std::process::id();
+        self.blocking(move |r, p| {
+            let mut pids: Vec<u32> = game_pids(p, appid)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|&p| p > 1 && p != me)
+                .collect();
+            if pids.is_empty() {
+                return;
+            }
+            pids.sort_unstable();
+            let pids: Vec<String> = pids.iter().map(u32::to_string).collect();
+            let mut a = vec![sig];
+            a.extend(pids.iter().map(String::as_str));
+            r.run("kill", &a);
+        })
+        .await;
+    }
+
+    /// Closes `appid` politely, escalates to SIGTERM, and with `force` to SIGKILL.
+    pub async fn quit(&self, appid: u32, force: bool) -> Result<Quit, QuitError> {
+        let _claim = {
+            let mut b = self.busy.lock().unwrap();
+            if !b.insert(appid) {
+                return Err(QuitError::Busy);
+            }
+            Claim(&self.busy, appid)
+        };
+        let asked = self.blocking(move |r, p| {
+            let pids = game_pids(p, appid)?;
+            let sock = sway_sock(&crate::stream::graphical_env());
+            // sway's `kill` is the polite close request, the same as the window's X button.
+            for id in game_windows(r, &sock, &pids) {
+                let cmd = format!("[con_id={id}] kill");
+                let mut a: Vec<&str> = sock.iter().map(String::as_str).collect();
+                a.push(&cmd);
+                r.run("swaymsg", &a);
+            }
+            Some(())
+        });
+        if asked.await.flatten().is_none() {
+            return Err(QuitError::NotRunning);
+        }
+        if self.gone_within(appid, self.wait).await {
+            return Ok(Quit::Closed);
+        }
+        eprintln!("info: game {appid} still running after closing its windows; SIGTERM");
+        self.signal(appid, "-TERM").await;
+        if self.gone_within(appid, self.wait).await {
+            return Ok(Quit::Closed);
+        }
+        if force {
+            eprintln!("info: game {appid} still running after SIGTERM; SIGKILL (forced)");
+            self.signal(appid, "-KILL").await;
+            if self.gone_within(appid, Duration::from_secs(3)).await {
+                return Ok(Quit::Closed);
+            }
+        }
+        Ok(Quit::StillRunning)
     }
 }
 

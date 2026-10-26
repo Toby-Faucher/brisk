@@ -2,6 +2,7 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::running::{Quit, QuitError, Quitter};
 use crate::steam::{self, GamesResult};
 use crate::stream::{StreamReq, Supervisor};
 use axum::extract::{DefaultBodyLimit, Path as UrlPath, Request, State};
@@ -22,6 +23,7 @@ pub struct AppState {
     pub stream: Supervisor,
     pub clip: Arc<Clipboard>,
     pub files: Files,
+    pub quit: Quitter,
 }
 
 impl AppState {
@@ -36,6 +38,7 @@ impl AppState {
             games: Mutex::new(None),
             clip: Arc::new(Clipboard::new(Arc::new(WlBackend::default()))),
             files: Files::new(cfg.downloads_dir.clone()),
+            quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -192,6 +195,36 @@ async fn install(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Respon
     steam_cmd(s, &b, "install").await
 }
 
+#[derive(Deserialize)]
+struct QuitReq {
+    appid: u32,
+    #[serde(default)]
+    force: bool,
+}
+
+/// `{state: "closed" | "still-running"}`; 400 for an unknown game, 409 if it is not running or
+/// already being quit. Answers within ~25 s; a longer quit carries on and reports still-running.
+async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
+    let q = match parse::<QuitReq>(&b) {
+        Ok(q) => q,
+        Err(r) => return r,
+    };
+    if let Err(r) = check_appid(&s, Some(q.appid)).await {
+        return r;
+    }
+    // Own task: a client that hangs up must not stop a quit between its steps.
+    let s2 = s.clone();
+    let job = tokio::spawn(async move { s2.quit.quit(q.appid, q.force).await });
+    let state = match tokio::time::timeout(std::time::Duration::from_secs(25), job).await {
+        Ok(Ok(Ok(st))) => st,
+        Ok(Ok(Err(QuitError::NotRunning))) => return err(StatusCode::CONFLICT, "not running"),
+        Ok(Ok(Err(QuitError::Busy))) => return err(StatusCode::CONFLICT, "already quitting"),
+        Ok(Err(_)) => return err(StatusCode::INTERNAL_SERVER_ERROR, "quit failed"),
+        Err(_) => Quit::StillRunning,
+    };
+    axum::Json(serde_json::json!({ "state": state })).into_response()
+}
+
 async fn sessions(State(s): State<Arc<AppState>>) -> Response {
     axum::Json(serde_json::json!({ "sessions": s.stream.sessions(20) })).into_response()
 }
@@ -285,6 +318,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/launch", post(launch))
         .route("/install", post(install))
+        .route("/quit", post(quit))
         .route("/sessions", get(sessions))
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
