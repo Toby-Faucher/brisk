@@ -2,6 +2,7 @@
 name = "brisk-proto"
 edition.workspace = true
 version.workspace = true
+publish = false
 
 [dependencies]
 aes = "0.8.4"

@@ -1,0 +1,77 @@
+# cargo deny check          (advisories, licenses, bans, sources; needs network for the RustSec db)
+# cargo deny check bans licenses sources    (offline-safe subset)
+# Config schema: cargo-deny 0.20.
+
+[graph]
+# The product's native targets only. quinn-proto 0.11 pulls `ring` for wasm32-unknown-unknown
+# (browser builds Brisk never makes), so scanning "all" targets would flag a crate we do not build.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+]
+exclude-dev = true
+
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Only crates that are workspace dependencies are checked for "unmaintained".
+unmaintained = "workspace"
+yanked = "deny"
+# Each ignore is an advisory we have read and found unreachable. All come from the RustCrypto 0.x
+# generation pinned by `rustls-rustcrypto` 0.0.2-alpha (research/ecosystem-rust-2026-10.md section 8).
+# paste (RUSTSEC-2024-0436, unmaintained) needs no entry: unmaintained = "workspace" skips transitive deps.
+# TODO: remove every entry below when rustls-rustcrypto, rsa and num-bigint-dig leave the
+# lock (planned: graviola spike, queue item "ureq + rustls-graviola" and the bridge QUIC crypto).
+ignore = [
+    # rustls-webpki 0.102.8 (via rustls-rustcrypto): only its `alg_id` constants are imported; the
+    # certificate/CRL logic that runs is rustls' own rustls-webpki 0.103.x. TODO: remove with the root cause.
+    { id = "RUSTSEC-2026-0049", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: only alg_id constants imported, real verifier is rustls-webpki 0.103; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
+    { id = "RUSTSEC-2026-0382", reason = "rustls-webpki 0.102.8 via rustls-rustcrypto: unreachable, see 0049; TODO remove with rustls-rustcrypto" },
+    # rsa 0.9.10 Marvin timing attack, no fixed release. Local-timing only, needs an attacker
+    # measuring our pairing signatures on a tailnet-only client key. TODO: remove when rsa 0.10 is stable or graviola RSA replaces it.
+    { id = "RUSTSEC-2023-0071", reason = "rsa Marvin timing: local attacker only, tailnet-only client key, no fix exists; TODO remove with rsa 0.10 or graviola" },
+    # crypto-bigint 0.5.5 timing, same RustCrypto generation as rsa. TODO: remove with rsa/rustls-rustcrypto.
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 timing via rsa/p256 0.1x chain; same class as rsa Marvin; TODO remove with rustls-rustcrypto" },
+]
+
+[licenses]
+confidence-threshold = 0.93
+# Workspace crates are publish = false and carry no license field.
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies between our own crates carry no version wildcard issue.
+allow-wildcard-paths = true
+deny = [
+    # Typosquat used in the Aug 2026 crates.io campaign (arrayref 0.3.10, internment 0.8.7,
+    # append-only-vec 0.1.9 depended on it; its build.rs downloaded a payload).
+    { crate = "proc-macro1", reason = "typosquat from the 2026-08 crates.io malware campaign" },
+    # C / asm crypto and TLS: Brisk is pure Rust (scripts/check-pure-rust.sh).
+    { crate = "openssl-sys", reason = "C TLS library; Brisk is pure Rust" },
+    { crate = "aws-lc-sys", reason = "C crypto library; Brisk is pure Rust" },
+    { crate = "ring", reason = "C + asm crypto; only on the wasm32 edge that graph.targets excludes" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

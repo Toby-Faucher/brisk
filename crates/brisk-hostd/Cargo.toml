@@ -2,6 +2,7 @@
 name = "brisk-hostd"
 edition.workspace = true
 version.workspace = true
+publish = false
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }

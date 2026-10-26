@@ -2,6 +2,7 @@
 name = "brisk-client"
 edition.workspace = true
 version.workspace = true
+publish = false
 
 [dependencies]
 brisk-proto = { path = "../brisk-proto" }
