@@ -30,6 +30,7 @@
   --dur-enter: 420ms;
   --rise-enter: 14px;
   --stagger: 55ms;
+  --dur-count: 600ms; /* number tweens (motion.ts tweenNumber) */
   --r-card: 22px;
   --r-ctl: 12px;
   color-scheme: dark;
