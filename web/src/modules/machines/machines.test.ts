@@ -13,8 +13,8 @@ describe('machines', () => {
     expect(m).toHaveLength(1);
     expect(m[0]).toEqual({ id: 'bawn', info });
   });
-  it('machinesFrom_falls_back_to_bawn_and_lowercases', () => {
-    expect(machinesFrom({ ...info, name: '' })[0].id).toBe('bawn');
+  it('machinesFrom_falls_back_to_host_and_lowercases', () => {
+    expect(machinesFrom({ ...info, name: '' })[0].id).toBe('host');
     expect(machinesFrom({ ...info, name: 'BaWn' })[0].id).toBe('bawn');
     expect(machinesFrom({ ...info, name: '  BaWn ' })[0].id).toBe('bawn');
   });

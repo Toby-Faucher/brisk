@@ -400,7 +400,7 @@
     </div>
   {/if}
   {#if dropping}
-    <div class="drop" aria-hidden="true"><div class="glass card"><h3>Drop to send to {$host?.name ?? 'bawn'}</h3><p class="muted">Saved in ~/Downloads/brisk</p></div></div>
+    <div class="drop" aria-hidden="true"><div class="glass card"><h3>Drop to send to {$host?.name ?? 'host'}</h3><p class="muted">Saved in ~/Downloads/brisk</p></div></div>
   {/if}
   {#if upload}
     <div class="up glass mono" role="status">Sending {upload.u.name} · {pct(upload.u)}%{upload.queued ? ` · ${upload.queued} more` : ''}</div>

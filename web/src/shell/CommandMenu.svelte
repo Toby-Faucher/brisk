@@ -3,6 +3,7 @@
   import { Command, Dialog } from 'bits-ui';
   import { navigate } from 'astro:transitions/client';
   import { games, refreshGames } from '../state/games';
+  import { host } from '../state/host';
   import { api, type Preset } from '../state/api';
   import { emitCommand } from '../state/commands';
   import { attachShortcuts, rank } from './keys';
@@ -28,7 +29,7 @@
       run: () => void api.launch(g.appid).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
     })),
     ...quitItems($games?.games ?? [], $stuck, askQuit),
-    { id: 'cmd:machine', label: 'Switch machine', hint: 'bawn', icon: 'host', run: () => go('/machines') },
+    { id: 'cmd:machine', label: 'Switch machine', hint: $host?.name ?? 'host', icon: 'host', run: () => go('/machines') },
     ...presets.map((p) => ({ id: `cmd:preset:${p}`, label: `Quality: ${p}`, icon: 'stream', run: () => { if (!emitCommand({ type: 'preset', preset: p })) toast(`Default quality: ${p}`); } })),
     { id: 'cmd:stats', label: 'Toggle stats', hint: 'Stream', icon: 'bolt', run: () => emitCommand({ type: 'stats' }) },
     ...mods.flatMap((m) => m.commands?.() ?? []),
