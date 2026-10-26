@@ -9,7 +9,7 @@ afterEach(() => {
 describe('host', () => {
   it('host_store_polls_only_when_visible', async () => {
     vi.useFakeTimers();
-    const f = vi.fn(async () => new Response('{}'));
+    const f = vi.fn(async (_url: string) => new Response('{}'));
     vi.stubGlobal('fetch', f);
     const doc = Object.assign(new EventTarget(), { hidden: true });
     const stop = pollHost(doc);

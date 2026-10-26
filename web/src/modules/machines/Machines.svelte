@@ -5,7 +5,7 @@
   import { api, type StreamInfo } from '../../state/api';
   import { games, watchGames } from '../../state/games';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
-  import { host, refreshHost } from '../../state/host';
+  import { host as hostStore, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
@@ -19,7 +19,7 @@
   let busy = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const machines = $derived($host ? machinesFrom($host) : []);
+  const machines = $derived($hostStore ? machinesFrom($hostStore) : []);
   const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
 
   let arrived = false; // the host card lands after hydration: entrance once
@@ -108,7 +108,7 @@
   .top { padding: 0 2px 14px; border-bottom: 1px solid var(--line); }
   h2 { font-size: 18px; letter-spacing: -.02em; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding-top: 16px; }
-  .big { font-size: 30px; font-weight: 650; letter-spacing: -.03em; margin: 6px 0 14px; }
+  .big { font-size: 30px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ letter-spacing: -.03em; margin: 6px 0 14px; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0; }
   dt { color: var(--muted); font-size: 13px; }
   dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }

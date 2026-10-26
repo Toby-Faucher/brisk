@@ -87,7 +87,10 @@
   .trk { fill: var(--bg); stroke: var(--line); }
   .fill { fill: var(--accent); opacity: .85; stroke: none; }
   .on .trk { stroke: var(--accent); }
-  .extra, .extra :is(rect, path) { fill: none; stroke: var(--dim); stroke-dasharray: 3 2.5; opacity: .55; }
+  .extra, .extra :is(rect, path) { fill: none; stroke: var(--dim); stroke-dasharray: 3 2.5; }
+  /* Faint outlines only: the legend text in a .extra group stays at full --dim (4.5:1 on --panel2) */
+  .extra:not(g) { opacity: .55; }
+  g.extra :is(rect, path) { opacity: .3; } /* was .55 inside a .55 group */
   .t { font: 600 3.4px var(--font); fill: var(--muted); text-anchor: middle; dominant-baseline: central; pointer-events: none; stroke: none; }
   .key.on .t { fill: var(--accent-fg); }
   .key.small .t, .key.small.on .t { font-size: 2.9px; fill: var(--muted); }

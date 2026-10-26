@@ -260,7 +260,7 @@ export async function startAudio(transport: WebTransport, ctx: AudioContext, wor
   // AudioData timestamps are rewritten by Chrome's decoder (contiguous from the first one), so
   // the seq of each output comes from this FIFO: Opus gives one output per chunk, in order.
   let seqs: number[] = [];
-  let decoder: AudioDecoder | null = null;
+  let decoder = null as AudioDecoder | null; // `as`: assigned in closures, so TS must not narrow it to null
   const restarts = new Restarts();
   const fail = (e: unknown) => {
     stats.decodeErrors++;

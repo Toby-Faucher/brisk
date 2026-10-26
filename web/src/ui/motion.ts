@@ -15,12 +15,14 @@ const MODS = {
 };
 type Mods = { [K in keyof typeof MODS]: Awaited<ReturnType<(typeof MODS)[K]>> };
 type Lib = Mods['animation'] & Mods['easings'] & Mods['scope'] & Mods['svg'];
+/** What `load(...names)` resolves to: the union of each named module's exports (distributes over K). */
+type Loaded<K extends keyof Mods> = Pick<Lib, (K extends keyof Mods ? keyof Mods[K] : never) & keyof Lib>;
 
 /**
  * Load anime.js sub-paths on demand (the browser caches the chunks). On /stream it throws in dev and in prod returns a
  * promise that never settles, so a wrong caller simply never animates and the library is never fetched there.
  */
-export function load<K extends keyof Mods>(...names: K[]): Promise<Pick<Lib, keyof Mods[K] & keyof Lib>> {
+export function load<K extends keyof Mods>(...names: K[]): Promise<Loaded<K>> {
   if (onStreamRoute()) {
     if (import.meta.env.DEV) throw new Error('motion: anime.js must not load on /stream');
     return new Promise(() => {});
@@ -112,7 +114,7 @@ export const count = (value: number | null | undefined, format: (v: number) => s
 
 export type MotionScope = {
   /** Run `fn` inside an anime.js scope once the library is loaded; whatever it creates is reverted with the scope. */
-  add<K extends keyof Mods>(names: K[], fn: (lib: Pick<Lib, keyof Mods[K] & keyof Lib>, self: Scope) => void | (() => void)): Promise<void>;
+  add<K extends keyof Mods>(names: K[], fn: (lib: Loaded<K>, self: Scope) => void | (() => void)): Promise<void>;
   revert(): void;
 };
 
@@ -126,7 +128,7 @@ export function scope(root?: HTMLElement): MotionScope {
   return {
     async add(names, fn) {
       if (dead || !motionAllowed()) return;
-      const lib = await load('scope', ...names);
+      const lib = await load<(typeof names)[number] | 'scope'>('scope', ...names);
       if (dead || reducedMotion()) return;
       s ??= lib.createScope({ root });
       s.add((self) => fn(lib as never, self!));

@@ -4,12 +4,8 @@
 import { ClientRouter } from 'astro:transitions';
 import Shell from './Shell.svelte';
 import { ACCENT_HEX, SETTINGS_KEY } from '../state/settings';
-import '@fontsource/geist/400.css';
-import '@fontsource/geist/500.css';
-import '@fontsource/geist/600.css';
-import '@fontsource/geist/700.css';
-import '@fontsource/geist-mono/400.css';
-import '@fontsource/geist-mono/500.css';
+import '@fontsource-variable/geist'; // one variable file per subset, any weight (we use 400-700)
+import '@fontsource-variable/geist-mono';
 import '../styles/tokens.css';
 import '../styles/base.css';
 

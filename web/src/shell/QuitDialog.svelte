@@ -55,6 +55,6 @@
   /* CSS only (mounted on /stream too): a short spring rise on open; the global reduced-motion rule turns it off */
   @media (prefers-reduced-motion: no-preference) { :global(.rs[data-state='open']) { animation: rs-in var(--spring-settle-dur) var(--spring-settle) backwards; } }
   @keyframes -global-rs-in { from { opacity: 0; translate: 0 10px; } }
-  :global(.rs-t) { font-size: 16px; font-weight: 650; }
+  :global(.rs-t) { font-size: 16px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ }
   :global(.rs-a) { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 </style>
