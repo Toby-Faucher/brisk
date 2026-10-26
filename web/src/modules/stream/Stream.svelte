@@ -104,7 +104,10 @@
     await document.documentElement.requestFullscreen().catch(() => {});
     // Keyboard Lock: Esc goes to the page (hold Esc releases), not to Chrome.
     const kb = (navigator as Navigator & { keyboard?: { lock(keys?: string[]): Promise<void> } }).keyboard;
-    kbLocked = !!kb && (await kb.lock(['Escape']).then(() => true, () => false));
+    let why = kb ? '' : 'this browser has no Keyboard Lock';
+    kbLocked = !!kb && (await kb.lock(['Escape']).then(() => true, (e: Error) => ((why = e?.message || e?.name || 'refused'), false)));
+    if (!document.fullscreenElement) why ||= 'fullscreen did not start (use this button, not F11)';
+    toast(kbLocked ? 'Fullscreen: hold Esc to get your mouse back' : `Esc lock is off (${why}): a tap on Esc will free the mouse`, { error: !kbLocked });
   }
 
   // Mount the session's canvas (a fresh one per connection) into the stage.
