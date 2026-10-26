@@ -233,6 +233,70 @@ try {
     check('typing: slowest key event no slower than without (+8 ms jitter)', on.ev <= off.ev + 8, `${on.ev} vs ${off.ev} ms`);
     check('filter chip with both grids open: no long task over 50 ms', on.chipLong < 50, `${on.chipLong} ms (plain swap ${off.chipLong} ms)`);
   }
+
+  // ---- 4. Screen Wake Lock on /stream (stubbed navigator.wakeLock, a fake WebTransport that connects and idles)
+  if (want('wake')) {
+    const LIVE = { state: 'live', preset: 'balanced', codec: 'h264', appid: 1000, wt: 'https://127.0.0.1:4479/', hash: '00'.repeat(32), started: 1, elapsedS: 0 };
+    const fake = (off) => {
+      if (off) localStorage.setItem('brisk.settings', JSON.stringify({ keepAwake: false }));
+      window.__wl = [];
+      window.__vis = 'visible';
+      Object.defineProperty(document, 'visibilityState', { get: () => window.__vis });
+      Object.defineProperty(document, 'hidden', { get: () => window.__vis !== 'visible' });
+      Object.defineProperty(navigator, 'wakeLock', { value: { request: async (type) => { const s = { released: false, release: async () => { s.released = true; window.__wl.push('release'); } }; window.__wl.push(`request:${type}`); window.__lock = s; return s; } } });
+      const never = () => new ReadableStream({});
+      window.WebTransport = class {
+        constructor() { this.ready = Promise.resolve(); this.closed = new Promise((r) => (this.end = r)); this.datagrams = { readable: never(), writable: new WritableStream() }; this.incomingUnidirectionalStreams = never(); }
+        createBidirectionalStream() { return new Promise(() => {}); }
+        createUnidirectionalStream() { return new Promise(() => {}); }
+        close() { this.end?.(); }
+      };
+    };
+    const wl = (page) => page.evaluate(() => window.__wl.join(' '));
+    const js = new Map();
+    {
+      const { ctx, page, go, errs } = await mk({ stream: () => LIVE, init: fake });
+      page.on('response', async (r) => { if (/\.js(\?|$)/.test(r.url())) js.set(r.url(), (await r.body().catch(() => Buffer.alloc(0))).length); });
+      await go('/stream');
+      await page.waitForSelector('.stream[data-state="live"]', { timeout: 10000 });
+      await sleep(200);
+      const total = [...js.values()].reduce((a, b) => a + b, 0);
+      const names = [...js.keys()].map((u) => u.split('/').pop());
+      console.log(`     /stream (live) JS: ${names.length} files, ${total} bytes uncompressed: ${names.join(' ')}`);
+      check('/stream loads no heavy chunks (anime, layerchart, mediabunny, charts)', !names.some((n) => /anime|layerchart|Charts|mediabunny|motion\./i.test(n)));
+      check('live: one screen lock requested', (await wl(page)) === 'request:screen', await wl(page));
+      await page.evaluate(() => ((window.__lock.released = true), (window.__vis = 'hidden'), document.dispatchEvent(new Event('visibilitychange'))));
+      await sleep(100);
+      check('hidden: nothing asked while hidden', (await wl(page)) === 'request:screen', await wl(page));
+      await page.evaluate(() => ((window.__vis = 'visible'), document.dispatchEvent(new Event('visibilitychange'))));
+      await sleep(100);
+      check('visible again: lock asked again', (await wl(page)) === 'request:screen request:screen', await wl(page));
+      await page.evaluate(() => (window.__wl.length = 0));
+      await page.mouse.move(700, 2); // ghost bar
+      await page.getByRole('button', { name: 'Disconnect' }).click();
+      await page.waitForURL('**/library');
+      await sleep(200);
+      check('disconnect: lock released', (await wl(page)) === 'release', await wl(page));
+      check('no page errors', errs.length === 0, errs.join(' | '));
+      await ctx.close();
+    }
+    {
+      const { ctx, page, go } = await mk({ stream: () => LIVE, init: fake });
+      await ctx.addInitScript(() => localStorage.setItem('brisk.settings', JSON.stringify({ keepAwake: false })));
+      await go('/stream');
+      await page.waitForSelector('.stream[data-state="live"]', { timeout: 10000 });
+      await sleep(200);
+      check('setting off: no lock requested', (await wl(page)) === '', await wl(page));
+      await ctx.close();
+    }
+    {
+      const { ctx, page, go } = await mk({ stream: () => ({ ...LIVE, wt: null }), init: fake }); // failed state
+      await go('/stream');
+      await page.waitForSelector('.stream[data-state="failed"]', { timeout: 10000 });
+      check('failed stream: no lock', (await wl(page)) === '', await wl(page));
+      await ctx.close();
+    }
+  }
 } catch (e) {
   check('platform-check ran', false, e.stack ?? String(e));
 } finally {

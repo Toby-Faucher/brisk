@@ -114,6 +114,11 @@
           <label class="opt"><span>Clipboard sync <small class="lab">text and images, while streaming</small></span><input type="checkbox" checked={$settings.clipboardSync} onchange={(e) => set({ clipboardSync: e.currentTarget.checked })} /></label>
           <p class="note">On: every copy on this laptop goes to the host's clipboard while the stream has focus, passwords from a password manager included.</p>
         </Card>
+        <Card cols={2}>
+          <h4>Screen</h4>
+          <label class="opt"><span>Keep the screen awake while streaming</span><input type="checkbox" checked={$settings.keepAwake} onchange={(e) => set({ keepAwake: e.currentTarget.checked })} /></label>
+          <p class="note">Asks the browser for a screen wake lock while the stream is live and this tab is visible.</p>
+        </Card>
       </div>
     </Tabs.Content>
 
