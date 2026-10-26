@@ -106,16 +106,57 @@ describe('quit', () => {
     d = r.flow.confirm();
     await r.answer();
     await d;
-    const items = quitItems([PG], () => {});
+    const items = quitItems([PG], get(r.flow.stuck), () => {});
     const copy = JSON.stringify([r.toast.mock.calls, items.map((i) => i.label)]);
     expect(copy).not.toMatch(/kill/i);
   });
 
+  it('a quit already under way is an info toast, not an error', async () => {
+    const busy = Object.assign(new Error('already quitting'), { status: 409 });
+    const r = rig([busy]);
+    r.flow.request(PG);
+    const done = r.flow.confirm();
+    await r.answer();
+    await done;
+    expect(r.toast).toHaveBeenCalledWith('Already closing Pepper Grinder…');
+    expect(r.refresh).toHaveBeenCalled();
+  });
+
+  it('the Force quit action stays at least 20 s', async () => {
+    const r = rig(['still-running']);
+    r.flow.request(PG);
+    const done = r.flow.confirm();
+    await r.answer();
+    await done;
+    expect(r.toast.mock.calls[0][1].ms).toBeGreaterThanOrEqual(20_000);
+  });
+
   it('command menu offers Quit only for running games', () => {
     const asked: Game[] = [];
-    const items = quitItems([PG, g(1, 'Hades', false), g(3, 'Celeste', true)], (x) => asked.push(x));
+    const items = quitItems([PG, g(1, 'Hades', false), g(3, 'Celeste', true)], new Set(), (x) => asked.push(x));
     expect(items.map((i) => i.label)).toEqual(['Quit Pepper Grinder', 'Quit Celeste']);
     items[1].run();
     expect(asked).toEqual([g(3, 'Celeste', true)]);
+  });
+
+  it('command menu adds Force quit while a game is still running after a quit, until it closes', async () => {
+    const r = rig(['still-running', 'closed']);
+    const labels = () => quitItems([PG], get(r.flow.stuck), () => {}).map((i) => i.label);
+    expect(labels()).toEqual(['Quit Pepper Grinder']);
+    r.flow.request(PG);
+    let d = r.flow.confirm();
+    await r.answer();
+    await d;
+    expect(labels()).toEqual(['Quit Pepper Grinder', 'Force quit Pepper Grinder']);
+    const asked: [Game, boolean][] = [];
+    quitItems([PG], get(r.flow.stuck), (x, force) => asked.push([x, force]))[1].run();
+    expect(asked).toEqual([[PG, true]]);
+    // not offered for a game that is no longer running
+    expect(quitItems([{ ...PG, running: false }], get(r.flow.stuck), () => {})).toEqual([]);
+    r.flow.request(PG, true);
+    d = r.flow.confirm();
+    await r.answer();
+    await d;
+    expect(labels()).toEqual(['Quit Pepper Grinder']);
   });
 });

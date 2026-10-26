@@ -8,6 +8,8 @@
   const flow = quitFlow({ quit: api.quit, refresh: refreshGames, toast });
   /** Appids being quit now: their Quit buttons are aria-disabled. */
   export const quitting = flow.busy;
+  /** Appids a quit left running: Ctrl+K offers Force quit. */
+  export const stuck = flow.stuck;
   let back: HTMLElement | null = null;
 
   /** Opens the confirm; focus returns to what had it when the confirm closes. */
@@ -37,7 +39,7 @@
     >
       {#if $ask}
         <Dialog.Title class="rs-t">{verb} {$ask.game.name}?</Dialog.Title>
-        <Dialog.Description class="lab">{$ask.force ? 'It will be stopped at once. Unsaved progress will be lost.' : 'Unsaved progress may be lost.'}</Dialog.Description>
+        <Dialog.Description class="lab">{$ask.force ? 'It gets 3 seconds to close, then it is stopped. Unsaved progress will be lost.' : 'Unsaved progress may be lost.'}</Dialog.Description>
         <div class="rs-a">
           <Dialog.Close class="btn ghost">Cancel</Dialog.Close>
           <button class="btn" onclick={() => void flow.confirm()}>{verb}</button>

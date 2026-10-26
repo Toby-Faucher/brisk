@@ -219,6 +219,12 @@ async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response 
         Ok(Ok(Ok(st))) => st,
         Ok(Ok(Err(QuitError::NotRunning))) => return err(StatusCode::CONFLICT, "not running"),
         Ok(Ok(Err(QuitError::Busy))) => return err(StatusCode::CONFLICT, "already quitting"),
+        Ok(Ok(Err(QuitError::Root))) => {
+            return err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "hostd runs as root; quit is off",
+            )
+        }
         Ok(Err(_)) => return err(StatusCode::INTERNAL_SERVER_ERROR, "quit failed"),
         Err(_) => Quit::StillRunning,
     };

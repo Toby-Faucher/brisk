@@ -17,8 +17,10 @@ export type Ask = { game: Game; force: boolean };
 export function quitFlow(deps: QuitDeps) {
   const ask = writable<Ask | null>(null);
   const busy = writable<ReadonlySet<number>>(new Set());
-  const mark = (id: number, on: boolean) =>
-    busy.update((s) => {
+  /** Games whose last quit answered still-running: Ctrl+K offers Force quit for them. */
+  const stuck = writable<ReadonlySet<number>>(new Set());
+  const mark = (store: typeof busy, id: number, on: boolean) =>
+    store.update((s) => {
       const n = new Set(s);
       if (on) n.add(id);
       else n.delete(id);
@@ -34,22 +36,31 @@ export function quitFlow(deps: QuitDeps) {
     ask.set(null);
     if (!a || get(busy).has(a.game.appid)) return;
     const { game, force } = a;
-    mark(game.appid, true);
+    mark(busy, game.appid, true);
     try {
       const r = await deps.quit(game.appid, force);
+      mark(stuck, game.appid, r.state === 'still-running');
       if (r.state === 'closed') deps.toast(`Closed ${game.name}`);
-      else deps.toast(`Still running: ${game.name} (try Force quit)`, { ms: 10_000, action: { label: 'Force quit', run: () => request(game, true) } });
+      else deps.toast(`Still running: ${game.name} (try Force quit)`, { ms: 30_000, action: { label: 'Force quit', run: () => request(game, true) } });
     } catch (e) {
-      deps.toast(`Could not quit ${game.name}: ${(e as Error).message}`, { error: true });
+      const err = e as Error & { status?: number };
+      // Another tab or button started this quit: its answer is still coming.
+      if (err.status === 409 && err.message === 'already quitting') deps.toast(`Already closing ${game.name}…`);
+      else deps.toast(`Could not quit ${game.name}: ${err.message}`, { error: true });
     } finally {
-      mark(game.appid, false);
+      mark(busy, game.appid, false);
       await deps.refresh();
     }
   }
 
-  return { ask, busy, request, confirm, cancel: () => ask.set(null) };
+  return { ask, busy, stuck, request, confirm, cancel: () => ask.set(null) };
 }
 
-/** Command menu entries: one per game running on the host. */
-export const quitItems = (games: Game[], request: (g: Game) => void): CommandItem[] =>
-  games.filter((g) => g.running).map((g) => ({ id: `quit:${g.appid}`, label: `Quit ${g.name}`, icon: 'power', run: () => request(g) }));
+/** Command menu entries for games running on the host: Quit, plus Force quit after a quit left one running. */
+export const quitItems = (games: Game[], stuck: ReadonlySet<number>, request: (g: Game, force: boolean) => void): CommandItem[] =>
+  games
+    .filter((g) => g.running)
+    .flatMap((g) => [
+      { id: `quit:${g.appid}`, label: `Quit ${g.name}`, icon: 'power', run: () => request(g, false) },
+      ...(stuck.has(g.appid) ? [{ id: `forcequit:${g.appid}`, label: `Force quit ${g.name}`, icon: 'power', run: () => request(g, true) }] : []),
+    ]);

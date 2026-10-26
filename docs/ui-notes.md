@@ -28,18 +28,26 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   and "Quit <name>" in Ctrl+K (running games only). All open one confirm (shell/QuitDialog.svelte, Bits Dialog:
   "Quit <name>? Unsaved progress may be lost.", Cancel / Quit; focus returns to the button). While hostd works
   (up to ~25 s) the buttons say "Quitting…" and are aria-disabled. Then the games store refreshes and a toast says
-  "Closed <name>" or "Still running: <name> (try Force quit)" with a Force quit button, which asks again and
-  retries with `force: true`. User copy never says "kill". Logic and tests: web/src/state/quit.ts.
+  "Closed <name>" or "Still running: <name> (try Force quit)" with a Force quit button (30 s), which asks again and
+  retries with `force: true`; while a game is in that state Ctrl+K also offers "Force quit <name>". A 409
+  "already quitting" (another tab or button got there first) is an info toast "Already closing <name>…" plus a
+  refresh, not an error. User copy never says "kill". Logic and tests: web/src/state/quit.ts.
 - hostd (running.rs `Quitter`): 400 unless the appid is a known game, 409 if it is not running or a quit of it
   is already under way (one per game; other games are not held up). Steps: `swaymsg '[con_id=N] kill'` on every
   sway window whose pid is a descendant of the game's reaper (sway's polite close, like the X button); poll 10 s
   for the reaper to exit; else `kill -TERM` to the reaper's descendants (not the reaper, never steam, the
-  webhelper/Big Picture or another game's tree; the list is rescanned just before each signal); poll 10 s; with
-  `force` then `kill -KILL` to the same set and 3 s more. Answer `{state: "closed" | "still-running"}`; past 25 s
-  it answers still-running and the quit carries on. The quit runs in its own task, so a client hanging up does
-  not stop it halfway. Nothing touches the bridge or Sunshine, so the Desktop / Big Picture stream keeps going.
+  webhelper/Big Picture or another game's tree; the list is rescanned just before each signal); poll 10 s.
+  `force` skips the window close: `kill -TERM`, 3 s, `kill -KILL` to the same set, 3 s. A reaper with nothing left
+  under it gets the signals itself (never its parent, Steam) with 3 s waits. Answer
+  `{state: "closed" | "still-running"}`; past 25 s it answers still-running and the quit carries on. The quit runs
+  in its own task, so a client hanging up does not stop it halfway. A failing `kill` (a pid already gone, EPERM,
+  no binary) is a stderr warning naming the appid and a pid count. Nothing touches the bridge or Sunshine, so the Desktop /
+  Big Picture stream keeps going.
+- sway's close on an XWayland window sends WM_DELETE_WINDOW; for an X11 window without that protocol wlroots
+  disconnects the X client instead (`xcb_kill_client`), which ends that client only, still one of the game's.
+- hostd must run as toby, never root: as euid 0 it logs a warning at startup and POST /api/quit answers 503.
 - Tests use a fake Runner (it gets the `swaymsg` and `kill` calls) over a fake /proc shaped on bawn's real tree;
-  nothing real is signalled (`cargo test -p brisk-hostd --test quit`).
+  nothing real is signalled (`cargo test -p brisk-hostd --test quit`; tokio time is paused, so no real waits).
 - [U] Not tried on bawn: whether Proton/XWayland games exit on sway's close (Pepper Grinder is native XWayland; a
   Proton game may show a "really quit?" prompt and fall through to SIGTERM), that Steam's overlay
   (gameoverlayui, a child of steam) and the Running badge clear by themselves once the reaper exits, that sway

@@ -58,6 +58,11 @@ pub fn running_appids(proc: &Path) -> HashSet<u32> {
 /// The descendants of `appid`'s reapers, not the reapers themselves (so never Steam, their
 /// parent); `None` when the game is not running.
 fn game_pids(proc: &Path, appid: u32) -> Option<HashSet<u32>> {
+    game_tree(proc, appid).map(|t| t.1)
+}
+
+/// `(reapers, their descendants)` of `appid`; `None` when no reaper is alive.
+fn game_tree(proc: &Path, appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
     let ps = procs(proc);
     let reapers: HashSet<u32> = ps
         .iter()
@@ -79,7 +84,8 @@ fn game_pids(proc: &Path, appid: u32) -> Option<HashSet<u32>> {
             break;
         }
     }
-    Some(&pids - &reapers)
+    let kids = &pids - &reapers;
+    Some((reapers, kids))
 }
 
 /// Every window (con id) whose pid is one of `pids`, in tree order.
@@ -202,6 +208,8 @@ pub enum QuitError {
     NotRunning,
     /// A quit of this game is already under way.
     Busy,
+    /// hostd runs as root, where a wrong pid would hurt far more: quit is off.
+    Root,
 }
 
 /// Quits running games: sway's polite close on the game's windows, then SIGTERM, then (forced
@@ -212,7 +220,12 @@ pub struct Quitter {
     busy: Mutex<HashSet<u32>>,
     /// How long each of the close and SIGTERM steps waits for the game to exit.
     pub wait: Duration,
+    /// euid 0 at startup; tests set it.
+    pub as_root: bool,
 }
+
+/// The wait after SIGTERM when forcing (or for a lone reaper), and after SIGKILL.
+const BRIEF: Duration = Duration::from_secs(3);
 
 /// Frees the game's slot however the quit ends.
 struct Claim<'a>(&'a Mutex<HashSet<u32>>, u32);
@@ -224,11 +237,19 @@ impl Drop for Claim<'_> {
 
 impl Quitter {
     pub fn new(runner: Arc<dyn Runner>, proc: PathBuf) -> Self {
+        // SAFETY: geteuid has no preconditions.
+        let as_root = unsafe { libc::geteuid() } == 0;
+        if as_root {
+            eprintln!(
+                "warning: hostd runs as root; POST /api/quit is off (run it as the desktop user)"
+            );
+        }
         Quitter {
             runner,
             proc,
             busy: Mutex::default(),
             wait: Duration::from_secs(10),
+            as_root,
         }
     }
 
@@ -243,13 +264,13 @@ impl Quitter {
 
     /// True once the game's reapers are gone, polling every 100 ms up to `wait`.
     async fn gone_within(&self, appid: u32, wait: Duration) -> bool {
-        let end = Instant::now() + wait;
+        let end = tokio::time::Instant::now() + wait;
         loop {
-            let gone = self.blocking(move |_, p| game_pids(p, appid).is_none());
+            let gone = self.blocking(move |_, p| game_tree(p, appid).is_none());
             if gone.await.unwrap_or(false) {
                 return true;
             }
-            if Instant::now() >= end {
+            if tokio::time::Instant::now() >= end {
                 return false;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -257,13 +278,16 @@ impl Quitter {
     }
 
     /// `kill <sig>` to the game's processes as they are now (a fresh scan, so pids gone since the
-    /// last step are not reused). shortcut: a pid can still be recycled between this scan and the
-    /// signal (microseconds); upgrade to pidfd_send_signal if that ever matters.
+    /// last step are not reused): the reapers' descendants, or the reapers themselves when nothing
+    /// is left under them. Never their parent (Steam). shortcut: a pid can still be recycled
+    /// between this scan and the signal (microseconds); upgrade to pidfd_send_signal if that matters.
     async fn signal(&self, appid: u32, sig: &'static str) {
         let me = std::process::id();
         self.blocking(move |r, p| {
-            let mut pids: Vec<u32> = game_pids(p, appid)
-                .unwrap_or_default()
+            let Some((reapers, kids)) = game_tree(p, appid) else {
+                return;
+            };
+            let mut pids: Vec<u32> = if kids.is_empty() { reapers } else { kids }
                 .into_iter()
                 .filter(|&p| p > 1 && p != me)
                 .collect();
@@ -274,13 +298,23 @@ impl Quitter {
             let pids: Vec<String> = pids.iter().map(u32::to_string).collect();
             let mut a = vec![sig];
             a.extend(pids.iter().map(String::as_str));
-            r.run("kill", &a);
+            if r.run("kill", &a).is_none() {
+                // Often only a pid that exited meanwhile; EPERM or a missing kill binary look the same.
+                eprintln!(
+                    "warning: kill {sig} for game {appid} failed for some of {} pids",
+                    pids.len()
+                );
+            }
         })
         .await;
     }
 
-    /// Closes `appid` politely, escalates to SIGTERM, and with `force` to SIGKILL.
+    /// Closes `appid` politely, escalates to SIGTERM, and with `force` to SIGKILL. A forced quit
+    /// skips the polite close: SIGTERM, 3 s, SIGKILL.
     pub async fn quit(&self, appid: u32, force: bool) -> Result<Quit, QuitError> {
+        if self.as_root {
+            return Err(QuitError::Root);
+        }
         let _claim = {
             let mut b = self.busy.lock().unwrap();
             if !b.insert(appid) {
@@ -288,33 +322,39 @@ impl Quitter {
             }
             Claim(&self.busy, appid)
         };
+        let polite = !force;
         let asked = self.blocking(move |r, p| {
-            let pids = game_pids(p, appid)?;
-            let sock = sway_sock(&crate::stream::graphical_env());
-            // sway's `kill` is the polite close request, the same as the window's X button.
-            for id in game_windows(r, &sock, &pids) {
-                let cmd = format!("[con_id={id}] kill");
-                let mut a: Vec<&str> = sock.iter().map(String::as_str).collect();
-                a.push(&cmd);
-                r.run("swaymsg", &a);
+            let (_, kids) = game_tree(p, appid)?;
+            if polite && !kids.is_empty() {
+                let sock = sway_sock(&crate::stream::graphical_env());
+                // sway's `kill` is the polite close request, the same as the window's X button.
+                for id in game_windows(r, &sock, &kids) {
+                    let cmd = format!("[con_id={id}] kill");
+                    let mut a: Vec<&str> = sock.iter().map(String::as_str).collect();
+                    a.push(&cmd);
+                    r.run("swaymsg", &a);
+                }
             }
-            Some(())
+            Some(kids.is_empty())
         });
-        if asked.await.flatten().is_none() {
+        let Some(lone) = asked.await.flatten() else {
             return Err(QuitError::NotRunning);
+        };
+        if polite && !lone {
+            if self.gone_within(appid, self.wait).await {
+                return Ok(Quit::Closed);
+            }
+            eprintln!("info: game {appid} still running after closing its windows; SIGTERM");
         }
-        if self.gone_within(appid, self.wait).await {
-            return Ok(Quit::Closed);
-        }
-        eprintln!("info: game {appid} still running after closing its windows; SIGTERM");
         self.signal(appid, "-TERM").await;
-        if self.gone_within(appid, self.wait).await {
+        let wait = if force || lone { BRIEF } else { self.wait };
+        if self.gone_within(appid, wait).await {
             return Ok(Quit::Closed);
         }
         if force {
             eprintln!("info: game {appid} still running after SIGTERM; SIGKILL (forced)");
             self.signal(appid, "-KILL").await;
-            if self.gone_within(appid, Duration::from_secs(3)).await {
+            if self.gone_within(appid, BRIEF).await {
                 return Ok(Quit::Closed);
             }
         }

@@ -11,6 +11,9 @@
         {"id": 7, "type": "con", "name": "Steam Big Picture Mode", "pid": 411, "app_id": null, "shell": "xwayland",
          "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "steam", "title": "Steam Big Picture Mode"},
          "nodes": [], "floating_nodes": []},
+        {"id": 9, "type": "con", "name": "reaper (never closed)", "pid": 500, "app_id": null, "shell": "xwayland",
+         "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "reaper", "title": "reaper"},
+         "nodes": [], "floating_nodes": []},
         {"id": 26, "type": "con", "name": "Other Game", "pid": 601, "app_id": null, "shell": "xwayland",
          "fullscreen_mode": 0, "focused": false, "window_properties": {"class": "steam_app_20", "title": "Other Game"},
          "nodes": [], "floating_nodes": []}
