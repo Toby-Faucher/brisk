@@ -682,7 +682,7 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   and posts it in 2 MB batches (one copy each, transferred, a yield between batches); 30 s timeout.
 - Checks: `npm test` (replay.test.ts: ring eviction and retention, key frame choice, config change, audio
   gaps, and a mux of the ffmpeg fixtures in fixtures/ (gen.sh: H.264 Baseline and High, HEVC, Opus) probed
-  with ffprobe and decoded by ffmpeg). `node scripts/clip-check.mjs [x.mp4 ...]`: headless Chrome screenshot
+  with ffprobe and decoded by ffmpeg). `node web/scripts/clip-check.mjs [x.mp4 ...]`: headless Chrome screenshot
   of the latest frame, a Crisp-size ring (155 MB) clipped while a 60 fps canvas loop runs (no long task over
   50 ms; Chrome RSS +400 MB at the peak: the copy in the worker, the MP4 parts, the Blob), the hotkeys against
   input.ts with real key events, and MP4s played in a `<video>`.
@@ -800,7 +800,7 @@ prints PASS/FAIL (exit 0 only if all pass) and screenshot paths. It cannot prove
 fails, so Stream is only checked for degrading to "Lost the connection" without page errors. hostd's listen port and Host
 check are fixed at 8443, so while the live service holds 8443 the smoke prints `SMOKE SKIPPED (exit 3)` and exits 3
 (exit codes: 0 pass, 1 fail, 3 skipped; `BRISK_SMOKE_ALLOW_SKIP=1` makes a skip exit 0). It is not part of `npm run ci`.
-Use `scripts/axe-check.mjs` for the a11y part meanwhile.
+Use `web/scripts/axe-check.mjs` for the a11y part meanwhile.
 
 ## Dev tooling
 - Commands (in web/): `npm run ci` = `npm run check` + `npm test` + `npm run build` (run it before merging);
@@ -817,10 +817,10 @@ Use `scripts/axe-check.mjs` for the a11y part meanwhile.
   `typescript ^5 || ^6`. Retry when they widen. `web/tsconfig.json` extends `astro/tsconfigs/strict` and includes src,
   `scripts/**/*.mjs` and `vitest.config.ts`; vite defines are declared in `src/env.d.ts`. The scripts are included without
   `checkJs`: turning it on gives about 450 errors, mostly the untyped `window.__x` probes inside `page.evaluate`. `@ts-expect-error` only with a one-line reason; no blanket `any`.
-- Accessibility: `scripts/axe.mjs` (`@axe-core/playwright`, MPL-2.0) runs the WCAG 2.0/2.1/2.2 A and AA rules and fails
+- Accessibility: `web/scripts/axe.mjs` (`@axe-core/playwright`, MPL-2.0) runs the WCAG 2.0/2.1/2.2 A and AA rules and fails
   on serious or critical violations; exceptions live in its `EXCEPTIONS` list with a one-line reason (today: the command
   menu listbox, scrolled from the input through aria-activedescendant). Used by ui-smoke and by
-  `node scripts/axe-check.mjs` (against `npx astro preview --host 127.0.0.1 --port 4424`, mocked /api; Home, Library,
+  `node web/scripts/axe-check.mjs` (against `npx astro preview --host 127.0.0.1 --port 4424`, mocked /api; Home, Library,
   Machines, History list + session, every Settings tab, Stream idle and failed, command menu, Quit and restart dialogs).
 - Browser tests: `*.browser.test.ts` next to the component, run by the `browser` project in `web/vitest.config.ts`
   (`@vitest/browser-playwright` + `vitest-browser-svelte`, Playwright's own chrome-headless-shell; `BRISK_CHROMIUM`
