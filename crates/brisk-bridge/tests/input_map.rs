@@ -437,3 +437,50 @@ async fn browser_bidi_stream_feeds_the_queue_and_releases_on_close() {
     let got = sh.with(drain);
     assert_eq!(got, vec![k(0x41, true), k(0x41, false)]);
 }
+
+/// A press dropped on a send timeout must not stay marked as down: the page's repeat of it
+/// (key auto-repeat, held W) goes through, and the release afterwards is sent once.
+#[test]
+fn press_dropped_on_timeout_is_forwarded_on_the_next_repeat() {
+    let mut q = InputQueue::default();
+    q.on_message(&key(0x57, true, 0));
+    let e = q.pop().unwrap();
+    q.timed_out(e);
+    assert!(q.is_empty(), "a press is not retried");
+    q.on_message(&key(0x57, true, 0));
+    assert_eq!(drain(&mut q), vec![k(0x57, true)]);
+    q.on_message(&key(0x57, false, 0));
+    assert_eq!(drain(&mut q), vec![k(0x57, false)]);
+    assert!(!q.held());
+
+    q.on_message(&button(1, true));
+    let e = q.pop().unwrap();
+    q.timed_out(e);
+    q.on_message(&button(1, true));
+    let down = InputEvent::MouseButton {
+        button: 1,
+        down: true,
+    };
+    assert_eq!(drain(&mut q), vec![down]);
+    q.on_message(&button(1, false));
+    assert_eq!(drain(&mut q).len(), 1);
+    assert!(!q.held());
+}
+
+/// A dropped press whose key was released and pressed again meanwhile: the newer press is still
+/// queued, so the key stays held (its release must not be ignored, or the key would stick).
+#[test]
+fn press_dropped_on_timeout_keeps_a_newer_queued_press() {
+    let mut q = InputQueue::default();
+    q.on_message(&key(0x57, true, 0));
+    let e = q.pop().unwrap();
+    q.on_message(&key(0x57, false, 0));
+    q.on_message(&key(0x57, true, 0));
+    q.timed_out(e);
+    q.on_message(&key(0x57, false, 0));
+    assert_eq!(
+        drain(&mut q),
+        vec![k(0x57, false), k(0x57, true), k(0x57, false)]
+    );
+    assert!(!q.held());
+}

@@ -240,11 +240,6 @@ proptest! {
             match &o {
                 Op::Frame(_, f) if (f[0] == KIND_KEY && f[1] == vk) || (f[0] >= KIND_GAMEPAD && f[1] == 0) => continue,
                 Op::EndStream(0) | Op::ReleaseAll => continue,
-                // Not with send timeouts: a key press that times out is dropped by design
-                // (`timed_out`), but the queue still counts the key as down, so the page's
-                // repeat of that press is swallowed and Sunshine never gets it (see
-                // docs/fuzz-inventory.md, findings). Pads do recover.
-                Op::SendTimesOut => continue,
                 _ => run(&mut q, &mut host, o),
             }
             if let Some(&down) = key.get(i) {

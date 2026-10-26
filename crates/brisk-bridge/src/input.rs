@@ -373,7 +373,8 @@ impl InputQueue {
     /// The control session did not take `e` within 1 s (`Timeout`): a release goes back to the
     /// front, and so does a pad state unless the next queued state of that pad has the same buttons
     /// (then only analog values are lost, and the newer ones follow). So a press whose release is
-    /// already queued still reaches Sunshine before it. Anything else is dropped.
+    /// already queued still reaches Sunshine before it. Anything else is dropped; a dropped key or
+    /// button press is no longer counted as down, so the page's next repeat of it is sent.
     pub fn timed_out(&mut self, e: InputEvent) {
         self.stats.timeouts += 1;
         let retry =
@@ -387,7 +388,29 @@ impl InputQueue {
                 _ => is_release(&e),
             };
         if retry {
-            self.q.push_front(e);
+            return self.q.push_front(e);
+        }
+        // A dropped press is not down on the host: forget it, so the page's next repeat goes
+        // through, unless a newer event for the same key/button is still queued.
+        match e {
+            InputEvent::Key { vk, down: true, .. } => {
+                let newer = self
+                    .q
+                    .iter()
+                    .any(|x| matches!(x, InputEvent::Key { vk: v, .. } if *v == vk));
+                if !newer {
+                    self.keys.retain(|k| k.0 != vk);
+                }
+            }
+            InputEvent::MouseButton { button, down: true } => {
+                let newer = self.q.iter().any(
+                    |x| matches!(x, InputEvent::MouseButton { button: b, .. } if *b == button),
+                );
+                if !newer {
+                    self.buttons[button as usize] = None;
+                }
+            }
+            _ => {}
         }
     }
 
