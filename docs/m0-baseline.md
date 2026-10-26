@@ -112,3 +112,17 @@ IP, page on bawn): NOT the laptop and NOT the real network path. Details: docs/m
 | input | 200 messages (120 keys, 80 moves) page = bridge = Sunshine decoded, 0 bad, 0 dropped | PENDING (Toby: real mouse, buttons, wheel, typing) |
 | Moonlight overlay, same path (head-to-head) | n/a | 2026-10-25, Mewgenics, 1080p60 H.264, different scenes: Moonlight 60.05 fps in/decoded/rendered, host processing min/avg/max 4.2/6.6/10.8 ms, 0% network and jitter drops, net latency 3 ms, decode 0.45 ms, queue 0.06 ms, render 1.56 ms. Brisk: bridge_write-capture p50 4.7 / p99 6.9 ms, decode p50 1.0, present p50 5.1, 6.8% skipped. Toby: Moonlight felt a bit smoother; both played well. Host leg is a tie; client leg about 4 ms behind (decode +0.5, draw +3.5) and Brisk drops ~4 frames/s. No freezes after the bawn fix (docs/bawn-display-stalls.md). |
 
+
+### UI v1 acceptance run (2026-10-25, branch `ui`)
+
+Toby on the laptop (Chrome, hardware decode) through the new UI and `brisk-hostd`, Balanced preset (1080p60 H.264, 20 Mbps), over the Tailscale direct path (2 ms RTT). Includes Fast/Crisp/Balanced switches and a tunnel drop with silent reconnect, so one bridge run (152.7 s, two viewers) is not a clean 10 min figure.
+
+| quantity | result |
+|---|---|
+| `bridge_write - capture` / `frame_processing_latency` (bridge report) | p50 5.3 / 5.1 ms, p99 8.3 / 8.2 ms (9121 frames): M2 gate PASS (+0.2 ms, was +0.1 in M2) |
+| `bridge_write - tap` | p50 0.2, p99 0.3 ms |
+| browser leg | sent 9127, dropped 23, reset 4, idr_requests 5 (quality switches / reconnect) |
+| audio / input | audio lost 0, errors 0; input 1255 received = 1255 sent, 0 bad, 0 dropped |
+| page stats card (screenshot) | delay 8.8 ms (estimate: bridge + RTT/2 + queue + decode + draw), 60 fps, 1920x1080 avc1.640c2a, hw decode, ~18 Mbps |
+
+Not captured: separate client decode / present p50 with the new stats card, and a clean 10 min run. The host and bridge side did not regress; the page's decode/draw path was changed only by closing the decoder on disconnect and counting bytes.
