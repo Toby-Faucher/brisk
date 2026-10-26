@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Tabs } from 'bits-ui';
-  import { ACCENT_HEX, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
+  import { ACCENT_HEX, DEFAULTS, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
   import type { Preset } from '../../state/api';
   import { host } from '../../state/host';
   import { api } from '../../state/api';
@@ -24,6 +24,7 @@
     pickAccent(a);
     (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(`[aria-label="${a}"]`)?.focus();
   }
+  const resetSettings = () => (settings.set({ ...DEFAULTS }), toast('Settings reset to defaults'));
   const pickAccent = (a: Accent) => set({ accent: a });
   // Home card order lives in hostd prefs (Home drag handles); Home picks the default up on its next visit
   const resetLayout = () =>
@@ -99,6 +100,7 @@
         <Card cols={2}>
           <h4>Home layout</h4>
           <div class="opt"><span>Card order <small class="lab">drag a card's handle on Home to move it</small></span><button type="button" class="btn ghost" onclick={resetLayout}>Reset layout</button></div>
+          <div class="opt"><span>Settings <small class="lab">everything on this page</small></span><button type="button" class="btn ghost" onclick={resetSettings}>Reset to defaults</button></div>
         </Card>
       </div>
     </Tabs.Content>

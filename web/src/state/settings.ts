@@ -12,7 +12,7 @@ export type ReplaySeconds = (typeof REPLAY_SECONDS)[number];
 export type Settings = { accent: Accent; sounds: boolean; shaders: boolean; defaultPreset: Preset; clipboardSync: boolean; replaySeconds: ReplaySeconds; keepAwake: boolean };
 
 export const SETTINGS_KEY = 'brisk.settings';
-const DEFAULTS: Settings = { accent: 'mint', sounds: true, shaders: true, defaultPreset: 'balanced', clipboardSync: true, replaySeconds: 0, keepAwake: true };
+export const DEFAULTS: Settings = { accent: 'mint', sounds: true, shaders: true, defaultPreset: 'balanced', clipboardSync: true, replaySeconds: 0, keepAwake: true };
 
 function read(): Settings {
   try {
