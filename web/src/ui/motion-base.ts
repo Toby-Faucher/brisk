@@ -32,6 +32,16 @@ export const box = (el: Element): Box => {
 };
 
 /**
+ * One soft ring sent out by a status dot when the host state changes (`<span class="ring">` sibling, resting at
+ * opacity 0): native `Element.animate` on `scale` + `opacity`, no library and no loop. The Shell calls this on every
+ * page, so /stream is a silent no-op as well (nothing animates there). Null when nothing ran.
+ */
+export function ringPulse(ring: Element): Animation | null {
+  if (onStreamRoute() || reducedMotion()) return null;
+  return ring.animate([{ scale: 1, opacity: 0.5 }, { scale: 2.2, opacity: 0 }], { duration: 700, easing: cssVar('--ease') });
+}
+
+/**
  * Glide a highlight that already sits at `to` from where it was (`from`, viewport boxes): native Web Animations on
  * `translate` + `scale` only, so it runs on the compositor and leaves no inline style (anime.js's waapi.animate wraps
  * the same API, and the Shell must not load it). `pseudo: '::before'` animates a highlight drawn by the selected item's

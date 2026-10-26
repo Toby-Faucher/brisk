@@ -309,3 +309,23 @@ describe('glideSwap', () => {
     expect(m.glide(e, { x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 40, w: 10, h: 10 })).toBeNull();
   });
 });
+
+describe('ringPulse', () => {
+  it('one native ring, scale 1 -> 2.2 and opacity .5 -> 0 over 700 ms', () => {
+    const e = el();
+    expect(m.ringPulse(e)).not.toBeNull();
+    const [kf, opt] = e.animate.mock.calls[0];
+    expect(kf).toEqual([{ scale: 1, opacity: 0.5 }, { scale: 2.2, opacity: 0 }]);
+    expect(opt).toMatchObject({ duration: 700 });
+    expect(opt.iterations).toBeUndefined(); // no loop
+  });
+  it('nothing under reduced motion and, quietly even in dev, on /stream', () => {
+    const e = el();
+    reduce = true;
+    expect(m.ringPulse(e)).toBeNull();
+    reduce = false;
+    path = '/stream';
+    expect(m.ringPulse(e)).toBeNull();
+    expect(e.animate).not.toHaveBeenCalled();
+  });
+});
