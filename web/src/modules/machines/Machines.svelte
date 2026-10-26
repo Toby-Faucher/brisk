@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { enter } from '../../shell/reveal';
   import { Dialog } from 'bits-ui';
   import { api, type StreamInfo } from '../../state/api';
   import { games, watchGames } from '../../state/games';
@@ -19,6 +20,11 @@
 
   const machines = $derived($host ? machinesFrom($host) : []);
   const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
+
+  let arrived = false; // the host card lands after hydration: entrance once
+  $effect(() => {
+    if (machines.length && !arrived) (arrived = true), void tick().then(enter);
+  });
 
   const running = $derived(($games?.games ?? []).filter((g) => g.running));
 
@@ -46,7 +52,7 @@
   }
 </script>
 
-<div class="top"><h2>Machines</h2></div>
+<div class="top reveal"><h2>Machines</h2></div>
 <div class="grid">
   {#each machines as m (m.id)}
     {@const i = m.info}

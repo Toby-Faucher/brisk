@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { enter } from '../../shell/reveal';
   import { navigate } from 'astro:transitions/client';
   import { api, type Game } from '../../state/api';
   import { games, gamesFailed, refreshGames, watchGames } from '../../state/games';
@@ -18,6 +19,26 @@
 
   const s = $derived(shelves(searchGames(filterGames($games?.games ?? [], f), q)));
   const hero = $derived(q.trim() ? null : s.hero);
+
+  // Skeleton -> content: when the games first arrive the hero, shelf headers and first cards get the load entrance
+  // (once per mount; scrolling a shelf or paging it mounts cards that never animate).
+  let arrived = false;
+  $effect(() => {
+    if ($games && !arrived) (arrived = true), void tick().then(enter);
+  });
+
+  // Search/filter: the results cross-fade quickly, at most once per 150 ms so typing never strobes.
+  let body: HTMLElement | undefined = $state();
+  let fadedAt = 0;
+  let firstRun = true;
+  $effect(() => {
+    void [q, f];
+    if (firstRun) return void (firstRun = false);
+    const now = performance.now();
+    if (!body || now - fadedAt < 150 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    fadedAt = now;
+    body.animate({ opacity: [0.3, 1] }, { duration: 140, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  });
 
   onMount(() => {
     const offGames = watchGames();
@@ -56,15 +77,15 @@
     });
 </script>
 
-<div class="top">
+<div class="top reveal">
   <h2>Library</h2>
   <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} placeholder="Search games" aria-label="Search games" /></label>
 </div>
-<div class="filters" role="group" aria-label="Filter games">
+<div class="filters reveal" role="group" aria-label="Filter games">
   {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => (f = id)}>{label}</button>{/each}
 </div>
 
-<div class="body">
+<div class="body" bind:this={body}>
   {#if $games && !$games.ownedAvailable}
     <div class="banner" role="status">Couldn't reach Steam. Showing installed games only for now.</div>
   {/if}

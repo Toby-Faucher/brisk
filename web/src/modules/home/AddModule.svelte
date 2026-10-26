@@ -3,7 +3,7 @@
   import Icon from '../../ui/Icon.svelte';
 </script>
 
-<button class="ghostcard" onclick={() => toast('Drop a folder with a module.ts into web/src/modules', { ms: 5000 })}>
+<button class="ghostcard reveal" onclick={() => toast('Drop a folder with a module.ts into web/src/modules', { ms: 5000 })}>
   <Icon name="plus" size={20} />
   <span>Add a module</span>
 </button>

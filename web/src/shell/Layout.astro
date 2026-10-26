@@ -30,7 +30,13 @@ const { title } = Astro.props as { title: string };
         } catch {}
       };
       accent();
-      document.addEventListener('astro:after-swap', accent);
+      // Hide the load-entrance items (base.css) until reveal.ts tags them after hydration; 3 s failsafe if it never runs.
+      const pend = () => {
+        document.documentElement.setAttribute('data-enter-pending', '');
+        setTimeout(() => document.documentElement.removeAttribute('data-enter-pending'), 3000);
+      };
+      pend();
+      document.addEventListener('astro:after-swap', () => (accent(), pend()));
     </script>
   </head>
   <body>

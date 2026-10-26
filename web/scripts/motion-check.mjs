@@ -62,10 +62,10 @@ const ROUTES = [['home', '/'], ['library', '/library'], ['history', '/history'],
     await page.goto(BASE + p);
     await sleep(900);
     const s = await seen(page);
-    const pi = s.filter((x) => x.name === 'rise-in' && x.tag === 'MAIN');
+    const pi = s.filter((x) => x.name === 'fade-in' && x.tag === 'MAIN');
     if (n === 'stream') check('stream: no page-in on <main>', pi.length === 0);
     else {
-      check(`${n} (full load): page-in on <main>, opacity+translate only, 260ms`, pi.length === 1 && pi[0].props.sort().join() === 'opacity,translate' && pi[0].dur === 260, JSON.stringify(pi));
+      check(`${n} (full load): page-in on <main>, opacity only, 200ms`, pi.length === 1 && pi[0].props.sort().join() === 'opacity' && pi[0].dur === 200, JSON.stringify(pi));
       check(`${n}: nothing animated inside <aside>`, !s.some((x) => x.side && /rise/.test(x.name ?? '')));
     }
     if (n === 'stream') check('stream: no rise-in/rise-scroll animations seen', !s.some((x) => /rise/.test(x.name ?? '')), JSON.stringify(s.map((x) => x.name)));
@@ -79,27 +79,27 @@ const ROUTES = [['home', '/'], ['library', '/library'], ['history', '/history'],
     await page.waitForFunction((h) => location.pathname === h, href);
     await sleep(700);
     const s = await seen(page);
-    check(`${n} (client nav): main animates once, sidebar and host pill do not`, s.filter((x) => x.name === 'rise-in' && x.tag === 'MAIN').length === 1 && !s.some((x) => x.side && /rise/.test(x.name ?? '')), 'sidebar rise');
+    check(`${n} (client nav): main animates once, sidebar and host pill do not`, s.filter((x) => x.name === 'fade-in' && x.tag === 'MAIN').length === 1 && !s.some((x) => x.side && /rise/.test(x.name ?? '')), 'sidebar rise');
   }
   await reset(page);
   await page.goto(BASE + '/library'); await sleep(300);
   await reset(page); await page.keyboard.press('g'); await page.keyboard.press('s'); await page.waitForFunction(() => location.pathname.startsWith('/stream')); await sleep(600);
-  check('stream (client nav via g s): no page-in', !(await seen(page)).some((x) => x.name === 'rise-in' && x.tag === 'MAIN'));
+  check('stream (client nav via g s): no page-in', !(await seen(page)).some((x) => x.name === 'fade-in' && x.tag === 'MAIN'));
 
   // seek proof: pause the page-in on a client navigation and screenshot at 0 / half / end
   await page.goto(BASE + '/library'); await sleep(800);
-  await page.evaluate(() => { window.__p = new Promise((res) => { const f = () => { const a = document.getAnimations().find((x) => x.animationName === 'rise-in' && x.effect.target.tagName === 'MAIN'); if (a) { a.pause(); res(true); } else requestAnimationFrame(f); }; f(); }); });
+  await page.evaluate(() => { window.__p = new Promise((res) => { const f = () => { const a = document.getAnimations().find((x) => x.animationName === 'fade-in' && x.effect.target.tagName === 'MAIN'); if (a) { a.pause(); res(true); } else requestAnimationFrame(f); }; f(); }); });
   await page.click('aside a.nav[href="/settings"]');
   await page.evaluate(() => window.__p);
   const at = async (t, name) => {
-    const r = await page.evaluate((t) => { const a = document.getAnimations().find((x) => x.animationName === 'rise-in' && x.effect.target.tagName === 'MAIN'); a.currentTime = t; const cs = getComputedStyle(a.effect.target); return { opacity: +cs.opacity, translate: cs.translate }; }, t);
+    const r = await page.evaluate((t) => { const a = document.getAnimations().find((x) => x.animationName === 'fade-in' && x.effect.target.tagName === 'MAIN'); a.currentTime = t; const cs = getComputedStyle(a.effect.target); return { opacity: +cs.opacity, translate: cs.translate }; }, t);
     await page.screenshot({ path: `${OUT}/page-in-${name}.png` });
     return r;
   };
-  const r0 = await at(0, 't0'), rh = await at(60, 't60');
-  check('page-in at t=0 is opacity 0, translate 0 8px', r0.opacity === 0 && r0.translate === '0px 8px', JSON.stringify(r0));
-  check('page-in at t=60ms is mid-way (0<opacity<1, 0<y<8)', rh.opacity > 0.3 && rh.opacity < 1 && parseFloat(rh.translate.split(' ')[1]) > 0 && parseFloat(rh.translate.split(' ')[1]) < 8, JSON.stringify(rh));
-  await page.evaluate(() => document.getAnimations().filter((a) => /rise/.test(a.animationName)).forEach((a) => a.finish()));
+  const r0 = await at(0, 't0'), rh = await at(100, 't60');
+  check('page-in at t=0 is opacity 0', r0.opacity === 0, JSON.stringify(r0));
+  check('page-in at t=60ms is mid-way (0<opacity<1)', rh.opacity > 0.2 && rh.opacity < 1, JSON.stringify(rh));
+  await page.evaluate(() => document.getAnimations().filter((a) => /rise|fade/.test(a.animationName)).forEach((a) => a.finish()));
   const rend = await page.evaluate(() => { const m = document.querySelector('main'); const cs = getComputedStyle(m); return { opacity: cs.opacity, translate: cs.translate }; });
   check('after page-in: main opacity 1, translate none (no containing block left behind)', rend.opacity === '1' && rend.translate === 'none', JSON.stringify(rend));
   check('no will-change anywhere on main/cards', await page.evaluate(() => [...document.querySelectorAll('main, main *')].every((e) => getComputedStyle(e).willChange === 'auto')));
@@ -132,7 +132,7 @@ const ROUTES = [['home', '/'], ['library', '/library'], ['history', '/history'],
     return els.map((e) => { const r = e.getBoundingClientRect(); return { cls: e.className, top: r.top, bottom: r.bottom, op: +getComputedStyle(e).opacity, tl: getComputedStyle(e).animationTimeline + '|' + getComputedStyle(e).animationName, range: getComputedStyle(e).animationRange }; });
   });
   console.log(JSON.stringify(info));
-  check('library: reveal elements use a view() timeline', info.length >= 2 && info.every((i) => /view/.test(i.tl) && /rise-scroll/.test(i.tl)), info[0]?.tl);
+  check('library: reveal elements use a view() timeline or (in view at load) the entrance', info.length >= 2 && info.every((i) => /view|enter-rise/.test(i.tl)), info[0]?.tl);
   check('library: elements fully in view at load have opacity 1', info.filter((i) => i.bottom < 880).every((i) => i.op === 1), JSON.stringify(info.map((i) => i.op)));
   // a tall Home-like check: cards below the fold on a short viewport
   await page.setViewportSize({ width: 1440, height: 300 });

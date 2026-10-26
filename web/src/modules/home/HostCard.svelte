@@ -14,9 +14,9 @@
 
 <Card cols={3} rows={2}>
   <h4><Icon name="host" color="var(--c-host)" size={16} /> {$host?.name ?? 'Host'} <span class="dot {$host?.sunshine ?? 'off'}"></span></h4>
-  <div class="big">{$host ? 'Online' : DASH}</div>
-  <div class="lab">{$host ? `${SUN[$host.sunshine]} · up ${fmtUptime($host.uptimeS)}` : 'Host status is not available here'}</div>
-  <div class="stats">
+  <div class="big" class:fade-in={$host}>{$host ? 'Online' : DASH}</div>
+  <div class="lab" class:fade-in={$host}>{$host ? `${SUN[$host.sunshine]} · up ${fmtUptime($host.uptimeS)}` : 'Host status is not available here'}</div>
+  <div class="stats" class:fade-in={$host}>
     {#each temps as [k, c]}
       <div class="ring" style:--p={c ?? 0}><b>{c == null ? DASH : `${Math.round(c)}°`}</b></div>
       <div><div class="lab">{k}</div><b class="mono">{fmtTemp(c)}</b></div>

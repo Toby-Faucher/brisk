@@ -24,10 +24,18 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
    will-change, nothing on /stream (docs/ui-notes.md, Motion). All of it sits under no-preference below. */
 html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Settings tab strip */
 @keyframes rise-in { from { opacity: 0; translate: 0 var(--rise); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes enter-rise { from { opacity: 0; translate: 0 var(--rise-enter); } }
 @keyframes rise-scroll { from { opacity: 0; translate: 0 var(--rise-scroll); } }
 @media (prefers-reduced-motion: no-preference) {
   html:not([data-astro-transition]) { scroll-behavior: smooth; } /* the router's scroll restore must not glide */
-  .page-in { animation: rise-in var(--dur-page) var(--ease) backwards; }
+  .page-in { animation: fade-in var(--dur-page) var(--ease) backwards; }
+  .fade-in { animation: fade-in var(--dur-enter) var(--ease) backwards; } /* data landed: set by class, so it starts then */
+  /* Load entrance (reveal.ts tags what is in the first viewport): time-based, staggered by --i. Declared after the
+     scroll rule below via specificity ([data-enter]); its shorthand resets animation-timeline to auto. */
+  .reveal[data-enter], .enter[data-enter] { animation: enter-rise var(--dur-enter) var(--ease) calc(var(--i, 0) * var(--stagger)) backwards; }
+  /* SSR markup is visible before hydration tags it: hide until reveal.ts has (head script sets/clears the attribute) */
+  html[data-enter-pending] main.page-in :is(.reveal, .enter) { opacity: 0; }
   /* set only after a user action (tab change, list/detail swap), so first load animates once (page-in) */
   .swap-in { animation: rise-in var(--dur-tab) var(--ease) backwards; }
 }

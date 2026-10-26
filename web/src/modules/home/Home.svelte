@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, type Component } from 'svelte';
+  import { onMount, tick, type Component } from 'svelte';
+  import { enter } from '../../shell/reveal';
   import { watchGames } from '../../state/games';
   import { ACCENT_HEX, settings } from '../../state/settings';
   import { loadModules } from '../../shell/registry';
@@ -17,7 +18,7 @@
   let widgets: Component[] = $state([]);
 
   onMount(() => {
-    Promise.all(mods.flatMap((m) => (m.widget ? [m.widget().then((w) => w.default)] : []))).then((w) => (widgets = w), () => {});
+    Promise.all(mods.flatMap((m) => (m.widget ? [m.widget().then((w) => w.default)] : []))).then((w) => ((widgets = w), void tick().then(enter)), () => {});
     return watchGames();
   });
 </script>

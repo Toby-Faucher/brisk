@@ -61,7 +61,7 @@
   });
 </script>
 
-<div class="top"><h2>Settings</h2></div>
+<div class="top reveal"><h2>Settings</h2></div>
 <div class="st" class:live>
   <!-- `live` turns on the panel fade only after a user tab change, so first load animates once (page-in) -->
 

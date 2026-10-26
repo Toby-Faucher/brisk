@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { enter } from '../../shell/reveal';
   import { api, type SeriesPoint, type SessionRec } from '../../state/api';
   import { games, watchGames } from '../../state/games';
   import Card from '../../ui/Card.svelte';
@@ -44,6 +45,7 @@
     api.sessions().then(
       (r) => {
         list = r.sessions;
+        void tick().then(enter); // the cards arrive after hydration: give them the load entrance
       },
       () => (failed = true),
     );
@@ -95,7 +97,7 @@
   </div>
 {:else}
   <div class:swap-in={swapped}>
-  <div class="top"><h2>History</h2>{#if list?.length}<span class="lab">{list.length} sessions</span>{/if}</div>
+  <div class="top reveal"><h2>History</h2>{#if list?.length}<span class="lab">{list.length} sessions</span>{/if}</div>
   {#if shown === 'list'}
     <div class="grid">
       {#each list ?? [] as s (s.started)}

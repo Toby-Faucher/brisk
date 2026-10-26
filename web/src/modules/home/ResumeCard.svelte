@@ -29,7 +29,7 @@
 
 <Card cols={3}>
   <h4><Icon name="stream" color="var(--c-stream)" size={16} /> Resume</h4>
-  <div class="row">
+  <div class="row" class:fade-in={g}>
     {#if g}<img class="cover" src={g.cover} alt="" />{:else}<div class="cover"></div>{/if}
     <div class="txt">
       <b>{g?.name ?? DASH}</b>

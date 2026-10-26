@@ -23,10 +23,13 @@
   --font: 'Geist', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, monospace;
   --ease: cubic-bezier(.2, .8, .2, 1);
-  --dur-page: 260ms;
+  --dur-page: 200ms;
   --dur-tab: 180ms;
   --rise: 8px;
   --rise-scroll: 14px;
+  --dur-enter: 420ms;
+  --rise-enter: 14px;
+  --stagger: 55ms;
   --r-card: 22px;
   --r-ctl: 12px;
   color-scheme: dark;

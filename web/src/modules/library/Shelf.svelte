@@ -69,8 +69,8 @@
     <!-- Only the cards near the viewport are mounted; the track keeps the full scroll width. -->
     <div class="row" {@attach track}>
       <div class="track" style:width="{full}px" style:padding-left="{r.start * (CARD + GAP)}px">
-        {#each games.slice(r.start, r.end) as g (g.appid)}
-          <div class="slot"><GameCard game={g} busy={busy === g.appid} selected={selected === g.appid} {onpick} {oninstall} /></div>
+        {#each games.slice(r.start, r.end) as g, i (g.appid)}
+          <div class="slot" class:enter={r.start === 0 && i < 8}><GameCard game={g} busy={busy === g.appid} selected={selected === g.appid} {onpick} {oninstall} /></div>
         {/each}
       </div>
     </div>

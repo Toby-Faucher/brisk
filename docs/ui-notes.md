@@ -14,23 +14,40 @@
 - Not done: the shell sidebar has no phone layout (every page is 450 px wide at 390 px); the tab strip itself scrolls.
 
 ## Motion
-- Tokens in tokens.css: `--dur-page` 260 ms, `--dur-tab` 180 ms, `--rise` 8 px, `--rise-scroll` 14 px, easing `--ease`. All motion is
-  opacity + the independent `translate` property (never `transform`, which hover owns), no `will-change`, and sits in
-  base.css under `prefers-reduced-motion: no-preference` (reduced motion: no animation, `scroll-behavior: auto`).
-- Animates: page enter (`.page-in` on Shell's `<main>` only, so the sidebar, host pill and frame never replay; the island
-  remounts but the SSR markup already carries the class, so no blank frame and no layout shift); Settings tab panels and the
-  History list/detail swap (`.swap-in` / `.live`, 180 ms, only after a user action, so first load animates once);
-  scroll reveal (`.reveal`: CSS `animation-timeline: view()`, `entry 0% entry 35%`, inside `@supports`, so unsupported means
-  plain visible) on `Card`, the Library hero and shelf headers.
-- Does not animate: /stream (anti-goal, docs/ui-design.md section 2: the Shell leaves `.page-in` off there; a `translate`
-  on `<main>` would also trap the stream's `position: fixed`), Library game cards and any virtualised item (they mount and
-  unmount while scrolling), tall blocks such as an open shelf grid, the ghost bar, menus and dialogs.
+- Tokens in tokens.css: `--dur-page` 200 ms, `--dur-tab` 180 ms, `--dur-enter` 420 ms, `--rise-enter` 14 px, `--stagger` 55 ms, `--rise` 8 px,
+  `--rise-scroll` 14 px, easing `--ease`. All motion is opacity + the independent `translate` property (never `transform`,
+  which hover owns), no `will-change`, and sits in base.css under `prefers-reduced-motion: no-preference` (reduced motion:
+  no animation, `scroll-behavior: auto`).
+- Page: `<main class="page-in">` (Shell only, so the sidebar, host pill and frame never replay) is an opacity-only 200 ms
+  fade. Not on /stream (anti-goal, docs/ui-design.md section 2; a `translate` on `<main>` would also trap the stream's
+  `position: fixed`, and `reveal.ts` does nothing there).
+- Load entrance (every reload and client navigation): items above the fold rise 14 px and fade in over 420 ms, delayed
+  `--i` x 55 ms (`--i` 0..8, so the 9th item and later share 440 ms). Tagging helper `shell/reveal.ts`: `enter()` finds the
+  untagged `.reveal` / `.enter` elements in `<main>` that intersect the viewport, sets `--i` (DOM order) and `data-enter`;
+  CSS `.reveal[data-enter], .enter[data-enter]` plays `enter-rise` on the document timeline (its shorthand resets
+  `animation-timeline` to auto, so it beats the scroll reveal). It is idempotent, a tagged element never replays. Pure part
+  `planEnter` is unit-tested. Callers: Shell on mount (waits for the Astro islands to hydrate, max 1.5 s) and each place
+  where content arrives late: Library games landing (hero, shelf headers, first <= 8 cards per shelf), History list,
+  Machines host card, Home lazy widgets. Layout's head script sets `html[data-enter-pending]` (and again on
+  `astro:after-swap`; 3 s failsafe) which hides `.reveal/.enter` in `main.page-in` until `enter()` has tagged them, so the
+  SSR markup does not flash before it animates.
+- Classes: `.reveal` = above the fold: load entrance, below: scroll reveal (`animation-timeline: view()`, `entry 0% entry
+  35%`, inside `@supports`, unsupported means plain visible) on `Card`, page headings (`.top`), Library filters, hero and shelf
+  headers, Add-a-module. `.enter` = entrance only, never scroll-driven: Library cards (first 8 of a shelf at its start),
+  and only tagged by `enter()` at route load / games arrival, so paging a shelf or scrolling mounts cards without any
+  animation. `.fade-in` (opacity, 420 ms) is added by class when data lands: Home host card and resume card content.
+- Library search/filter: the results (`.body`) cross-fade 0.3 -> 1 over 140 ms via WAAPI, at most once per 150 ms.
+- Also animates: Settings tab panels and the History list/detail swap (`.swap-in` / `.live`, 180 ms, only after a user action).
+- Does not animate: /stream, virtualised items when they mount while scrolling, tall blocks such as an open shelf grid,
+  the ghost bar, menus and dialogs, the sidebar and host pill.
 - Smooth scroll: `html { scroll-behavior: smooth }` (off while the Astro router is navigating, so scroll restore does not
   glide), `scroll-padding-top: 64px` for the sticky Settings strip, `overscroll-behavior-x: contain` on the shelf and the tab
   strip. No JS smooth-scroll library and no wheel hijacking (the shelf's vertical-wheel-to-sideways stays as it was).
-- Do not write the reveal as an `animation:` shorthand: the minifier would fold `view()` into it and Chrome drops that.
-- Check: `node web/scripts/motion-check.mjs` against `astro preview` on port 4421 (mocked /api). Home shows a pre-existing
-  layout shift of about 0.06 when the module widgets mount, with or without motion.
+- Do not write the scroll reveal as an `animation:` shorthand: the minifier would fold `view()` into it and Chrome drops that.
+- Check: `node web/scripts/motion-check-2.mjs` (load entrance, library data arrival with a delayed /api/games, no re-fire, reduced
+  motion, stream, seeked screenshots to `$OUT`) and `node web/scripts/motion-check.mjs` (page fade, tabs, scroll reveal), both
+  against `astro preview` (ports 4422 / 4421, mocked /api). Home shows a pre-existing layout shift of about 0.02-0.06 when the
+  module widgets mount, with or without motion.
 
 ## Run
 - On bawn: `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched

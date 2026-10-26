@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
+  import { enterWhenHydrated } from './reveal';
   import { settings } from '../state/settings';
   import { bindAccent } from '../modules/settings/accent';
   import Sidebar from './Sidebar.svelte';
@@ -9,6 +10,7 @@
 
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => bindAccent(settings, document.documentElement));
+  onMount(enterWhenHydrated);
 </script>
 
 <div class="app">
