@@ -179,6 +179,27 @@ if (want('reduce')) {
   await page.context().close();
 }
 
+// ---- CSS springs (zero runtime): hover lift, game card, dialog entrance, ghost bar
+if (want('spring')) {
+  const { page, anime, errs } = await mk();
+  await page.goto(BASE + '/machines'); await sleep(1300);
+  await page.hover('.grid .card'); await sleep(80);
+  const tr = await page.evaluate(() => document.getAnimations().filter((a) => a.transitionProperty === 'transform').map((a) => a.effect.getComputedTiming().easing ?? a.effect.getTiming().easing));
+  check('card hover: transform transition uses the generated linear() spring', tr.length >= 1 && tr.every((e) => /^linear\(/.test(e)), tr.map((e) => e.slice(0, 30)).join());
+  await page.mouse.move(5, 890);
+  await page.click('button:has-text("Restart Sunshine")'); await sleep(60);
+  const dlg = await page.evaluate(() => document.getAnimations().filter((a) => a.animationName === 'rs-in').map((a) => [a.effect.getKeyframes()[0].easing.slice(0, 20), a.effect.getTiming().duration]));
+  check('restart dialog: rises in on the settle spring (CSS animation)', dlg.length === 1 && /^linear\(/.test(dlg[0][0]) && dlg[0][1] > 500, JSON.stringify(dlg));
+  await page.keyboard.press('Escape');
+  await page.goto(BASE + '/stream'); await sleep(800);
+  // the bar only renders while connected: read its rule from the loaded stylesheet instead
+  const bar = await page.evaluate(() => { for (const sh of document.styleSheets) for (const r of sh.cssRules) if (/^\.bar\.svelte-[\w-]+$/.test(r.selectorText ?? '')) return r.style.transition; return 'no .bar rule'; });
+  check('ghost bar: slides on the settle spring (CSS only)', /spring-settle/.test(bar), bar);
+  check('springs load no anime.js', anime.length === 0, JSON.stringify(anime));
+  check('no errors', errs.length === 0, errs.join('|'));
+  await page.context().close();
+}
+
 console.log('report', JSON.stringify(report));
 await browser.close();
 console.log(fails ? `${fails} FAILED` : 'all ok');

@@ -252,7 +252,7 @@
 </div>
 
 <style>
-  .bar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px); padding: 6px 8px; display: flex; align-items: center; gap: 2px; transition: transform .45s var(--ease); z-index: 35; border-radius: 999px; }
+  .bar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px); padding: 6px 8px; display: flex; align-items: center; gap: 2px; transition: transform var(--spring-settle-dur) var(--spring-settle); z-index: 35; border-radius: 999px; }
   .bar.on { transform: translateX(-50%) translateY(0); }
   .hostchip { display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; white-space: nowrap; }
   .hostchip b { font-weight: 600; }
