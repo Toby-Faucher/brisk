@@ -6,7 +6,7 @@
   --line: #22262f;
   --fg: #eceef3;
   --muted: #8e96a5;
-  --dim: #5d6575;
+  --dim: #7a8292; /* 4.5:1 on --panel2 (WCAG AA small text); was #5d6575 (2.97:1) */
   --accent: #5eead4;
   --accent-fg: #04201b;
   --ok: #4ade80;

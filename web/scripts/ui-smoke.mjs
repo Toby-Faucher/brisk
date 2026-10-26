@@ -1,14 +1,24 @@
 // UI smoke test: hostd (fixtures + fake bridge + mock Steam API, sentinel key) serving web/dist,
-// driven by headless Chrome. Needs 127.0.0.1:8443 free (hostd binds it) and a built web/dist.
+// driven by headless Chrome. Needs 127.0.0.1:8443 free (hostd binds it and checks Host against it; both are fixed in
+// code) and a built web/dist. When 8443 is taken (the live hostd service), it skips with exit 0 and says so; the axe
+// rules it applies are also checked without hostd by scripts/axe-check.mjs.
 //   node scripts/ui-smoke.mjs        (env: BRISK_HOSTD=path to brisk-hostd, BRISK_CHROMIUM=chrome-headless-shell)
 // It cannot prove video: a real WebTransport connect fails against the fake bridge, so the Stream
 // page is only checked for degrading to its reconnecting/failed state without page errors.
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { axe } from './axe.mjs';
+
+const free = await new Promise((r) => { const s = net.createServer().once('error', () => r(false)).listen(8443, '127.0.0.1', () => s.close(() => r(true))); });
+if (!free) {
+  console.log('SMOKE SKIPPED: 127.0.0.1:8443 is in use (the live hostd service?). Stop it first, or run scripts/axe-check.mjs for the a11y part.');
+  process.exit(0);
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const FIX = `${root}/crates/brisk-hostd/tests/fixtures`;
@@ -43,6 +53,7 @@ w('bridge.sh', `#!/bin/sh\nFAKE_BRIDGE_LOG='${work}/bridge.log' exec '${FIX}/fak
 const results = [];
 const check = (name, ok, extra = '') => (results.push(ok), console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ` (${extra})` : ''}`));
 let child, browser;
+const a11y = async (page, name) => { const bad = await axe(page); check(`axe (WCAG A/AA, serious+critical): ${name}`, bad.length === 0, bad.join('; ')); };
 const shot = async (page, n) => (await page.screenshot({ path: `${OUT}/${n}.png` }), console.log(`screenshot ${OUT}/${n}.png`));
 
 try {
@@ -74,7 +85,7 @@ try {
   const take = () => errs.splice(0);
 
   await page.goto(pageUrl);
-  for (const [name, p] of [['home', '/'], ['library', '/library'], ['machines', '/machines'], ['settings', '/settings']]) {
+  for (const [name, p] of [['home', '/'], ['library', '/library'], ['machines', '/machines'], ['history', '/history'], ['settings', '/settings']]) {
     if (p !== '/') await page.goto(new URL(p, pageUrl).href);
     await page.waitForLoadState('networkidle');
     await sleep(500);
@@ -84,8 +95,19 @@ try {
       const cards = await page.locator('button.g').count();
       check(`library renders ${cards} card nodes for ${TOTAL} games (< 60)`, cards > 0 && cards < 60);
     }
+    await a11y(page, name);
     await shot(page, name);
   }
+  for (const tab of ['streaming', 'controller', 'about']) {
+    await page.goto(new URL(`/settings#${tab}`, pageUrl).href);
+    await sleep(500);
+    await a11y(page, `settings #${tab}`);
+  }
+  await page.goto(new URL('/machines', pageUrl).href);
+  await page.getByRole('button', { name: 'Restart Sunshine' }).click();
+  await page.getByRole('dialog').waitFor();
+  await a11y(page, 'restart dialog open');
+  await page.keyboard.press('Escape');
 
   // Command menu
   await page.goto(new URL('/library', pageUrl).href);
@@ -93,6 +115,7 @@ try {
   await page.keyboard.press('Control+k');
   await page.getByPlaceholder('Do something…').fill('portal 2');
   check('Ctrl+K finds a game by name', await page.getByText('Launch Portal 2').first().isVisible());
+  await a11y(page, 'command menu open');
   await shot(page, 'command-menu');
   await page.keyboard.press('Escape');
 
@@ -132,6 +155,7 @@ try {
   await shot(page, 'stream-ghostbar');
   const degraded = await page.getByText('Lost the connection').waitFor({ timeout: 30000 }).then(() => true, () => false);
   await shot(page, 'stream-degraded');
+  if (degraded) await a11y(page, 'stream degraded');
   check('stream degrades to the failed state (no real video to connect to)', degraded);
   check('stream page raised no page errors', take().filter((e) => e.startsWith('pageerror')).length === 0, errs.join('; '));
 

@@ -59,6 +59,8 @@
       <Command.Root shouldFilter={false} loop>
         <Command.Input bind:value={query} placeholder="Do something…" aria-label="Search actions" class="cm-in" />
         <Command.List class="cm-list">
+          <!-- the Viewport is what the input's aria-controls points at -->
+          <Command.Viewport class="cm-vp">
           {#each shown as it (it.id)}
             <Command.Item value={it.id} onSelect={() => pick(it)} class="cm-it">
               {#if it.icon}<Icon name={it.icon} />{/if}
@@ -68,6 +70,7 @@
           {:else}
             <Command.Empty class="cm-empty">Nothing matches</Command.Empty>
           {/each}
+          </Command.Viewport>
         </Command.List>
       </Command.Root>
     </Dialog.Content>
@@ -81,7 +84,8 @@
   @keyframes cm-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(.97); } }
   :global(.cm .sr) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   :global(.cm-in) { width: 100%; background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; font-size: 16px; padding: 12px 14px; border-bottom: 1px solid color-mix(in srgb, #fff 10%, transparent); box-sizing: border-box; }
-  :global(.cm-list) { padding: 4px 0 0; display: grid; gap: 2px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
+  :global(.cm-list) { padding: 4px 0 0; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
+  :global(.cm-vp) { display: grid; gap: 2px; }
   /* Scrollbar look is global (styles/base.css); the track only needs breathing room from the panel's rounded corners. */
   :global(.cm-list::-webkit-scrollbar-track) { margin: 4px 0; }
   /* Concentric corners: inner radius = panel radius - panel padding (20px - 8px = 12px). */
@@ -90,6 +94,7 @@
   :global(.cm-it) { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: calc(var(--cm-r) - var(--cm-pad)); cursor: pointer; }
   :global(.cm-it[data-selected]) { background: color-mix(in srgb, #fff 9%, transparent); }
   :global(.cm-it .k) { margin-left: auto; color: var(--dim); font-size: 12px; }
+  :global(.cm-it[data-selected] .k) { color: var(--muted); } /* --dim is under 4.5:1 on the selected row's fill */
   :global(.cm-empty) { padding: 12px; color: var(--muted); }
   @media (prefers-reduced-motion: reduce) { :global(.cm) { animation: none; } }
 </style>
