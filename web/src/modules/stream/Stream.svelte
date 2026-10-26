@@ -24,7 +24,7 @@
     audioContext: () => new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' }),
     startVideo: (t, c) => startVideo(t as WebTransport, c),
     startAudio: (t, ctx, out) => startAudio(t as WebTransport, ctx as AudioContext, workletUrl, out as unknown as AudioNode),
-    startInput: (t, c) => startInput(t as WebTransport, c),
+    startInput: (t, c, onpads) => startInput(t as WebTransport, c, onpads),
     canvas: () => {
       const c = document.createElement('canvas');
       c.id = 'video';
@@ -32,7 +32,7 @@
     },
     notify: (text, error) => toast(text, { error }),
   });
-  const { state: phase, stats, needsSound, canvasEl } = session;
+  const { state: phase, stats, needsSound, canvasEl, pads } = session;
 
   let clipDenied = $state(false);
   const clip = new ClipSync({
@@ -261,6 +261,7 @@
       {captured}
       {clipDenied}
       {upload}
+      pads={$pads}
       onfiles={(f) => uploads.add(f)}
       bind:statsOn
       onvolume={(v) => session.setVolume(v)}

@@ -10,6 +10,10 @@
 // leaves Pointer Lock on Escape itself, and the page then also drops focus, so Escape always
 // gets the user out. Everything held is released on blur, a hidden tab, pagehide, lock loss and
 // transport close (the bridge also releases what is held when its stream ends).
+//
+// Gamepads (gamepad.ts) write on the same stream; the bridge sends rumble back on it.
+
+import { FrameSplitter, GamepadSender, attachGamepads, onBridgeFrame, type PadInfo } from './gamepad';
 
 export const KIND_KEY = 0x10;
 export const KIND_MOVE = 0x11;
@@ -259,12 +263,14 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
 
 export interface Input {
   stats: InputStats;
-  /// Key-ups and button-ups for everything held, sent before the page closes the transport.
+  /// Key-ups and button-ups for everything held, and every pad removed, sent before the page
+  /// closes the transport.
   release(): void;
 }
 
-/// Opens the input stream on `transport` and captures input on `canvas`.
-export async function startInput(transport: WebTransport, canvas: HTMLCanvasElement): Promise<Input> {
+/// Opens the input stream on `transport`, captures input on `canvas` and polls gamepads;
+/// `onpads` hears which pads are attached.
+export async function startInput(transport: WebTransport, canvas: HTMLCanvasElement, onpads?: (p: PadInfo[]) => void): Promise<Input> {
   const stream = await transport.createBidirectionalStream();
   const w = stream.writable.getWriter();
   const s = new InputSender((f, droppable) => {
@@ -274,5 +280,22 @@ export async function startInput(transport: WebTransport, canvas: HTMLCanvasElem
   });
   canvas.tabIndex = 0;
   attach(s, { canvas, doc: document, win: window }, transport.closed);
-  return { stats: s.stats, release: () => s.releaseAll() };
+  const pads = new GamepadSender((f) => void w.write(f).catch(() => {}), () => navigator.getGamepads(), onpads);
+  attachGamepads(pads, { doc: document, win: window, raf: requestAnimationFrame, caf: cancelAnimationFrame }, transport.closed);
+  void (async () => {
+    const split = new FrameSplitter();
+    const r = stream.readable.getReader();
+    for (;;) {
+      const { value, done } = await r.read().catch(() => ({ value: undefined, done: true }));
+      if (done || !value) return;
+      for (const b of split.push(value)) onBridgeFrame(pads, b);
+    }
+  })();
+  return {
+    stats: s.stats,
+    release: () => {
+      s.releaseAll();
+      pads.detachAll();
+    },
+  };
 }

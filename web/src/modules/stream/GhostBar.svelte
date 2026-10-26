@@ -6,6 +6,7 @@
   import { EDGE_PX, HIDE_MS, advancedReq, edgeReveal, type Advanced } from './ghostbar';
   import { settings } from '../../state/settings';
   import type { Upload } from './clipboard';
+  import type { PadInfo } from '../../lib/gamepad';
 
   let {
     host,
@@ -15,6 +16,7 @@
     captured,
     clipDenied,
     upload,
+    pads = [],
     onfiles,
     statsOn = $bindable(false),
     onvolume,
@@ -30,6 +32,7 @@
     captured: boolean;
     clipDenied: boolean;
     upload: { u: Upload; queued: number } | null;
+    pads?: PadInfo[];
     onfiles: (f: File[]) => void;
     statsOn?: boolean;
     onvolume: (v: number) => void;
@@ -133,6 +136,11 @@
   }}
 >
   <span class="hostchip"><span class="dot"></span><b>{host}</b><span class="mono muted">{rttMs === null ? '–' : `${rttMs.toFixed(0)} ms`}</span></span>
+  {#if pads.length}
+    <span class="padchip" role="status" aria-label={pads.map((p) => `Controller: ${p.name} · slot ${p.slot + 1}`).join(', ')}>
+      <Icon name="pad" /><span class="tip">{pads.map((p) => `${p.name} · slot ${p.slot + 1}`).join(' / ')}</span>
+    </span>
+  {/if}
   <span class="sep"></span>
   <button class="ic" aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} onclick={() => (muted = !muted)} style="color:var(--c-power)">
     <Icon name={muted ? 'mute' : 'vol'} /><span class="tip">{muted ? 'Unmute' : 'Mute'}</span>
@@ -219,6 +227,8 @@
   .bar.on { transform: translateX(-50%) translateY(0); }
   .hostchip { display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; white-space: nowrap; }
   .hostchip b { font-weight: 600; }
+  .padchip { position: relative; display: grid; place-items: center; width: 30px; height: 34px; color: var(--ok); }
+  .padchip:hover .tip { opacity: 1; transform: translateX(-50%); }
   .ic { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; position: relative; transition: background .18s, transform .2s var(--ease); }
   .ic:hover { background: color-mix(in srgb, #fff 10%, transparent); transform: translateY(-1px); }
   .ic[aria-pressed='true'], .ic[aria-expanded='true'] { background: color-mix(in srgb, var(--accent) 22%, transparent); }

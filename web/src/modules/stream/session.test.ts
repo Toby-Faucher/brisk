@@ -143,6 +143,23 @@ describe('StreamSession', () => {
     expect(f.ctxs[0].close).toHaveBeenCalledTimes(1);
   });
 
+  it('pads_show_for_the_live_connection_only', async () => {
+    let onpads!: (p: { slot: number; name: string }[]) => void;
+    const f = fakeDeps({ startInput: async (_t, _c, cb) => ((onpads = cb), { release: vi.fn() }) });
+    const s = new StreamSession(f.deps);
+    await s.connect(LIVE);
+    await flush();
+    onpads([{ slot: 0, name: '8BitDo' }]);
+    expect(get(s.pads)).toEqual([{ slot: 0, name: '8BitDo' }]);
+    const old = onpads;
+    f.transports[0].drop();
+    await flush();
+    expect(get(s.pads)).toEqual([]);
+    old([{ slot: 1, name: 'late' }]); // the dead connection's sender: ignored
+    expect(get(s.pads)).toEqual([]);
+    s.disconnect();
+  });
+
   it('suspended_audiocontext_sets_needs_sound_prompt', async () => {
     const f = fakeDeps();
     const base = f.deps.audioContext;

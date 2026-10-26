@@ -4,6 +4,7 @@
 import { writable } from 'svelte/store';
 import type { StreamInfo, StreamReq } from '../../state/api';
 import type { VideoStats } from '../../lib/video';
+import type { PadInfo } from '../../lib/gamepad';
 
 export type SessionState = 'connecting' | 'live' | 'reconnecting' | 'failed';
 /** Waits before each reconnect try after a drop; then 'failed'. */
@@ -40,7 +41,7 @@ export interface Deps {
   audioContext(): Ctx;
   startVideo(t: Transport, c: Canvas): { stats: VideoStats; done: Promise<void> };
   startAudio(t: Transport, ctx: Ctx, out?: Gain): Promise<unknown>;
-  startInput(t: Transport, c: Canvas): Promise<{ release(): void }>;
+  startInput(t: Transport, c: Canvas, onpads: (p: PadInfo[]) => void): Promise<{ release(): void }>;
   /** A fresh canvas per connection, so the old connection's input listeners see a dead element. */
   canvas(): Canvas;
   notify(text: string, error?: boolean): void;
@@ -66,6 +67,8 @@ export class StreamSession {
   readonly stats = writable<StatsView>(empty());
   readonly needsSound = writable(false);
   readonly canvasEl = writable<Canvas | null>(null);
+  /** Controllers attached to the live connection (for the ghost bar chip). */
+  readonly pads = writable<PadInfo[]>([]);
   info: StreamInfo | null = null;
   private conn: Conn | null = null;
   private closed = false; // after disconnect() nothing connects again (the page is gone)
@@ -148,7 +151,8 @@ export class StreamSession {
     const canvas = this.d.canvas();
     this.canvasEl.set(canvas);
     conn.video = this.d.startVideo(t, canvas);
-    this.d.startInput(t, canvas).then((i) => (conn.input = i), () => {});
+    const onpads = (p: PadInfo[]) => conn === this.conn && this.pads.set(p);
+    this.d.startInput(t, canvas, onpads).then((i) => (conn.input = i), () => {});
     conn.gain = ctx.createGain?.();
     if (conn.gain) {
       conn.gain.gain.value = this.volume;
@@ -206,6 +210,7 @@ export class StreamSession {
     this.conn = null;
     c.ours = true;
     c.input?.release();
+    this.pads.set([]);
     try {
       c.t.close();
     } catch {}

@@ -22,6 +22,7 @@
     quality: '<path d="M12 3l2.1 5.2 5.5.4-4.2 3.6 1.3 5.4L12 14.6 7.3 17.6l1.3-5.4L4.4 8.6l5.5-.4z"/>',
     chart: '<rect x="3" y="12" width="4.2" height="8" rx="1.4"/><rect x="9.9" y="6" width="4.2" height="14" rx="1.4"/><rect x="16.8" y="9" width="4.2" height="11" rx="1.4"/>',
     full: '<path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+    pad: '<path d="M7.5 6h9a5 5 0 0 1 4.9 4l1 5.2a2.6 2.6 0 0 1-4.5 2.2L15.6 15H8.4l-2.3 2.4a2.6 2.6 0 0 1-4.5-2.2l1-5.2A5 5 0 0 1 7.5 6z"/><rect x="5.6" y="9.9" width="4.4" height="1.6" rx=".6" fill="#0b0c0f"/><rect x="7" y="8.5" width="1.6" height="4.4" rx=".6" fill="#0b0c0f"/><circle cx="16.4" cy="9.6" r="1" fill="#0b0c0f"/><circle cx="16.4" cy="12.8" r="1" fill="#0b0c0f"/>',
     power: '<path d="M12 3v8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M7 6.5a8 8 0 1 0 10 0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>',
   };
 </script>
