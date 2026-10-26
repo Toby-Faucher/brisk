@@ -13,7 +13,13 @@ StartLimitIntervalSec=120
 StartLimitBurst=10
 
 [Service]
-Type=simple
+# hostd sends READY=1 once 127.0.0.1:8443 answers HTTP, STOPPING=1 on SIGTERM, and WATCHDOG=1
+# every 15 s while its runtime and state locks respond; a wedged hostd is restarted after 30 s.
+# NotifyAccess=main: the bridge, Steam and other children inherit NOTIFY_SOCKET but are ignored.
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+TimeoutStartSec=30
 ExecStart=%h/Projects/brisk/target/release/brisk-hostd %h/Projects/brisk/web/dist
 Environment=BRISK_BRIDGE_BIN=%h/Projects/brisk/target/release/brisk-bridge
 # `steam steam://…` runs in its own systemd-run scope, so a Steam it cold-starts (and its games)
@@ -21,6 +27,7 @@ Environment=BRISK_BRIDGE_BIN=%h/Projects/brisk/target/release/brisk-bridge
 Environment=BRISK_SPAWN_SCOPE=1
 # No BRISK_LISTEN: hostd asks `tailscale ip -4` at each stream start (tailscale may come up late).
 # No BRISK_SECRET: hostd keeps it in ~/.config/brisk/secret (0600).
+# on-failure covers a watchdog timeout and a start that never sent READY.
 Restart=on-failure
 RestartSec=3
 # mixed: SIGTERM goes to hostd only, which stops its bridge first (the bridge cancels its
@@ -35,12 +42,12 @@ Nice=5
 
 # Hardening, deliberately conservative. hostd runs `steam steam://…` (which can cold-start Steam
 # and its games; hostd puts that in its own scope via systemd-run), swaymsg, wl-copy/wl-paste,
-# kill on game processes, systemctl --user restart Sunshine, tailscale and openssl, and sets
+# signals game processes (through pidfds), systemctl --user restart Sunshine, tailscale and openssl, and sets
 # PR_SET_PDEATHSIG on the bridge. Omitted, and why:
 #  - NoNewPrivileges: inherited by everything hostd spawns, including a cold-started Steam (the
 #    systemd-run scope keeps the process lineage), whose runtime and games may need setuid helpers.
 #  - ProtectSystem / ProtectHome / PrivateTmp / PrivateUsers / ProtectProc: in a user unit these
-#    need a user + mount namespace, which Steam, games and kill (on processes outside it) would
+#    need a user + mount namespace, which Steam, games and quit signals (to processes outside it) would
 #    inherit or cross; hostd also writes ~/.local/share/brisk, ~/Downloads/brisk, ~/.config/brisk.
 #  - RestrictAddressFamilies / IPAddressDeny: hostd and the bridge need IPv4 to tailscale and
 #    Sunshine and AF_UNIX for sway, Wayland, D-Bus and tailscaled; little gained for the risk.

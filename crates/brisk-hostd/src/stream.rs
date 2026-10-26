@@ -193,6 +193,11 @@ impl Supervisor {
         self.shared.lock().unwrap().view()
     }
 
+    /// `info` without blocking: `None` while the state lock is held (or poisoned).
+    pub fn try_info(&self) -> Option<StreamInfo> {
+        self.shared.try_lock().ok().map(|s| s.view())
+    }
+
     pub fn sessions(&self, n: usize) -> Vec<SessionRec> {
         self.sessions.latest(n)
     }

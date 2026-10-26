@@ -16,6 +16,8 @@ ureq = { version = "=3.4.2", default-features = false, features = ["rustls-no-pr
 rustls-graviola = "=0.4.0"
 # Safe syscalls (pidfd signalling, uid, parent-death signal); linux_raw backend, no libc.
 rustix = { version = "=1.1.5", default-features = false, features = ["std", "process"] }
+# systemd Type=notify readiness + watchdog (only acts when NOTIFY_SOCKET is set).
+sd-notify = { version = "=0.5.0", default-features = false }
 tokio = { version = "1", features = ["rt", "net", "macros", "fs", "signal", "process", "io-util"] }
 
 [dev-dependencies]

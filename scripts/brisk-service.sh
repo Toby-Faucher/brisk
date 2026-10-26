@@ -117,20 +117,52 @@ cmd_install() {
   sed "s#%h/Projects/brisk#$here#g" "$src/deploy/$UNIT" > "$tmp"
   [ "$here" = "$HOME/Projects/brisk" ] || echo "note: the unit runs $here (not ~/Projects/brisk)"
   if cmp -s "$tmp" "$UNIT_DIR/$UNIT"; then echo "unit unchanged"; rm -f "$tmp"
-  else mv "$tmp" "$UNIT_DIR/$UNIT"; chmod 644 "$UNIT_DIR/$UNIT"; echo "wrote $UNIT_DIR/$UNIT"; changed=1; fi
+  else
+    # The previous unit is kept as .bak: a new unit that does not come up is rolled back to it.
+    [ -f "$UNIT_DIR/$UNIT" ] && cp -p "$UNIT_DIR/$UNIT" "$UNIT_DIR/$UNIT.bak"
+    mv "$tmp" "$UNIT_DIR/$UNIT"; chmod 644 "$UNIT_DIR/$UNIT"; echo "wrote $UNIT_DIR/$UNIT"; changed=1
+  fi
   systemctl --user is-active -q "$UNIT" && was=1
   systemctl --user daemon-reload
-  systemctl --user enable --now "$UNIT"
+  # Type=notify: start blocks until READY and fails on a timeout; judged below, not by set -e.
+  local started=1 tried=$changed
+  systemctl --user enable --now "$UNIT" || started=0
   # enable --now leaves a running unit alone: a changed unit needs a restart to apply.
   if [ $changed = 1 ] && [ $was = 1 ]; then
     local why
     if why=$(restart_ok); then
-      systemctl --user restart "$UNIT"; echo "restarted $UNIT (unit changed)"
+      systemctl --user restart "$UNIT" || true; echo "restarted $UNIT (unit changed)"
     else
-      echo "unit changed but not restarting ($why); run $0 install again later (or FORCE=1)"
+      tried=0; echo "unit changed but not restarting ($why); run $0 install again later (or FORCE=1)"
     fi
   fi
+  if [ "$tried" = 1 ] && ! came_up; then rollback; fi
+  [ $started = 1 ] || die "$UNIT failed to start ($0 logs)"
   echo "enabled and started $UNIT. Next: $0 serve-on, then $0 doctor"
+}
+
+# Up = systemd says active (with Type=notify: hostd sent READY) and 127.0.0.1:8443 answers HTTP
+# (403 is fine). Waits up to BRISK_UP_WAIT seconds (45).
+came_up() {
+  local i code
+  for ((i = 0; i < ${BRISK_UP_WAIT:-45}; i++)); do
+    if systemctl --user is-active -q "$UNIT"; then
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8443/api/host || true)
+      [[ $code =~ ^[1-5][0-9][0-9]$ ]] && return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# The new unit did not come up: put the previous one back and start it.
+rollback() {
+  local b=$UNIT_DIR/$UNIT.bak
+  [ -f "$b" ] || die "new unit failed to come up and there is no previous unit ($b) to restore; see $0 logs"
+  cp -p "$b" "$UNIT_DIR/$UNIT"
+  systemctl --user daemon-reload
+  systemctl --user restart "$UNIT" || true
+  die "new unit failed; previous unit restored (see $0 logs)"
 }
 
 # Rebuilds what changed, then restarts the service (not over a live stream unless FORCE=1).
@@ -190,7 +222,7 @@ cmd_link() {
 
 cmd_uninstall() {
   systemctl --user disable --now "$UNIT" 2>/dev/null || true
-  rm -f "$UNIT_DIR/$UNIT"
+  rm -f "$UNIT_DIR/$UNIT" "$UNIT_DIR/$UNIT.bak"
   systemctl --user daemon-reload
   echo "removed $UNIT. Left as is: $CONF (secret, tls, allowed-users), the Sunshine drop-in, the serve mapping ($0 serve-off)"
 }
@@ -220,6 +252,14 @@ cmd_doctor() {
   if loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q '^Linger=yes'; then ok "linger on"; else no "linger off (sudoq run --why 'start brisk at boot' -- loginctl enable-linger $(id -un))"; fi
   if systemctl --user is-enabled -q "$UNIT" 2>/dev/null; then ok "$UNIT enabled"; else no "$UNIT not enabled ($0 install)"; fi
   if systemctl --user is-active -q "$UNIT" 2>/dev/null; then ok "$UNIT active"; else no "$UNIT not active ($0 logs)"; fi
+  local sh st wd
+  sh=$(systemctl --user show -p Type -p SubState -p StatusText -p WatchdogUSec "$UNIT" 2>/dev/null || true)
+  if grep -qx 'Type=notify' <<<"$sh"; then ok "Type=notify"; else no "$UNIT is not Type=notify ($0 install)"; fi
+  st=$(sed -n 's/^StatusText=//p' <<<"$sh")
+  if grep -qx 'SubState=running' <<<"$sh" && [ -n "$st" ]; then ok "running: $st"
+  else no "not running with a status text ($(grep '^SubState=' <<<"$sh"), status '$st')"; fi
+  wd=$(sed -n 's/^WatchdogUSec=//p' <<<"$sh")
+  if [ -n "$wd" ] && [ "$wd" != 0 ] && [ "$wd" != infinity ]; then ok "watchdog $wd"; else no "no watchdog (WatchdogSec) on $UNIT ($0 install)"; fi
   # tailscaled (TUN mode) binds its serve ports on tailscale0 (`100.x%tailscale0:8443`, `[fd7a:…]%tailscale0:8443`):
   # those are fine. Anything else besides hostd's 127.0.0.1:8443 (0.0.0.0, [::], *, a LAN address) is not.
   l=$(ss -Hltn 'sport = :8443' 2>/dev/null | awk '{print $4}')
