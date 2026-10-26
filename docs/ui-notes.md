@@ -48,7 +48,9 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
   path. `PUT /api/files/<name>` streams the body into a hidden temp file in `~/Downloads/brisk` (created on first
   use) and hard-links it to a free name: basename only, no control characters, no leading dots, at most 200 bytes,
   `name (1).ext` if taken. Max 8 GiB (413); with a Content-Length it refuses when less than that plus 256 MiB is
-  free (507); the same name twice at once is a 409; a cut-off upload leaves no temp file.
+  free (507), and re-checks free space every 64 MiB written; the same name twice at once is a 409; a cut-off
+  upload leaves no temp file (and hostd removes `.*.part` leftovers at startup). Files are 0600, the directory 0700
+  when hostd creates it. Bidi and zero-width characters are stripped from names.
 - [U] Chrome's clipboard permission prompt and `navigator.clipboard.read()` on the pointer-locked canvas, and a
   real image copy both ways, were not tried on hardware; the hostd side was checked live against bawn's sway
   (`cargo test -p brisk-hostd -- --ignored live_`: sets text, reads it with wl-paste, clears it).
