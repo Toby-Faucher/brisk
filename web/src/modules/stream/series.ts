@@ -6,6 +6,10 @@ import type { SeriesPoint } from '../../state/api';
 export type Point = SeriesPoint;
 export const STEP_S = 5;
 export const UPLOAD_MS = 30_000;
+/** Raw samples kept while hostd does not acknowledge them (~400 points, 33 min); the oldest go first. */
+export const MAX_PENDING = 4000;
+
+const bucket = (t: number) => Math.floor(t / STEP_S) * STEP_S;
 
 /** Mean of each `step`-second bucket, t = the bucket's start; the last bucket may be partial. */
 export function downsample(samples: Point[], step = STEP_S): Point[] {
@@ -29,24 +33,46 @@ export function downsample(samples: Point[], step = STEP_S): Point[] {
   return out;
 }
 
-/** Collects samples and uploads them in the background. A failed PUT is dropped quietly. */
+/**
+ * Collects samples and uploads them in the background, never awaited. Samples stay pending until a
+ * PUT of them succeeds (a re-send is harmless: hostd merges by t). A 404 or 413 (unknown session, or
+ * past hostd's 24 h cap) ends uploads for that session quietly; other failures retry next time.
+ */
 export class SeriesUploader {
   private id: number | null = null;
+  private off = 0; // hostd's elapsed seconds at perf0
+  private perf0 = 0;
+  private minT = 0;
   private pending: Point[] = [];
+  private busy = false;
+  private stopped = false;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private put: (id: number, points: Point[]) => Promise<unknown>,
-    private now = () => Date.now(),
+    private now = () => performance.now(),
   ) {}
 
-  /** `id` = the session's `started` (hostd's clock, unix ms); t is clamped at 0 for a laptop clock behind it. */
-  add(id: number, delay: number, fps: number, mbps: number) {
+  /**
+   * `id` = the session's `started`; `elapsedS` = hostd's seconds since it started, as of now (only the
+   * first sample of a session reads it: later t = that + this page's monotonic clock, so neither the
+   * laptop's wall clock nor a reload of /stream mid-session can shift the series).
+   */
+  add(id: number, elapsedS: number | null, delay: number, fps: number, mbps: number) {
     if (this.id !== id) {
       this.close();
       this.id = id;
+      this.off = Math.max(0, elapsedS ?? 0);
+      this.perf0 = this.now();
+      // A reload lands inside a bucket the earlier page already stored: start at the next one.
+      this.minT = Math.ceil(this.off / STEP_S) * STEP_S;
+      this.pending = [];
+      this.busy = this.stopped = false;
     }
-    this.pending.push([Math.max(0, (this.now() - id) / 1000), delay, fps, mbps]);
+    const t = this.off + (this.now() - this.perf0) / 1000;
+    if (this.stopped || t < this.minT) return;
+    this.pending.push([t, delay, fps, mbps]);
+    if (this.pending.length > MAX_PENDING) this.pending.splice(0, this.pending.length - MAX_PENDING);
     this.timer ??= setInterval(() => this.flush(false), UPLOAD_MS);
   }
 
@@ -59,13 +85,28 @@ export class SeriesUploader {
 
   private flush(final: boolean) {
     const id = this.id;
-    if (id === null || !this.pending.length) return;
-    const points = downsample(this.pending);
-    // The current bucket goes now and again next time, complete (hostd keeps the later one).
+    if (id === null || this.stopped || !this.pending.length || (this.busy && !final)) return;
+    const batch = this.pending.slice();
+    const points = downsample(batch);
     const last = points[points.length - 1][0];
-    this.pending = final ? [] : this.pending.filter((p) => Math.floor(p[0] / STEP_S) * STEP_S === last);
+    this.busy = true;
+    const done = (e?: unknown) => {
+      if (id !== this.id) return;
+      this.busy = false;
+      const status = (e as { status?: number } | undefined)?.status;
+      if (status === 404 || status === 413) {
+        this.stopped = true;
+        this.pending = [];
+      } else if (!e) {
+        // Acknowledged; the current bucket goes again next time, complete (hostd keeps the later one).
+        const sent = new Set(batch);
+        this.pending = this.pending.filter((p) => !sent.has(p) || (!final && bucket(p[0]) === last));
+      }
+    };
     try {
-      this.put(id, points).catch(() => {});
-    } catch {}
+      this.put(id, points).then(() => done(), (e) => done(e ?? new Error('failed')));
+    } catch (e) {
+      done(e);
+    }
   }
 }

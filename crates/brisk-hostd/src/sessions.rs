@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Points per session (5 s each: a bit over 4 h) and series files kept (newest sessions).
-pub const MAX_POINTS: usize = 3000;
+/// Points per session (5 s each: 24 h) and series files kept (newest sessions).
+pub const MAX_POINTS: usize = 17_280;
 pub const MAX_SERIES: usize = 200;
 
 /// `[t seconds since started, delay ms, fps, Mbit/s]`.
@@ -100,55 +100,78 @@ fn sum<T: std::ops::Add<Output = T>>(a: Option<T>, b: Option<T>) -> Option<T> {
     }
 }
 
-impl Stats {
+/// Fills `f` only with a parsed value: a later garbled line never clears an earlier one.
+fn set<T>(f: &mut Option<T>, v: Option<T>) {
+    if v.is_some() {
+        *f = v;
+    }
+}
+
+/// Reads the bridge's stdout: nothing counts before the report's first line (`tap_frames`), so a
+/// stray earlier line with a known key cannot fill a field.
+#[derive(Default)]
+pub struct Report {
+    on: bool,
+    pub stats: Stats,
+}
+
+impl Report {
     /// One stdout line of the bridge (with or without hostd's `bridge\t` prefix); others are ignored.
     pub fn line(&mut self, l: &str) {
         let l = l.strip_prefix("bridge\t").unwrap_or(l);
         let Some((key, rest)) = l.split_once('\t') else {
             return;
         };
+        self.on |= key == "tap_frames";
+        if !self.on {
+            return;
+        }
+        let s = &mut self.stats;
         match key {
-            "tap_frames" => self.frames = rest.trim().parse().ok(),
+            "tap_frames" => set(&mut s.frames, rest.trim().parse().ok()),
             "browser_leg" => {
-                self.sent = after(rest, "sent");
-                self.dropped = after(rest, "dropped");
-                self.resets = after(rest, "reset");
-                self.idr_requests = after(rest, "idr_requests");
+                set(&mut s.sent, after(rest, "sent"));
+                set(&mut s.dropped, after(rest, "dropped"));
+                set(&mut s.resets, after(rest, "reset"));
+                set(&mut s.idr_requests, after(rest, "idr_requests"));
             }
             "bridge_write-capture" => {
-                self.bridge_p50 = ms(rest, "p50");
-                self.bridge_p99 = ms(rest, "p99");
+                set(&mut s.bridge_p50, ms(rest, "p50"));
+                set(&mut s.bridge_p99, ms(rest, "p99"));
             }
             "frame_processing(tap-capture)" => {
-                self.host_p50 = ms(rest, "p50");
-                self.host_p99 = ms(rest, "p99");
+                set(&mut s.host_p50, ms(rest, "p50"));
+                set(&mut s.host_p99, ms(rest, "p99"));
             }
             "audio" => {
-                self.audio_lost = after(rest, "lost");
-                self.audio_errors = after(rest, "errors");
+                set(&mut s.audio_lost, after(rest, "lost"));
+                set(&mut s.audio_errors, after(rest, "errors"));
             }
             "input" => {
-                self.input_received = after(rest, "received");
-                self.input_sent = after(rest, "sent");
-                self.input_dropped = after(rest, "dropped");
+                set(&mut s.input_received, after(rest, "received"));
+                set(&mut s.input_sent, after(rest, "sent"));
+                set(&mut s.input_dropped, after(rest, "dropped"));
             }
-            "session" => {
-                self.duration_s = rest
-                    .strip_prefix("ended after ")
+            "session" => set(
+                &mut s.duration_s,
+                rest.strip_prefix("ended after ")
                     .and_then(|s| s.trim().strip_suffix('s')?.parse().ok())
-                    .filter(|v: &f64| v.is_finite());
-            }
-            k if k.starts_with("gate(") => {
-                self.gate = match rest.trim() {
+                    .filter(|v: &f64| v.is_finite()),
+            ),
+            k if k.starts_with("gate(") => set(
+                &mut s.gate,
+                match rest.trim() {
                     "PASS" => Some(Gate::Pass),
                     "FAIL" => Some(Gate::Fail),
                     _ => None,
-                }
-            }
+                },
+            ),
             _ => {}
         }
     }
+}
 
+impl Stats {
     /// `self` then `b`: counts add up, p50 is frame-weighted, p99 the worst, one FAIL fails the session.
     pub fn merge(self, b: Stats) -> Stats {
         let p50 = |x: Option<f64>, y: Option<f64>| match (x, y, self.frames, b.frames) {
@@ -219,10 +242,28 @@ impl Sessions {
         }
     }
 
+    /// The last line of that session: one pass from the end, stopping at it.
     pub fn get(&self, started: u64) -> Option<SessionRec> {
-        self.latest(usize::MAX)
-            .into_iter()
+        let text = std::fs::read_to_string(&self.path).unwrap_or_default();
+        text.lines()
+            .rev()
+            .filter_map(|l| serde_json::from_str::<SessionRec>(l).ok())
             .find(|r| r.started == started)
+    }
+
+    /// Up to `n` mean-binned delays of the session's series (the list's sparkline); empty without one.
+    pub fn spark(&self, started: u64, n: usize) -> Vec<f32> {
+        let s = self.series(started);
+        if s.len() < 2 {
+            return vec![];
+        }
+        let bins = n.min(s.len());
+        (0..bins)
+            .map(|i| {
+                let b = &s[i * s.len() / bins..(i + 1) * s.len() / bins];
+                (b.iter().map(|p| p[1]).sum::<f64>() / b.len() as f64) as f32
+            })
+            .collect()
     }
 
     fn series_dir(&self) -> PathBuf {
@@ -248,7 +289,7 @@ impl Sessions {
         if self.get(started).is_none() {
             return Err(SeriesError::NoSession);
         }
-        let _g = self.series_lock.lock().unwrap();
+        let _g = self.series_lock.lock().unwrap_or_else(|e| e.into_inner());
         // Keyed by the bits of t: valid t are finite and >= 0 (+ 0.0 folds -0), so bit order is numeric.
         let key = |p: &Point| (p[0] + 0.0).to_bits();
         let mut m: BTreeMap<u64, Point> = self
@@ -291,16 +332,20 @@ impl Sessions {
         let Ok(dir) = std::fs::read_dir(self.series_dir()) else {
             return;
         };
-        let mut ids: Vec<u64> = dir
-            .flatten()
-            .filter_map(|e| {
-                e.file_name()
-                    .to_str()?
-                    .strip_suffix(".series.json")?
-                    .parse()
-                    .ok()
-            })
-            .collect();
+        let mut ids: Vec<u64> = vec![];
+        for e in dir.flatten() {
+            let name = e.file_name();
+            let Some(name) = name.to_str() else { continue };
+            // Called under series_lock, so a `.tmp` here is a leftover of a crashed write.
+            if name.starts_with('.') && name.ends_with(".tmp") {
+                let _ = std::fs::remove_file(e.path());
+            } else if let Some(id) = name
+                .strip_suffix(".series.json")
+                .and_then(|i| i.parse().ok())
+            {
+                ids.push(id);
+            }
+        }
         ids.sort_unstable();
         let over = ids.len().saturating_sub(MAX_SERIES);
         for id in &ids[..over] {
@@ -353,11 +398,28 @@ mod tests {
     use super::*;
 
     fn parse(text: &str) -> Stats {
-        let mut s = Stats::default();
+        let mut r = Report::default();
         for l in text.lines() {
-            s.line(l);
+            r.line(l);
         }
-        s
+        r.stats
+    }
+
+    /// Lines before the report's header are not the report; a garbled repeat keeps the parsed value.
+    #[test]
+    fn report_starts_at_tap_frames_and_keeps_parsed_values() {
+        let s = parse(
+            "input\treceived 9 sent 9 dropped 9\nsession\tended after 1.0s\n\
+             tap_frames\t10\ninput\treceived 5 sent 4 dropped 1\ninput\tgarbage\n\
+             session\tended after 2.5s",
+        );
+        assert_eq!(s.frames, Some(10));
+        assert_eq!(
+            (s.input_received, s.input_sent, s.input_dropped),
+            (Some(5), Some(4), Some(1))
+        );
+        assert_eq!(s.duration_s, Some(2.5));
+        assert_eq!(parse("browser_leg\tsent 5 dropped 1"), Stats::default());
     }
 
     /// The end-of-session block of a real bawn run (brisk-up log, `bridge\t` prefix and all).
@@ -406,7 +468,10 @@ mod tests {
                 ..Stats::default()
             }
         );
-        assert_eq!(parse("bridge\tgate(x)\tFAIL").gate, Some(Gate::Fail));
+        assert_eq!(
+            parse("tap_frames\t1\nbridge\tgate(x)\tFAIL").gate,
+            Some(Gate::Fail)
+        );
         assert_eq!(parse(""), Stats::default());
     }
 

@@ -32,6 +32,8 @@ export type StreamInfo = {
   hash: string | null;
   /** The live session's id (its record's `started`), where the page PUTs its series. */
   started?: number | null;
+  /** Seconds since `started` on hostd's monotonic clock, as of this answer: the series time base. */
+  elapsedS?: number | null;
 };
 /** One clipboard entry: text, or a PNG image. */
 export type Clip = { kind: 'text'; text: string } | { kind: 'image'; blob: Blob };
@@ -173,7 +175,8 @@ export const api = {
   prefs: () => call<{ prefs: PrefsMap }>('GET', '/api/prefs'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
-  sessions: () => call<{ sessions: SessionRec[] }>('GET', '/api/sessions'),
+  /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */
+  sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', '/api/sessions'),
   session: (started: number) => call<{ session: SessionRec; series: SeriesPoint[] }>('GET', `/api/sessions/${started}`),
   putSeries: (started: number, points: SeriesPoint[]) => call<void>('PUT', `/api/sessions/${started}/series`, { points }, true), // keepalive: sent on pagehide
   getClipboard,

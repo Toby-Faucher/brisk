@@ -236,7 +236,19 @@ async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response 
 }
 
 async fn sessions(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(serde_json::json!({ "sessions": s.stream.sessions(100) })).into_response()
+    // Each row carries a 24-point delay sparkline (from its series file) so the list needs no per-card GET.
+    let rows: Vec<serde_json::Value> = s
+        .stream
+        .sessions(100)
+        .into_iter()
+        .map(|r| {
+            let spark = s.stream.sessions.spark(r.started, 24);
+            let mut v = serde_json::to_value(r).unwrap_or_default();
+            v["spark"] = spark.into();
+            v
+        })
+        .collect();
+    axum::Json(serde_json::json!({ "sessions": rows })).into_response()
 }
 
 /// `{session, series}`; 404 for a session hostd has no record of.

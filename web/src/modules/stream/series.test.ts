@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { downsample, SeriesUploader, UPLOAD_MS, type Point } from './series';
+import { ApiError } from '../../state/api';
+import { downsample, MAX_PENDING, SeriesUploader, UPLOAD_MS, type Point } from './series';
 
 afterEach(() => vi.useRealTimers());
 
@@ -22,62 +23,100 @@ describe('downsample', () => {
 });
 
 describe('SeriesUploader', () => {
-  const STARTED = 1_000_000;
-  function rig() {
+  const ID = 1_000_000;
+  /** `elapsed0`: hostd's elapsedS when this page's first sample comes. The wall clock is never read. */
+  function rig(elapsed0 = 0) {
     vi.useFakeTimers();
-    vi.setSystemTime(STARTED);
+    vi.setSystemTime(ID - 3_600_000); // a laptop clock an hour behind hostd: must not matter
+    let perf = 0;
     const puts: { id: number; points: Point[] }[] = [];
-    let fail = false;
-    const up = new SeriesUploader((id, points) => (puts.push({ id, points }), fail ? Promise.reject(new Error('down')) : Promise.resolve()));
-    // one sample per 500 ms, like StreamSession
-    const run = (ms: number, id = STARTED, v = 10) => {
+    let answer: () => Promise<unknown> = () => Promise.resolve();
+    const up = new SeriesUploader(
+      (id, points) => (puts.push({ id, points }), answer()),
+      () => perf,
+    );
+    // one sample per 500 ms, like StreamSession; awaits so PUT answers settle in between
+    const run = async (ms: number, id = ID) => {
       for (let i = 0; i < ms / 500; i++) {
-        vi.advanceTimersByTime(500);
-        up.add(id, v, 60, 20);
+        up.add(id, elapsed0 + perf / 1000, 10, 60, 20);
+        perf += 500;
+        await vi.advanceTimersByTimeAsync(500);
       }
     };
-    return { up, puts, run, failNext: () => (fail = true) };
+    const ts = (i: number) => puts[i].points.map((p) => p[0]);
+    return { up, puts, run, ts, answerWith: (f: () => Promise<unknown>) => (answer = f) };
   }
 
-  it('PUTs every 30 s: the complete buckets, plus the current one again until it is complete', () => {
-    const { puts, run } = rig();
-    run(UPLOAD_MS); // the timer starts with the first sample (t 0.5)
+  it('PUTs every 30 s; the current bucket again until complete', async () => {
+    const { puts, run, ts } = rig();
+    await run(UPLOAD_MS - 500);
     expect(puts).toEqual([]);
-    run(500);
-    expect(puts.length).toBe(1);
-    expect(puts[0].id).toBe(STARTED);
-    expect(puts[0].points.map((p) => p[0])).toEqual([0, 5, 10, 15, 20, 25, 30]);
-    run(UPLOAD_MS);
-    // the 30 s bucket (one sample last time) comes again, complete; nothing earlier is resent
-    expect(puts[1].points.map((p) => p[0])).toEqual([30, 35, 40, 45, 50, 55, 60]);
+    await run(500);
+    expect(ts(0)).toEqual([0, 5, 10, 15, 20, 25]);
+    await run(UPLOAD_MS);
+    expect(ts(1)).toEqual([25, 30, 35, 40, 45, 50, 55]);
   });
 
-  it('flushes the partial bucket on close (disconnect, pagehide) and then sends nothing more', () => {
+  it('keeps unacknowledged points: a failed PUT is re-sent with the next one', async () => {
+    const { puts, run, ts, answerWith } = rig();
+    answerWith(() => Promise.reject(new ApiError('down', 502)));
+    await run(UPLOAD_MS);
+    expect(ts(0)).toEqual([0, 5, 10, 15, 20, 25]);
+    answerWith(() => Promise.resolve());
+    await run(UPLOAD_MS);
+    expect(ts(1)).toEqual([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]);
+    await run(UPLOAD_MS);
+    expect(ts(2)[0]).toBe(55);
+  });
+
+  it('caps what it keeps while hostd is down', async () => {
+    const { puts, run, answerWith } = rig();
+    answerWith(() => Promise.reject(new Error('offline')));
+    await run(45 * 60_000);
+    expect(puts.at(-1)!.points.length).toBeLessThanOrEqual(MAX_PENDING / 10 + 1);
+    expect(puts.at(-1)!.points.at(-1)![0]).toBeGreaterThan(44 * 60);
+  });
+
+  it('flushes the partial bucket on close (disconnect, pagehide), then sends nothing more', async () => {
+    const { up, puts, run, ts } = rig();
+    await run(7000);
+    up.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ts(0)).toEqual([0, 5]);
+    up.close();
+    await vi.advanceTimersByTimeAsync(UPLOAD_MS * 3);
+    expect(puts.length).toBe(1);
+  });
+
+  it('a 404 or 413 from hostd ends uploads of that session quietly', async () => {
+    for (const status of [404, 413]) {
+      const { up, puts, run, answerWith } = rig();
+      answerWith(() => Promise.reject(new ApiError('no', status)));
+      await run(UPLOAD_MS);
+      expect(puts.length).toBe(1);
+      await run(UPLOAD_MS * 2);
+      up.close();
+      expect(puts.length).toBe(1);
+      vi.useRealTimers();
+    }
+  });
+
+  it('a reload mid-session continues from hostd elapsed and never rewrites earlier buckets', async () => {
+    // The first page stored up to 45 s; the reloaded page's first sample is at hostd 47.3 s.
+    const { up, puts, run, ts } = rig(47.3);
+    await run(10_000);
+    up.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ts(0)).toEqual([50, 55]);
+    expect(puts[0].points[0][0]).toBeGreaterThanOrEqual(50);
+  });
+
+  it('a new session id flushes the old one first', async () => {
     const { up, puts, run } = rig();
-    run(7000);
+    await run(2000);
+    await run(7000, ID + 60_000); // its first page starts 2 s in: from the 5 s bucket on
+    expect(puts[0].id).toBe(ID);
     up.close();
-    expect(puts.length).toBe(1);
-    expect(puts[0].points.map((p) => p[0])).toEqual([0, 5]);
-    up.close();
-    vi.advanceTimersByTime(UPLOAD_MS * 3);
-    expect(puts.length).toBe(1);
-  });
-
-  it('a failed PUT is quiet and never throws into the sampler', async () => {
-    const { up, puts, run, failNext } = rig();
-    failNext();
-    run(UPLOAD_MS + 500);
-    await vi.advanceTimersByTimeAsync(0); // the rejection settles: no unhandled rejection
-    expect(puts.length).toBe(1);
-    expect(() => up.close()).not.toThrow();
-  });
-
-  it('a new session id flushes the old one first; t is clamped at 0 for a clock behind hostd', () => {
-    const { up, puts, run } = rig();
-    run(2000);
-    run(1000, STARTED + 60_000);
-    expect(puts[0].id).toBe(STARTED);
-    up.close();
-    expect(puts[1]).toEqual({ id: STARTED + 60_000, points: [[0, 10, 60, 20]] });
+    expect(puts[1].id).toBe(ID + 60_000);
   });
 });

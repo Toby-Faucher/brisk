@@ -4,7 +4,7 @@
 
 use crate::config::Config;
 use crate::host::Runner;
-use crate::sessions::{now_ms, SessionRec, Sessions, Stats};
+use crate::sessions::{now_ms, Report, SessionRec, Sessions};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
@@ -101,6 +101,10 @@ pub struct StreamInfo {
     pub hash: Option<String>,
     /// The live session's id (its record's `started`), for `PUT /api/sessions/<started>/series`.
     pub started: Option<u64>,
+    /// Seconds since that session started on hostd's monotonic clock: the page's series time base
+    /// (the laptop's wall clock may be off).
+    #[serde(rename = "elapsedS")]
+    pub elapsed_s: Option<f64>,
 }
 
 const IDLE: StreamInfo = StreamInfo {
@@ -111,6 +115,7 @@ const IDLE: StreamInfo = StreamInfo {
     wt: None,
     hash: None,
     started: None,
+    elapsed_s: None,
 };
 
 /// What the bridge's watcher task and the request path share. `gen` bumps whenever a request
@@ -119,13 +124,25 @@ struct Shared {
     gen: u64,
     info: StreamInfo,
     rec: Option<SessionRec>,
+    /// `started` of the newest session and the Instant it was taken at.
+    clock: Option<(u64, std::time::Instant)>,
+}
+
+impl Shared {
+    fn view(&self) -> StreamInfo {
+        let mut i = self.info.clone();
+        if let (Some(id), Some((c, t0))) = (i.started, self.clock) {
+            i.elapsed_s = (id == c).then(|| t0.elapsed().as_secs_f64());
+        }
+        i
+    }
 }
 
 struct Running {
     pid: u32,
     done: watch::Receiver<bool>,
     /// The bridge's end-of-session report, complete once `done`.
-    report: Arc<Mutex<Stats>>,
+    report: Arc<Mutex<Report>>,
 }
 
 pub struct Supervisor {
@@ -166,6 +183,7 @@ impl Supervisor {
                 gen: 0,
                 info: IDLE,
                 rec: None,
+                clock: None,
             })),
             closing: Default::default(),
             child: tokio::sync::Mutex::new(None),
@@ -175,7 +193,7 @@ impl Supervisor {
     }
 
     pub fn info(&self) -> StreamInfo {
-        self.shared.lock().unwrap().info.clone()
+        self.shared.lock().unwrap().view()
     }
 
     pub fn sessions(&self, n: usize) -> Vec<SessionRec> {
@@ -262,7 +280,7 @@ impl Supervisor {
         );
         let mut launch = req.appid;
         let proc = self.proc_dir.clone();
-        let report = Arc::new(Mutex::new(Stats::default()));
+        let report = Arc::new(Mutex::new(Report::default()));
         let rep = report.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
         // the tap connects, and on exit flips to idle unless a request already took over.
@@ -314,7 +332,7 @@ impl Supervisor {
             };
             let _ = done_tx.send(true);
             if let Some(mut r) = rec {
-                r.add_stats(std::mem::take(&mut *rep.lock().unwrap()));
+                r.add_stats(std::mem::take(&mut rep.lock().unwrap().stats));
                 sessions.close(r);
             }
         });
@@ -334,6 +352,7 @@ impl Supervisor {
                 });
             }
         };
+        let mut fresh = None;
         let rec = match rec {
             Some(mut r) => {
                 (r.preset, r.codec, r.bitrate_kbps) = (req.preset, Some(req.codec), Some(kbps));
@@ -351,6 +370,7 @@ impl Supervisor {
                     bitrate_kbps: Some(kbps),
                     stats: None,
                 };
+                fresh = Some((r.started, std::time::Instant::now()));
                 self.sessions.append(&r);
                 r
             }
@@ -364,9 +384,13 @@ impl Supervisor {
             wt: Some(wt),
             hash: Some(hash),
             started: Some(rec.started),
+            elapsed_s: None,
         };
+        if fresh.is_some() {
+            s.clock = fresh;
+        }
         s.rec = Some(rec);
-        Ok(s.info.clone())
+        Ok(s.view())
     }
 
     pub fn shutting_down(&self) -> bool {
@@ -422,7 +446,7 @@ impl Supervisor {
                 let _ = r.done.wait_for(|d| *d).await;
             }
             if let Some(rec) = &mut prev.1 {
-                rec.add_stats(std::mem::take(&mut *r.report.lock().unwrap()));
+                rec.add_stats(std::mem::take(&mut r.report.lock().unwrap().stats));
             }
         }
         prev

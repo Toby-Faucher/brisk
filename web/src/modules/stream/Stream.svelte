@@ -36,7 +36,7 @@
       return c;
     },
     notify: (text, error) => toast(text, { error }),
-    sample: (id, delay, fps, mbps) => series.add(id, delay, fps, mbps),
+    sample: (id, elapsed, delay, fps, mbps) => series.add(id, elapsed, delay, fps, mbps),
   });
   const { state: phase, stats, needsSound, canvasEl, pads } = session;
 

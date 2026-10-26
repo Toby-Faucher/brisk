@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionRec, SessionStats } from '../../state/api';
-import { chartRows, fmtClock, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows } from './history';
+import { chartRows, fmtClock, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows, summarize } from './history';
 
 const rec = (o: Partial<SessionRec> = {}): SessionRec => ({
   appid: 10,
@@ -44,6 +44,11 @@ describe('detail view model', () => {
     expect(sessionParam('?session=1761426240000')).toBe(1761426240000);
     expect(sessionParam('?session=abc')).toBeNull();
     expect(sessionParam('')).toBeNull();
+  });
+  it('summarizes a column for the charts text alternative', () => {
+    const rows = chartRows([[0, 20, 60, 18], [5, 41, 30, 19], [10, 20, 60, 20]]);
+    expect(summarize(rows, 'delay')).toEqual({ min: 20, avg: 27, max: 41, peakT: 5 });
+    expect(summarize([], 'fps')).toBeNull();
   });
   it('chart rows from series points', () => {
     expect(chartRows([[0, 20, 60, 18], [5, 22.5, 59, 19]])).toEqual([

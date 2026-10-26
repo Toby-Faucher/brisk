@@ -90,19 +90,29 @@ describe('StreamSession', () => {
 
   it('every_sample_goes_to_the_history_hook_with_the_session_id', async () => {
     const sample = vi.fn();
-    const f = fakeDeps({ sample });
+    const video = { framesPresented: 0 };
+    const f = fakeDeps({ sample, startVideo: () => ({ stats: video as any, done: new Promise(() => {}) }) });
     const s = new StreamSession(f.deps);
-    await s.connect({ ...LIVE, started: 1234 });
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(sample).toHaveBeenCalledTimes(2);
-    expect(sample).toHaveBeenLastCalledWith(1234, 0, 0, 0);
+    await s.connect({ ...LIVE, started: 1234, elapsedS: 12 });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sample, 'no frames yet: not recorded').not.toHaveBeenCalled();
+    video.framesPresented = 30;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sample).toHaveBeenCalledTimes(1);
+    const [id, elapsed, , fps] = sample.mock.calls[0];
+    expect(id).toBe(1234);
+    expect(elapsed).toBeGreaterThanOrEqual(12); // hostd's elapsed plus the time since that answer
+    expect(elapsed).toBeLessThan(14);
+    expect(fps).toBeGreaterThan(0);
     s.disconnect();
     // an older hostd without `started`: nothing to record
-    const g = fakeDeps({ sample });
+    let n = 0;
+    const moving = { get framesPresented() { return (n += 30); } };
+    const g = fakeDeps({ sample, startVideo: () => ({ stats: moving as any, done: new Promise(() => {}) }) });
     const t = new StreamSession(g.deps);
     await t.connect(LIVE);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(sample).toHaveBeenCalledTimes(2);
+    expect(sample).toHaveBeenCalledTimes(1);
     t.disconnect();
   });
 

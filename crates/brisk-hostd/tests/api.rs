@@ -718,7 +718,10 @@ async fn start_returns_wt_and_hash() {
     assert_eq!(v["hash"], "ab12cd");
     let wt = v["wt"].as_str().unwrap();
     assert!(wt.starts_with("https://100.64.0.1:4433/tok"), "{wt}");
-    assert_eq!(r.call("GET", "/api/stream", "").await.1, v);
+    let (mut g, mut v) = (r.call("GET", "/api/stream", "").await.1, v);
+    // elapsedS moves on between the two answers
+    assert!(g["elapsedS"].take().as_f64() >= v["elapsedS"].take().as_f64());
+    assert_eq!(g, v);
     let log = r.log();
     assert!(
         log[0].contains("--host 127.0.0.1 --app 42 --listen 100.64.0.1:4433 --cert ")
@@ -1032,7 +1035,13 @@ async fn live_info_names_the_session_and_quality_change_merges_reports() {
         .call("POST", "/api/stream", r#"{"preset":"fast","appid":10}"#)
         .await;
     let started = v["started"].as_u64().expect("started while live");
-    assert_eq!(r.call("GET", "/api/stream", "").await.1["started"], started);
+    let e0 = v["elapsedS"].as_f64().expect("elapsedS while live");
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let g = r.call("GET", "/api/stream", "").await.1;
+    assert_eq!(g["started"], started);
+    // hostd's monotonic seconds since the session started: the page's series time base
+    let e1 = g["elapsedS"].as_f64().unwrap();
+    assert!(e0 >= 0.0 && e1 >= e0 + 0.15 && e1 < 30.0, "{e0} {e1}");
     let (_, v) = r
         .call(
             "POST",
@@ -1041,8 +1050,13 @@ async fn live_info_names_the_session_and_quality_change_merges_reports() {
         )
         .await;
     assert_eq!(v["started"], started, "same session after a quality change");
+    assert!(
+        v["elapsedS"].as_f64().unwrap() >= e1,
+        "the clock carries on: {v}"
+    );
     let (_, v) = r.call("DELETE", "/api/stream", "").await;
     assert_eq!(v["started"], serde_json::Value::Null);
+    assert_eq!(v["elapsedS"], serde_json::Value::Null);
     let s = r.call("GET", "/api/sessions", "").await.1;
     let s0 = &s["sessions"][0];
     assert_eq!(s["sessions"].as_array().unwrap().len(), 1, "{s}");

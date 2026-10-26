@@ -103,9 +103,51 @@ async fn put_then_get_merges_by_t() {
         .permissions()
         .mode();
     assert_eq!(mode & 0o777, 0o600);
-    // the list never carries series
+    // the list never carries series, only a sparkline of the delay
     let (_, l) = t.raw("GET", "/api/sessions", true, String::new()).await;
     assert!(l["sessions"][0].get("series").is_none(), "{l}");
+    assert_eq!(l["sessions"][0]["spark"], json!([20.5, 25.0, 30.0]));
+}
+
+/// The list's sparkline: at most 24 mean-binned delays; none without a series.
+#[tokio::test]
+async fn list_rows_carry_a_24_point_spark() {
+    let t = t([1000, 2000]);
+    let pts: Vec<[f64; 4]> = (0..120)
+        .map(|i| [i as f64 * 5.0, i as f64, 60.0, 1.0])
+        .collect();
+    assert_eq!(
+        t.put(1000, json!({ "points": pts })).await,
+        StatusCode::NO_CONTENT
+    );
+    let (_, l) = t.raw("GET", "/api/sessions", true, String::new()).await;
+    let rows = l["sessions"].as_array().unwrap();
+    assert_eq!(rows[0]["started"], 2000);
+    assert_eq!(rows[0]["spark"], json!([]));
+    let spark: Vec<f64> = serde_json::from_value(rows[1]["spark"].clone()).unwrap();
+    assert_eq!(spark.len(), 24);
+    assert_eq!((spark[0], spark[23]), (2.0, 117.0)); // means of 0..=4 and 115..=119
+                                                     // GET of one session is unchanged: no spark there
+    assert!(t.get(1000).await.1["session"].get("spark").is_none());
+}
+
+/// Concurrent PUTs to one session all land (read-merge-write is serialized).
+#[tokio::test]
+async fn concurrent_puts_all_merge() {
+    let t = Arc::new(t([1000]));
+    let jobs: Vec<_> = (0..16)
+        .map(|i| {
+            let t = t.clone();
+            tokio::spawn(async move {
+                let pts = json!({"points": [[i as f64 * 5.0, 1.0, 60.0, 1.0]]});
+                t.put(1000, pts).await
+            })
+        })
+        .collect();
+    for j in jobs {
+        assert_eq!(j.await.unwrap(), StatusCode::NO_CONTENT);
+    }
+    assert_eq!(t.get(1000).await.1["series"].as_array().unwrap().len(), 16);
 }
 
 #[tokio::test]
@@ -189,6 +231,9 @@ async fn keeps_series_of_the_newest_sessions_only() {
         assert_eq!(t.get(*id).await.1["series"], json!([]), "record stays");
     }
     assert!(t.file(ids[3]).exists());
+    // a crashed write's temp file is swept by the next PUT
+    let tmp = t.dir.path().join("sessions/.9000.123.tmp");
+    std::fs::write(&tmp, "[").unwrap();
     // a corrupt file reads as empty and is replaced by the next PUT
     std::fs::write(t.file(ids[5]), "{oops").unwrap();
     assert_eq!(t.get(ids[5]).await.1["series"], json!([]));
@@ -200,4 +245,5 @@ async fn keeps_series_of_the_newest_sessions_only() {
         t.get(ids[5]).await.1["series"],
         json!([[5.0, 2.0, 60.0, 1.0]])
     );
+    assert!(!tmp.exists(), "leftover temp file swept");
 }

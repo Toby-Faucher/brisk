@@ -45,8 +45,11 @@ export interface Deps {
   /** A fresh canvas per connection, so the old connection's input listeners see a dead element. */
   canvas(): Canvas;
   notify(text: string, error?: boolean): void;
-  /** Every stats sample of a session hostd named (`info.started`), for its history. */
-  sample?(started: number, delayMs: number, fps: number, mbps: number): void;
+  /**
+   * Every stats sample with frames of a session hostd named (`info.started`), for its history.
+   * `elapsedS` is hostd's seconds since that session started, as of now (null from an older hostd).
+   */
+  sample?(started: number, elapsedS: number | null, delayMs: number, fps: number, mbps: number): void;
 }
 
 type Conn = { t: Transport; ctx: Ctx; gain?: Gain; video?: { stats: VideoStats }; input?: { release(): void }; ours: boolean; liveAt: number };
@@ -72,6 +75,7 @@ export class StreamSession {
   /** Controllers attached to the live connection (for the ghost bar chip). */
   readonly pads = writable<PadInfo[]>([]);
   info: StreamInfo | null = null;
+  private infoAt = 0; // performance.now() when `info` came from hostd (its elapsedS is as of then)
   private conn: Conn | null = null;
   private closed = false; // after disconnect() nothing connects again (the page is gone)
   private gen = 0; // bumped by every connect/changeQuality/disconnect: stale async work checks it
@@ -90,6 +94,7 @@ export class StreamSession {
     this.state.set('connecting');
     if (!live(info)) return this.state.set('failed');
     this.info = info;
+    this.infoAt = performance.now();
     if (!(await this.open(info, gen)) && gen === this.gen) await this.retry(gen);
   }
 
@@ -194,6 +199,7 @@ export class StreamSession {
       }
       if (!live(info)) continue;
       this.info = info;
+      if (i > 0) this.infoAt = performance.now();
       if (await this.open(info, gen)) {
         if (gen === this.gen) this.d.notify('Reconnected');
         return;
@@ -238,8 +244,9 @@ export class StreamSession {
       const p = (w: { pct(n: number): number | null } | undefined) => w?.pct(50) ?? 0;
       const over = (s.queueMs?.pct(50) ?? 0) - (s.queueMs?.min() ?? 0);
       const delay = p(s.bridgeCaptureMs) + (rtt ?? 0) / 2 + over + p(s.decodeMs) + p(s.presentMs);
-      const started = this.info?.started;
-      if (started != null) this.d.sample?.(started, delay, fps, mbps);
+      const { started, elapsedS } = this.info ?? {};
+      // No frames (connecting, a stall before the first key frame): not a reading of the stream.
+      if (started != null && fps > 0) this.d.sample?.(started, elapsedS == null ? null : elapsedS + (at - this.infoAt) / 1000, delay, fps, mbps);
       this.stats.update((v) => ({
         delay: push(v.delay, delay),
         fps: push(v.fps, fps),

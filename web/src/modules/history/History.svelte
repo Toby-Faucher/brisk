@@ -9,7 +9,7 @@
 
   type Detail = { session: SessionRec; series: SeriesPoint[] };
 
-  let list = $state<SessionRec[] | null>(null);
+  let list = $state<(SessionRec & { spark?: number[] })[] | null>(null);
   let failed = $state(false);
   let selected = $state<number | null>(null);
   let details = $state<Record<number, Detail | 'none'>>({});
@@ -17,7 +17,7 @@
   const detail = $derived(selected === null ? null : details[selected]);
   const cover = (appid: number | null) => $games?.games.find((g) => g.appid === appid)?.cover;
 
-  // One GET per session (the list carries no series); the detail view reuses it.
+  // The list rows carry their sparkline; only an opened session is fetched, once.
   const asked = new Set<number>();
   function load(id: number) {
     if (asked.has(id)) return;
@@ -42,7 +42,6 @@
     api.sessions().then(
       (r) => {
         list = r.sessions;
-        for (const s of r.sessions) load(s.started);
       },
       () => (failed = true),
     );
@@ -95,8 +94,7 @@
   {#if shown === 'list'}
     <div class="grid">
       {#each list ?? [] as s (s.started)}
-        {@const d = details[s.started]}
-        {@const path = d && d !== 'none' ? sparkPath(d.series.map((p) => p[1]), 120, 28) : ''}
+        {@const path = sparkPath(s.spark ?? [], 120, 28)}
         {@const c = cover(s.appid)}
         <Card cols={1}>
           <a class="fill" href="/history?session={s.started}" onclick={(e) => (e.preventDefault(), open(s.started))} aria-label="{s.name}, {fmtWhen(s.started)}"></a>
