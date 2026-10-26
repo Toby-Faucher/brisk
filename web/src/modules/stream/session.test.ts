@@ -88,6 +88,24 @@ describe('StreamSession', () => {
     expect(f.deps.notify).toHaveBeenLastCalledWith('Reconnected');
   });
 
+  it('every_sample_goes_to_the_history_hook_with_the_session_id', async () => {
+    const sample = vi.fn();
+    const f = fakeDeps({ sample });
+    const s = new StreamSession(f.deps);
+    await s.connect({ ...LIVE, started: 1234 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sample).toHaveBeenCalledTimes(2);
+    expect(sample).toHaveBeenLastCalledWith(1234, 0, 0, 0);
+    s.disconnect();
+    // an older hostd without `started`: nothing to record
+    const g = fakeDeps({ sample });
+    const t = new StreamSession(g.deps);
+    await t.connect(LIVE);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sample).toHaveBeenCalledTimes(2);
+    t.disconnect();
+  });
+
   it('user_disconnect_does_not_retry', async () => {
     const f = fakeDeps();
     const s = new StreamSession(f.deps);

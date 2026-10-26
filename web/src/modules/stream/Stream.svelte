@@ -14,11 +14,14 @@
   import { startInput } from '../../lib/input';
   import workletUrl from '../../lib/audio-worklet.ts?worker&url';
   import { StreamSession, pollLive } from './session';
+  import { SeriesUploader } from './series';
   import { holdEsc, type Hold } from './ghostbar';
   import { ClipSync, browserClipboard, uploadQueue, type Upload } from './clipboard';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
 
+  // History: 5 s points PUT in the background (never awaited; a failure is dropped).
+  const series = new SeriesUploader(api.putSeries);
   const hexBytes = (h: string) => Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
   const session = new StreamSession({
     api,
@@ -33,6 +36,7 @@
       return c;
     },
     notify: (text, error) => toast(text, { error }),
+    sample: (id, delay, fps, mbps) => series.add(id, delay, fps, mbps),
   });
   const { state: phase, stats, needsSound, canvasEl, pads } = session;
 
@@ -128,6 +132,7 @@
 
   async function disconnect() {
     session.disconnect();
+    series.close();
     try {
       await api.stopStream();
     } catch {}
@@ -246,18 +251,19 @@
       else if (page === 'session' && c.preset !== preset) void quality({ preset: c.preset });
     });
     void boot();
-    const flushPrefs = () => saver.flush();
-    window.addEventListener('pagehide', flushPrefs); // closing the tab never runs the cleanup below
+    const flushOnHide = () => (saver.flush(), series.close());
+    window.addEventListener('pagehide', flushOnHide); // closing the tab never runs the cleanup below
     const unwatchPrefs = watchPrefs();
     const unwatchGames = watchGames(); // the game's name for "Saved for …"
     return () => {
-      window.removeEventListener('pagehide', flushPrefs);
+      window.removeEventListener('pagehide', flushOnHide);
       unwatchPrefs();
       unwatchGames();
       // Leaving /stream (the island unmounts on navigation): release keys, close everything.
       destroyed = true;
       saver.flush(); // a change made in the last second still counts
       session.disconnect();
+      series.close();
       clip.stop();
       uploads.cancel();
       for (const [k, f] of drag) window.removeEventListener(k, f as EventListener);

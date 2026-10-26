@@ -45,6 +45,8 @@ export interface Deps {
   /** A fresh canvas per connection, so the old connection's input listeners see a dead element. */
   canvas(): Canvas;
   notify(text: string, error?: boolean): void;
+  /** Every stats sample of a session hostd named (`info.started`), for its history. */
+  sample?(started: number, delayMs: number, fps: number, mbps: number): void;
 }
 
 type Conn = { t: Transport; ctx: Ctx; gain?: Gain; video?: { stats: VideoStats }; input?: { release(): void }; ours: boolean; liveAt: number };
@@ -236,6 +238,8 @@ export class StreamSession {
       const p = (w: { pct(n: number): number | null } | undefined) => w?.pct(50) ?? 0;
       const over = (s.queueMs?.pct(50) ?? 0) - (s.queueMs?.min() ?? 0);
       const delay = p(s.bridgeCaptureMs) + (rtt ?? 0) / 2 + over + p(s.decodeMs) + p(s.presentMs);
+      const started = this.info?.started;
+      if (started != null) this.d.sample?.(started, delay, fps, mbps);
       this.stats.update((v) => ({
         delay: push(v.delay, delay),
         fps: push(v.fps, fps),
