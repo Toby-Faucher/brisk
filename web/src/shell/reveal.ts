@@ -13,12 +13,13 @@ export function planEnter(rects: Rect[], vw: number, vh: number): (number | null
 /**
  * Tag the untagged `.reveal` / `.enter` elements in <main> that are on screen, then drop the head script's hide flag.
  * Idempotent: a tagged element never replays, so call it after any mount (route, data arrival). Not on /stream
- * (its <main> has no .page-in) and not under reduced motion.
+ * (its <main> has no .page-in) and not under reduced motion. Skips what sits in a `[data-hold]` (still hidden: Home
+ * before its saved card order is in), which calls this again when it shows.
  */
 export function enter() {
   const main = document.querySelector('main.page-in');
   if (main && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const els = [...main.querySelectorAll<HTMLElement>('.reveal:not([data-enter]), .enter:not([data-enter])')];
+    const els = [...main.querySelectorAll<HTMLElement>(':is(.reveal, .enter):not([data-enter], [data-hold] *)')];
     const plan = planEnter(els.map((e) => e.getBoundingClientRect()), innerWidth, innerHeight);
     els.forEach((e, k) => {
       if (plan[k] == null) return;

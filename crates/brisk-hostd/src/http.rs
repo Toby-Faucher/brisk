@@ -378,7 +378,32 @@ async fn file_put(
 }
 
 async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(serde_json::json!({ "prefs": s.prefs.all() })).into_response()
+    axum::Json(serde_json::json!({ "prefs": s.prefs.all(), "homeOrder": s.prefs.home_order() }))
+        .into_response()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LayoutBody {
+    home_order: Vec<String>,
+}
+
+/// The Home card order: not an array of strings is a 400; bad, duplicate and surplus ids are
+/// dropped (prefs::clean_home_order) and the stored order is returned.
+async fn layout_put(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
+    match parse::<LayoutBody>(&b) {
+        Ok(b) => {
+            axum::Json(serde_json::json!({ "homeOrder": s.prefs.set_home_order(b.home_order) }))
+                .into_response()
+        }
+        Err(r) => r,
+    }
+}
+
+/// Reset layout: forget the saved order (Home falls back to its default).
+async fn layout_delete(State(s): State<Arc<AppState>>) -> Response {
+    s.prefs.set_home_order(vec![]);
+    StatusCode::NO_CONTENT.into_response()
 }
 
 #[derive(Deserialize)]
@@ -462,6 +487,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             put(series_put).layer(DefaultBodyLimit::max(1 << 20)),
         )
         .route("/prefs", get(prefs_get))
+        // static beats the {appid} capture in axum's router
+        .route("/prefs/layout", put(layout_put).delete(layout_delete))
         .route("/prefs/{appid}", put(prefs_put).delete(prefs_delete))
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.

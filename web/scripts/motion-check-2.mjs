@@ -81,6 +81,8 @@ const maxes = {};
       check('library: shelf headers + first cards get it too', enters(s).filter((x) => x.el.startsWith('h4')).length === 2 && enters(s).filter((x) => x.el.startsWith('div.slot')).length >= 6, enters(s).filter((x) => x.el.startsWith('div.slot')).length + ' cards');
       check('library: cards animate only after data (all entrances after 600ms except the page chrome)', enters(s).filter((x) => /^(div\.hero|h4|div\.slot)/.test(x.el)).every((x) => x.at > 600));
     }
+    // Home holds its grid hidden until the saved card order is in (F3c1); its entrance starts when it shows
+    if (n === 'home') await page.waitForSelector('.bento:not([data-hold])');
     await sleep(1400);
     const s = await seen(page);
     const e = enters(s).filter((x) => x.main);

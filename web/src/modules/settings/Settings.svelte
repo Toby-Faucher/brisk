@@ -4,6 +4,9 @@
   import { ACCENT_HEX, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
   import type { Preset } from '../../state/api';
   import { host } from '../../state/host';
+  import { api } from '../../state/api';
+  import { homeOrder } from '../../state/prefs';
+  import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { glideSwap } from '../../ui/motion';
@@ -22,6 +25,12 @@
     (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(`[aria-label="${a}"]`)?.focus();
   }
   const pickAccent = (a: Accent) => set({ accent: a });
+  // Home card order lives in hostd prefs (Home drag handles); Home picks the default up on its next visit
+  const resetLayout = () =>
+    api.resetLayout().then(
+      () => (homeOrder.set([]), toast('Home layout reset')),
+      () => toast('Could not reset the Home layout', { error: true }),
+    );
 
   const LABEL: Record<Tab, string> = { general: 'General', streaming: 'Streaming', controller: 'Controller', about: 'About' };
   const SHORTCUTS = [['Ctrl+K', 'Command menu'], ['/', 'Search'], ['g h', 'Go to Home'], ['g l', 'Go to Library'], ['g s', 'Go to Stream'], ['Hold Esc', 'Release the keyboard on the stream'], ['Ctrl+Alt+S', 'Screenshot (on the stream)'], ['Ctrl+Alt+R', 'Save replay (on the stream)']];
@@ -86,6 +95,10 @@
           <h4>Effects</h4>
           <label class="opt"><span>Sounds</span><input type="checkbox" checked={$settings.sounds} onchange={(e) => set({ sounds: e.currentTarget.checked })} /></label>
           <label class="opt"><span>Shaders <small class="lab">background smoke</small></span><input type="checkbox" checked={$settings.shaders} onchange={(e) => set({ shaders: e.currentTarget.checked })} /></label>
+        </Card>
+        <Card cols={2}>
+          <h4>Home layout</h4>
+          <div class="opt"><span>Card order <small class="lab">drag a card's handle on Home to move it</small></span><button type="button" class="btn ghost" onclick={resetLayout}>Reset layout</button></div>
         </Card>
       </div>
     </Tabs.Content>

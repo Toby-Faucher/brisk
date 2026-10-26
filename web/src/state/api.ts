@@ -193,7 +193,10 @@ export const api = {
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
-  prefs: () => call<{ prefs: PrefsMap }>('GET', '/api/prefs'),
+  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[] }>('GET', '/api/prefs'),
+  /** Home card order (hostd cleans it and answers with what it kept); reset forgets it. */
+  putLayout: (homeOrder: string[]) => call<{ homeOrder: string[] }>('PUT', '/api/prefs/layout', { homeOrder }),
+  resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
   /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */

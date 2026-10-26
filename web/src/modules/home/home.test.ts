@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, pickResume } from './home';
+import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, pickResume, reconcileOrder } from './home';
 
 const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, cover: '', running });
 
@@ -27,5 +27,26 @@ describe('home', () => {
     expect(fmtDuration(0, null)).toBe('live');
     expect(fmtDuration(0, 64 * 60_000)).toBe('1 h 04');
     expect(fmtDuration(0, 12 * 60_000)).toBe('12 min');
+  });
+
+  it('reconcile_keeps_saved_order_appends_new_drops_removed', () => {
+    const cur = ['host', 'resume', 'quick', 'recent', 'library'];
+    expect(reconcileOrder([], cur)).toEqual(cur);
+    expect(reconcileOrder(['recent', 'host'], cur)).toEqual(['recent', 'host', 'resume', 'quick', 'library']);
+    // removed ids (gone, agents) are dropped; duplicates count once
+    expect(reconcileOrder(['gone', 'library', 'library', 'agents', 'quick'], cur)).toEqual(['library', 'quick', 'host', 'resume', 'recent']);
+    expect(reconcileOrder(['a', 'b'], [])).toEqual([]);
+    expect(reconcileOrder(cur.slice().reverse(), cur)).toEqual(cur.slice().reverse());
+  });
+
+  it('move_item_moves_and_clamps_without_mutating', () => {
+    const a = ['a', 'b', 'c', 'd'];
+    expect(moveItem(a, 0, 2)).toEqual(['b', 'c', 'a', 'd']);
+    expect(moveItem(a, 3, 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(moveItem(a, 1, 1)).toEqual(a);
+    expect(moveItem(a, 1, -5)).toEqual(['b', 'a', 'c', 'd']);
+    expect(moveItem(a, 1, 99)).toEqual(['a', 'c', 'd', 'b']);
+    expect(moveItem(a, 7, 0)).toEqual(a);
+    expect(a).toEqual(['a', 'b', 'c', 'd']);
   });
 });

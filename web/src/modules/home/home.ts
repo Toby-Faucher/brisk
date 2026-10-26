@@ -33,3 +33,20 @@ export function fmtDuration(start: number, end: number | null): string {
   const m = Math.round((end - start) / 60_000);
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
 }
+
+/** The saved Home order laid over the cards there are now: saved ids in their order, new cards appended, gone ones dropped. */
+export function reconcileOrder(saved: readonly string[], current: readonly string[]): string[] {
+  const have = new Set(current);
+  const kept = [...new Set(saved)].filter((id) => have.has(id));
+  const seen = new Set(kept);
+  return [...kept, ...current.filter((id) => !seen.has(id))];
+}
+
+/** A copy of `list` with the item at `from` moved to `to` (clamped); an out-of-range `from` changes nothing. */
+export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
+  const a = [...list];
+  if (from < 0 || from >= a.length) return a;
+  const [x] = a.splice(from, 1);
+  a.splice(Math.max(0, Math.min(a.length, to)), 0, x);
+  return a;
+}

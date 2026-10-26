@@ -37,7 +37,7 @@
 </Card>
 
 <style>
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px 0; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px 28px -4px 0; } /* right: clear of the drag handle */
   .row { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; align-items: center; }
   .btn.ghost { background: color-mix(in srgb, #fff 9%, transparent); box-shadow: none; backdrop-filter: blur(6px); }
   .chips { display: flex; gap: 3px; padding: 3px; border-radius: var(--r-ctl); background: color-mix(in srgb, #fff 6%, transparent); }
