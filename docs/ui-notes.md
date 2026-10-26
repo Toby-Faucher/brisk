@@ -257,7 +257,7 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   WebTransport, setting off, failed state, and /stream's JS file list. Screenshots to `$OUT`.
 
 ## Run
-- Normal: hostd runs as a systemd user service and the laptop opens https://bawn.tail674625.ts.net:8443
+- Normal: hostd runs as a systemd user service and the laptop opens https://bawn.tail0.ts.net:8443
   (see Hosting below and docs/hosting-runbook.md).
 - By hand (dev path, only while the service is not active; brisk-up and brisk-down refuse otherwise):
   `scripts/brisk-up.sh` (builds bridge + hostd in the capped scope, switches to the patched Sunshine, runs
@@ -268,7 +268,7 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
 
 ## Hosting
 ```
- laptop Chrome ──https://bawn.tail674625.ts.net:8443──▶ tailscaled on bawn (tailscale serve, TLS,
+ laptop Chrome ──https://bawn.tail0.ts.net:8443──▶ tailscaled on bawn (tailscale serve, TLS,
    │                                                     adds Tailscale-User-Login/-Name)
    │                                                         │ http://127.0.0.1:8443 (loopback)
    │                                                         ▼
@@ -279,7 +279,7 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
    └──WebTransport https://<tailscale IP>:4433──▶ brisk-bridge ──▶ patched Sunshine (drop-in,
                 (cert hash pinned, 13-day cert)                     permanent; plain RTP w/o bridge)
 ```
-- The root address https://bawn.tail674625.ts.net is Toby's `orch` (127.0.0.1:8481). Brisk only ever
+- The root address https://bawn.tail0.ts.net is Toby's `orch` (127.0.0.1:8481). Brisk only ever
   touches the :8443 mapping (`tailscale serve --bg --https=8443 http://127.0.0.1:8443` and
   `tailscale serve --https=8443 off`). hostd itself still binds 127.0.0.1:8443 only; tailscale serve is
   the only way in from the tailnet, so nothing outside the tailnet can reach it.

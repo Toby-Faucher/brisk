@@ -1,6 +1,6 @@
-# brisk-hostd as a systemd USER service (toby, linger on). Installed by scripts/brisk-service.sh
+# brisk-hostd as a systemd USER service (linger on). Installed by scripts/brisk-service.sh
 # install into ~/.config/systemd/user/. Page + API on 127.0.0.1:8443 only; the laptop reaches it
-# through `tailscale serve` at https://bawn.tail674625.ts.net:8443 (docs/ui-notes.md, Hosting).
+# through `tailscale serve` at https://bawn.tail0.ts.net:8443 (docs/ui-notes.md, Hosting).
 [Unit]
 Description=Brisk host agent (page, API, bridge supervisor)
 Documentation=file://%h/Projects/brisk/docs/hosting-runbook.md

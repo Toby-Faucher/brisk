@@ -1,13 +1,13 @@
 # Hosting runbook: Brisk as a service on bawn
 
-Goal: after this, the laptop opens **https://bawn.tail674625.ts.net:8443** (tailnet only) with no ssh
+Goal: after this, the laptop opens **https://bawn.tail0.ts.net:8443** (tailnet only) with no ssh
 tunnel and, once allowed, no `?s=` link. hostd runs as `brisk-hostd.service` (systemd user unit, starts
 at boot thanks to linger), patched Sunshine stays on for good. Architecture and the auth model:
 docs/ui-notes.md, section Hosting.
 
 Who does what: **[agent]** = the controller/agent in a shell as toby (no root). **[Toby]** = needs Toby:
 a sudoq approval, the laptop, or a decision. Nothing here touches the root address
-(https://bawn.tail674625.ts.net = orch on 127.0.0.1:8481).
+(https://bawn.tail0.ts.net = orch on 127.0.0.1:8481).
 
 ## First-time checklist
 
@@ -34,13 +34,13 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
    and `:8443 / -> http://127.0.0.1:8443`.
 8. **[Toby]** On the laptop: run `scripts/brisk-service.sh link` on bawn and open the `https://…:8443/?s=…`
    line once in Chrome. The page keeps the secret (localStorage), so from then on the bare
-   https://bawn.tail674625.ts.net:8443 bookmark works.
+   https://bawn.tail0.ts.net:8443 bookmark works.
 9. **[Toby decides]** Optional, no link at all: allow your tailnet login (see the limits in ui-notes.md:
    fine on a one-user box, not on a shared one).
    - Spoof test first. **[agent]** `printf 'nobody@example.invalid\n' > ~/.config/brisk/allowed-users &&
      chmod 600 ~/.config/brisk/allowed-users && systemctl --user restart brisk-hostd.service`.
      **[Toby]** on the laptop:
-     `curl -s -o /dev/null -w '%{http_code}\n' -H 'Tailscale-User-Login: nobody@example.invalid' -H 'x-brisk-csrf: 1' https://bawn.tail674625.ts.net:8443/api/host`
+     `curl -s -o /dev/null -w '%{http_code}\n' -H 'Tailscale-User-Login: nobody@example.invalid' -H 'x-brisk-csrf: 1' https://bawn.tail0.ts.net:8443/api/host`
      must print **403** (tailscale serve replaced the forged header with your real login). If it prints
      200, stop: remove the file, restart, and keep using the secret.
    - **[agent]** Put the real login in the file instead (find it with `tailscale whois <laptop tailscale IP>`,

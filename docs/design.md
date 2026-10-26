@@ -112,7 +112,7 @@ Facts about the Moonlight side [V unless marked]:
 
 ## 9. OPTIONAL research tracks (NOT core scope)
 
-Details and caveats in `/home/toby/Projects/brisk/research/novelty-loop.md`. Search budget ran out, so no novelty claim is verified. Nothing here is claimed as new; all of it is "no prior art found in limited searching".
+Details and caveats in `research/novelty-loop.md`. Search budget ran out, so no novelty claim is verified. Nothing here is claimed as new; all of it is "no prior art found in limited searching".
 1. C17: client-side rotation reprojection learned from video (online identification of input to camera motion on unmodified games). Novelty about 65%, unverified. Sim looks good but is optimistic (plant is in model family). Real-game test needed. Active EA patent US10773162 and US10595041 claims unread: freedom-to-operate risk. Blockers listed in the log.
 2. Fugu-style per-frame delivery-latency PMF driving a joint bitrate/FEC/playout MPC (C8). Partially done in the literature (Fugu, Nebula, Vidaptive, etc.); the delta is narrow. Needs logged data from Toby's own path first.
 Gate: only start after M3, and only if M0 numbers show the corresponding term is large.

@@ -18,7 +18,7 @@ use tower::ServiceExt;
 
 const SECRET: &str = "0123456789abcdef0123";
 const STATUS: &str =
-    r#"{"Self":{"DNSName":"bawn.tail674625.ts.net.","TailscaleIPs":["100.64.0.9"]}}"#;
+    r#"{"Self":{"DNSName":"bawn.tail0.ts.net.","TailscaleIPs":["100.64.0.9"]}}"#;
 
 /// Answers `tailscale status --json` / `tailscale ip -4` from `ts` (None = tailscale down);
 /// `openssl` writes PEM files to its -keyout/-out unless `openssl_ok` is false.
@@ -207,7 +207,7 @@ async fn extra_and_tailnet_hosts_are_allowed_foreign_ones_are_not() {
         "localhost:8443",
         "127.0.0.1:8443",
         "brisk.example:8443",
-        "BAWN.tail674625.ts.net:8443",
+        "BAWN.tail0.ts.net:8443",
     ] {
         assert_eq!(
             status(&app, "/", Req { host: h, ..R }).await,
@@ -220,13 +220,13 @@ async fn extra_and_tailnet_hosts_are_allowed_foreign_ones_are_not() {
         "evil.test",
         "localhost",
         "localhost:9999",
-        "bawn.tail674625.ts.net:9999",
+        "bawn.tail0.ts.net:9999",
         "brisk.example",
         "evil.ts.net:8443",
-        "bawn.tail674625.ts.net.evil.test:8443",
-        "other.tail674625.ts.net",
-        "bawn.tail674625.ts.net",
-        "bawn.tail674625.ts.net.:8443",
+        "bawn.tail0.ts.net.evil.test:8443",
+        "other.tail0.ts.net",
+        "bawn.tail0.ts.net",
+        "bawn.tail0.ts.net.:8443",
         "localhost.:8443",
         "[::1]:8443",
     ] {
@@ -258,7 +258,7 @@ async fn tailnet_name_is_learned_lazily_when_tailscale_comes_up_later() {
     let mut hosts = Hosts::new(&[], fake.clone());
     hosts.recheck = Duration::from_millis(200);
     hosts.refresh().await;
-    let h = "bawn.tail674625.ts.net:8443";
+    let h = "bawn.tail0.ts.net:8443";
     assert!(!hosts.allowed(h).await);
     *fake.ts.lock().unwrap() = Some(STATUS.into());
     assert!(!hosts.allowed(h).await, "within the cache: no new lookup");

@@ -14,8 +14,8 @@ Design: `research/m2-tap-design.md` sections 1 and 2.
     cd ~/build/sunshine-brisk
     git rev-parse HEAD            # must start with 63d35f7
     git submodule update --init --recursive
-    git apply --check /home/toby/Projects/brisk/patches/sunshine/0001-brisk-tap.patch
-    git apply /home/toby/Projects/brisk/patches/sunshine/0001-brisk-tap.patch
+    git apply --check patches/sunshine/0001-brisk-tap.patch
+    git apply patches/sunshine/0001-brisk-tap.patch
 
 ## Behaviour
 

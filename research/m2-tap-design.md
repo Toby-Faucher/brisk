@@ -1,6 +1,6 @@
 # M2 design note: Sunshine tap, bridge, Chrome
 
-Date 2026-10-24. Research only: nothing was built, run or installed. All source references are to the pinned Sunshine `v2026.914.233613` (commit 63d35f7) at `/home/toby/recon-pinned/Sunshine` (paths relative to `src/` unless they say otherwise). [U] = not verified. The submodules in the pinned tree are empty, so nothing under `third-party/` was read.
+Date 2026-10-24. Research only: nothing was built, run or installed. All source references are to the pinned Sunshine `v2026.914.233613` (commit 63d35f7) at `~/recon-pinned/Sunshine` (paths relative to `src/` unless they say otherwise). [U] = not verified. The submodules in the pinned tree are empty, so nothing under `third-party/` was read.
 
 ## TL;DR
 
@@ -187,7 +187,7 @@ off size field
 **Install: side by side, not a package swap (recommended)**
 
 1. `cmake -S src -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local/opt/sunshine-brisk -DSUNSHINE_ASSETS_DIR=share/sunshine -DSUNSHINE_EXECUTABLE_PATH=$HOME/.local/opt/sunshine-brisk/bin/sunshine -DBUILD_TESTS=OFF -DBUILD_DOCS=OFF -DSUNSHINE_ENABLE_CUDA=OFF -DCUDA_FAIL_ON_MISSING=OFF -DBUILD_WERROR=OFF`, then `cmake --build build`, then `cmake --install build`. No root.
-2. **sudoq (the only root step):** `sudoq run --why "KMS capture caps for patched sunshine" -- setcap cap_sys_admin,cap_sys_nice+p /home/toby/.local/opt/sunshine-brisk/bin/sunshine`.
+2. **sudoq (the only root step):** `sudoq run --why "KMS capture caps for patched sunshine" -- setcap cap_sys_admin,cap_sys_nice+p ~/.local/opt/sunshine-brisk/bin/sunshine`.
    - This mirrors sunshine.install `do_setcap`.
    - /home is btrfs without `nosuid`, so file caps apply.
    - Every rebuild rewrites the binary and drops the caps, so it is one sudoq approval per reinstall.

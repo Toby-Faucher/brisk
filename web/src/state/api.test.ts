@@ -56,7 +56,7 @@ describe('api', () => {
   });
 
   it('works_without_a_secret_and_survives_broken_storage', async () => {
-    stubPage('https://bawn.tail674625.ts.net:8443/');
+    stubPage('https://bawn.tail0.ts.net:8443/');
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } });
     const f = stubFetch(200, { name: 'bawn' });
     await expect(api.host()).resolves.toMatchObject({ name: 'bawn' });
@@ -66,7 +66,7 @@ describe('api', () => {
   });
 
   it('flags_403_as_denied_until_a_call_succeeds', async () => {
-    stubPage('https://bawn.tail674625.ts.net:8443/');
+    stubPage('https://bawn.tail0.ts.net:8443/');
     stubFetch(403);
     await expect(api.games()).rejects.toMatchObject({ status: 403 });
     expect(get(denied)).toBe(true);

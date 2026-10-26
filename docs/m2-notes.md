@@ -73,7 +73,7 @@ Chosen: **a self-signed ECDSA P-256 certificate, valid 13 days, pinned by the pa
 - `tailscale cert` needs root or operator rights on bawn (`Access denied: cert access denied ...
   Use 'sudo tailscale set --operator=$USER'`), i.e. a tailscaled config change, which is out of
   bounds for agents. Not used. If Toby wants a real certificate later: `sudo tailscale set
-  --operator=toby` once, then `tailscale cert bawn.tail674625.ts.net`, and the page could be served
+  --operator=toby` once, then `tailscale cert bawn.tail0.ts.net`, and the page could be served
   over https from bawn directly.
 - `serverCertificateHashes` needs no CA, but Chrome accepts only ECDSA P-256 certificates valid
   for at most 14 days. `scripts/brisk-up.sh` makes one with `openssl req -x509 -newkey ec
