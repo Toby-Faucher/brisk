@@ -11,6 +11,7 @@
 - GET /api/games, GET /api/host, GET /api/sessions
 - GET/POST/DELETE /api/stream (state / start / stop the bridge)
 - POST /api/launch, POST /api/install, POST /api/sunshine/restart
+- GET/POST /api/clipboard, PUT /api/files/<name> (see Clipboard and file drop)
 - anything else: the static page from `web/dist`
 
 Guard: the Host header must be `localhost:8443` or `127.0.0.1:8443` (DNS rebinding). There is no Origin check; that is
@@ -20,6 +21,37 @@ the bridge keeps running. The game itself keeps running on bawn: GET /api/games 
 `SteamLaunch AppId=<id>`, is in /proc), the page says Resume, and POST /api/stream with its appid skips
 `steam://rungameid`. Either way, once the tap connects hostd polls up to 60 s for a sway window in the reaper's process
 tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no sway is only logged.
+
+## Clipboard and file drop
+- Clipboard sync (on by default; ghost bar clipboard panel or Settings, key `clipboardSync`) carries text and PNG
+  images both ways while the stream is live and the page is focused. Laptop -> bawn: on window focus, tab visible,
+  pointer lock and stream start the page reads `navigator.clipboard` and POSTs it if its SHA-256 differs from the
+  last synced one. bawn -> laptop: the page polls `GET /api/clipboard?since=<seq>` every second (204 = unchanged,
+  JSON for text, the PNG body for an image; `x-brisk-seq` on every answer; no `since` = only the seq, so a fresh
+  page never pulls bawn's old clipboard) and writes it with `navigator.clipboard`.
+- hostd uses wl-clipboard (`/usr/bin/wl-paste`, `wl-copy`, installed by Toby; wl-clipboard-rs fails
+  scripts/check-pure-rust.sh: `cc` and `wayland-sys` via wayland-backend) in the sway session (WAYLAND_DISPLAY from
+  the steam process like stream.rs, else the first `wayland-*` socket in the runtime dir). A watcher thread runs
+  `wl-paste --watch echo` (dies with hostd, restarted if it exits) and on each event reads `--list-types` then the
+  PNG or text, each under `timeout 5`. A seq bumps when the content hash changes. A POST records the hash before
+  `wl-copy --foreground --type <mime>` takes the selection, so the watcher does not report it back; the page also
+  keeps the last hash (and reads an image back after writing it, as Chrome re-encodes PNGs), so nothing ping-pongs.
+  The previous wl-copy is given 1 s to exit by itself, then killed and reaped.
+- Limits: 16 MiB per clipboard both ways (bigger is skipped with one toast); other types (files, HTML only) are
+  ignored. If Chrome refuses clipboard access the page shows one toast and the panel says how to allow it; while the
+  page is unfocused nothing is read and a pending write waits for focus.
+- Privacy: with sync on, every copy on the laptop is sent to bawn while the stream has focus, so a password copied
+  from a password manager lands on bawn's clipboard (and stays there until something else is copied, even after
+  hostd exits). Turn sync off for that. Clipboard contents are never logged.
+- Files go laptop -> bawn only: drop files on the Stream page (a "Drop to send" overlay; needs a free pointer, not
+  while it is locked) or "Send files…" in the panel. One upload at a time, XHR with progress, a toast with the saved
+  path. `PUT /api/files/<name>` streams the body into a hidden temp file in `~/Downloads/brisk` (created on first
+  use) and hard-links it to a free name: basename only, no control characters, no leading dots, at most 200 bytes,
+  `name (1).ext` if taken. Max 8 GiB (413); with a Content-Length it refuses when less than that plus 256 MiB is
+  free (507); the same name twice at once is a 409; a cut-off upload leaves no temp file.
+- [U] Chrome's clipboard permission prompt and `navigator.clipboard.read()` on the pointer-locked canvas, and a
+  real image copy both ways, were not tried on hardware; the hostd side was checked live against bawn's sway
+  (`cargo test -p brisk-hostd -- --ignored live_`: sets text, reads it with wl-paste, clears it).
 
 ## Env vars
 BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (bridge address; hostd alone defaults to 127.0.0.1:4433, brisk-up.sh sets the tailscale IP:4433),
