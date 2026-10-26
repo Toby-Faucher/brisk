@@ -19,9 +19,9 @@
   <main class:page-in={!/^\/stream/.test(path)}>
     {#if $denied}
       <section class="denied" role="alert">
-        <h1>bawn doesn't know this browser</h1>
+        <h1>This host doesn't know this browser</h1>
         <p>
-          Open this page from the link that includes <code>?s=…</code> (on bawn:
+          Open this page from the link that includes <code>?s=…</code> (on the host:
           <code>scripts/brisk-service.sh link</code>), or ask hostd to allow your tailnet login
           (<code>~/.config/brisk/allowed-users</code>).
         </p>

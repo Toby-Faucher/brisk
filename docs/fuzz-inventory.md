@@ -34,7 +34,7 @@ Coverage after this pass: **P** = property test (file::test), **F** = cargo-fuzz
 | `sdp::sdp_attr` | brisk-proto src/sdp.rs | RTSP DESCRIBE body | host | describe fixture | P sdp_attr_and_unhex_take_any_text, sdp_build_round_trips_through_sdp_attr; F http_sdp |
 | `tap::parse_tap` | brisk-proto src/tap.rs | tap SEQPACKET messages | local | round trip, magic, header_len, size, recorded | P tap_parser_takes_any_bytes, tap_header_round_trip; F tap |
 | `TapConn::recv` / peek header | brisk-client src/tap.rs | tap socket (MSG_TRUNC length) | local | tests/tap_live.rs | via parse_tap (P/F above); the socket code itself is not fuzzable sans-io |
-| `find_sps` (private) | brisk-client src/tap.rs | Annex B from the tap | local | indirect (tap_live) | P tap::tests::find_sps_takes_any_annexb |
+| `find_sps` (private) | brisk-client src/tap.rs | Annex B from the tap | local | table test + indirect (tap_live) | P tap::tests::find_sps_takes_any_annexb |
 | `session::body` (private) | brisk-client src/session.rs | raw HTTP/1.1 responses from Sunshine | net before pairing, host after | body_checks_length_and_status | P session::tests::body_takes_any_response |
 | `rtsp::parse_session_url` | brisk-client src/rtsp.rs | `sessionUrl0` from the launch XML | host | none | P rtsp::tests::parse_session_url_takes_any_text; F http_sdp |
 | `StreamRx::on_datagram` (video/audio counters) | brisk-client src/stream.rs | media UDP datagrams | net | tests/live_stream.rs | via parse_video_packet, FrameAssembler, AudioFec (P/F above) |

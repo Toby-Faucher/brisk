@@ -139,7 +139,7 @@
       <dl class="stats">
         {#each rows as [k, v] (k)}<dt>{k}</dt><dd class="mono">{v}</dd>{/each}
       </dl>
-      <p class="lab">Latencies are p50 / p99 on bawn's clock (docs/m0-baseline.md).</p>
+      <p class="lab">Latencies are p50 / p99 on the host's clock (docs/m0-baseline.md).</p>
     {:else}
       <p class="lab">No report for this session.</p>
     {/if}

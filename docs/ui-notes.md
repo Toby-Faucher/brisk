@@ -364,7 +364,7 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   `off`), because toby is not the tailscale operator. Alternative once: `tailscale set --operator=toby`,
   after which brisk-service.sh runs serve itself. Linger is already on; setcap for patched Sunshine is
   already done (sunshine-brisk.sh install asks via sudoq if it ever is not).
-- Troubleshooting: `scripts/brisk-service.sh doctor` first. Page shows "bawn doesn't know this browser":
+- Troubleshooting: `scripts/brisk-service.sh doctor` first. Page shows "This host doesn't know this browser":
   open the link from `scripts/brisk-service.sh link` once (the page keeps the secret in localStorage) or
   allow the login. Unit restarting: `logs` (a manual brisk-up holding 8443 = "bind ... address in use").
   Streams fail with "tailscale gave no IPv4": tailscale is down on bawn. 403 on every request through
