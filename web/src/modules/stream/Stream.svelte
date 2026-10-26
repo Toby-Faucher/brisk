@@ -140,7 +140,15 @@
       cancelAnimationFrame(raf);
       hold = esc.release(performance.now());
     };
-    const cap = () => (captured = !!document.pointerLockElement || document.activeElement?.id === 'video');
+    let hinted = false;
+    const cap = () => {
+      captured = !!document.pointerLockElement || document.activeElement?.id === 'video';
+      // Outside page fullscreen Chrome frees the mouse on a plain Esc tap and nothing can stop it.
+      if (document.pointerLockElement && !document.fullscreenElement && !hinted) {
+        hinted = true;
+        toast('Esc frees the mouse here. Use Fullscreen in the top bar and you hold Esc instead.');
+      }
+    };
     const fs = () => {
       if (!document.fullscreenElement) kbLocked = false;
     };
