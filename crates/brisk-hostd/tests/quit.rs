@@ -97,6 +97,8 @@ enum Fail {
     Esrch,
     /// A kernel without pidfd: ENOSYS.
     Enosys,
+    /// EINVAL (or EMFILE) for pid 501 only.
+    Einval501,
 }
 
 struct Fake {
@@ -152,7 +154,10 @@ impl Signaller for Fake {
             std::fs::write(d.join("stat"), stat(pid, "innocent", 'S', 1, 999_999)).unwrap();
         }
         if self.fail == Fail::Enosys {
-            return Sent::Failed("pidfd_open: Function not implemented".into());
+            return Sent::Unsupported;
+        }
+        if self.fail == Fail::Einval501 && pid == 501 {
+            return Sent::Failed("pidfd_open: Invalid argument".into());
         }
         if !d.exists() {
             return Sent::Gone;
@@ -467,6 +472,16 @@ async fn no_pidfd_support_stops_with_an_error_and_no_fallback() {
     // TERM then KILL, each round stopping at its first pid.
     assert_eq!(r.calls(), ["kill -TERM 501", "kill -KILL 501"]);
     assert!(r.fake.delivered.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn another_error_on_one_pid_does_not_stop_the_round() {
+    let r = rig_with(Exits::OnTerm, Fail::Einval501, false);
+    let (_, v) = r.quit(r#"{"appid":10,"force":true}"#).await;
+    assert_eq!(v["state"], "closed", "{v}");
+    let d = r.fake.delivered.lock().unwrap().clone();
+    assert!(!d.contains(&"kill -TERM 501".to_string()), "{d:?}");
+    assert!(d.contains(&"kill -TERM 502".to_string()), "{d:?}");
 }
 
 #[tokio::test(start_paused = true)]

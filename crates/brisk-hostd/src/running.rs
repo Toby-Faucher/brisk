@@ -73,7 +73,9 @@ pub enum Sent {
     Recycled,
     /// EPERM.
     Denied,
-    /// Anything else, e.g. a kernel without pidfd (ENOSYS); the quit stops signalling.
+    /// No pidfd on this kernel (ENOSYS): the round stops, with no fallback to kill(2).
+    Unsupported,
+    /// Any other error for this pid (EINVAL, EMFILE, ...): counted, the round goes on.
     Failed(String),
 }
 
@@ -99,7 +101,8 @@ impl Signaller for Pidfd {
         let fd = match pidfd_open(p, PidfdFlags::empty()) {
             Ok(fd) => fd,
             Err(Errno::SRCH) => return Sent::Gone,
-            Err(e) => return Sent::Failed(format!("pidfd_open: {e} (needs Linux 5.3+)")),
+            Err(Errno::NOSYS) => return Sent::Unsupported,
+            Err(e) => return Sent::Failed(format!("pidfd_open: {e}")),
         };
         if !same() {
             return Sent::Recycled;
@@ -112,6 +115,7 @@ impl Signaller for Pidfd {
             Ok(()) => Sent::Signalled,
             Err(Errno::SRCH) => Sent::Gone,
             Err(Errno::PERM) => Sent::Denied,
+            Err(Errno::NOSYS) => Sent::Unsupported,
             Err(e) => Sent::Failed(format!("pidfd_send_signal: {e}")),
         }
     }
@@ -379,21 +383,27 @@ impl Quitter {
                 .filter(|x| targets.contains(&x.pid) && x.pid > 1 && x.pid != me)
                 .collect();
             seen.sort_unstable_by_key(|x| x.pid);
-            let (mut denied, mut recycled) = (0, 0);
+            let (mut denied, mut recycled, mut failed) = (0, 0, 0);
             for x in seen {
                 match s.signal(x.pid, sig, &|| same_process(p, x)) {
                     Sent::Signalled | Sent::Gone => {}
                     Sent::Recycled => recycled += 1,
                     Sent::Denied => denied += 1,
                     Sent::Failed(e) => {
-                        eprintln!("error: cannot signal game {appid}: {e}");
+                        eprintln!("warning: {sig:?} to pid {} of game {appid}: {e}", x.pid);
+                        failed += 1;
+                    }
+                    Sent::Unsupported => {
+                        eprintln!(
+                            "error: cannot quit game {appid}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
+                        );
                         return;
                     }
                 }
             }
-            if denied + recycled > 0 {
+            if denied + recycled + failed > 0 {
                 eprintln!(
-                    "warning: {sig:?} for game {appid}: {denied} pids refused (EPERM), {recycled} skipped (pid reused)"
+                    "warning: {sig:?} for game {appid}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
                 );
             }
         })
@@ -468,14 +478,23 @@ mod tests {
     }
 
     /// A real `sleep 60` in its own process group, so nothing else can be hit.
-    fn sleeper() -> (std::process::Child, Proc) {
+    /// Kills and reaps the child when dropped, so a failed assert never leaves a `sleep 60`.
+    struct Kid(std::process::Child);
+    impl Drop for Kid {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    fn sleeper() -> (Kid, Proc) {
         use std::os::unix::process::CommandExt;
-        let mut c = std::process::Command::new("sleep")
+        let c = Kid(std::process::Command::new("sleep")
             .arg("60")
             .process_group(0)
             .spawn()
-            .unwrap();
-        let pid = c.id();
+            .unwrap());
+        let pid = c.0.id();
         // The child may still be pre-exec for a moment: wait for sleep's own argv.
         for _ in 0..200 {
             if let Some(p) = read_proc(&Path::new("/proc").join(pid.to_string()), pid)
@@ -485,8 +504,6 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
-        let _ = c.kill();
-        let _ = c.wait();
         panic!("sleep never exec'd");
     }
 
@@ -497,7 +514,7 @@ mod tests {
         let same = || same_process(Path::new("/proc"), &seen);
         assert_eq!(Pidfd.signal(seen.pid, Sig::Term, &same), Sent::Signalled);
         use std::os::unix::process::ExitStatusExt;
-        assert_eq!(c.wait().unwrap().signal(), Some(15));
+        assert_eq!(c.0.wait().unwrap().signal(), Some(15));
         // Reaped: the pid names nothing now (or, rarely, a newer process: never signalled).
         let r = Pidfd.signal(seen.pid, Sig::Term, &same);
         assert!(matches!(r, Sent::Gone | Sent::Recycled), "{r:?}");
@@ -511,11 +528,9 @@ mod tests {
         let same = || same_process(Path::new("/proc"), &seen);
         assert_eq!(Pidfd.signal(seen.pid, Sig::Term, &same), Sent::Recycled);
         assert!(
-            c.try_wait().unwrap().is_none(),
+            c.0.try_wait().unwrap().is_none(),
             "the newer process was signalled"
         );
-        c.kill().unwrap();
-        c.wait().unwrap();
     }
 
     #[test]
