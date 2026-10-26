@@ -118,10 +118,10 @@ const IDLE: StreamInfo = StreamInfo {
     elapsed_s: None,
 };
 
-/// What the bridge's watcher task and the request path share. `gen` bumps whenever a request
+/// What the bridge's watcher task and the request path share. `epoch` bumps whenever a request
 /// takes over, so a watcher of a replaced bridge leaves the state alone.
 struct Shared {
-    gen: u64,
+    epoch: u64,
     info: StreamInfo,
     rec: Option<SessionRec>,
     /// `started` of the newest session and the Instant it was taken at.
@@ -177,7 +177,7 @@ impl Supervisor {
             runner,
             sessions: Arc::new(Sessions::new(cfg.data_dir.join("sessions.jsonl"))),
             shared: Arc::new(Mutex::new(Shared {
-                gen: 0,
+                epoch: 0,
                 info: IDLE,
                 rec: None,
                 clock: None,
@@ -224,7 +224,7 @@ impl Supervisor {
                 self.sessions.close(r);
             }
         }
-        let gen = {
+        let epoch = {
             let mut s = self.shared.lock().unwrap();
             s.info = StreamInfo {
                 state: State::Starting,
@@ -233,7 +233,7 @@ impl Supervisor {
                 appid,
                 ..IDLE
             };
-            s.gen
+            s.epoch
         };
         let n = |v: u32| v.to_string();
         let mut cmd = tokio::process::Command::new(&self.bin);
@@ -335,7 +335,7 @@ impl Supervisor {
             }
             let rec = {
                 let mut s = shared.lock().unwrap();
-                if s.gen != gen {
+                if s.epoch != epoch {
                     None
                 } else {
                     s.info = IDLE;
@@ -438,7 +438,7 @@ impl Supervisor {
     async fn stop_locked(&self, slot: &mut Option<Running>) -> (StreamInfo, Option<SessionRec>) {
         let mut prev = {
             let mut s = self.shared.lock().unwrap();
-            s.gen += 1;
+            s.epoch += 1;
             (std::mem::replace(&mut s.info, IDLE), s.rec.take())
         };
         if let Some(mut r) = slot.take() {

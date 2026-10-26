@@ -135,13 +135,16 @@ async fn tap_conn_rejects_garbage() {
 
 #[test]
 fn tap_path_prefers_brisk_tap_sock() {
-    std::env::set_var("XDG_RUNTIME_DIR", "/run/user/4242");
-    std::env::remove_var("BRISK_TAP_SOCK");
+    // SAFETY: this is the only test in the binary that touches these variables.
+    unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/4242") };
+    // SAFETY: this is the only test in the binary that touches these variables.
+    unsafe { std::env::remove_var("BRISK_TAP_SOCK") };
     assert_eq!(
         brisk_client::tap::tap_path().unwrap(),
         Path::new("/run/user/4242/brisk/tap.sock")
     );
-    std::env::set_var("BRISK_TAP_SOCK", "/tmp/x.sock");
+    // SAFETY: this is the only test in the binary that touches these variables.
+    unsafe { std::env::set_var("BRISK_TAP_SOCK", "/tmp/x.sock") };
     assert_eq!(
         brisk_client::tap::tap_path().unwrap(),
         Path::new("/tmp/x.sock")

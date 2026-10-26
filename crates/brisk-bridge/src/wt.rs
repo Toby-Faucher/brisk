@@ -124,7 +124,7 @@ impl Acceptor {
     ) -> Option<
         impl std::future::Future<Output = Result<(Session, mpsc::Receiver<Bytes>), Error>>
             + Send
-            + 'static,
+            + 'static + use<>,
     > {
         let permit = match self.pending.clone().try_acquire_owned() {
             Ok(p) if ep.open_connections() < MAX_CONNECTIONS => p,
