@@ -4,7 +4,7 @@ import { loadModules, type ModuleManifest } from './registry';
 describe('registry', () => {
   it('modules_sorted_by_order', () => {
     const mods = loadModules();
-    expect(mods.map((m) => m.id)).toEqual(['home', 'library', 'stream', 'machines', 'settings', 'agents', 'news', 'workouts']);
+    expect(mods.map((m) => m.id)).toEqual(['home', 'library', 'stream', 'machines', 'history', 'settings', 'agents', 'news', 'workouts']);
     const orders = mods.map((m) => m.order);
     expect(orders).toEqual([...orders].sort((a, b) => a - b));
   });

@@ -1,0 +1,12 @@
+bridge	viewer	100.86.83.60:44268 connected
+bridge	SIGTERM: stopping
+bridge	tap_frames	58193
+bridge	viewers	1
+bridge	browser_leg	sent 58181 dropped 11 reset 0 idr_requests 2
+bridge	bridge_write-capture	p50 4.3 p99 8.7 ms (n 58178)
+bridge	frame_processing(tap-capture)	p50 4.2 p99 8.6 ms (n 58191)
+bridge	bridge_write-tap	p50 0.2 p99 0.3 ms (n 58180)
+bridge	audio	packets 193968 recovered 1 lost 0 errors 0 reordered 3 skipped 0 late 0 sent 193968 evicted 0 too_large 0 queue_full 0
+bridge	input	received 48138 sent 46605 bad 0 coalesced 313 dropped 0 timeouts 0 errors 0 released 1 held_timeouts 0 heartbeats 2
+bridge	gate(bridge_write p50 <= frame_processing p50 + 2 ms)	PASS
+bridge	session	ended after 970.2s

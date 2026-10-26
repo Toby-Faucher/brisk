@@ -30,12 +30,48 @@ export type StreamInfo = {
   appid: number | null;
   wt: string | null;
   hash: string | null;
+  /** The live session's id (its record's `started`), where the page PUTs its series. */
+  started?: number | null;
+  /** Seconds since `started` on hostd's monotonic clock, as of this answer: the series time base. */
+  elapsedS?: number | null;
 };
 /** One clipboard entry: text, or a PNG image. */
 export type Clip = { kind: 'text'; text: string } | { kind: 'image'; blob: Blob };
 /** Where hostd saved an uploaded file. */
 export type Saved = { path: string; size: number };
-export type SessionRec = { appid: number | null; name: string; started: number /* unix ms */; ended: number | null; host: string; preset: Preset };
+/** The bridge's end-of-session report (docs/m0-baseline.md); null fields were missing from it. */
+export type SessionStats = {
+  durationS: number | null;
+  frames: number | null;
+  sent: number | null;
+  dropped: number | null;
+  resets: number | null;
+  idrRequests: number | null;
+  bridgeP50: number | null;
+  bridgeP99: number | null;
+  hostP50: number | null;
+  hostP99: number | null;
+  audioLost: number | null;
+  audioErrors: number | null;
+  inputReceived: number | null;
+  inputSent: number | null;
+  inputDropped: number | null;
+  gate: 'pass' | 'fail' | null;
+};
+/** codec, bitrate and stats are null (or absent) on records from before they were kept. */
+export type SessionRec = {
+  appid: number | null;
+  name: string;
+  started: number /* unix ms */;
+  ended: number | null;
+  host: string;
+  preset: Preset;
+  codec?: Codec | null;
+  bitrateKbps?: number | null;
+  stats?: SessionStats | null;
+};
+/** `[t s since started, delay ms, fps, Mbit/s]`, one per 5 s. */
+export type SeriesPoint = [number, number, number, number];
 
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 
@@ -139,7 +175,10 @@ export const api = {
   prefs: () => call<{ prefs: PrefsMap }>('GET', '/api/prefs'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
-  sessions: () => call<{ sessions: SessionRec[] }>('GET', '/api/sessions'),
+  /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */
+  sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', '/api/sessions'),
+  session: (started: number) => call<{ session: SessionRec; series: SeriesPoint[] }>('GET', `/api/sessions/${started}`),
+  putSeries: (started: number, points: SeriesPoint[]) => call<void>('PUT', `/api/sessions/${started}/series`, { points }, true), // keepalive: sent on pagehide
   getClipboard,
   postClipboard,
   uploadFile,

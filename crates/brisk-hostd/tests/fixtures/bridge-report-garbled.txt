@@ -1,0 +1,10 @@
+bridge	tap_frames	120x
+bridge	browser_leg	sent 100 dropped
+bridge	bridge_write-capture	p50 - p99 NaN ms (n 0)
+bridge	frame_processing(tap-capture)	p50 3.1 p99 inf ms (n 7)
+bridge	audio	packets 10 lost 2 errors
+bridge	input	received 5 sent abc dropped 1
+bridge	gate(bridge_write p50 <= frame_processing p50 + 2 ms)	no data
+bridge	surprise	line
+not a report line at all
+bridge	session	ended aft

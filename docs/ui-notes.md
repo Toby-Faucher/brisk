@@ -8,7 +8,8 @@
 - Stop: Ctrl-C (hostd stops its bridge first), then `scripts/brisk-down.sh` (restores stock Sunshine).
 
 ## API (hostd, 127.0.0.1:8443 only; Host header checked; every /api request, GET included, needs the `x-brisk-secret` header, because GET /api/stream carries the bridge URL and session token; static pages and assets do not)
-- GET /api/games, GET /api/host, GET /api/sessions
+- GET /api/games, GET /api/host, GET /api/sessions (last 100, no series), GET /api/sessions/<started>,
+  PUT /api/sessions/<started>/series (see Session history)
 - GET/POST/DELETE /api/stream (state / start / stop the bridge)
 - GET /api/prefs, PUT/DELETE /api/prefs/<appid> (see Per-game quality)
 - POST /api/launch, POST /api/install, POST /api/sunshine/restart
@@ -76,6 +77,50 @@ tree and runs `swaymsg '[con_id=N] focus, fullscreen enable'`; no window or no s
 - Saving: Forget waits for a save still in flight, then DELETEs, and that save's answer is dropped, so Forget
   cannot be undone by a late PUT. A pending change is flushed on `pagehide` too (the PUT uses fetch `keepalive`).
 - [U] Not tried on hardware: saved quality across a real Library -> stream -> quality change -> Disconnect -> Library round trip.
+
+## Session history
+- `/history` (sidebar "History", chart icon, `--c-hist` orange): one card per stream (last 100), with game, date and
+  time, length, quality ("Crisp · HEVC · 40 Mbps"; older records only have the preset), a delay sparkline and the
+  bridge's PASS/FAIL gate (the sparkline comes with the list: `spark`, 24 mean-binned delays per row, so the list
+  makes one request). A card opens `/history?session=<started>` in place (pushState; Back returns): delay, frame
+  rate and bitrate over the session as LayerChart area charts with a hover tooltip (m:ss, one decimal; each chart
+  has a visually hidden min/average/max and peak-time summary, the plot is aria-hidden), and the bridge report as a table
+  (p50 / p99 latencies, docs/m0-baseline.md). Home's "Recent sessions" title and rows link here. Empty, unreachable
+  and old-record (no series, no report) states say so.
+- Recording: the Stream page passes each 500 ms stats sample with frames (delay estimate, fps > 0, Mbit/s; the same
+  numbers as the stats card) to `SeriesUploader` (web/src/modules/stream/series.ts), which averages them to one point
+  per 5 s and PUTs them every 30 s and on Disconnect, leaving /stream and `pagehide` (fetch keepalive). Samples stay
+  pending until a PUT of them succeeds (at most 4000 samples, ~33 min, oldest dropped), so a failed PUT is simply
+  re-sent; the current, partial bucket is sent again until complete (hostd keeps the later point for a t). A 404 or
+  413 ends uploads for that session quietly. Uploads are never awaited.
+- Time base: t is hostd's seconds since `started`, not the laptop's wall clock. GET/POST /api/stream carry
+  `elapsedS` (hostd's monotonic Instant since the session's record was made; null when idle); the page adds its own
+  `performance.now()` since that answer, and the uploader then counts on from its first sample. A reload of /stream
+  mid-session continues from hostd's elapsed and skips the rest of the 5 s bucket it lands in, so earlier points are
+  never rewritten. Only while the page shows the stream: a bridge running with no page records no series.
+- hostd: the bridge's end-of-session report (stdout, see stream.rs) is parsed line by line into the record's `stats`
+  `{durationS, frames, sent, dropped, resets, idrRequests, bridgeP50/P99, hostP50/P99, audioLost, audioErrors,
+  inputReceived/Sent/Dropped, gate}`; parsing starts at the report's first line (`tap_frames`), and a missing or
+  garbled line leaves its field null (never clearing a value already parsed). A quality change restarts the
+  bridge inside one session: counts add up, p50 is frame-weighted, p99 the worst, any FAIL fails. Records also keep
+  `codec` and `bitrateKbps` (the last ones of the session); old lines without them still read. The live session's id
+  is `started` in GET/POST /api/stream.
+- Series: `<data_dir>/sessions/<started>.series.json`, 0600, written to a temp file and renamed.
+  `PUT /api/sessions/<started>/series {points: [[t, delayMs, fps, mbps], ...]}` merges by t; 400 for a point that is
+  not 4 finite numbers in range (t 0..1 week, delay 0..60000, fps 0..1000, 0..10000 Mbit/s; JSON has no NaN), 413
+  for more than 17280 points in the request or once merged (5 s each: 24 h; then nothing more is stored) or a body
+  over 1 MiB, 404 for a session hostd has no record of. PUTs are serialized. Only the series of the newest 200
+  sessions are kept; leftover `.*.tmp` files of a crashed write are swept then.
+  `GET /api/sessions/<started>` = `{session, series}`. All need the secret.
+- Charts: `layerchart` 2.6.1 (MIT, Svelte 5 native; its d3 deps are ISC/BSD-3/MIT), the `layerchart/svg` entry,
+  no Tailwind: it styles itself from CSS variables (`--color-primary`, `--color-surface-100/200/300`,
+  `--color-surface-content`), mapped to our tokens in modules/history/Charts.svelte, plus `layerchart/core.css`
+  (only its cascade-layer order). No chart motion is configured, so nothing animates in. Charts.svelte is a dynamic
+  import inside the detail view: Home, Library and Stream fetch none of it (headless-checked), the History list
+  neither; opening a session fetches ~390 KiB of JS uncompressed (~120 KiB gzip; LayerChart + d3).
+- [U] Not tried with a real stream: the series upload during a live session on the laptop, the pagehide flush
+  when the tab is closed mid-stream, and the report parse against a real bridge exit (the parser is tested on a real
+  report from a brisk-up log; the fake bridge in tests prints it).
 
 ## Clipboard and file drop
 - Clipboard sync (on by default; ghost bar clipboard panel or Settings, key `clipboardSync`) carries text and PNG
