@@ -12,6 +12,7 @@
   import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
+  import NotesBackup from './NotesBackup.svelte';
   import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
 
   const PRESETS: Exclude<Preset, 'custom'>[] = ['fast', 'balanced', 'crisp'];
@@ -103,6 +104,7 @@
           <div class="opt"><span>Card order <small class="lab">drag a card's handle on Home to move it</small></span><button type="button" class="btn ghost" onclick={resetLayout}>Reset layout</button></div>
           <div class="opt"><span>Settings <small class="lab">everything on this page</small></span><button type="button" class="btn ghost" onclick={resetSettings}>Reset to defaults</button></div>
         </Card>
+        <NotesBackup />
       </div>
     </Tabs.Content>
 

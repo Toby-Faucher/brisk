@@ -70,6 +70,16 @@ try {
     await go(`/settings#${tab}`);
     await scan(`settings #${tab}`);
   }
+  // Notes backup: the error text, then the restore confirmation (a valid file; nothing is sent until confirmed)
+  await go('/settings#general');
+  const pick = (body) => page.locator('#notes-restore').setInputFiles({ name: 'n.json', mimeType: 'application/json', buffer: Buffer.from(body) });
+  await pick('{nope');
+  await page.getByRole('alert').waitFor();
+  await scan('settings notes restore error');
+  await pick(JSON.stringify({ format: 'brisk-notes', version: 1, ...notes }));
+  await page.getByRole('dialog', { name: 'Restore notes and tags?' }).waitFor();
+  await scan('settings notes restore dialog');
+  await page.keyboard.press('Escape');
   await go('/stream');
   await scan('stream idle');
   stream = live;
