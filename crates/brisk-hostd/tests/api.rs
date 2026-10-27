@@ -248,6 +248,11 @@ fn parse_acf_update_flags() {
     assert_eq!(upd(1_048_576 | 4).as_deref(), Some("running"));
     assert_eq!(upd(4 | 512).as_deref(), Some("needed"));
     assert_eq!(upd(1026), None);
+    assert_eq!(upd(0), None);
+    assert_eq!(upd(2), None);
+    assert_eq!(upd(6).as_deref(), Some("needed"));
+    assert_eq!(upd(4 | 512).as_deref(), Some("needed"));
+    assert_eq!(upd(1542).as_deref(), Some("needed"));
 }
 
 #[tokio::test]

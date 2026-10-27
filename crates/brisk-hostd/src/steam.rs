@@ -149,9 +149,8 @@ fn get_s<'a>(m: &'a [(String, V)], k: &str) -> Option<&'a str> {
     }
 }
 
-/// `None` for anything that is not a usable `appmanifest_*.acf` (empty, garbage, no appid or name).
-// Steam's EAppState bits. Seen on this host: only 4 (FullyInstalled). The other bits, including the in-progress ones (256, 1024, 1048576, 2097152, 4194304),
-// are from Valve's headers and unverified against a live update. 512 (UpdatePaused) counts as needed.
+// Steam's EAppState bits. Seen on this host: only 4 (FullyInstalled). The other bit values, including the in-progress ones (256, 1024, 1048576, 2097152, 4194304),
+// are from memory and unverified against a live update. 512 (UpdatePaused) counts as needed and wins over the running bits.
 const FULLY_INSTALLED: u32 = 4;
 const UPDATE_REQUIRED: u32 = 2;
 const UPDATE_RUNNING: u32 = 256 | 1024 | 1_048_576 | 2_097_152 | 4_194_304;
@@ -161,15 +160,18 @@ fn update_state(flags: u32) -> Option<String> {
     if flags & FULLY_INSTALLED == 0 {
         return None;
     }
-    if flags & UPDATE_RUNNING != 0 {
+    if flags & 512 != 0 {
+        Some("needed".into())
+    } else if flags & UPDATE_RUNNING != 0 {
         Some("running".into())
-    } else if flags & (UPDATE_REQUIRED | 512) != 0 {
+    } else if flags & UPDATE_REQUIRED != 0 {
         Some("needed".into())
     } else {
         None
     }
 }
 
+/// `None` for anything that is not a usable `appmanifest_*.acf` (empty, garbage, no appid or name).
 pub fn parse_acf(text: &str) -> Option<Installed> {
     let top = parse_vdf(text)?;
     let V::M(a) = get(&top, "AppState")? else {

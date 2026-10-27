@@ -125,7 +125,8 @@ impl NotesStore {
 
     /// Creates or replaces tag `id`; returns it as stored (name trimmed).
     pub fn put_tag(&self, id: &str, mut t: Tag) -> Result<Tag, NotesError> {
-        if !valid_tag_id(id) {
+        // `auto-` ids belong to the page's smart tags.
+        if !valid_tag_id(id) || id.starts_with("auto-") {
             return Err(NotesError::Bad("tag id must be 1-16 of a-z 0-9 -"));
         }
         t.name = t.name.trim().to_string();
@@ -266,6 +267,15 @@ mod tests {
         let back = NotesStore::load(p).all();
         assert_eq!(back.tags["a"], tag("A"));
         assert_eq!(back.games[&1].tags, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn auto_prefix_is_reserved() {
+        let d = tempfile::tempdir().unwrap();
+        let s = NotesStore::load(d.path().join("notes.json"));
+        assert!(s.put_tag("auto-coop", tag("A")).is_err());
+        assert!(s.put_tag("autos", tag("A")).is_ok());
+        assert!(s.put_tag("a-auto", tag("A")).is_ok());
     }
 
     #[test]

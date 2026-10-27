@@ -663,7 +663,7 @@ fn save_summary(dir: &Path) -> Option<SaveInfo> {
                 stack.push((e.path(), depth + 1));
             } else if m.is_file() {
                 s.files += 1;
-                s.bytes += m.len();
+                s.bytes = s.bytes.saturating_add(m.len());
                 let t = m
                     .modified()
                     .ok()
