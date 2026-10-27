@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterGames, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterByTag, filterGames, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false, ...o });
@@ -121,5 +121,13 @@ describe('library', () => {
     expect(savesLine({ files: 3, bytes: 5_200_000_000, modified: now / 1000 - 120 }, now)).toBe('Cloud saves: 3 files, 5.2 GB, synced 2 min ago');
     expect(savesLine({ files: 0, bytes: 0, modified: 0 }, now)).toBeNull();
     expect(savesLine(null, now)).toBeNull();
+  });
+
+  it('filterByTag_composes_with_search', () => {
+    const list = [g(1, 'Hades II'), g(2, 'Hadestown'), g(3, 'Portal 2')];
+    const n = { tags: { coop: { name: 'Co-op', color: 'teal' as const, symbol: 'users', note: '' } }, games: { '2': { note: '', tags: ['coop'] }, '3': { note: '', tags: ['coop'] } } };
+    expect(searchGames(filterByTag(list, n, 'coop'), 'hades').map((x) => x.appid)).toEqual([2]);
+    expect(filterByTag(searchGames(list, 'hades'), n, 'coop').map((x) => x.appid)).toEqual([2]);
+    expect(filterByTag(searchGames(list, 'hades'), n, null).map((x) => x.appid)).toEqual([1, 2]);
   });
 });

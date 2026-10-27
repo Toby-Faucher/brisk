@@ -1,5 +1,6 @@
 import type { Game, GameLocal } from '../../state/api';
 import { fmtAgo, pickResume } from '../home/home';
+import type { Notes } from '../../state/notes';
 
 export type Filter = 'all' | 'installed' | 'not-installed' | 'recent';
 
@@ -13,6 +14,13 @@ export function filterGames(games: Game[], f: Filter, now = Date.now()): Game[] 
   if (f === 'not-installed') return games.filter((g) => !g.installed);
   if (f === 'recent') return games.filter((g) => g.lastPlayed != null && now / 1000 - g.lastPlayed <= RECENT_S);
   return games;
+}
+
+/** null: all games; else the games carrying tag `tagId` (while it exists). Keeps the order. */
+export function filterByTag(games: Game[], notes: Notes, tagId: string | null): Game[] {
+  if (tagId === null) return games;
+  if (!notes.tags[tagId]) return [];
+  return games.filter((g) => notes.games[g.appid]?.tags.includes(tagId));
 }
 
 /** 'default' keeps the incoming order (search relevance, then most played); the others are stable sorts of a copy. */

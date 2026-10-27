@@ -113,6 +113,7 @@ export type SeriesPoint = [number, number, number, number];
 
 import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
+import type { GameNote, Notes, Tag } from './notes';
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -249,6 +250,13 @@ export const api = {
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
+  notes: () => call<Notes>('GET', '/api/notes'),
+  /** Create or replace a tag; hostd answers with what it stored (name trimmed). */
+  putTag: (id: string, tag: Tag) => call<Tag>('PUT', `/api/notes/tags/${id}`, tag),
+  /** Also takes the tag off every game. */
+  deleteTag: (id: string) => call<void>('DELETE', `/api/notes/tags/${id}`),
+  /** hostd drops unknown tag ids and answers with what it stored. */
+  putGameNote: (appid: number, b: GameNote) => call<GameNote>('PUT', `/api/notes/games/${appid}`, b, true), // keepalive: flushed on pagehide
   /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */
   sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', '/api/sessions'),
   session: (started: number) => call<{ session: SessionRec; series: SeriesPoint[] }>('GET', `/api/sessions/${started}`),
