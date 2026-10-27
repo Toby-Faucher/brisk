@@ -3,6 +3,7 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::notes::{GameNote, NotesError, NotesStore, Tag};
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
 use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
@@ -31,6 +32,8 @@ pub struct AppState {
     pub files: Files,
     pub quit: Quitter,
     pub prefs: Prefs,
+    /// Your notes and tags (`data_dir/notes.json`); private text, never logged.
+    pub notes: NotesStore,
     pub hosts: Hosts,
     /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
     pub site: Site,
@@ -53,6 +56,7 @@ impl AppState {
             clip: Arc::new(Clipboard::new(Arc::new(WlBackend::default()))),
             files: Files::new(cfg.downloads_dir.clone()),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
+            notes: NotesStore::load(cfg.data_dir.join("notes.json")),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
@@ -583,6 +587,52 @@ async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>)
     StatusCode::NO_CONTENT.into_response()
 }
 
+fn notes_err(e: NotesError) -> Response {
+    match e {
+        NotesError::Bad(m) => err(StatusCode::BAD_REQUEST, m),
+        NotesError::Full => err(StatusCode::CONFLICT, "too many notes or tags"),
+        NotesError::Io => err(StatusCode::INTERNAL_SERVER_ERROR, "could not save notes"),
+    }
+}
+
+async fn notes_get(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(s.notes.all()).into_response()
+}
+
+/// Creates or replaces one tag; answers with what was stored (name trimmed).
+async fn tag_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<String>,
+    b: axum::body::Bytes,
+) -> Response {
+    match parse::<Tag>(&b).map(|t| s.notes.put_tag(&id, t)) {
+        Ok(Ok(t)) => axum::Json(t).into_response(),
+        Ok(Err(e)) => notes_err(e),
+        Err(r) => r,
+    }
+}
+
+/// Removes the tag and takes it off every game; an unknown id is fine (204 either way).
+async fn tag_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> Response {
+    match s.notes.delete_tag(&id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => notes_err(e),
+    }
+}
+
+/// One game's note and tags; answers with what was stored (unknown tag ids dropped).
+async fn game_note_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(appid): UrlPath<u32>,
+    b: axum::body::Bytes,
+) -> Response {
+    match parse::<GameNote>(&b).map(|g| s.notes.put_game(appid, g)) {
+        Ok(Ok(g)) => axum::Json(g).into_response(),
+        Ok(Err(e)) => notes_err(e),
+        Err(r) => r,
+    }
+}
+
 /// Mount API routes on `api` below; everything else falls through to the static site (site.rs).
 /// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
@@ -613,6 +663,17 @@ pub fn router(state: Arc<AppState>) -> Router {
         // static beats the {appid} capture in axum's router
         .route("/prefs/layout", put(layout_put).delete(layout_delete))
         .route("/prefs/{appid}", put(prefs_put).delete(prefs_delete))
+        .route("/notes", get(notes_get))
+        .route(
+            "/notes/tags/{id}",
+            put(tag_put)
+                .delete(tag_delete)
+                .layer(DefaultBodyLimit::max(16 << 10)),
+        )
+        .route(
+            "/notes/games/{appid}",
+            put(game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
+        )
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
         .route(

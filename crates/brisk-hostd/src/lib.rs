@@ -6,6 +6,7 @@ pub mod embed;
 pub mod files;
 pub mod host;
 pub mod http;
+pub mod notes;
 pub mod notify;
 pub mod prefs;
 pub mod running;
