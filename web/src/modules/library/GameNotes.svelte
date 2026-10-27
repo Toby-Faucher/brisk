@@ -2,13 +2,12 @@
   // Your note and tags for one game, in the detail panel. The note saves 800 ms after you stop typing, on blur and
   // when the panel closes; a failed save keeps the text and tries again on the next edit or on focus.
   import { onMount } from 'svelte';
-  import { gameTags, noteSaver, notes } from '../../state/notes';
+  import { gameNoteSaver as saver, gameTags, notes } from '../../state/notes';
   import TagChip from './TagChip.svelte';
   import TagEditor from './TagEditor.svelte';
 
   let { appid, name }: { appid: number; name: string } = $props();
 
-  const saver = noteSaver();
   const status = saver.status;
   let draft = $state('');
   let touched = false;
@@ -32,6 +31,7 @@
   }
 
   onMount(() => {
+    if ($status === 'saved') status.set('idle'); // that was another game, or an earlier visit
     const retry = () => void saver.retry();
     const flush = () => void saver.flush();
     addEventListener('focus', retry);

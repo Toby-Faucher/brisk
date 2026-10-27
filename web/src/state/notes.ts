@@ -80,6 +80,7 @@ export function refreshNotes(): Promise<void> {
 /** Fetch if never fetched (or older than a minute), then again on window focus at most once a minute. */
 export function watchNotes(win: EventTarget = window): () => void {
   const onFocus = () => {
+    void gameNoteSaver.retry(); // a note that failed to save keeps trying after its panel closed
     if (Date.now() - fetchedAt >= 60_000) void refreshNotes();
   };
   onFocus();
@@ -140,3 +141,6 @@ export function noteSaver(d: { put?: (appid: number, b: GameNote) => Promise<Gam
     retry: () => (pending ? flush() : chain),
   };
 }
+
+/** The one saver the detail panel uses, so a failed save outlives the panel and is retried on focus (watchNotes). */
+export const gameNoteSaver = noteSaver();
