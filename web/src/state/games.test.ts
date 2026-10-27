@@ -32,4 +32,14 @@ describe('games', () => {
     focus();
     expect(f).toHaveBeenCalledTimes(2); // listener removed
   });
+
+  it('refreshGames_force_adds_refresh_1_and_plain_does_not', async () => {
+    vi.resetModules();
+    const { refreshGames } = await import('./games');
+    const f = vi.fn(async (_: string) => new Response('{"games":[],"ownedAvailable":true}'));
+    vi.stubGlobal('fetch', f);
+    await refreshGames();
+    await refreshGames({ force: true });
+    expect(f.mock.calls.map((c) => c[0])).toEqual(['/api/games', '/api/games?refresh=1']);
+  });
 });

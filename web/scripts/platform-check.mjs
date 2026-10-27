@@ -223,12 +223,12 @@ try {
       await page.getByRole('button', { name: 'Not installed', exact: true }).click();
       await sleep(100);
       const box = await page.evaluate(() => {
-        const r = document.querySelector('.g[aria-expanded]').getBoundingClientRect();
+        const r = document.querySelector('.g.off').getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2, running: document.getAnimations().some((a) => a.effect?.pseudoElement?.startsWith('::view-transition') && a.playState === 'running') };
       });
       await page.mouse.click(box.x, box.y);
       await sleep(400);
-      const r = { running: box.running, expanded: await page.evaluate(() => document.querySelectorAll('.g[aria-expanded="true"]').length === 1) };
+      const r = { running: box.running, expanded: await page.evaluate(() => document.querySelectorAll('[role=dialog]').length === 1) }; // the card opened its panel
       await ctx.close();
       return r;
     };

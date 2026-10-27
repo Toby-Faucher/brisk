@@ -12,6 +12,7 @@ pub struct Config {
     pub steam_dir: PathBuf,
     pub steam_key_file: PathBuf,
     pub steam_api_base: String,
+    pub steam_store_base: String,
     pub bridge_bin: PathBuf,
     /// `BRISK_LISTEN`; None = the tailscale IPv4 :4433, looked up at each stream start.
     pub bridge_listen: Option<String>,
@@ -50,6 +51,8 @@ impl Config {
                 .unwrap_or_else(|| home.join(".config/brisk/steam-api-key")),
             steam_api_base: std::env::var("BRISK_STEAM_API_BASE")
                 .unwrap_or_else(|_| "https://api.steampowered.com".into()),
+            steam_store_base: std::env::var("BRISK_STEAM_STORE_BASE")
+                .unwrap_or_else(|_| "https://store.steampowered.com".into()),
             bridge_bin: env_path("BRISK_BRIDGE_BIN").unwrap_or_else(|| "brisk-bridge".into()),
             bridge_listen: std::env::var("BRISK_LISTEN").ok().filter(|v| !v.is_empty()),
             tls_dir: env_path("BRISK_TLS_DIR").unwrap_or_else(|| home.join(".config/brisk/tls")),

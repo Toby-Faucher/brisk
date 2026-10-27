@@ -1,0 +1,6 @@
+{"game":{"gameName":"Portal 2","availableGameStats":{"achievements":[
+{"name":"ACH_ONE","defaultvalue":0,"displayName":"First Steps","hidden":0,"description":"Take a step.","icon":"https://cdn.example.test/ach/one.jpg","icongray":"https://cdn.example.test/ach/one_g.jpg"},
+{"name":"ACH_TWO","defaultvalue":0,"displayName":"Second <b>Wind</b>","hidden":0,"description":"Catch your breath.","icon":"http://cdn.example.test/ach/two.jpg","icongray":"https://cdn.example.test/ach/two_g.jpg"},
+{"name":"ACH_THREE","defaultvalue":0,"displayName":"Third Time","hidden":0,"description":"Try again.","icon":"https://cdn.example.test/ach/three.jpg","icongray":"https://cdn.example.test/ach/three_g.jpg"},
+{"name":"ACH_SECRET","defaultvalue":0,"displayName":"Hidden One","hidden":1,"description":"Should not leak.","icon":"https://cdn.example.test/ach/s.jpg","icongray":"https://cdn.example.test/ach/s_g.jpg"},
+{"name":"ACH_FIVE","defaultvalue":0,"displayName":"Fifth","hidden":0,"description":"The last one.","icon":"https://cdn.example.test/ach/five.jpg","icongray":"http://cdn.example.test/ach/five_g.jpg"}]}}}

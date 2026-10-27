@@ -18,9 +18,25 @@ pub struct Game {
     pub size_bytes: Option<u64>,
     pub last_played: Option<u64>,
     pub playtime_min: u64,
+    /// Minutes played in the last two weeks (Steam leaves the field out when 0).
+    pub playtime2wk_min: u64,
     pub cover: String,
+    /// Wide library art (404s for some games: the UI falls back) and the title logo.
+    pub hero: String,
+    pub logo: String,
     /// Steam is running it now (its launcher reaper is alive).
     pub running: bool,
+    /// Achievement counts from the cache (filled by the background warm); None until known.
+    pub ach_unlocked: Option<u32>,
+    pub ach_total: Option<u32>,
+    /// Installed, and a patch note newer than the last play (from the news cache).
+    pub updated: bool,
+    /// Steam's own update state of an installed game: "needed" or "running" (from StateFlags).
+    pub update: Option<String>,
+    /// "full" or "partial", from the info cache (None until warmed or when the Store has none).
+    pub controller: Option<String>,
+    /// Co-op or Remote Play Together, from the info cache.
+    pub coop: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -43,6 +59,7 @@ pub struct Installed {
     pub size: u64,
     pub state_flags: u32,
     pub last_played: u64,
+    pub update: Option<String>,
 }
 
 // ---- VDF / ACF ----
@@ -132,6 +149,28 @@ fn get_s<'a>(m: &'a [(String, V)], k: &str) -> Option<&'a str> {
     }
 }
 
+// Steam's EAppState bits. Seen on this host: only 4 (FullyInstalled). The other bit values, including the in-progress ones (256, 1024, 1048576, 2097152, 4194304),
+// are from memory and unverified against a live update. 512 (UpdatePaused) counts as needed and wins over the running bits.
+const FULLY_INSTALLED: u32 = 4;
+const UPDATE_REQUIRED: u32 = 2;
+const UPDATE_RUNNING: u32 = 256 | 1024 | 1_048_576 | 2_097_152 | 4_194_304;
+
+/// Only installed games get a state: an install in progress is shown by the install flow.
+fn update_state(flags: u32) -> Option<String> {
+    if flags & FULLY_INSTALLED == 0 {
+        return None;
+    }
+    if flags & 512 != 0 {
+        Some("needed".into())
+    } else if flags & UPDATE_RUNNING != 0 {
+        Some("running".into())
+    } else if flags & UPDATE_REQUIRED != 0 {
+        Some("needed".into())
+    } else {
+        None
+    }
+}
+
 /// `None` for anything that is not a usable `appmanifest_*.acf` (empty, garbage, no appid or name).
 pub fn parse_acf(text: &str) -> Option<Installed> {
     let top = parse_vdf(text)?;
@@ -143,12 +182,14 @@ pub fn parse_acf(text: &str) -> Option<Installed> {
     if name.is_empty() {
         return None;
     }
+    let flags = num("StateFlags").unwrap_or(0) as u32;
     Some(Installed {
         appid: get_s(a, "appid")?.parse().ok()?,
         name: name.to_string(),
         size: num("SizeOnDisk").unwrap_or(0),
-        state_flags: num("StateFlags").unwrap_or(0) as u32,
+        state_flags: flags,
         last_played: num("LastPlayed").unwrap_or(0),
+        update: update_state(flags),
     })
 }
 
@@ -211,6 +252,8 @@ struct Owned {
     name: String,
     playtime_forever: u64,
     #[serde(default)]
+    playtime_2weeks: u64,
+    #[serde(default)]
     rtime_last_played: u64,
 }
 
@@ -220,7 +263,7 @@ struct OwnedCache {
     games: Vec<Owned>,
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
@@ -289,40 +332,84 @@ fn https_get(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| safe_err(&e))
 }
 
-/// One GetOwnedGames call. The key is read from its file here and goes only into the request's
-/// query string (that is how Steam's Web API takes it); errors never carry the URL.
-async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
-    let base = cfg.steam_api_base.trim_end_matches('/');
-    if !base_ok(base) {
-        return Err("steam_api_base must be https (or http to loopback)".into());
-    }
+/// The key from its file; only plain key characters, so it cannot change the shape of the URL.
+pub(crate) fn read_key(cfg: &Config) -> Result<String, &'static str> {
     let key = std::fs::read_to_string(&cfg.steam_key_file).map_err(|_| "no API key file")?;
     let key = key.trim();
-    // Only plain key characters, so the key cannot change the shape of the URL.
     if key.is_empty()
         || !key
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err("API key file is not a plain key".into());
+        return Err("API key file is not a plain key");
     }
-    let url = format!(
-        "{base}/IPlayerService/GetOwnedGames/v1/?key={key}&steamid={}&include_appinfo=1&include_played_free_games=1&format=json",
-        steam_id(&cfg.steam_dir).ok_or("no Steam account id")?
-    );
+    Ok(key.to_string())
+}
+
+/// A `steam_get` error that will not go away by waiting: Steam refused the key or the list is private
+/// (the texts come from `safe_err` / `https_get` above).
+pub(crate) fn is_refusal(err: &str) -> bool {
+    matches!(err, "HTTP 401" | "HTTP 403")
+}
+
+/// One Steam Web API GET (`path_query` like `ISteamUser/GetPlayerSummaries/v2/?steamids=1,2`).
+/// The key is read from its file here and goes only into the request's query string (that is how
+/// Steam's Web API takes it); `format=json` is appended too. Errors never carry the URL.
+pub(crate) async fn steam_get(cfg: &Config, path_query: &str) -> Result<serde_json::Value, String> {
+    let base = cfg.steam_api_base.trim_end_matches('/');
+    if !base_ok(base) {
+        return Err("steam_api_base must be https (or http to loopback)".into());
+    }
+    let key = read_key(cfg)?;
+    let sep = if path_query.contains('?') { '&' } else { '?' };
+    json_get(format!("{base}/{path_query}{sep}key={key}&format=json")).await
+}
+
+/// One store.steampowered.com GET: keyless, so nothing to hide in the URL.
+pub(crate) async fn store_get(cfg: &Config, path_query: &str) -> Result<serde_json::Value, String> {
+    let base = cfg.steam_store_base.trim_end_matches('/');
+    if !base_ok(base) {
+        return Err("steam_store_base must be https (or http to loopback)".into());
+    }
+    json_get(format!("{base}/{path_query}")).await
+}
+
+async fn json_get(url: String) -> Result<serde_json::Value, String> {
     let body = tokio::task::spawn_blocking(move || https_get(&url))
         .await
         .map_err(|_| "request task failed")??;
-    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|_| "response is not JSON")?;
+    serde_json::from_slice(&body).map_err(|_| "response is not JSON".into())
+}
+
+/// One GetOwnedGames call.
+async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
+    let id = steam_id(&cfg.steam_dir).ok_or("no Steam account id")?;
+    let v = steam_get(
+        cfg,
+        &format!(
+            "IPlayerService/GetOwnedGames/v1/?steamid={id}&include_appinfo=1&include_played_free_games=1"
+        ),
+    )
+    .await?;
     v.get("response")
         .and_then(|r| r.get("games"))
         .and_then(|g| serde_json::from_value(g.clone()).ok())
         .ok_or_else(|| "response has no games list".into())
 }
 
+/// 64-bit SteamID to the 32-bit account id the store and some endpoints use.
+pub(crate) fn account_id(steam_id64: &str) -> Option<u32> {
+    steam_id64
+        .parse::<u64>()
+        .ok()?
+        .checked_sub(76561197960265728)?
+        .try_into()
+        .ok()
+}
+
 /// Steam account id: the entry marked MostRecent, else (newer clients drop that field) the one
 /// with the newest `timestamp`.
-fn steam_id(steam_dir: &Path) -> Option<String> {
+pub(crate) fn steam_id(steam_dir: &Path) -> Option<String> {
     let text = std::fs::read_to_string(steam_dir.join("config/loginusers.vdf")).ok()?;
     let top = parse_vdf(&text)?;
     let V::M(users) = get(&top, "users")? else {
@@ -383,8 +470,8 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let (owned, owned_available) = owned(cfg, refresh).await;
 
     let mut by_id: HashMap<u32, Game> = HashMap::new();
-    let cover =
-        |id| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/library_600x900.jpg");
+    let art =
+        |id, file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
     for o in owned {
         by_id.insert(
             o.appid,
@@ -395,8 +482,17 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 size_bytes: None,
                 last_played: (o.rtime_last_played > 0).then_some(o.rtime_last_played),
                 playtime_min: o.playtime_forever,
-                cover: cover(o.appid),
+                playtime2wk_min: o.playtime_2weeks,
+                cover: art(o.appid, "library_600x900.jpg"),
+                hero: art(o.appid, "library_hero.jpg"),
+                logo: art(o.appid, "logo.png"),
                 running: false,
+                ach_unlocked: None,
+                ach_total: None,
+                updated: false,
+                update: None,
+                controller: None,
+                coop: false,
             },
         );
     }
@@ -425,10 +521,20 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             size_bytes: None,
             last_played: None,
             playtime_min: 0,
-            cover: cover(i.appid),
+            playtime2wk_min: 0,
+            cover: art(i.appid, "library_600x900.jpg"),
+            hero: art(i.appid, "library_hero.jpg"),
+            logo: art(i.appid, "logo.png"),
             running: false,
+            ach_unlocked: None,
+            ach_total: None,
+            updated: false,
+            update: None,
+            controller: None,
+            coop: false,
         });
         g.installed = i.state_flags & 4 != 0;
+        g.update = i.update.clone();
         if g.installed {
             g.size_bytes = Some(i.size);
         }
@@ -437,12 +543,48 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
         }
     }
     let proc = cfg.proc_dir.clone();
-    let running = tokio::task::spawn_blocking(move || crate::running::running_appids(&proc))
-        .await
-        .unwrap_or_default();
+    let cfg2 = cfg.clone();
+    let ids: Vec<u32> = by_id.keys().copied().collect();
+    let ids2 = ids.clone();
+    let played: Vec<(u32, u64)> = by_id
+        .values()
+        .filter(|g| g.installed)
+        .filter_map(|g| Some((g.appid, g.last_played?)))
+        .collect();
+    let (running, counts, updated, controls) = tokio::task::spawn_blocking(move || {
+        let counts: HashMap<u32, (u32, u32)> = ids
+            .into_iter()
+            .filter_map(|id| Some((id, crate::steam_info::ach_counts(&cfg2, id)?)))
+            .collect();
+        let controls: HashMap<u32, (Option<String>, bool)> = ids2
+            .into_iter()
+            .filter_map(|id| Some((id, crate::steam_info::cached_controls(&cfg2, id)?)))
+            .collect();
+        let t = now();
+        let updated: std::collections::HashSet<u32> = played
+            .into_iter()
+            .filter(|&(id, lp)| crate::steam_info::cached_updated(&cfg2, id, lp, t))
+            .map(|(id, _)| id)
+            .collect();
+        (
+            crate::running::running_appids(&proc),
+            counts,
+            updated,
+            controls,
+        )
+    })
+    .await
+    .unwrap_or_default();
     let mut games: Vec<Game> = by_id.into_values().collect();
     for g in &mut games {
         g.running = running.contains(&g.appid);
+        g.updated = updated.contains(&g.appid);
+        if let Some((c, co)) = controls.get(&g.appid) {
+            (g.controller, g.coop) = (c.clone(), *co);
+        }
+        if let Some(&(u, t)) = counts.get(&g.appid) {
+            (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
+        }
     }
     games.sort_by(|a, b| {
         b.last_played
@@ -500,6 +642,14 @@ mod fetch_tests {
         c.steam_key_file = d.join("key");
         c.steam_api_base = base.into();
         c
+    }
+
+    #[test]
+    fn account_id_is_steamid_minus_base() {
+        assert_eq!(account_id("76561197960265729"), Some(1));
+        assert_eq!(account_id("76561198000000000"), Some(39734272));
+        assert_eq!(account_id("5"), None);
+        assert_eq!(account_id("x"), None);
     }
 
     #[test]
@@ -580,6 +730,30 @@ mod fetch_tests {
             }
         });
         (base, n)
+    }
+
+    #[tokio::test]
+    async fn key_never_in_errors() {
+        let (base, _) = mock(
+            "HTTP/1.1 500 X\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            0,
+        );
+        let d = tempfile::tempdir().unwrap();
+        let cfg = cfg_with(&base, d.path());
+        let e = steam_get(&cfg, "ISteamUser/GetPlayerSummaries/v2/?steamids=1")
+            .await
+            .unwrap_err();
+        assert_eq!(e, "HTTP 500");
+        assert!(!e.contains("SENTINELKEY"));
+        // store_get has the same error shape.
+        let mut cfg = cfg;
+        cfg.steam_store_base = base;
+        assert_eq!(
+            store_get(&cfg, "api/appdetails?appids=1")
+                .await
+                .unwrap_err(),
+            "HTTP 500"
+        );
     }
 
     #[tokio::test]

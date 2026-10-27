@@ -3,11 +3,13 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::notes::{GameNote, NotesError, NotesStore, Tag};
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
 use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
 use crate::site::Site;
 use crate::steam::{self, GamesResult};
+use crate::steam_info;
 use crate::stream::{Codec, Preset, StreamReq, Supervisor};
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
@@ -17,6 +19,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use serde::Deserialize;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
@@ -29,9 +32,17 @@ pub struct AppState {
     pub files: Files,
     pub quit: Quitter,
     pub prefs: Prefs,
+    /// Your notes and tags (`data_dir/notes.json`); private text, never logged.
+    pub notes: NotesStore,
     pub hosts: Hosts,
     /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
     pub site: Site,
+    /// A background cache warm is running (see `steam_info::warm`).
+    pub warming: AtomicBool,
+    /// Friends online: in memory only (other people's names never reach disk), see `steam_info::friends_cached`.
+    pub friends: Mutex<Option<steam_info::FriendsEntry>>,
+    /// Screenshot listings per game for a few seconds (see `steam_info::ShotCache`).
+    pub shots: steam_info::ShotCache,
 }
 
 impl AppState {
@@ -47,9 +58,13 @@ impl AppState {
             clip: Arc::new(Clipboard::new(Arc::new(WlBackend::default()))),
             files: Files::new(cfg.downloads_dir.clone()),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
+            notes: NotesStore::load(cfg.data_dir.join("notes.json")),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
+            warming: AtomicBool::new(false),
+            friends: Mutex::new(None),
+            shots: steam_info::ShotCache::default(),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -82,6 +97,16 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
         .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
     let g = steam::load_games_with(&s.cfg, refresh).await;
     *s.games.lock().unwrap() = Some(g.clone());
+    // Games with play time are the ones worth warming; the task never delays this answer.
+    steam_info::warm(
+        s.clone(),
+        g.games
+            .iter()
+            .filter(|x| x.installed && x.playtime_min > 0)
+            .map(|x| x.appid)
+            .collect(),
+        g.games.iter().map(|x| x.appid).collect(),
+    );
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
         Err(e) => {
@@ -89,6 +114,99 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
             err(StatusCode::INTERNAL_SERVER_ERROR, "games unavailable")
         }
     }
+}
+
+/// Store details for the detail panel; 404 for a game that is neither owned nor installed, so
+/// no upstream call is made for it. A Store failure is a 200 with `available: false`.
+async fn game_info(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    req: Request,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    axum::Json(steam_info::info(&s.cfg, id, refresh).await).into_response()
+}
+
+/// Achievements for the detail panel; 404 for an unknown game before any upstream call. A game
+/// without stats or a private profile is a 200 with `available: false`.
+async fn game_achievements(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    req: Request,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    axum::Json(steam_info::achievements(&s.cfg, id, refresh).await).into_response()
+}
+
+/// Latest headlines for the detail panel; 404 for an unknown game before any upstream call. An
+/// upstream failure is a 200 with an empty list.
+async fn game_news(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    req: Request,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    axum::Json(steam_info::news(&s.cfg, id, refresh).await).into_response()
+}
+
+/// Screenshot names and a cloud-save summary from the host's Steam folder; 404 for an unknown game.
+/// No folder is a 200 with empty fields.
+async fn game_local(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let s2 = s.clone();
+    match tokio::task::spawn_blocking(move || steam_info::local(&s2.cfg, &s2.shots, id)).await {
+        Ok(l) => axum::Json(l).into_response(),
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "listing failed"),
+    }
+}
+
+/// One screenshot file, only if `name` is in the game's listing (see `steam_info::screenshot`).
+async fn game_screenshot(
+    State(s): State<Arc<AppState>>,
+    UrlPath((id, name)): UrlPath<(u32, String)>,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let s2 = s.clone();
+    match tokio::task::spawn_blocking(move || steam_info::screenshot(&s2.cfg, &s2.shots, id, &name))
+        .await
+    {
+        Ok(Some((ct, body))) => (
+            [
+                (header::CONTENT_TYPE, ct),
+                (header::CACHE_CONTROL, "private, max-age=3600"),
+            ],
+            body,
+        )
+            .into_response(),
+        _ => err(StatusCode::NOT_FOUND, "no such screenshot"),
+    }
+}
+
+/// Friends in a game or online. Any failure is a 200 with `available: false`.
+async fn friends(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(steam_info::friends_cached(&s).await).into_response()
 }
 
 async fn host_status(State(s): State<Arc<AppState>>) -> Response {
@@ -475,11 +593,63 @@ async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>)
     StatusCode::NO_CONTENT.into_response()
 }
 
+fn notes_err(e: NotesError) -> Response {
+    match e {
+        NotesError::Bad(m) => err(StatusCode::BAD_REQUEST, m),
+        NotesError::Full => err(StatusCode::CONFLICT, "too many notes or tags"),
+        NotesError::Io => err(StatusCode::INTERNAL_SERVER_ERROR, "could not save notes"),
+    }
+}
+
+async fn notes_get(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(s.notes.all()).into_response()
+}
+
+/// Creates or replaces one tag; answers with what was stored (name trimmed).
+async fn tag_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<String>,
+    b: axum::body::Bytes,
+) -> Response {
+    match parse::<Tag>(&b).map(|t| s.notes.put_tag(&id, t)) {
+        Ok(Ok(t)) => axum::Json(t).into_response(),
+        Ok(Err(e)) => notes_err(e),
+        Err(r) => r,
+    }
+}
+
+/// Removes the tag and takes it off every game; an unknown id is fine (204 either way).
+async fn tag_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> Response {
+    match s.notes.delete_tag(&id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => notes_err(e),
+    }
+}
+
+/// One game's note and tags; answers with what was stored (unknown tag ids dropped).
+async fn game_note_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(appid): UrlPath<u32>,
+    b: axum::body::Bytes,
+) -> Response {
+    match parse::<GameNote>(&b).map(|g| s.notes.put_game(appid, g)) {
+        Ok(Ok(g)) => axum::Json(g).into_response(),
+        Ok(Err(e)) => notes_err(e),
+        Err(r) => r,
+    }
+}
+
 /// Mount API routes on `api` below; everything else falls through to the static site (site.rs).
 /// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/games", get(games))
+        .route("/games/{appid}/info", get(game_info))
+        .route("/games/{appid}/achievements", get(game_achievements))
+        .route("/games/{appid}/news", get(game_news))
+        .route("/games/{appid}/local", get(game_local))
+        .route("/games/{appid}/screenshots/{name}", get(game_screenshot))
+        .route("/friends", get(friends))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))
         .route(
@@ -499,6 +669,17 @@ pub fn router(state: Arc<AppState>) -> Router {
         // static beats the {appid} capture in axum's router
         .route("/prefs/layout", put(layout_put).delete(layout_delete))
         .route("/prefs/{appid}", put(prefs_put).delete(prefs_delete))
+        .route("/notes", get(notes_get))
+        .route(
+            "/notes/tags/{id}",
+            put(tag_put)
+                .delete(tag_delete)
+                .layer(DefaultBodyLimit::max(16 << 10)),
+        )
+        .route(
+            "/notes/games/{appid}",
+            put(game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
+        )
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
         .route(

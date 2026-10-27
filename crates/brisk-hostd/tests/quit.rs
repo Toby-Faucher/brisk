@@ -207,8 +207,17 @@ fn game(appid: u32, name: &str) -> Game {
         size_bytes: None,
         last_played: None,
         playtime_min: 0,
+        playtime2wk_min: 0,
         cover: String::new(),
+        hero: String::new(),
+        logo: String::new(),
         running: false,
+        ach_unlocked: None,
+        ach_total: None,
+        updated: false,
+        update: None,
+        controller: None,
+        coop: false,
     }
 }
 

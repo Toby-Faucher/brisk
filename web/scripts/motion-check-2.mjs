@@ -78,7 +78,9 @@ const maxes = {};
       s = await seen(page);
       const hero = enters(s).find((x) => x.el.startsWith('div.hero'));
       check('library: hero gets an entrance when data lands (not at load)', !!hero && hero.at > 600, `hero first seen ${hero?.at}ms, hero in DOM by ${landed}ms`);
-      check('library: shelf headers + first cards get it too', enters(s).filter((x) => x.el.startsWith('h4')).length === 2 && enters(s).filter((x) => x.el.startsWith('div.slot')).length >= 6, enters(s).filter((x) => x.el.startsWith('div.slot')).length + ' cards');
+      // cards pop in through anime.js (motion.ts cardsIn: inline opacity/transform while it runs), not the CSS entrance
+      const popping = await page.evaluate(() => [...document.querySelectorAll('.slot')].filter((e) => e.style.opacity !== '').length);
+      check('library: shelf headers get the entrance, the first cards pop in', enters(s).filter((x) => x.el.startsWith('h4')).length === 2 && popping >= 6, `${popping} cards popping`);
       check('library: cards animate only after data (all entrances after 600ms except the page chrome)', enters(s).filter((x) => /^(div\.hero|h4|div\.slot)/.test(x.el)).every((x) => x.at > 600));
     }
     // Home holds its grid hidden until the saved card order is in (F3c1); its entrance starts when it shows
@@ -126,7 +128,8 @@ const maxes = {};
   await page.locator('.row').first().evaluate((e) => (e.scrollLeft += 1500)); await sleep(600);
   await page.getByRole('button', { name: /Scroll Installed left/ }).click(); await sleep(900);
   let s = await seen(page);
-  check('library: chevrons + shelf scrolling mount new cards without any entrance animation', enters(s).length === 0 && !s.some((x) => x.name === 'rise-scroll' && x.el.startsWith('div.slot')), list(s));
+  const styled = await page.evaluate(() => [...document.querySelectorAll('.slot')].filter((e) => e.getAttribute('style')).length);
+  check('library: chevrons + shelf scrolling mount new cards without any entrance animation', enters(s).length === 0 && styled === 0 && !s.some((x) => x.name === 'rise-scroll' && x.el.startsWith('div.slot')), `${list(s)} ${styled} styled`);
   await page.evaluate(() => window.scrollTo({ top: 400 })); await sleep(500);
   s = await seen(page);
   check('library: page scroll fires no entrance', enters(s).length === 0, list(s));

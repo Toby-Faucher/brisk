@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { padName, type PadLike } from '../../lib/gamepad';
   import Card from '../../ui/Card.svelte';
+  import Dropdown from '../../ui/Dropdown.svelte';
   import { countUp, popIn } from '../../ui/motion';
   import PadDiagram from './PadDiagram.svelte';
   import {
@@ -168,11 +169,9 @@
       {#if choices.length === 0}
         <p class="hint">Press a button on your controller (Chrome only shows it after a press)</p>
       {:else}
-        <label class="opt"><span class="lab">Pad</span>
-          <select value={sel} onchange={(e) => (sel = Number(e.currentTarget.value))} aria-label="Controller">
-            {#each choices as c (c.index)}<option value={c.index}>{c.index}: {padName(c.id)}</option>{/each}
-          </select>
-        </label>
+        <div class="opt"><span class="lab">Pad</span>
+          <Dropdown value={String(sel)} options={choices.map((c): [string, string] => [String(c.index), `${c.index}: ${padName(c.id)}`])} label="Controller" onchange={(v) => (sel = Number(v))} />
+        </div>
         {#each choices.filter((c) => c.index === sel) as c (c.index)}
           <p class="mono small">{c.id}<br />{c.detail}</p>
         {/each}
@@ -292,7 +291,7 @@
   .small { margin: 8px 0 0; font-size: 12.5px; overflow-wrap: anywhere; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .opt { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
-  .opt select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 13px; max-width: 100%; }
+  .opt :global(.dd) { max-width: 100%; overflow: hidden; }
   .sl { display: flex; align-items: center; gap: 10px; }
   .sl input { accent-color: var(--accent); width: 160px; }
   .sl span { min-width: 3ch; text-align: right; }

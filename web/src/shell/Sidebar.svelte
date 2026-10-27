@@ -29,7 +29,7 @@
 </script>
 
 <aside class="side">
-  <div class="brand"><i><Icon name="bolt" size={14} /></i> Brisk</div>
+  <div class="brand"><img src="/brand.png" alt="Brisk" width="96" height="46" /></div>
   <nav aria-label="Main" bind:this={nav}>
     {#each live as m (m.id)}
       {@const r = m.routes[0]}
@@ -48,8 +48,9 @@
 <style>
   .side { width: 218px; flex: 0 0 auto; height: 100vh; position: sticky; top: 0; background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(10px); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
   nav { display: contents; }
-  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; font-weight: 700; }
-  .brand i { width: 22px; height: 22px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: var(--accent-fg); }
+  /* the wordmark (web/public/brand.png, exactly 2x: 192x92); width and height are set so it never shifts the nav */
+  .brand { display: flex; align-items: center; padding: 0 4px 8px; }
+  .brand img { display: block; width: 96px; height: 46px; }
   .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; color: var(--muted); transition: background .18s, color .18s, transform .18s var(--ease); }
   a.nav:hover { background: var(--panel2); color: var(--fg); transform: translateX(2px); }
   .nav[aria-current='page'] { color: var(--fg); position: relative; }

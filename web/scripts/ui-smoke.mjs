@@ -61,7 +61,7 @@ const shot = async (page, n) => (await page.screenshot({ path: `${OUT}/${n}.png`
 try {
   child = spawn(hostd, [`${root}/web/dist`], {
     env: { ...process.env, PATH: `${work}/bin:${process.env.PATH}`, BRISK_STEAM_DIR: `${work}/steam`, BRISK_STEAM_KEY_FILE: `${work}/key`,
-      BRISK_STEAM_API_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_BRIDGE_BIN: `${work}/bridge.sh`, BRISK_DATA_DIR: `${work}/data`, BRISK_LISTEN: '127.0.0.1:4433',
+      BRISK_STEAM_API_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_STEAM_STORE_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_BRIDGE_BIN: `${work}/bridge.sh`, BRISK_DATA_DIR: `${work}/data`, BRISK_LISTEN: '127.0.0.1:4433',
       BRISK_SECRET_FILE: `${work}/secret`, BRISK_TLS_DIR: `${work}/tls` },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -134,9 +134,14 @@ try {
   const stGet = await page.evaluate(async () => (await fetch('/api/stream')).status);
   check('GET /api/stream without the secret is 403', stGet === 403, String(stGet));
 
-  // Launch Portal 2 from the Library (fake bridge: no video, WebTransport will fail)
+  // Launch Portal 2 from the Library: its card opens the detail panel, Play is in there (fake bridge: no video,
+  // WebTransport will fail). The mock answers the Store with 403, so the panel shows "No store details".
   await page.goto(new URL('/library', pageUrl).href);
-  await page.getByRole('button', { name: /^Play Portal 2/ }).first().click();
+  await page.getByRole('button', { name: /^Portal 2, / }).first().click();
+  const panel = page.getByRole('dialog', { name: 'Portal 2' });
+  await panel.getByText('No store details').waitFor();
+  await a11y(page, 'game detail panel');
+  await panel.getByRole('button', { name: 'Play', exact: true }).click();
   await page.waitForURL(/\/stream/);
   let live = null;
   for (let i = 0; i < 40 && live?.state !== 'live'; i++) {

@@ -1,4 +1,5 @@
 import type { Game } from '../../state/api';
+import type { Tag } from '../../state/notes';
 
 export const DASH = '–';
 
@@ -42,6 +43,15 @@ export function reconcileOrder(saved: readonly string[], current: readonly strin
   return [...kept, ...current.filter((id) => !seen.has(id))];
 }
 
+/**
+ * The order to store after a drop. While the notes are not loaded no tag card is shown, so `next` lacks them:
+ * keep the saved `tag-*` ids, or the drag would erase their positions. Once loaded, a tag that is gone stays gone.
+ */
+export function orderToStore(next: readonly string[], saved: readonly string[], notesLoaded: boolean): string[] {
+  if (notesLoaded) return [...next];
+  return [...next, ...saved.filter((id) => id.startsWith('tag-') && !next.includes(id))];
+}
+
 /** A copy of `list` with the item at `from` moved to `to` (clamped); an out-of-range `from` changes nothing. */
 export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   const a = [...list];
@@ -50,3 +60,10 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   a.splice(Math.max(0, Math.min(a.length, to)), 0, x);
   return a;
 }
+
+/** Home card ids of the pinned tags, by name (case-insensitive) then id: `tag-` + the tag id, so at most 20 chars of [a-z0-9-]. */
+export const tagCardIds = (tags: Record<string, Tag>): string[] =>
+  Object.entries(tags)
+    .filter(([, t]) => t.pinned)
+    .sort(([ia, a], [ib, b]) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || (ia < ib ? -1 : 1))
+    .map(([id]) => `tag-${id}`);

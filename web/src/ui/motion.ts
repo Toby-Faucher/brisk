@@ -397,6 +397,45 @@ export const popIn = (delay = 0) => (el: Element) => {
 };
 
 /**
+ * Library cards pop in: opacity 0 -> 1 with a 10 px rise and a .96 -> 1 scale (anime.js, one tween, `step` ms apart,
+ * `--dur-enter`). The caller passes only the cards on screen at a first arrival or a filter / sort change, never cards a
+ * scrolling shelf mounts. They are hidden at once, so a slow chunk never shows them first; the inline styles go at the end,
+ * on cancel, under reduced motion and when the chunk fails (the cards simply show). Animate a wrapper, not the card button:
+ * its hover owns `transform`. Returns the cancel function.
+ */
+export function cardsIn(els: HTMLElement[], step = 30): () => void {
+  if (!els.length || !motionAllowed()) return () => {};
+  const clean = () =>
+    els.forEach((e) => {
+      e.style.removeProperty('opacity');
+      e.style.removeProperty('transform');
+      if (!e.getAttribute('style')) e.removeAttribute('style');
+    });
+  els.forEach((e) => (e.style.opacity = '0'));
+  let a: { cancel(): unknown; complete(): unknown } | undefined;
+  let dead = false;
+  void load('animation', 'easings').then((lib) => {
+    if (dead) return;
+    if (reducedMotion()) return clean();
+    const anim = lib.animate(els, {
+      opacity: [0, 1],
+      translateY: [10, 0],
+      scale: [0.96, 1],
+      duration: ms('--dur-enter', 420),
+      delay: (_?: unknown, i = 0) => i * step,
+      ease: ease(lib),
+      onComplete: () => (live.delete(anim), clean()),
+    });
+    live.add((a = anim));
+  }).catch(() => dead || clean());
+  return () => {
+    dead = true;
+    if (a) live.delete(a), a.cancel();
+    clean();
+  };
+}
+
+/**
  * Svelte attachment: a result number counts up from 0 to `value` when it mounts (`tweenNumber`). Only for numbers measured
  * once and then fixed, never for a live reading. Svelte still renders the same text, so both agree at rest; with a chunk that
  * fails to load or under reduced motion the end value is simply there.

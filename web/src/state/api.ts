@@ -6,10 +6,56 @@ export type Game = {
   sizeBytes: number | null;
   lastPlayed: number | null /* unix s */;
   playtimeMin: number;
+  /** minutes played in the last two weeks */
+  playtime2wkMin: number;
   cover: string;
+  hero: string;
+  logo: string;
   /** Steam is running it on the host now: Play streams it without relaunching. */
   running: boolean;
+  /** Achievement counts once the host has fetched them (it warms its cache in the background); null until then. */
+  achUnlocked: number | null;
+  achTotal: number | null;
+  /** Installed, and the host saw a patch newer than your last play (from its news cache). */
+  updated: boolean;
+  /** Steam's own update state for an installed game (from its manifest); distinct from `updated`. */
+  update: 'needed' | 'running' | null;
+  /** From the host's store-info cache (null until it has fetched this game, or when the Store has none). */
+  controller: 'full' | 'partial' | null;
+  /** Co-op or Remote Play Together, same source. */
+  coop: boolean;
 };
+/** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
+export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
+/** GET /api/games/{appid}/achievements. `available` false (no stats, private profile): total is 0. */
+export type Achievements = { available: boolean; unlocked: number; total: number; list: Ach[] };
+/** One headline; `title` is text only, `url` is https or empty. `patch`: the game's own announcements feed. */
+export type NewsItem = { title: string; url: string; date: number; patch: boolean };
+/** GET /api/games/{appid}/news; an empty list when Steam had nothing. */
+export type News = { items: NewsItem[] };
+/** One friend who is online or in a game. `name` is text only; `avatar` is an https Steam URL or empty. */
+export type Friend = { name: string; avatar: string; state: 'online' | 'away' | 'busy' | 'snooze'; playing: string | null; appid: number | null };
+/** GET /api/friends. `available` false: the list is private or Steam did not answer. */
+export type Friends = { available: boolean; online: Friend[] };
+/** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
+export type GameInfo = {
+  available: boolean;
+  /** plain text, never HTML */
+  description: string;
+  genres: string[];
+  controller: 'full' | 'partial' | null;
+  singleplayer: boolean;
+  coop: boolean;
+  remotePlayTogether: boolean;
+  release: string | null;
+  metacritic: number | null;
+  /** thumbnail URLs, at most 6 */
+  screenshots: string[];
+  /** the full-size image for each thumbnail, same order (absent in a cache entry written before it existed) */
+  screenshotsFull?: string[];
+};
+/** GET /api/games/{appid}/local: screenshot file names on the host (newest first, at most 60) and a cloud-save summary. */
+export type GameLocal = { screenshots: string[]; saves: { files: number; bytes: number; modified: number /* unix s */ } | null };
 export type HostInfo = {
   name: string;
   sunshine: 'ready' | 'busy' | 'down';
@@ -75,6 +121,7 @@ export type SeriesPoint = [number, number, number, number];
 
 import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
+import type { GameNote, Notes, Tag } from './notes';
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -162,6 +209,12 @@ async function getClipboard(since: number | null): Promise<{ seq: number; clip: 
   return { seq, clip: { kind: 'text', text: (await r.json()).text } };
 }
 
+/** An object URL for one host screenshot: fetched with the auth headers, which an `<img src>` cannot send. Revoke it when done. */
+async function screenshot(appid: number, name: string): Promise<string> {
+  const r = await send(`/api/games/${appid}/screenshots/${encodeURIComponent(name)}`, { headers: auth() });
+  return URL.createObjectURL(await r.blob());
+}
+
 async function postClipboard(c: Clip): Promise<void> {
   const ct = c.kind === 'text' ? 'text/plain;charset=utf-8' : 'image/png';
   await send('/api/clipboard', { method: 'POST', headers: auth({ 'content-type': ct }), body: c.kind === 'text' ? c.text : c.blob });
@@ -182,9 +235,18 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
   });
 }
 
+const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
+
 export const api = {
   host: () => call<HostInfo>('GET', '/api/host'),
-  games: () => call<{ games: Game[]; ownedAvailable: boolean }>('GET', '/api/games'),
+  /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
+  games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),
+  gameInfo: (appid: number, refresh?: boolean) => call<GameInfo>('GET', `/api/games/${appid}/info${q(refresh)}`),
+  gameAchievements: (appid: number, refresh?: boolean) => call<Achievements>('GET', `/api/games/${appid}/achievements${q(refresh)}`),
+  gameNews: (appid: number, refresh?: boolean) => call<News>('GET', `/api/games/${appid}/news${q(refresh)}`),
+  gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
+  screenshot,
+  friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),
@@ -199,6 +261,13 @@ export const api = {
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
+  notes: () => call<Notes>('GET', '/api/notes'),
+  /** Create or replace a tag; hostd answers with what it stored (name trimmed). */
+  putTag: (id: string, tag: Tag) => call<Tag>('PUT', `/api/notes/tags/${id}`, tag),
+  /** Also takes the tag off every game. */
+  deleteTag: (id: string) => call<void>('DELETE', `/api/notes/tags/${id}`),
+  /** hostd drops unknown tag ids and answers with what it stored. */
+  putGameNote: (appid: number, b: GameNote) => call<GameNote>('PUT', `/api/notes/games/${appid}`, b, true), // keepalive: flushed on pagehide
   /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */
   sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', '/api/sessions'),
   session: (started: number) => call<{ session: SessionRec; series: SeriesPoint[] }>('GET', `/api/sessions/${started}`),

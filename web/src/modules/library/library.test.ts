@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterGames, installLabel, playLabel, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterByTag, almostDone, backlog, filterGames, pickRandom, smartTags, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, updateLabel, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
 
 describe('library', () => {
+  it('updateLabel_names_the_state', () => {
+    expect(updateLabel(g(1, 'a', { update: 'needed' }))).toBe('Update needed');
+    expect(updateLabel(g(1, 'a', { update: 'running' }))).toBe('Updating…');
+    expect(updateLabel(g(1, 'a'))).toBeNull();
+  });
+
   it('sortGames_orders_and_default_keeps_input', () => {
     const list = [g(1, 'banjo', { playtimeMin: 5, lastPlayed: 10 }), g(2, 'Apex', { playtimeMin: 50 }), g(3, 'cave', { playtimeMin: 9, lastPlayed: 99 })];
     const ids = (s: Parameters<typeof sortGames>[1]) => sortGames(list, s).map((x) => x.appid);
@@ -50,8 +56,18 @@ describe('library', () => {
     expect(s.notInstalled.map((x) => x.appid)).toEqual([2]);
   });
 
+  it('shelves_fortnight_orders_most_first', () => {
+    const list = [g(730, 'cs', { playtime2wkMin: 30 }), g(220, 'hl'), g(620, 'p2', { playtime2wkMin: 192 })];
+    expect(shelves(list).fortnight.map((x) => x.appid)).toEqual([620, 730]);
+  });
+
+  it('fmtFortnight_hours_or_minutes', () => {
+    expect(fmtFortnight(192)).toBe('3.2 h this fortnight');
+    expect(fmtFortnight(25)).toBe('25 min this fortnight');
+  });
+
   it('shelves_handle_zero_games', () => {
-    expect(shelves([])).toEqual({ installed: [], notInstalled: [], hero: null });
+    expect(shelves([])).toEqual({ installed: [], notInstalled: [], fortnight: [], hero: null });
     expect(shelves([g(1, 'a', { installed: true })]).hero).toBeNull(); // never played: no hero
   });
 
@@ -74,13 +90,11 @@ describe('library', () => {
     expect(visibleRange(0, 10_000, stride, 139).end).toBe(20);
   });
 
-  it('not_installed_click_selects_and_never_installs', () => {
+  it('card_click_opens_the_panel_installed_or_not', () => {
     const off = g(1, 'Rust', { sizeBytes: 12.4e9 });
     const on = g(2, 'Hades II', { installed: true });
-    expect(cardClick(off, null)).toEqual({ action: 'select', selected: 1 });
-    expect(cardClick(off, 1)).toEqual({ action: 'select', selected: null }); // second click collapses
-    expect(cardClick(g(3, 'x'), 1)).toEqual({ action: 'select', selected: 3 }); // moves the selection
-    expect(cardClick(on, 1)).toEqual({ action: 'play', selected: null }); // installed stays one click
+    expect(cardClick(on)).toEqual({ action: 'open' });
+    expect(cardClick(off)).toEqual({ action: 'open' });
     expect(installLabel(off)).toBe('Install 12 GB');
     expect(installLabel(g(4, 'y', { sizeBytes: 3.21e9 }))).toBe('Install 3.2 GB');
     expect(installLabel(g(5, 'z'))).toBe('Install');
@@ -104,5 +118,77 @@ describe('library', () => {
     expect(badgeLabel(g(1, 'a', { installed: true }))).toBe('Installed');
     expect(badgeLabel(g(1, 'a', { sizeBytes: 2e9 }))).toBe('2.0 GB');
     expect(badgeLabel(g(1, 'a'))).toBe('Not installed');
+  });
+
+  it('savesLine_counts_size_and_age', () => {
+    const now = 1_000_000_000_000;
+    expect(savesLine({ files: 14, bytes: 2_100_000, modified: now / 1000 - 3 * DAY }, now)).toBe('Cloud saves: 14 files, 2.1 MB, synced 3 d ago');
+    expect(savesLine({ files: 1, bytes: 400, modified: 0 }, now)).toBe('Cloud saves: 1 file, 1 KB');
+    expect(savesLine({ files: 3, bytes: 5_200_000_000, modified: now / 1000 - 120 }, now)).toBe('Cloud saves: 3 files, 5.2 GB, synced 2 min ago');
+    expect(savesLine({ files: 0, bytes: 0, modified: 0 }, now)).toBeNull();
+    expect(savesLine(null, now)).toBeNull();
+  });
+
+  it('filterByTag_composes_with_search', () => {
+    const list = [g(1, 'Hades II'), g(2, 'Hadestown'), g(3, 'Portal 2')];
+    const n = { tags: { coop: { name: 'Co-op', color: 'teal' as const, symbol: 'users', note: '' } }, games: { '2': { note: '', tags: ['coop'] }, '3': { note: '', tags: ['coop'] } } };
+    expect(searchGames(filterByTag(list, n, 'coop'), 'hades').map((x) => x.appid)).toEqual([2]);
+    expect(filterByTag(searchGames(list, 'hades'), n, 'coop').map((x) => x.appid)).toEqual([2]);
+    expect(filterByTag(searchGames(list, 'hades'), n, null).map((x) => x.appid)).toEqual([1, 2]);
+  });
+
+  const tagIds = (o: Partial<Game>) => smartTags(g(1, 'x', o)).map((t) => t.id);
+
+  it('backlog_is_under_30_minutes', () => {
+    expect(tagIds({ playtimeMin: 29 })).toContain('auto-backlog');
+    expect(tagIds({ playtimeMin: 30 })).not.toContain('auto-backlog');
+    expect(tagIds({ playtimeMin: 0 })).toContain('auto-backlog');
+  });
+
+  it('controller_needs_full_support', () => {
+    expect(tagIds({ playtimeMin: 99, controller: 'full' })).toEqual(['auto-controller']);
+    expect(tagIds({ playtimeMin: 99, controller: 'partial' })).toEqual([]);
+  });
+
+  it('almost_done_is_80_to_99_percent', () => {
+    const at = (u: number, t: number) => tagIds({ playtimeMin: 99, achUnlocked: u, achTotal: t }).includes('auto-almost');
+    expect(at(79, 100)).toBe(false);
+    expect(at(80, 100)).toBe(true);
+    expect(at(99, 100)).toBe(true);
+    expect(at(100, 100)).toBe(false);
+    expect(at(0, 0)).toBe(false);
+  });
+
+  it('smartTags_orders_backlog_first', () => {
+    expect(tagIds({ coop: true, updated: true, controller: 'full' })).toEqual(['auto-backlog', 'auto-controller', 'auto-coop', 'auto-updated']);
+  });
+
+  it('filterByTag_applies_auto_rule', () => {
+    const list = [g(1, 'a', { playtimeMin: 5 }), g(2, 'b', { playtimeMin: 500 }), g(3, 'c', { playtimeMin: 0 })];
+    const none = { tags: {}, games: {} };
+    expect(filterByTag(list, none, 'auto-backlog').map((x) => x.appid)).toEqual([1, 3]);
+    expect(filterByTag(list, none, 'auto-nope')).toEqual([]);
+  });
+
+  it('pickRandom_empty_is_null', () => {
+    expect(pickRandom([])).toBeNull();
+  });
+
+  it('pickRandom_uses_rng', () => {
+    expect(pickRandom([1, 2, 3], () => 0.99)).toBe(3);
+    expect(pickRandom([1, 2, 3], () => 0)).toBe(1);
+  });
+
+  it('shelves_backlog_and_almost_done_order', () => {
+    const list = [g(1, 'b', { playtimeMin: 10 }), g(2, 'a', { playtimeMin: 10 }), g(3, 'c', { playtimeMin: 0 }), g(4, 'd', { playtimeMin: 99 })];
+    expect(backlog(list).map((x) => x.appid)).toEqual([3, 2, 1]);
+    const ach = [g(1, 'x', { achUnlocked: 85, achTotal: 100 }), g(2, 'y', { achUnlocked: 99, achTotal: 100 }), g(3, 'z', { achUnlocked: 50, achTotal: 100 })];
+    expect(almostDone(ach).map((x) => x.appid)).toEqual([2, 1]);
+  });
+
+  it('backlog_shelf_is_capped_at_40', () => {
+    const many = Array.from({ length: 50 }, (_, i) => g(i + 1, `g${i}`, { playtimeMin: i % 10 }));
+    expect(backlog(many)).toHaveLength(40);
+    expect(backlog(many)[0].playtimeMin).toBe(0);
   });
 });

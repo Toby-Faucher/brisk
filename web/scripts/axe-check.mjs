@@ -10,9 +10,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const check = (n, ok, x = '') => (ok || fails++, console.log(`${ok ? 'ok  ' : 'FAIL'} ${n}${x ? `\n    ${x}` : ''}`));
 
-const games = Array.from({ length: 139 }, (_, i) => ({ appid: 1000 + i, name: i === 0 ? 'Portal 2' : `Game ${i}`, installed: i < 40, sizeBytes: 1e9, lastPlayed: i < 5 ? 1700000000 - i * 1e5 : null, playtimeMin: 90, cover: '', running: i === 0 }));
+const games = Array.from({ length: 139 }, (_, i) => ({ appid: 1000 + i, name: i === 0 ? 'Portal 2' : `Game ${i}`, installed: i < 40, sizeBytes: 1e9, lastPlayed: i < 5 ? 1700000000 - i * 1e5 : null, playtimeMin: i === 4 ? 5 : 90, cover: '', running: i === 0, coop: i === 1, controller: i === 2 ? 'full' : null, achUnlocked: i === 3 ? 9 : null, achTotal: i === 3 ? 10 : null, updated: i === 0, update: i === 1 ? 'needed' : i === 2 ? 'running' : null }));
 const sessions = Array.from({ length: 15 }, (_, i) => ({ appid: 1000, name: 'Portal 2', started: 1700000000000 + i * 1e6, ended: 1700000600000 + i * 1e6, host: 'bawn', preset: 'balanced', codec: 'h264', bitrateKbps: 20000, stats: null, spark: [1, 3, 2, 4, 3] }));
 const series = Array.from({ length: 120 }, (_, i) => [1700000000000 + i * 5000, 9 + Math.sin(i / 4) * 2, 58 + Math.sin(i / 6) * 3, 18 + Math.cos(i / 9) * 4]);
+// screenshots as inline SVG, so the lightbox shows a real image; achievements and news fill the right pane and its modal
+const shot = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="${c}"/></svg>`)}`;
+const shots = ['#345', '#534', '#453'].map(shot);
+const info = { available: true, description: 'A test description & more.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '1 Jan, 2020', metacritic: 90, screenshots: shots, screenshotsFull: shots };
+// 120, so the modal's list really scrolls (scrollable-region-focusable)
+const achievements = { available: true, unlocked: 3, total: 120, list: Array.from({ length: 120 }, (_, i) => ({ id: `a${i}`, name: `Achievement ${i + 1}`, description: i % 2 ? '' : 'Do the thing.', icon: '', unlockedAt: i < 3 ? 1700000000 + i : null })) };
+const news = { items: [{ title: 'Patch 1.2 notes', url: 'https://news.example.test/1', date: 1700000000, patch: true }, { title: 'Community update', url: 'https://news.example.test/2', date: 1699000000, patch: false }] };
+// every tag color, so the chips' contrast is measured (Game 1 carries them all)
+const colors = ['gray', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
+const notes = { tags: Object.fromEntries(colors.map((c, i) => [`t${i}`, { name: `Tag ${c}`, color: c, symbol: 'star', note: i ? '' : 'A tag note', pinned: i === 0 || i === 3 }])), games: { 1001: { note: 'A game note', tags: colors.map((_, i) => `t${i}`).slice(0, 16) }, 1002: { note: '', tags: ['t0'] } } };
 const host = { name: 'bawn', sunshine: 'ready', uptimeS: 5000, cpuTempC: 40, gpuTempC: 45, path: 'direct', relay: null };
 // A "live" stream whose WebTransport address answers nothing, so /stream degrades to its failed state.
 const live = { state: 'live', preset: 'balanced', codec: 'h264', appid: 1000, wt: 'https://127.0.0.1:4429/', hash: '00'.repeat(32) };
@@ -28,8 +38,13 @@ try {
       : p === '/api/host' ? host
       : p === '/api/stream' ? stream
       : p === '/api/prefs' ? { prefs: {} }
+      : p === '/api/notes' ? notes
       : p === '/api/sessions' ? { sessions }
       : p.startsWith('/api/sessions/') ? { session: sessions[0], series }
+      : p.endsWith('/info') ? info
+      : p.endsWith('/achievements') ? achievements
+      : p.endsWith('/news') ? news
+      : p.endsWith('/local') ? { screenshots: [], saves: null }
       : {};
     await r.fulfill({ json });
   });
@@ -48,12 +63,23 @@ try {
 
   for (const [name, path] of [['home', '/'], ['library', '/library'], ['machines', '/machines'], ['history', '/history'], ['history session', `/history?session=${sessions[0].started}`]]) {
     await go(path);
+    if (path === '/') check('home: two pinned tag cards', (await page.locator('[data-card^="tag-"]').count()) === 2);
     await scan(name);
   }
   for (const tab of ['general', 'streaming', 'controller', 'about']) {
     await go(`/settings#${tab}`);
     await scan(`settings #${tab}`);
   }
+  // Notes backup: the error text, then the restore confirmation (a valid file; nothing is sent until confirmed)
+  await go('/settings#general');
+  const pick = (body) => page.locator('#notes-restore').setInputFiles({ name: 'n.json', mimeType: 'application/json', buffer: Buffer.from(body) });
+  await pick('{nope');
+  await page.getByRole('alert').waitFor();
+  await scan('settings notes restore error');
+  await pick(JSON.stringify({ format: 'brisk-notes', version: 1, ...notes }));
+  await page.getByRole('dialog', { name: 'Restore notes and tags?' }).waitFor();
+  await scan('settings notes restore dialog');
+  await page.keyboard.press('Escape');
   await go('/stream');
   await scan('stream idle');
   stream = live;
@@ -66,11 +92,46 @@ try {
   await page.keyboard.press('Control+k');
   await page.getByPlaceholder('Do something…').waitFor();
   await scan('command menu open');
+  await page.keyboard.type('portal');
+  await page.getByRole('option', { name: /^Open Portal 2/ }).waitFor();
+  await scan('command menu with game entries');
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('combobox', { name: 'Sort games' }).click();
+  await page.locator('.dd-menu[role="listbox"]').waitFor();
+  await scan('sort dropdown open');
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Quit Portal 2' }).first().click();
   await page.getByRole('dialog').waitFor();
   await scan('quit dialog open');
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: /^Game 1, / }).first().click();
+  await page.getByText('Full controller support').waitFor();
+  await scan('game detail panel open');
+  await page.getByRole('button', { name: 'Open Game 1 screenshot 2' }).click();
+  await page.getByRole('dialog', { name: 'Screenshot 2 of 3' }).waitFor();
+  await scan('screenshot lightbox open');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'View all 120 achievements' }).click();
+  await page.getByRole('searchbox', { name: 'Search achievements' }).waitFor();
+  const scrolls = await page.locator('.ad ul').evaluate((e) => e.scrollHeight > e.clientHeight);
+  check('achievements modal: the list scrolls (so axe checks it)', scrolls);
+  await scan('achievements modal open');
+  await page.getByRole('searchbox', { name: 'Search achievements' }).fill('zzz');
+  await page.getByText('No matches').waitFor();
+  await scan('achievements modal, no matches');
+  await page.keyboard.press('Escape'); // clears the search
+  await page.keyboard.press('Escape'); // closes the modal
+  await page.getByRole('button', { name: 'Edit tag Tag teal' }).click();
+  await page.getByRole('radiogroup', { name: 'Symbol' }).waitFor();
+  await scan('tag editor open');
+  await page.getByRole('button', { name: 'Delete tag' }).click();
+  await page.getByText('It is on 1 game.').waitFor();
+  await scan('tag delete confirm open');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 
   await go('/machines');

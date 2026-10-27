@@ -764,3 +764,41 @@ describe('morph (shared-element view transition)', () => {
   });
 });
 
+
+describe('cardsIn (Library cards)', () => {
+  const card = () => {
+    const st: Record<string, string> = {};
+    const style = new Proxy(st, { get: (t, k) => (k === 'removeProperty' ? (n: string) => delete t[n] : t[k as string] ?? '') });
+    return { st, style, getAttribute: () => (Object.keys(st).length ? 'x' : null), removeAttribute: vi.fn() } as any;
+  };
+  it('hidden at once, then one anime.js tween: opacity, rise and scale, staggered; styles gone at the end', async () => {
+    const els = [card(), card(), card()];
+    m.cardsIn(els, 30);
+    expect(els.every((e) => e.st.opacity === '0')).toBe(true);
+    await flush();
+    expect(anims).toHaveLength(1);
+    const p = anims[0].p;
+    expect(p.opacity).toEqual([0, 1]);
+    expect(p.scale[0]).toBeLessThan(1);
+    expect(p.translateY[1]).toBe(0);
+    expect([0, 1, 2].map((i) => p.delay(els[i], i))).toEqual([0, 30, 60]);
+    anims[0].complete();
+    expect(els.every((e) => !('opacity' in e.st))).toBe(true);
+  });
+  it('reduced motion: no tween, no library, nothing hidden', async () => {
+    reduce = true;
+    const els = [card()];
+    m.cardsIn(els);
+    await flush();
+    expect(anims).toHaveLength(0);
+    expect(els[0].st).toEqual({});
+  });
+  it('cancelled before the chunk lands: shown, never animated', async () => {
+    const els = [card()];
+    const off = m.cardsIn(els);
+    off();
+    await flush();
+    expect(anims).toHaveLength(0);
+    expect(els[0].st).toEqual({});
+  });
+});
