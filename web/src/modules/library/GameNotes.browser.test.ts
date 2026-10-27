@@ -60,7 +60,7 @@ describe('GameNotes', () => {
     await vi.waitFor(() => expect(put).toHaveBeenCalled());
     const [id, body] = putTag.mock.calls[0];
     expect(id).toMatch(/^[a-z0-9-]{1,16}$/);
-    expect(body).toEqual({ name: 'Backlog', color: 'purple', symbol: 'trophy', note: '' });
+    expect(body).toEqual({ name: 'Backlog', color: 'purple', symbol: 'trophy', note: '', pinned: false });
     expect(put).toHaveBeenCalledExactlyOnceWith(620, { note: '', tags: [id] });
     expect(putTag.mock.invocationCallOrder[0]).toBeLessThan(put.mock.invocationCallOrder[0]);
   });

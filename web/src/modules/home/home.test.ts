@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, pickResume, reconcileOrder } from './home';
+import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, pickResume, reconcileOrder, tagCardIds } from './home';
 
 const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running });
 
@@ -48,5 +48,24 @@ describe('home', () => {
     expect(moveItem(a, 1, 99)).toEqual(['a', 'c', 'd', 'b']);
     expect(moveItem(a, 7, 0)).toEqual(a);
     expect(a).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  const tg = (name: string, pinned?: boolean) => ({ name, color: 'red' as const, symbol: 'star', note: '', pinned });
+  it('tagCardIds only pinned and sorted', () => {
+    const tags = { zz: tg('alpha', true), b1: tg('Beta', true), a1: tg('beta', true), off: tg('Gamma', false), none: tg('Delta') };
+    expect(tagCardIds(tags)).toEqual(['tag-zz', 'tag-a1', 'tag-b1']);
+  });
+
+  it('tagCardIds ids pass clean_home_order rules (a-z0-9- , max 32)', () => {
+    const id = 'a-b-c-0123456789'.slice(0, 16);
+    const [card] = tagCardIds({ [id]: tg('x', true) });
+    expect(card).toMatch(/^[a-z0-9-]{1,32}$/);
+    expect(card.length).toBeLessThanOrEqual(20);
+    for (const fixed of ['host', 'resume', 'quick', 'recent', 'friends', 'add']) expect(card).not.toBe(fixed);
+  });
+
+  it('a saved order keeps the place of tag cards that exist and drops gone ones', () => {
+    const cur = ['host', 'tag-a', 'resume'];
+    expect(reconcileOrder(['tag-a', 'tag-gone', 'host'], cur)).toEqual(['tag-a', 'host', 'resume']);
   });
 });

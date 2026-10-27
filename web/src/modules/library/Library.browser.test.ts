@@ -9,7 +9,10 @@ import Library from './Library.svelte';
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
 const list = [g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }), g(2, 'Bravo', { playtimeMin: 200 }), g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true })];
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  history.replaceState(null, '', location.pathname);
+});
 beforeEach(() => {
   notes.set({ tags: {}, games: {} });
   notesLoaded.set(true);
@@ -39,6 +42,31 @@ describe('Library', () => {
     const b = page.getByRole('button', { name: 'Surprise me' });
     await expect.element(b).toHaveAttribute('aria-disabled', 'true');
     await expect.element(b).toHaveAttribute('title', 'No game matches the current filters');
+  });
+
+  it('opens with the tag filter from ?tag=', async () => {
+    history.replaceState(null, '', '?tag=auto-coop');
+    await render(Library);
+    await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(page.getByRole('button', { name: /^Alpha/ }).elements()).toHaveLength(0);
+  });
+
+  it('opens with one of your tags from ?tag=', async () => {
+    const mine = { tags: { mine: { name: 'Mine', color: 'red' as const, symbol: 'star', note: '' } }, games: { 2: { note: '', tags: ['mine'] } } };
+    notes.set(mine);
+    vi.spyOn(api, 'notes').mockResolvedValue(mine);
+    history.replaceState(null, '', '?tag=mine');
+    await render(Library);
+    await expect.element(page.getByRole('button', { name: 'Mine', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(page.getByRole('button', { name: /^Alpha/ }).elements()).toHaveLength(0);
+  });
+
+  it('ignores an unknown ?tag=', async () => {
+    history.replaceState(null, '', '?tag=nope');
+    await render(Library);
+    await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toBeInTheDocument();
+    for (const n of ['Alpha', 'Bravo', 'Charlie']) expect(page.getByRole('button', { name: new RegExp(`^${n}`) }).elements().length).toBeGreaterThan(0);
+    await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('lists smart tags that match with counts, and filters by one', async () => {

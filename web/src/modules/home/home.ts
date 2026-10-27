@@ -1,4 +1,5 @@
 import type { Game } from '../../state/api';
+import type { Tag } from '../../state/notes';
 
 export const DASH = '–';
 
@@ -50,3 +51,10 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   a.splice(Math.max(0, Math.min(a.length, to)), 0, x);
   return a;
 }
+
+/** Home card ids of the pinned tags, by name (case-insensitive) then id: `tag-` + the tag id, so at most 20 chars of [a-z0-9-]. */
+export const tagCardIds = (tags: Record<string, Tag>): string[] =>
+  Object.entries(tags)
+    .filter(([, t]) => t.pinned)
+    .sort(([ia, a], [ib, b]) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || (ia < ib ? -1 : 1))
+    .map(([id]) => `tag-${id}`);

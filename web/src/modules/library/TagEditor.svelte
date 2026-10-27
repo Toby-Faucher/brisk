@@ -11,12 +11,13 @@
 
   const COLORS = Object.keys(TAG_COLORS) as TagColor[];
   // the form starts from the tag as it is when the editor opens
-  const initial = (): Tag => (id && $notes.tags[id]) || { name: '', color: 'teal', symbol: 'star', note: '' };
+  const initial = (): Tag => (id && $notes.tags[id]) || { name: '', color: 'teal', symbol: 'star', note: '', pinned: false };
   const start = initial();
   let name = $state(start.name);
   let color = $state<TagColor>(start.color);
   let symbol = $state(start.symbol);
   let note = $state(start.note);
+  let pinned = $state(!!start.pinned);
   let open = $state(true);
   let confirming = $state(false);
   let busy = $state(false);
@@ -40,7 +41,7 @@
     busy = true;
     const tid = id ?? newTagId();
     try {
-      const t = await api.putTag(tid, { name: name.trim(), color, symbol, note });
+      const t = await api.putTag(tid, { name: name.trim(), color, symbol, note, pinned });
       notes.update((n) => ({ ...n, tags: { ...n.tags, [tid]: t } }));
       onsaved?.(tid);
       open = false;
@@ -92,6 +93,7 @@
           </div>
         </div>
         <label class="f">Note <textarea bind:value={note} maxlength={500} rows="3"></textarea></label>
+        <label class="pin"><input type="checkbox" bind:checked={pinned} /> Show on Home</label>
         <p class="prev" aria-hidden="true"><TagChip name={name.trim() || 'Tag'} {color} {symbol} /></p>
         <div class="rs-a">
           {#if id}<button type="button" class="btn ghost del" onclick={() => (confirming = true)}>Delete tag</button>{/if}
@@ -131,6 +133,8 @@
   .sw[aria-checked='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }
   .sy { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
   .sy[aria-checked='true'] { border-color: var(--fg); background: var(--panel2); }
+  .pin { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .pin input { accent-color: var(--accent); width: 18px; height: 18px; }
   .prev { margin: 0; }
   .del { margin-right: auto; }
 </style>

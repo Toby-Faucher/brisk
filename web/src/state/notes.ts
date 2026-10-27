@@ -4,7 +4,7 @@ import { api, ApiError } from './api';
 /** The colors hostd accepts (notes.rs COLORS). */
 export type TagColor = 'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink';
 /** A tag you made. `symbol` names a glyph in TAG_SYMBOLS; an unknown one draws as a dot. Text only: never HTML. */
-export type Tag = { name: string; color: TagColor; symbol: string; note: string };
+export type Tag = { name: string; color: TagColor; symbol: string; note: string; pinned?: boolean };
 /** One game's note and tag ids. Text only: never HTML. */
 export type GameNote = { note: string; tags: string[] };
 /** GET /api/notes: tags by id, games by appid. */

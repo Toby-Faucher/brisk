@@ -5,6 +5,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import { api } from '../../state/api';
   import { watchGames } from '../../state/games';
+  import { notes, notesLoaded, refreshNotes, watchNotes } from '../../state/notes';
   import { homeOrder, refreshPrefs } from '../../state/prefs';
   import { ACCENT_HEX, settings } from '../../state/settings';
   import { loadModules } from '../../shell/registry';
@@ -17,8 +18,9 @@
   import QuickActions from './QuickActions.svelte';
   import RecentSessions from './RecentSessions.svelte';
   import AddModule from './AddModule.svelte';
+  import TagCard from './TagCard.svelte';
   import Slot from './Slot.svelte';
-  import { reconcileOrder } from './home';
+  import { reconcileOrder, tagCardIds } from './home';
   import { reorder } from './drag';
 
   const mods = loadModules();
@@ -27,8 +29,9 @@
   let widgets: Record<string, [string, Component]> = $state({});
   // The saved order (hostd prefs) laid over the cards there are; "Add a module" always stays last.
   let saved: string[] = $state([]);
-  const ids = $derived(reconcileOrder(saved, [...Object.keys(FIXED), ...Object.keys(widgets), ...soon.map((m) => m.id)]));
-  const label = (id: string) => FIXED[id]?.[0] ?? mods.find((m) => m.id === id)?.title ?? id;
+  const ids = $derived(reconcileOrder(saved, [...Object.keys(FIXED), ...Object.keys(widgets), ...tagCardIds($notes.tags), ...soon.map((m) => m.id)]));
+  const isTag = (id: string) => id.startsWith('tag-'); // fixed and module ids never do: 'tag-' is reserved for pinned tags
+  const label = (id: string) => FIXED[id]?.[0] ?? (isTag(id) ? $notes.tags[id.slice(4)]?.name : undefined) ?? mods.find((m) => m.id === id)?.title ?? id;
   // Hidden (visibility, so the grid keeps its size) until the saved order and the widgets are in: a reorder or a card
   // arriving after first paint would be a layout shift. At most 1.5 s, then whatever is there shows.
   let ready = $state(false);
@@ -43,12 +46,14 @@
       ready = true;
       void tick().then(enter);
     };
-    void Promise.all([w, get(homeOrder) ? null : refreshPrefs()]).then(show);
+    const off = watchNotes();
+    const n = get(notesLoaded) === true ? null : refreshNotes(); // pinned tags are cards: wait for them too, so none appears after first paint
+    void Promise.all([w, get(homeOrder) ? null : refreshPrefs(), n]).then(show);
     const cap = setTimeout(show, 1500);
     // enter() is idempotent: it tags what is on screen and not yet tagged, so widgets later than the cap rise too
-    void w.then(() => void (ready && tick().then(enter)));
-    const off = watchGames();
-    return () => (clearTimeout(cap), off());
+    void Promise.all([w, n]).then(() => void (ready && tick().then(enter)));
+    const offGames = watchGames();
+    return () => (clearTimeout(cap), off(), offGames());
   });
 
   const drag = reorder({
@@ -80,7 +85,9 @@
   {#each ids as id (id)}
     <Slot {id} label={label(id)}>
       {@const C = FIXED[id]?.[1] ?? widgets[id]?.[1]}
-      {#if C}
+      {#if isTag(id)}
+        <TagCard tagId={id.slice(4)} />
+      {:else if C}
         <C />
       {:else}
         {@const m = soon.find((m) => m.id === id)!}

@@ -98,6 +98,7 @@
   }
 
   onMount(() => {
+    tagPick = new URLSearchParams(location.search).get('tag'); // from a Home tag card; an unknown id filters nothing (tagF)
     const offGames = watchGames();
     const offPrefs = watchPrefs();
     const offNotes = watchNotes();
