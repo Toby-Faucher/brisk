@@ -79,13 +79,17 @@ pub fn valid_tag_id(id: &str) -> bool {
     })
 }
 
-/// Trailing whitespace off (so a blank note is empty), then at most `max` chars (not bytes).
-fn clean_note(s: String, max: usize) -> Result<String, NotesError> {
-    let s = s.trim_end();
-    if s.chars().count() > max {
+/// At most `max` chars (not bytes), trailing whitespace not counted. The text itself is kept as sent.
+fn check_note(s: &str, max: usize) -> Result<(), NotesError> {
+    if s.trim_end().chars().count() > max {
         return Err(NotesError::Bad("note is too long"));
     }
-    Ok(s.to_string())
+    Ok(())
+}
+
+/// A game entry worth keeping: some text or a tag.
+fn keep(g: &GameNote) -> bool {
+    !g.note.trim().is_empty() || !g.tags.is_empty()
 }
 
 impl NotesStore {
@@ -103,6 +107,7 @@ impl NotesStore {
         for g in n.games.values_mut() {
             g.tags.retain(|id| tags.contains_key(id));
         }
+        n.games.retain(|_, g| keep(g));
         NotesStore {
             path,
             max_tags,
@@ -132,7 +137,7 @@ impl NotesStore {
         }) {
             return Err(NotesError::Bad("symbol must be 1-16 of a-z -"));
         }
-        t.note = clean_note(t.note, TAG_NOTE_MAX)?;
+        check_note(&t.note, TAG_NOTE_MAX)?;
         self.change(|n| {
             if !n.tags.contains_key(id) && n.tags.len() >= self.max_tags {
                 return Err(NotesError::Full);
@@ -153,17 +158,19 @@ impl NotesStore {
             for g in n.games.values_mut() {
                 g.tags.retain(|t| t != id);
             }
-            n.games
-                .retain(|_, g| !g.note.is_empty() || !g.tags.is_empty());
+            n.games.retain(|_, g| keep(g));
             Ok(())
         })
     }
 
-    /// Stores one game's note and tags (unknown and repeated tag ids dropped); an empty note with no
+    /// Stores one game's note and tags (unknown and repeated tag ids dropped); a blank note with no
     /// tags removes the entry. Returns what was stored.
     pub fn put_game(&self, appid: u32, g: GameNote) -> Result<GameNote, NotesError> {
-        let note = clean_note(g.note, GAME_NOTE_MAX)?;
-        let mut out = GameNote { note, tags: vec![] };
+        check_note(&g.note, GAME_NOTE_MAX)?;
+        let mut out = GameNote {
+            note: g.note,
+            tags: vec![],
+        };
         self.change(|n| {
             for id in &g.tags {
                 if n.tags.contains_key(id) && !out.tags.contains(id) {
@@ -173,7 +180,7 @@ impl NotesStore {
             if out.tags.len() > GAME_TAGS_MAX {
                 return Err(NotesError::Bad("a game can have at most 16 tags"));
             }
-            if out.note.is_empty() && out.tags.is_empty() {
+            if !keep(&out) {
                 n.games.remove(&appid);
             } else if !n.games.contains_key(&appid) && n.games.len() >= self.max_games {
                 return Err(NotesError::Full);
@@ -289,13 +296,12 @@ mod tests {
         let p = d.path().join("notes.json");
         std::fs::write(
             &p,
-            r#"{"tags":{"a":{"name":"A","color":"red","symbol":"star","note":""}},"games":{"1":{"note":"","tags":["a","gone"]}}}"#,
+            r#"{"tags":{"a":{"name":"A","color":"red","symbol":"star","note":""}},"games":{"1":{"note":"","tags":["a","gone"]},"2":{"note":" ","tags":["gone"]}}}"#,
         )
         .unwrap();
-        assert_eq!(
-            NotesStore::load(p).all().games[&1].tags,
-            vec!["a".to_string()]
-        );
+        let games = NotesStore::load(p).all().games;
+        assert_eq!(games[&1].tags, vec!["a".to_string()]);
+        assert!(!games.contains_key(&2), "left empty, so dropped");
     }
 
     #[test]

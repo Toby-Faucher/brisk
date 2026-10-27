@@ -105,7 +105,9 @@ async fn put_tag_roundtrip_and_persists_across_load() {
         .tag("coop", json!({"name":"  Co-op night ","color":"teal","symbol":"users","note":"Needs 4 controllers\n\n"}))
         .await;
     assert_eq!(st, StatusCode::OK);
-    assert_eq!(body, coop()); // name trimmed, trailing whitespace off the note
+    let mut sent = coop();
+    sent["note"] = json!("Needs 4 controllers\n\n");
+    assert_eq!(body, sent); // name trimmed, the note kept as sent
     // PUT of an existing id replaces it
     let (st, _) = t
         .tag(
@@ -118,7 +120,7 @@ async fn put_tag_roundtrip_and_persists_across_load() {
         .await;
     let t2 = t_in(t.dir);
     let all = t2.all().await;
-    assert_eq!(all["tags"]["coop"], coop());
+    assert_eq!(all["tags"]["coop"], sent);
     assert_eq!(all["tags"]["back"]["note"], "");
     assert_eq!(
         all["games"]["620"],
@@ -211,13 +213,11 @@ async fn game_note_over_4000_chars_is_400() {
         t.game(1, json!({"note":"x".repeat(4001)})).await.0,
         StatusCode::BAD_REQUEST
     );
-    // trailing whitespace does not count
-    assert_eq!(
-        t.game(1, json!({"note":format!("{}\n  \n", "x".repeat(4000))}))
-            .await
-            .0,
-        StatusCode::OK
-    );
+    // trailing whitespace does not count, and is kept
+    let long = format!("{}\n  \n", "x".repeat(4000));
+    let (st, body) = t.game(1, json!({ "note": long })).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["note"], long.as_str());
     for b in [json!({"note":"a","x":1}), json!("a"), json!({"note":5})] {
         assert_eq!(t.game(1, b.clone()).await.0, StatusCode::BAD_REQUEST, "{b}");
     }
@@ -267,7 +267,7 @@ async fn empty_game_note_without_tags_deletes_entry() {
     assert!(t.all().await["games"].get("9").is_some());
     let (st, body) = t.game(9, json!({"note":"  \n ","tags":[]})).await;
     assert_eq!(st, StatusCode::OK);
-    assert_eq!(body, json!({"note":"","tags":[]}));
+    assert_eq!(body, json!({"note":"  \n ","tags":[]}));
     assert!(t.all().await["games"].get("9").is_none());
 }
 

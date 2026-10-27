@@ -493,8 +493,8 @@ reports; then add `frame-ancestors 'none'` and drop X-Frame-Options.
   /api/notes/tags/<id> (16 KiB body), PUT /api/notes/games/<appid> (64 KiB body). notes.rs: `<data_dir>/notes.json`,
   0600 temp file + rename, a corrupt file loads empty (kept until the next save). Tag id 1..16 of `a-z 0-9 -`, name
   1..24 chars after trim, color gray|red|orange|yellow|green|teal|blue|purple|pink, symbol 1..16 of `a-z -`, notes
-  500 (tag) / 4000 (game) chars after trailing whitespace is cut; 16 tags per game, unknown and repeated ids dropped;
-  an empty note with no tags removes the game. 400 for a bad body, 409 past 64 tags or 2000 games, 500 (nothing kept)
+  500 (tag) / 4000 (game) chars, trailing whitespace not counted (the text is stored as sent); 16 tags per game,
+  unknown and repeated ids dropped; a blank note with no tags removes the game (on load too). 400 for a bad body, 409 past 64 tags or 2000 games, 500 (nothing kept)
   if the file cannot be written. DELETE of a tag takes it off every game and is 204 even when unknown. No
   whole-document PUT, so two browsers editing different games never overwrite each other. Notes are never logged.
 - POST /api/launch, POST /api/install, POST /api/sunshine/restart
