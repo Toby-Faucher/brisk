@@ -94,7 +94,7 @@ impl T {
 }
 
 fn coop() -> Value {
-    json!({"name":"Co-op night","color":"teal","symbol":"users","note":"Needs 4 controllers"})
+    json!({"name":"Co-op night","color":"teal","symbol":"users","note":"Needs 4 controllers","pinned":false})
 }
 
 #[tokio::test]
@@ -375,4 +375,31 @@ async fn notes_require_guard() {
         assert_eq!(st, StatusCode::FORBIDDEN, "{m} {u}");
     }
     assert!(!t.file().exists());
+}
+
+#[tokio::test]
+async fn tag_pinned_roundtrips_and_defaults_false() {
+    let t = t();
+    let (st, body) = t
+        .tag(
+            "a",
+            json!({"name":"A","color":"red","symbol":"star","pinned":true}),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["pinned"], true);
+    let (_, body) = t
+        .tag("b", json!({"name":"B","color":"red","symbol":"star"}))
+        .await;
+    assert_eq!(body["pinned"], false);
+    let t2 = t_in(t.dir);
+    assert_eq!(t2.all().await["tags"]["a"]["pinned"], true);
+    // an old file without the field loads, unpinned
+    std::fs::write(
+        t2.file(),
+        r#"{"tags":{"o":{"name":"Old","color":"red","symbol":"star","note":"x"}},"games":{}}"#,
+    )
+    .unwrap();
+    let t3 = t_in(t2.dir);
+    assert_eq!(t3.all().await["tags"]["o"]["pinned"], false);
 }

@@ -31,6 +31,9 @@ pub struct Tag {
     pub symbol: String,
     #[serde(default)]
     pub note: String,
+    /// Shown as a card on Home.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -242,6 +245,7 @@ mod tests {
             color: "blue".into(),
             symbol: "star".into(),
             note: String::new(),
+            pinned: false,
         }
     }
 
