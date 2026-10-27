@@ -33,10 +33,13 @@
       <div class="top">
         <Dialog.Title class="rs-t">{name} achievements</Dialog.Title>
         <Dialog.Description class="lab">{ach.unlocked} of {ach.total} unlocked</Dialog.Description>
-        <input type="search" bind:value={q} placeholder="Search" aria-label="Search achievements" autocomplete="off" />
+        <!-- Escape with text clears it (as the Library search); on an empty box it closes the dialog -->
+        <input type="search" bind:value={q} placeholder="Search" aria-label="Search achievements" autocomplete="off" onkeydown={(e) => e.key === 'Escape' && q && (e.preventDefault(), e.stopPropagation(), (q = ''))} />
       </div>
       {#if shown.length}
-        <ul>
+        <!-- focusable so the keyboard (and Safari) can scroll it: a scrolling region needs a tab stop (axe scrollable-region-focusable) -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <ul tabindex="0" aria-label="Achievements">
           {#each shown as a (a.id)}
             <li class:locked={a.unlockedAt === null}>
               {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}

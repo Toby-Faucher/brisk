@@ -54,6 +54,7 @@
   // object URL as its tile scrolls into view (at most 12 fetches at once); all URLs are revoked on unmount or game change.
   let local = $state<GameLocal | null>(null);
   let shotUrl = $state<Record<string, string>>({});
+  let shotBad = $state<Record<string, true>>({}); // failed fetches: the lightbox says so; the next want() tries again
   let gen = 0;
   let made: string[] = [];
   let queue: string[] = [];
@@ -74,6 +75,7 @@
       made.forEach((u) => URL.revokeObjectURL(u));
       made = [];
       shotUrl = {};
+      shotBad = {};
     };
   });
   function pump() {
@@ -85,7 +87,7 @@
         .screenshot(appid, name)
         .then(
           (u) => (g === gen ? (made.push(u), (shotUrl[name] = u)) : URL.revokeObjectURL(u)),
-          () => {},
+          () => g === gen && (asked.delete(name), (shotBad[name] = true)),
         )
         .finally(() => (active--, pump()));
     }
@@ -93,6 +95,7 @@
   const want = (name: string) => {
     if (asked.has(name)) return;
     asked.add(name);
+    delete shotBad[name];
     queue.push(name);
     pump();
   };
@@ -112,17 +115,20 @@
 
 
   // The lightbox: which list and where in it. Store shots use the full-size URL when the server sent one; the host's
-  // own reuse their object URL (fetched now if the tile has not scrolled into view yet).
+  // own reuse their object URL; the shown one and its two neighbours are fetched now if their tiles have not scrolled
+  // into view (never the whole list: up to 60 files of 25 MiB, held until the panel closes).
   let box = $state<{ kind: 'store' | 'local'; i: number } | null>(null);
   const storeShots = $derived.by(() => {
     const v = info && info !== 'none' ? info : null;
     return (v?.screenshots ?? []).map((src, i) => ({ src: v?.screenshotsFull?.[i] || src, alt: `${game.name} screenshot ${i + 1}` }));
   });
-  const localShots = $derived((local?.screenshots ?? []).map((name, i) => ({ src: shotUrl[name] ?? '', alt: `${game.name} screenshot ${i + 1} from this PC` })));
-  function show(kind: 'store' | 'local', i: number) {
-    box = { kind, i };
-    if (kind === 'local') local?.screenshots.forEach((n) => want(n));
-  }
+  const localShots = $derived((local?.screenshots ?? []).map((name, i) => ({ src: shotUrl[name] ?? '', failed: !!shotBad[name], alt: `${game.name} screenshot ${i + 1} from this PC` })));
+  const show = (kind: 'store' | 'local', i: number) => (box = { kind, i });
+  $effect(() => {
+    if (box?.kind !== 'local' || !local?.screenshots.length) return;
+    const l = local.screenshots;
+    for (const d of [-1, 0, 1]) want(l[(box.i + d + l.length) % l.length]);
+  });
   let allAch = $state(false);
   const PREVIEW = 6;
 </script>
@@ -153,7 +159,7 @@
             {#if storeShots.length}
               <h3>Screenshots</h3>
               <div class="shots">
-                {#each storeShots as s, i (s.src)}<button class="shot" aria-label="Open {s.alt}" aria-haspopup="dialog" onclick={() => show('store', i)}><img src={info.screenshots[i]} alt={s.alt} loading="lazy" decoding="async" /></button>{/each}
+                {#each storeShots as s, i (i)}<button class="shot" aria-label="Open {s.alt}" aria-haspopup="dialog" onclick={() => show('store', i)}><img src={info.screenshots[i]} alt={s.alt} loading="lazy" decoding="async" /></button>{/each}
               </div>
             {/if}
           {/if}
@@ -179,7 +185,7 @@
         <!-- achievements: the first few, the rest in their own modal -->
         {#if ach && ach.total > 0}
           <section class="sec ach">
-            <div class="h"><h3>Achievements</h3>{#if ach.list.length}<button class="btn ghost more" aria-haspopup="dialog" aria-label="View all {ach.list.length} achievements" onclick={() => (allAch = true)}>View all</button>{/if}</div>
+            <div class="h"><h3>Achievements</h3>{#if ach.list.length > PREVIEW}<button class="btn ghost more" aria-haspopup="dialog" aria-label="View all {ach.list.length} achievements" onclick={() => (allAch = true)}>View all</button>{/if}</div>
             <ul class="alist">
               {#each ach.list.slice(0, PREVIEW) as a (a.id)}
                 <li class:locked={a.unlockedAt === null}>

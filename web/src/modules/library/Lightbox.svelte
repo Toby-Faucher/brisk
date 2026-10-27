@@ -1,10 +1,11 @@
 <script lang="ts">
   // A screenshot at full size over the game panel: previous / next (buttons and arrow keys, wrapping), Escape or Close
-  // to leave. Focus is trapped by Bits and goes back to the thumbnail that opened it. `src` '' = still loading.
+  // to leave. Focus is trapped by Bits and goes back to the thumbnail that opened it. `src` '' = still loading, or
+  // `failed`.
   import { Dialog } from 'bits-ui';
   import Icon from '../../ui/Icon.svelte';
 
-  let { shots, index = $bindable(), onclose }: { shots: { src: string; alt: string }[]; index: number; onclose: () => void } = $props();
+  let { shots, index = $bindable(), onclose }: { shots: { src: string; alt: string; failed?: boolean }[]; index: number; onclose: () => void } = $props();
 
   let open = $state(true);
   const back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -37,7 +38,7 @@
         <Dialog.Close class="btn ghost" aria-label="Close screenshot">Close</Dialog.Close>
       </div>
       <figure>
-        {#if cur.src}<img src={cur.src} alt={cur.alt} />{:else}<p class="lab" role="status">Loading…</p>{/if}
+        {#if cur.src}<img src={cur.src} alt={cur.alt} />{:else}<p class="lab" role="status">{cur.failed ? 'Could not load this screenshot' : 'Loading…'}</p>{/if}
         {#if n > 1}
           <button class="nav prev" aria-label="Previous screenshot" onclick={() => step(-1)}><Icon name="chev" size={20} /></button>
           <button class="nav next" aria-label="Next screenshot" onclick={() => step(1)}><Icon name="chev" size={20} /></button>

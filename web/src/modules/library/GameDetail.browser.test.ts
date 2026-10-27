@@ -279,7 +279,7 @@ describe('GameDetail', () => {
 
   const thumbs = [0, 1, 2].map((i) => `https://cdn.example.test/ss_0${i}.600x338.jpg`);
   const shotsInfo: GameInfo = { ...info, screenshots: thumbs, screenshotsFull: thumbs.map((u) => u.replace('600x338', '1920x1080')) };
-  const big = () => page.getByRole('dialog', { name: /^Screenshot \d of \d$/ });
+  const big = () => page.getByRole('dialog', { name: /^Screenshot \d+ of \d+$/ });
 
   it('a store screenshot opens a lightbox with the full-size image; arrows, buttons and Escape', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(shotsInfo);
@@ -363,7 +363,8 @@ describe('GameDetail', () => {
     await userEvent.fill(search, 'zzz');
     await expect.element(achDialog().getByText('No matches')).toBeInTheDocument();
     expect(items()).toHaveLength(0);
-    await userEvent.keyboard('{Escape}');
+    await userEvent.keyboard('{Escape}'); // clears the search
+    await userEvent.keyboard('{Escape}'); // closes
     await expect.element(achDialog()).not.toBeInTheDocument();
     await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
     await expect.poll(() => document.activeElement).toBe(open.element());
@@ -411,5 +412,87 @@ describe('GameDetail', () => {
     } finally {
       await page.viewport(1280, 800);
     }
+  });
+
+  // Tiles never scroll into view here (a stub observer), so every fetch comes from the lightbox.
+  const noObserver = () => vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} unobserve() {} });
+  const ten: GameLocal = { screenshots: Array.from({ length: 10 }, (_, i) => `s${i + 1}.png`), saves: null };
+
+  it('a local screenshot fetches only itself and its neighbours, then the next one on a step', async () => {
+    noObserver();
+    try {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'gameLocal').mockResolvedValue(ten);
+      const shot = vi.spyOn(api, 'screenshot').mockImplementation(async () => blobUrl());
+      await render(GameDetail, { props: props(game) });
+      await userEvent.click(page.getByRole('button', { name: 'Open Portal 2 screenshot 3 from this PC' }));
+      await expect.element(big()).toHaveAccessibleName('Screenshot 3 of 10');
+      await expect.poll(() => shot.mock.calls.map((c) => c[1]).sort()).toEqual(['s2.png', 's3.png', 's4.png']);
+      await userEvent.keyboard('{ArrowRight}');
+      await expect.poll(() => shot.mock.calls.map((c) => c[1]).sort()).toEqual(['s2.png', 's3.png', 's4.png', 's5.png']);
+      await expect.element(big().getByRole('img')).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('a local screenshot that fails to load says so, and is tried again on the next open', async () => {
+    noObserver();
+    try {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['only.png'], saves: null });
+      const shot = vi.spyOn(api, 'screenshot').mockRejectedValueOnce(new Error('gone')).mockImplementation(async () => blobUrl());
+      await render(GameDetail, { props: props(game) });
+      const open = page.getByRole('button', { name: 'Open Portal 2 screenshot 1 from this PC' });
+      await userEvent.click(open);
+      await expect.element(big().getByRole('status')).toHaveTextContent('Could not load this screenshot');
+      await userEvent.keyboard('{Escape}');
+      await expect.element(big()).not.toBeInTheDocument();
+      await userEvent.click(open);
+      await expect.element(big().getByRole('img')).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+      expect(shot).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('Escape in the achievement search clears the text first, then closes the modal', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue(many);
+    await render(GameDetail, { props: props(game) });
+    await userEvent.click(page.getByRole('button', { name: 'View all 9 achievements' }));
+    const search = achDialog().getByRole('searchbox', { name: 'Search achievements' });
+    await userEvent.fill(search, 'zzz');
+    await userEvent.keyboard('{Escape}');
+    await expect.element(search).toHaveValue('');
+    await expect.element(achDialog()).toBeInTheDocument();
+    await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await expect.element(achDialog()).not.toBeInTheDocument();
+    await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
+  });
+
+  it('the achievement list in the modal can take focus to scroll, and is named', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue(many);
+    await render(GameDetail, { props: props(game) });
+    await userEvent.click(page.getByRole('button', { name: 'View all 9 achievements' }));
+    await expect.element(achDialog().getByRole('list', { name: 'Achievements' })).toHaveAttribute('tabindex', '0');
+  });
+
+  it('View all shows only when there are more achievements than the preview', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue(ach); // 2 in the list
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('First Steps')).toBeInTheDocument();
+    expect(page.getByRole('heading', { name: 'Achievements' }).elements()).toHaveLength(1);
+    expect(page.getByRole('button', { name: /^View all/ }).elements()).toHaveLength(0);
+  });
+
+  it('two store screenshots with the same URL render without a key error', async () => {
+    const dup = 'https://cdn.example.test/same.jpg';
+    vi.spyOn(api, 'gameInfo').mockResolvedValue({ ...info, screenshots: [dup, dup] });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByRole('button', { name: 'Open Portal 2 screenshot 2' })).toBeInTheDocument();
   });
 });

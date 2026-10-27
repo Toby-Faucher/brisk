@@ -17,7 +17,8 @@ const series = Array.from({ length: 120 }, (_, i) => [1700000000000 + i * 5000, 
 const shot = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="${c}"/></svg>`)}`;
 const shots = ['#345', '#534', '#453'].map(shot);
 const info = { available: true, description: 'A test description & more.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '1 Jan, 2020', metacritic: 90, screenshots: shots, screenshotsFull: shots };
-const achievements = { available: true, unlocked: 3, total: 9, list: Array.from({ length: 9 }, (_, i) => ({ id: `a${i}`, name: `Achievement ${i + 1}`, description: i % 2 ? '' : 'Do the thing.', icon: '', unlockedAt: i < 3 ? 1700000000 + i : null })) };
+// 120, so the modal's list really scrolls (scrollable-region-focusable)
+const achievements = { available: true, unlocked: 3, total: 120, list: Array.from({ length: 120 }, (_, i) => ({ id: `a${i}`, name: `Achievement ${i + 1}`, description: i % 2 ? '' : 'Do the thing.', icon: '', unlockedAt: i < 3 ? 1700000000 + i : null })) };
 const news = { items: [{ title: 'Patch 1.2 notes', url: 'https://news.example.test/1', date: 1700000000, patch: true }, { title: 'Community update', url: 'https://news.example.test/2', date: 1699000000, patch: false }] };
 // every tag color, so the chips' contrast is measured (Game 1 carries them all)
 const colors = ['gray', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
@@ -100,13 +101,16 @@ try {
   await page.getByRole('dialog', { name: 'Screenshot 2 of 3' }).waitFor();
   await scan('screenshot lightbox open');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'View all 9 achievements' }).click();
+  await page.getByRole('button', { name: 'View all 120 achievements' }).click();
   await page.getByRole('searchbox', { name: 'Search achievements' }).waitFor();
+  const scrolls = await page.locator('.ad ul').evaluate((e) => e.scrollHeight > e.clientHeight);
+  check('achievements modal: the list scrolls (so axe checks it)', scrolls);
   await scan('achievements modal open');
   await page.getByRole('searchbox', { name: 'Search achievements' }).fill('zzz');
   await page.getByText('No matches').waitFor();
   await scan('achievements modal, no matches');
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape'); // clears the search
+  await page.keyboard.press('Escape'); // closes the modal
   await page.getByRole('button', { name: 'Edit tag Tag teal' }).click();
   await page.getByRole('radiogroup', { name: 'Symbol' }).waitFor();
   await scan('tag editor open');

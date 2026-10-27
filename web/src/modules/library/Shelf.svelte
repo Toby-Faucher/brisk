@@ -52,14 +52,16 @@
     const p = pop;
     if (!p.n || performance.now() - p.at > 300) return;
     let off = () => {};
+    let stop = false; // a newer pop or an unmount before tick(): never start a tween nobody can cancel
     void tick().then(() => {
+      if (stop) return;
       const els = [...(section?.querySelectorAll<HTMLElement>('.slot, .grid > [data-appid]') ?? [])].filter((e) => {
         const r = e.getBoundingClientRect();
         return !e.style.viewTransitionName && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
       });
       off = cardsIn(els.slice(0, 24));
     });
-    return () => off();
+    return () => ((stop = true), off());
   });
   const page = (dir: number) => row?.scrollBy({ left: dir * Math.max(CARD + GAP, row.clientWidth - 2 * (CARD + GAP)), behavior: 'smooth' });
   const toggle = () => {

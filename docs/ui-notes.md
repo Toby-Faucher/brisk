@@ -404,8 +404,9 @@ All need the usual auth. The games, info, achievements and news routes also take
   `/screenshots/{name}` serves a name only when it equals an entry of that listing (never joined from the request
   otherwise), opened with `O_NOFOLLOW | O_NONBLOCK`, regular files only, read capped at 25 MiB. An `<img src>` cannot send
   the auth headers, so the page fetches each image with them and shows a blob URL (`URL.createObjectURL`), revoked
-  when the panel closes or the game changes. The lightbox reuses that blob URL (fetching the rest of the list when it
-  opens on one that has not scrolled into view). The cloud-save summary is counts only (files, bytes, newest mtime; at
+  when the panel closes or the game changes. The lightbox reuses that blob URL and fetches only the shown shot and its two
+  neighbours when their tiles have not scrolled into view; a failed fetch shows "Could not load this screenshot" and is
+  tried again on the next open or step. The cloud-save summary is counts only (files, bytes, newest mtime; at
   most 10 000 entries, depth 8); file names and contents never leave the host.
 - Update state (`update` on installed games: `needed`, `running` or none) comes from `StateFlags` in
   `appmanifest_*.acf`. Seen on this host: only 4 (fully installed), on all 10 manifests. The other bits are from
@@ -437,7 +438,7 @@ All need the usual auth. The games, info, achievements and news routes also take
   names are skipped. This replaces the CSS `.enter` entrance the first 8 cards of a shelf had.
 - Icons: `web/public/favicon-32.png`, `favicon.png` (64), `favicon-192.png` and `apple-touch-icon.png` (180, opaque
   #0e1015) are drawn from `assets/favicon.svg` (`rsvg-convert -w N -h N assets/favicon.svg -o ...`; the touch icon adds
-  the background and padding). The sidebar wordmark is `web/public/brand.png` (192x93, shown at 96x47), cut from
+  the background and padding). The sidebar wordmark is `web/public/brand.png` (192x92, shown at 96x46), cut from
   `assets/logo.png` through an SVG wrapper. The sidebar has no narrow mode: on a phone it still takes 218 px.
 
 ### Notes and tags
