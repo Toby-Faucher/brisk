@@ -101,12 +101,34 @@
     t.finished.then(done, done);
   }
 
+  // ?tag= (Home tag card, command menu): an unknown id filters nothing (tagF). ?open=<appid> (command menu) opens that
+  // game's panel once its list is known, then drops the param so a reload does not reopen it.
+  let wantOpen = $state<number | null>(null);
+  function readParams() {
+    const p = new URLSearchParams(location.search);
+    tagPick = p.get('tag');
+    if (p.has('open')) {
+      wantOpen = Number(p.get('open'));
+      p.delete('open');
+      const qs = p.toString();
+      history.replaceState(history.state, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+    }
+  }
+  $effect(() => {
+    if (wantOpen == null || !$games) return;
+    open = $games.games.find((x) => x.appid === wantOpen) ?? open; // an unknown appid is ignored
+    wantOpen = null;
+  });
+
   onMount(() => {
-    tagPick = new URLSearchParams(location.search).get('tag'); // from a Home tag card; an unknown id filters nothing (tagF)
+    readParams();
+    // The router may keep this island on a same-page visit (command menu while on /library): re-read then.
+    addEventListener('popstate', readParams);
+    addEventListener('astro:page-load', readParams);
     const offGames = watchGames();
     const offPrefs = watchPrefs();
     const offNotes = watchNotes();
-    return () => (offGames(), offPrefs(), offNotes());
+    return () => (offGames(), offPrefs(), offNotes(), removeEventListener('popstate', readParams), removeEventListener('astro:page-load', readParams));
   });
 
   async function run(g: Game, verb: string, task: () => Promise<unknown>) {

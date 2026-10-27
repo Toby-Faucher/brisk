@@ -121,3 +121,27 @@ describe('Library', () => {
     expect(shelf('Almost done')).toBe(0);
   });
 });
+
+describe('Library ?open=', () => {
+  it('opens the panel of a known game and clears the param', async () => {
+    history.replaceState(null, '', '?open=2');
+    await render(Library);
+    await expect.element(page.getByRole('dialog').getByText('Bravo', { exact: true })).toBeInTheDocument();
+    expect(location.search).toBe('');
+  });
+
+  it('ignores an unknown ?open= (and clears it)', async () => {
+    history.replaceState(null, '', '?open=999');
+    await render(Library);
+    await expect.element(page.getByRole('button', { name: 'Surprise me' })).toBeInTheDocument();
+    expect(page.getByRole('dialog').elements()).toHaveLength(0);
+    expect(location.search).toBe('');
+  });
+
+  it('reacts to a later ?tag= without a remount', async () => {
+    await render(Library);
+    history.pushState(null, '', '?tag=auto-coop');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
