@@ -27,14 +27,14 @@
   CSS `.reveal[data-enter], .enter[data-enter]` plays `enter-rise` on the document timeline (its shorthand resets
   `animation-timeline` to auto, so it beats the scroll reveal). It is idempotent, a tagged element never replays. Pure part
   `planEnter` is unit-tested. Callers: Shell on mount (waits for the Astro islands to hydrate, max 1.5 s) and each place
-  where content arrives late: Library games landing (hero, shelf headers, first <= 8 cards per shelf), History list,
+  where content arrives late: Library games landing (hero, shelf headers; the cards pop in through `cardsIn`, see Game panel), History list,
   Machines host card, Home lazy widgets. Layout's head script sets `html[data-enter-pending]` (and again on
   `astro:after-swap`; 3 s failsafe) which hides `.reveal/.enter` in `main.page-in` until `enter()` has tagged them, so the
   SSR markup does not flash before it animates.
 - Classes: `.reveal` = above the fold: load entrance, below: scroll reveal (`animation-timeline: view()`, `entry 0% entry
   35%`, inside `@supports`, unsupported means plain visible) on `Card`, page headings (`.top`), Library filters, hero and shelf
-  headers, Add-a-module. `.enter` = entrance only, never scroll-driven: Library cards (first 8 of a shelf at its start),
-  and only tagged by `enter()` at route load / games arrival, so paging a shelf or scrolling mounts cards without any
+  headers, Add-a-module. `.enter` = entrance only, never scroll-driven, only tagged by `enter()` at route load / data arrival. Library cards
+  no longer use it: they pop in through anime.js (`cardsIn`), and paging a shelf or scrolling mounts cards without any
   animation. `.fade-in` (opacity, 420 ms) is added by class when data lands: Home host card and resume card content.
 - Library search: the results (`.body`) cross-fade 0.3 -> 1 over 140 ms via WAAPI, at most once per 150 ms. Filter chips:
   a view transition (see Platform features), the same fade when it is skipped.
@@ -389,7 +389,8 @@ All need the usual auth. The games, info, achievements and news routes also take
 
 - Two-level cache: the `-ok` file only ever holds successes, so a stale success beats the default and a failure
   is not retried for 10 minutes. `info` is the store `appdetails` page (controller support, co-op, release, Metacritic,
-  up to 6 screenshot thumbnails); `store_get` uses `BRISK_STEAM_STORE_BASE`. `updated` on a game means a patch-notes
+  up to 6 screenshot thumbnails, each with its full-size URL in `screenshotsFull`, https only, the thumbnail again when
+  the full one is not https; a cache entry from before that field has none and the lightbox shows the thumbnail); `store_get` uses `BRISK_STEAM_STORE_BASE`. `updated` on a game means a patch-notes
   item newer than the last play, not in the future and under 30 days old, read from the news cache alone.
 - Warm task: `GET /api/games` starts `steam_info::warm` in the background and returns at once; only one runs at a time
   (a flag, cleared on drop even after a panic). First, achievements and news for installed games with play time (at
@@ -403,7 +404,8 @@ All need the usual auth. The games, info, achievements and news routes also take
   `/screenshots/{name}` serves a name only when it equals an entry of that listing (never joined from the request
   otherwise), opened with `O_NOFOLLOW | O_NONBLOCK`, regular files only, read capped at 25 MiB. An `<img src>` cannot send
   the auth headers, so the page fetches each image with them and shows a blob URL (`URL.createObjectURL`), revoked
-  when the panel closes or the game changes. The cloud-save summary is counts only (files, bytes, newest mtime; at
+  when the panel closes or the game changes. The lightbox reuses that blob URL (fetching the rest of the list when it
+  opens on one that has not scrolled into view). The cloud-save summary is counts only (files, bytes, newest mtime; at
   most 10 000 entries, depth 8); file names and contents never leave the host.
 - Update state (`update` on installed games: `needed`, `running` or none) comes from `StateFlags` in
   `appmanifest_*.acf`. Seen on this host: only 4 (fully installed), on all 10 manifests. The other bits are from
@@ -411,6 +413,32 @@ All need the usual auth. The games, info, achievements and news routes also take
   needed), and 256, 1024, 1048576, 2097152, 4194304 as running. Check with a real update before trusting them. A paused
   update (512) counts as needed and wins over the running bits, so 1542 (2, 4, 512 and 1024) reads as needed. The
   card shows an orange chip, the panel a note; Play stays enabled.
+
+### Game panel (GameDetail)
+- Wide screens: a two-pane dialog, `min(1080px, 100vw - 32px)` wide and `min(88vh, 900px)` tall. Left (`GameSide.svelte`,
+  its own scroll only when it does not fit): art, title, Play/Install/Quit, the update note, quick facts (controller,
+  genres, release, Metacritic), achievement progress, your note and tags, automatic tags. Right (`.gd-main`, scrolls):
+  description, store screenshots, your screenshots and saves, the first 6 achievements and "View all", news, stream
+  history. Under 760 px it is one scrolling column, as before.
+- Nested dialogs over it (z-index 42/43, overlay then content, like the tag editor): `Lightbox.svelte` (a thumbnail is a
+  button; previous/next buttons and Left/Right keys wrap, Escape or Close, focus back on the thumbnail) and
+  `AchievementsDialog.svelte` (every achievement, locked ones with a faded icon and grey name; a search on name and
+  description that ignores case and accents through `fold()`; "No matches" when empty). The tag editor is centred in the
+  viewport with its height capped, Save and Cancel sticky at the bottom.
+- Library cards (`GameCard`): `.name` and `.sub` have `contain: inline-size`, so a long name can no longer widen its
+  card (it did: the flex slot took the text's min-content width and the 2:3 cover grew with it). Shelf order: hero,
+  Played this fortnight, Installed, Almost done, Backlog, Not installed.
+- Pickers: `ui/Dropdown.svelte` (Bits Select, rounded menu, accent ring on the highlighted item) for the Library sort and
+  the Settings replay buffer and pad pickers. The ghost bar's selects on /stream stay native (no new JS there).
+- Card pop-in: `motion.ts` `cardsIn` (anime.js, opacity + 10 px rise + .96 scale, 30 ms apart, `--dur-enter`) on the
+  shelf slots on screen when the games first arrive and on a filter chip, tag chip or sort change (Library's `pop`
+  stamp; a shelf runs it at mount only when the stamp is under 300 ms old, so one the search brings back stays still).
+  Never on shelf scrolling, typing or a data refresh; nothing under reduced motion; cards the filter view transition
+  names are skipped. This replaces the CSS `.enter` entrance the first 8 cards of a shelf had.
+- Icons: `web/public/favicon-32.png`, `favicon.png` (64), `favicon-192.png` and `apple-touch-icon.png` (180, opaque
+  #0e1015) are drawn from `assets/favicon.svg` (`rsvg-convert -w N -h N assets/favicon.svg -o ...`; the touch icon adds
+  the background and padding). The sidebar wordmark is `web/public/brand.png` (192x93, shown at 96x47), cut from
+  `assets/logo.png` through an SVG wrapper. The sidebar has no narrow mode: on a phone it still takes 218 px.
 
 ### Notes and tags
 `data_dir/notes.json`: `{"tags": {<id>: {name, color, symbol, note, pinned}}, "games": {<appid>: {note, tags: [ids]}}}`.
