@@ -1,5 +1,7 @@
 mod common;
+use brisk_hostd::http::AppState;
 use common::*;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn owned_still_works_through_steam_get() {
@@ -99,4 +101,144 @@ async fn info_success_false_is_unavailable() {
     assert_eq!(st, 200);
     assert_eq!(v["available"], false);
     assert_eq!(v["genres"], serde_json::json!([]));
+}
+
+fn owned() -> String {
+    std::fs::read_to_string(format!("{FIX}/owned.json")).unwrap()
+}
+
+fn ach_api(player: String, schema: String) -> Vec<(&'static str, u16, String)> {
+    vec![
+        ("/ISteamUserStats/GetPlayerAchievements/", 200, player),
+        ("/ISteamUserStats/GetSchemaForGame/", 200, schema),
+    ]
+}
+
+fn ach_fixtures() -> Vec<(&'static str, u16, String)> {
+    let rd = |n: &str| std::fs::read_to_string(format!("{FIX}/{n}")).unwrap();
+    ach_api(rd("playerachievements-620.json"), rd("schema-620.json"))
+}
+
+#[tokio::test]
+async fn achievements_merge_schema_and_player() {
+    let api = mock_steam(ach_fixtures()).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (st, v) = get_json(&s.cfg, "/api/games/620/achievements").await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(
+        (
+            v["available"].clone(),
+            v["unlocked"].clone(),
+            v["total"].clone()
+        ),
+        (true.into(), 3.into(), 5.into())
+    );
+    let l = v["list"].as_array().unwrap();
+    assert_eq!(l[0]["name"], "First Steps");
+    assert_eq!(l[0]["unlockedAt"], 1700000100);
+    assert_eq!(l[0]["icon"], "https://cdn.example.test/ach/one.jpg");
+    // http:// icons are dropped
+    assert_eq!(l[1]["icon"], "");
+    assert_eq!(l[2]["unlockedAt"], serde_json::Value::Null);
+    assert_eq!(l[2]["icon"], "https://cdn.example.test/ach/three_g.jpg");
+    assert_eq!(l[3]["description"], "");
+    assert!(!v.to_string().contains("TESTKEY"));
+}
+
+#[tokio::test]
+async fn achievements_unknown_appid_404() {
+    let mut routes = ach_fixtures();
+    routes.push(("/IPlayerService/GetOwnedGames/", 200, owned()));
+    let (api, hits) = mock_steam_hits(routes).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (st, _) = get_json(&s.cfg, "/api/games/999999/achievements").await;
+    assert_eq!(st, 404);
+    // only the library lookup, nothing from ISteamUserStats
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn achievements_none_is_unavailable() {
+    let body = r#"{"playerstats":{"success":false,"error":"Requested app has no stats"}}"#;
+    let api = mock_steam(vec![("/ISteamUserStats/", 400, body.into())]).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (st, v) = get_json(&s.cfg, "/api/games/620/achievements").await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        (v["available"].clone(), v["total"].clone()),
+        (false.into(), 0.into())
+    );
+}
+
+#[tokio::test]
+async fn achievements_private_profile_is_unavailable_and_cached_briefly() {
+    let (api, hits) = mock_steam_hits(vec![
+        ("/IPlayerService/GetOwnedGames/", 200, owned()),
+        ("/ISteamUserStats/", 403, String::new()),
+    ])
+    .await;
+    let s = steam(&api, NO_API, Some(KEY));
+    for _ in 0..2 {
+        let (st, v) = get_json(&s.cfg, "/api/games/620/achievements").await;
+        assert_eq!(st, 200);
+        assert_eq!(
+            (v["available"].clone(), v["total"].clone()),
+            (false.into(), 0.into())
+        );
+        assert!(!v.to_string().contains("TESTKEY"));
+    }
+    // library lookup + one player call: the second request came from the cache, and the failing
+    // player call stops before the schema one
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn warm_fills_cache_and_games_show_counts() {
+    let api = mock_steam(ach_fixtures()).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620]).await;
+    let api2 = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned())]).await;
+    let mut cfg = s.cfg.clone();
+    cfg.steam_api_base = api2;
+    let (v, _) = games_json(&cfg, "/api/games").await;
+    let g = |id: u64| {
+        v["games"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["appid"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        (g(620)["achUnlocked"].clone(), g(620)["achTotal"].clone()),
+        (3.into(), 5.into())
+    );
+    assert!(g(730)["achUnlocked"].is_null());
+}
+
+#[tokio::test]
+async fn warm_runs_once_at_a_time() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (api, hits) = mock_steam_hits(ach_fixtures()).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let st = Arc::new(AppState::new(s.cfg.clone()));
+    st.warming.store(true, SeqCst);
+    brisk_hostd::steam_info::warm(st.clone(), vec![620]);
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(hits.load(SeqCst), 0);
+    assert!(
+        st.warming.load(SeqCst),
+        "the other run's flag is not ours to clear"
+    );
+    // free: it runs, then clears the flag
+    st.warming.store(false, SeqCst);
+    brisk_hostd::steam_info::warm(st.clone(), vec![620]);
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if !st.warming.load(SeqCst) && hits.load(SeqCst) > 0 {
+            return;
+        }
+    }
+    panic!("warm never finished");
 }

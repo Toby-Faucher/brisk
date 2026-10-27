@@ -5,7 +5,7 @@ import { navigate } from 'astro:transitions/client';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 
-const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', running: false };
+const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, running: false };
 
 describe('GameCard', () => {
   it('clicking a not-installed card calls onpick and never installs', async () => {
@@ -27,5 +27,17 @@ describe('GameCard', () => {
     await userEvent.click(page.getByRole('button', { name: /^Portal, ready to play/ }));
     expect(onpick).toHaveBeenCalledExactlyOnceWith(g);
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('shows a thin progress bar when achTotal > 0', async () => {
+    await render(GameCard, { props: { game: { ...game, achUnlocked: 3, achTotal: 5 }, onpick: vi.fn() } });
+    await expect.element(page.getByRole('progressbar', { name: '3 of 5 achievements' })).toBeInTheDocument();
+  });
+
+  it('shows no progress bar when achTotal is null or 0', async () => {
+    const { rerender } = await render(GameCard, { props: { game, onpick: vi.fn() } });
+    expect(page.getByRole('progressbar').elements()).toHaveLength(0);
+    await rerender({ game: { ...game, achUnlocked: 0, achTotal: 0 }, onpick: vi.fn() });
+    expect(page.getByRole('progressbar').elements()).toHaveLength(0);
   });
 });

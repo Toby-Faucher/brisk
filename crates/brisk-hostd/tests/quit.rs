@@ -212,6 +212,8 @@ fn game(appid: u32, name: &str) -> Game {
         hero: String::new(),
         logo: String::new(),
         running: false,
+        ach_unlocked: None,
+        ach_total: None,
     }
 }
 

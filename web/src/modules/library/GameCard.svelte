@@ -30,6 +30,7 @@
     </Cover>
     <span class="name">{game.name}</span>
     <span class="sub">{sub}</span>
+    {#if game.achTotal}<span class="ach" role="progressbar" aria-label="{game.achUnlocked ?? 0} of {game.achTotal} achievements" aria-valuemin={0} aria-valuemax={game.achTotal} aria-valuenow={game.achUnlocked ?? 0}><i style="width:{((game.achUnlocked ?? 0) / game.achTotal) * 100}%"></i></span>{/if}
   </button>
   {#if game.running}
     {@const q = $quitting.has(game.appid)}
@@ -43,6 +44,8 @@
   .g:hover, .g:focus-visible { transform: translateY(-5px) scale(1.02); }
   .name { display: block; margin-top: 8px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { display: block; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ach { display: block; height: 3px; margin-top: 5px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .ach i { display: block; height: 100%; background: var(--accent); }
   .badge { position: absolute; left: 10px; top: 10px; z-index: 2; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #0009; backdrop-filter: blur(6px); display: flex; gap: 6px; align-items: center; }
   .badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   .badge.off i { background: var(--muted); }

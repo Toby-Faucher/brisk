@@ -18,6 +18,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use serde::Deserialize;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
@@ -33,6 +34,8 @@ pub struct AppState {
     pub hosts: Hosts,
     /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
     pub site: Site,
+    /// A background cache warm is running (see `steam_info::warm`).
+    pub warming: AtomicBool,
 }
 
 impl AppState {
@@ -51,6 +54,7 @@ impl AppState {
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
+            warming: AtomicBool::new(false),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -83,6 +87,15 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
         .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
     let g = steam::load_games_with(&s.cfg, refresh).await;
     *s.games.lock().unwrap() = Some(g.clone());
+    // Games with play time are the ones worth warming; the task never delays this answer.
+    steam_info::warm(
+        s.clone(),
+        g.games
+            .iter()
+            .filter(|x| x.installed && x.playtime_min > 0)
+            .map(|x| x.appid)
+            .collect(),
+    );
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
         Err(e) => {
@@ -107,6 +120,23 @@ async fn game_info(
         .query()
         .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
     axum::Json(steam_info::info(&s.cfg, id, refresh).await).into_response()
+}
+
+/// Achievements for the detail panel; 404 for an unknown game before any upstream call. A game
+/// without stats or a private profile is a 200 with `available: false`.
+async fn game_achievements(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    req: Request,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    axum::Json(steam_info::achievements(&s.cfg, id, refresh).await).into_response()
 }
 
 async fn host_status(State(s): State<Arc<AppState>>) -> Response {
@@ -499,6 +529,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/games", get(games))
         .route("/games/{appid}/info", get(game_info))
+        .route("/games/{appid}/achievements", get(game_achievements))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))
         .route(

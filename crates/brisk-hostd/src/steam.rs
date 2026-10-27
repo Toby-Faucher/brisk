@@ -26,6 +26,9 @@ pub struct Game {
     pub logo: String,
     /// Steam is running it now (its launcher reaper is alive).
     pub running: bool,
+    /// Achievement counts from the cache (filled by the background warm); None until known.
+    pub ach_unlocked: Option<u32>,
+    pub ach_total: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -441,6 +444,8 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 hero: art(o.appid, "library_hero.jpg"),
                 logo: art(o.appid, "logo.png"),
                 running: false,
+                ach_unlocked: None,
+                ach_total: None,
             },
         );
     }
@@ -474,6 +479,8 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             hero: art(i.appid, "library_hero.jpg"),
             logo: art(i.appid, "logo.png"),
             running: false,
+            ach_unlocked: None,
+            ach_total: None,
         });
         g.installed = i.state_flags & 4 != 0;
         if g.installed {
@@ -490,6 +497,9 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let mut games: Vec<Game> = by_id.into_values().collect();
     for g in &mut games {
         g.running = running.contains(&g.appid);
+        if let Some((u, t)) = crate::steam_info::ach_counts(cfg, g.appid) {
+            (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
+        }
     }
     games.sort_by(|a, b| {
         b.last_played

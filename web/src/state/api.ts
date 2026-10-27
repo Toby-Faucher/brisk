@@ -13,7 +13,14 @@ export type Game = {
   logo: string;
   /** Steam is running it on the host now: Play streams it without relaunching. */
   running: boolean;
+  /** Achievement counts once the host has fetched them (it warms its cache in the background); null until then. */
+  achUnlocked: number | null;
+  achTotal: number | null;
 };
+/** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
+export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
+/** GET /api/games/{appid}/achievements. `available` false (no stats, private profile): total is 0. */
+export type Achievements = { available: boolean; unlocked: number; total: number; list: Ach[] };
 /** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
 export type GameInfo = {
   available: boolean;
@@ -205,6 +212,7 @@ export const api = {
   host: () => call<HostInfo>('GET', '/api/host'),
   games: () => call<{ games: Game[]; ownedAvailable: boolean }>('GET', '/api/games'),
   gameInfo: (appid: number) => call<GameInfo>('GET', `/api/games/${appid}/info`),
+  gameAchievements: (appid: number) => call<Achievements>('GET', `/api/games/${appid}/achievements`),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),

@@ -570,6 +570,8 @@ fn rig_with(mode: &str, service: bool) -> Rig {
             hero: String::new(),
             logo: String::new(),
             running: false,
+            ach_unlocked: None,
+            ach_total: None,
         }],
         owned_available: true,
     });

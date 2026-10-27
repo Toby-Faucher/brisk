@@ -2,7 +2,7 @@
   // The detail panel a Library card (or the Hero's Details) opens. Sections top to bottom: header art, actions,
   // store facts; later sections (achievements, patch notes, local screenshots, saves) slot in below the store ones.
   import { Dialog } from 'bits-ui';
-  import { api, type Game, type GameInfo } from '../../state/api';
+  import { api, type Game, type GameInfo, type Achievements } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
@@ -24,6 +24,17 @@
     api.gameInfo(id).then(
       (v) => id === appid && (info = v.available ? v : 'none'),
       () => id === appid && (info = 'none'),
+    );
+  });
+
+  // Achievements load alongside; a failure or total 0 just hides the section.
+  let ach = $state<Achievements | null>(null);
+  $effect(() => {
+    const id = appid;
+    ach = null;
+    api.gameAchievements(id).then(
+      (v) => id === appid && (ach = v),
+      () => {},
     );
   });
 
@@ -90,6 +101,23 @@
           {/if}
         {/if}
       </section>
+
+      <!-- achievements -->
+      {#if ach && ach.total > 0}
+        <section class="sec ach">
+          <h3>Achievements</h3>
+          <p class="lab">{ach.unlocked} of {ach.total} unlocked</p>
+          <div class="bar" role="progressbar" aria-label="{ach.unlocked} of {ach.total} achievements" aria-valuemin={0} aria-valuemax={ach.total} aria-valuenow={ach.unlocked}><i style="width:{(ach.unlocked / ach.total) * 100}%"></i></div>
+          <ul class="alist">
+            {#each ach.list as a (a.id)}
+              <li class:locked={a.unlockedAt === null}>
+                {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}
+                <span><b>{a.name}</b>{#if a.description}<small>{a.description}</small>{/if}</span>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
@@ -116,4 +144,13 @@
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
   .shots img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); }
+  .sec.ach { padding-top: 0; }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .alist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; max-height: 320px; overflow: auto; }
+  .alist li { display: flex; gap: 10px; align-items: center; }
+  .alist li.locked { opacity: .6; }
+  .alist img, .alist .ph { width: 40px; height: 40px; flex: none; border-radius: 6px; background: var(--panel); }
+  .alist span:not(.ph) { display: grid; min-width: 0; }
+  .alist small { color: var(--muted); }
 </style>

@@ -12,5 +12,5 @@ pub mod running;
 pub mod sessions;
 pub mod site;
 pub mod steam;
-mod steam_info;
+pub mod steam_info;
 pub mod stream;
