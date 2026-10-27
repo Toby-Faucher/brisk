@@ -140,5 +140,5 @@ lost presses. A netem run on the real path is still to do [U].
   that Steam/games see it, and that buttons, sticks (Y direction) and triggers land right.
 - Rumble end to end: that a game's rumble reaches Sunshine's feedback queue for slot 0, and that
   the 8BitDo vibrates through `dual-rumble` over the 2.4G receiver; that replaying the effect every
-  500 ms is seamless (no felt gaps).
+  500 ms is smooth (no felt gaps).
 - Input-to-photon latency for controller input (M3 gate's first half): not measured here.
