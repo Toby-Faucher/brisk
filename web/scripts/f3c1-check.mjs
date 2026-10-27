@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const check = (n, ok, x = '') => (ok || fails++, console.log(`${ok ? 'ok  ' : 'FAIL'} ${n}${x !== '' ? ` (${x})` : ''}`));
 
-const DEFAULT = ['host', 'resume', 'quick', 'recent', 'library', 'machines', 'agents', 'news', 'workouts'];
+const DEFAULT = ['host', 'resume', 'quick', 'recent', 'friends', 'library', 'machines', 'agents', 'news', 'workouts'];
 const games = Array.from({ length: 8 }, (_, i) => ({ appid: 1000 + i, name: `Game ${i}`, installed: true, sizeBytes: 1e9, lastPlayed: 1700000000 - i * 1e5, playtimeMin: 90, cover: '', running: false }));
 const host = { name: 'bawn', sunshine: 'ready', uptimeS: 5000, cpuTempC: 40, gpuTempC: 45, path: 'direct', relay: null };
 
@@ -134,8 +134,8 @@ if (want('load')) {
   await page.waitForSelector('.bento:not([data-hold])');
   await sleep(1300);
   const o = await order(page);
-  check('load: saved order applied, unknown id dropped, the rest appended in default order', JSON.stringify(o) === JSON.stringify(['library', 'recent', 'host', 'resume', 'quick', 'machines', 'agents', 'news', 'workouts']), o.join());
-  check('load: one handle per card, labelled, described, unpressed; Add a module has none', await page.evaluate(() => { const g = [...document.querySelectorAll('[data-grip]')]; return g.length === 9 && g.every((b) => /^Move .+ card$/.test(b.getAttribute('aria-label')) && b.getAttribute('aria-describedby') === 'grip-hint' && b.getAttribute('aria-pressed') === 'false') && !document.querySelector('.ghostcard [data-grip]') && document.querySelector('.bento > :last-child').classList.contains('ghostcard'); }));
+  check('load: saved order applied, unknown id dropped, the rest appended in default order', JSON.stringify(o) === JSON.stringify(['library', 'recent', 'host', 'resume', 'quick', 'friends', 'machines', 'agents', 'news', 'workouts']), o.join());
+  check('load: one handle per card, labelled, described, unpressed; Add a module has none', await page.evaluate(() => { const g = [...document.querySelectorAll('[data-grip]')]; return g.length === 10 && g.every((b) => /^Move .+ card$/.test(b.getAttribute('aria-label')) && b.getAttribute('aria-describedby') === 'grip-hint' && b.getAttribute('aria-pressed') === 'false') && !document.querySelector('.ghostcard [data-grip]') && document.querySelector('.bento > :last-child').classList.contains('ghostcard'); }));
   check('load: handle hit target at least 24x24', await page.evaluate(() => { const r = document.querySelector('[data-grip]').getBoundingClientRect(); return r.width >= 24 && r.height >= 24; }));
   check('load: bento spans kept (host 3x2, library 2x1)', await page.evaluate(() => { const s = (id) => document.querySelector(`[data-card="${id}"]`).getAttribute('style'); return /grid-area: span 2 \/ span 3/.test(s('host')) && /grid-area: span 1 \/ span 2/.test(s('library')); }));
   check('load: entrance played for the cards once shown', await page.evaluate(() => document.querySelectorAll('[data-card][data-enter]').length >= 6));
