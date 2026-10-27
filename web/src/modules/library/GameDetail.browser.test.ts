@@ -43,6 +43,28 @@ const local: GameLocal = { screenshots: ['b.png', 'a.jpg'], saves: { files: 14, 
 const blobUrl = () => URL.createObjectURL(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
 
 describe('GameDetail', () => {
+  it('Refresh re-fetches info, achievements and news with refresh, updates sections, then waits', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const a = vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
+    const n = vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    a.mockResolvedValue(ach);
+    n.mockResolvedValue({ items: [{ title: 'Fresh patch', url: 'https://n.example.test/f', date: 1, patch: true }] });
+    const b = page.getByRole('button', { name: 'Refresh Steam data' });
+    await userEvent.click(b);
+    expect(i).toHaveBeenLastCalledWith(620, true);
+    expect(a).toHaveBeenLastCalledWith(620, true);
+    expect(n).toHaveBeenLastCalledWith(620, true);
+    await expect.element(page.getByRole('link', { name: 'Fresh patch' })).toBeInTheDocument();
+    await expect.element(page.getByText('First Steps')).toBeInTheDocument();
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true');
+    await expect.element(b).toHaveAttribute('title', 'Steam data was just refreshed. Wait 10 seconds to refresh again.');
+    i.mockClear();
+    (b.element() as HTMLElement).click(); // a real click would wait for aria-disabled to clear
+    expect(i).not.toHaveBeenCalled();
+  });
+
   it('warns above Play while Steam has an update, and Play stays enabled', async () => {
     await render(GameDetail, { props: props({ ...game, update: 'needed' }) });
     await expect.element(page.getByText(/Steam still has to update this game/)).toBeInTheDocument();

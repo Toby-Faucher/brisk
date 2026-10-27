@@ -109,6 +109,14 @@
     return () => (offGames(), offPrefs(), offNotes());
   });
 
+  let refreshing = $state(false);
+  async function refreshLibrary() {
+    if (refreshing) return;
+    refreshing = true;
+    if (!(await refreshGames({ force: true }))) toast('Could not refresh the library', { error: true });
+    refreshing = false;
+  }
+
   async function run(g: Game, verb: string, task: () => Promise<unknown>) {
     if (busy != null) return;
     busy = g.appid;
@@ -146,7 +154,9 @@
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
   {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => pickFilter(id)}>{label}</button>{/each}
-  <span class="sort"><Dropdown bind:value={sort} options={SORTS} label="Sort games" onchange={() => (fade(), popCards())} /></span>
+  <span class="sort">
+    <button class="btn ghost rf" class:spin={refreshing} aria-label="Refresh library" title="Ask Steam for a fresh game list" aria-busy={refreshing} aria-disabled={refreshing} onclick={refreshLibrary}><Icon name="replay" size={15} /></button><Dropdown bind:value={sort} options={SORTS} label="Sort games" onchange={() => (fade(), popCards())} />
+  </span>
 </div>
 
 {#if smart.length || usedTags.length}
@@ -205,7 +215,11 @@
   .auto { border-style: dashed; }
   .cnt { color: var(--muted); font-size: 12px; }
   .tagf { display: inline-flex; align-items: center; gap: 6px; }
-  .sort { margin-left: auto; }
+  .sort { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .rf { padding: 5px 8px; min-height: 0; }
+  .spin :global(svg) { animation: rf-spin 1s linear infinite; }
+  @keyframes rf-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin :global(svg) { animation: none; } }
   .body { padding-top: 16px; }
   .banner { margin-bottom: 14px; padding: 9px 14px; border-radius: 12px; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
   .empty { padding: 48px 0; display: grid; gap: 6px; justify-items: center; text-align: center; }

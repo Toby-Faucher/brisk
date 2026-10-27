@@ -5,6 +5,7 @@ import { api, type Game } from '../../state/api';
 import { games } from '../../state/games';
 import { notes, notesLoaded } from '../../state/notes';
 import Library from './Library.svelte';
+import Toasts from '../../shell/Toasts.svelte';
 
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
 const list = [g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }), g(2, 'Bravo', { playtimeMin: 200 }), g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true })];
@@ -119,5 +120,29 @@ describe('Library', () => {
     await userEvent.click(page.getByRole('button', { name: /^Co-op 1$/ }));
     await expect.poll(() => shelf('Backlog')).toBe(0);
     expect(shelf('Almost done')).toBe(0);
+  });
+
+  it('Refresh library asks for fresh data, shows busy, then settles', async () => {
+    let done!: (v: { games: Game[]; ownedAvailable: boolean }) => void;
+    const spy = vi.spyOn(api, 'games').mockImplementation(() => new Promise((r) => (done = r)));
+    await render(Library);
+    spy.mockClear();
+    const b = page.getByRole('button', { name: 'Refresh library' });
+    await userEvent.click(b);
+    expect(spy).toHaveBeenCalledWith(true);
+    await expect.element(b).toHaveAttribute('aria-busy', 'true');
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true');
+    done({ games: list, ownedAvailable: true });
+    await expect.element(b).not.toHaveAttribute('aria-busy', 'true');
+    await expect.element(b).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('Refresh library toasts when it fails', async () => {
+    const spy = vi.spyOn(api, 'games').mockRejectedValue(new Error('down'));
+    await render(Library);
+    await render(Toasts);
+    spy.mockClear();
+    await userEvent.click(page.getByRole('button', { name: 'Refresh library' }));
+    await expect.element(page.getByText('Could not refresh the library')).toBeInTheDocument();
   });
 });

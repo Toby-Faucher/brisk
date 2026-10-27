@@ -5,6 +5,7 @@
   import { Dialog } from 'bits-ui';
   import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
   import { savesLine } from './library';
+  import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
   import StreamHistory from './StreamHistory.svelte';
   import Lightbox from './Lightbox.svelte';
@@ -49,6 +50,25 @@
       () => {},
     );
   });
+
+  // Refresh: re-ask Steam (refresh=1) for info, achievements and news. Ten seconds between clicks so Steam is not hammered.
+  let reloading = $state(false);
+  let cool = $state(false);
+  let coolTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => () => clearTimeout(coolTimer));
+  async function refresh() {
+    if (cool) return;
+    cool = reloading = true;
+    coolTimer = setTimeout(() => (cool = false), 10_000);
+    const id = appid;
+    const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === appid && set(v), () => {}); // a failure keeps what is shown
+    await Promise.all([
+      mine(api.gameInfo(id, true), (v) => (info = v.available ? v : 'none')),
+      mine(api.gameAchievements(id, true), (v) => (ach = v)),
+      mine(api.gameNews(id, true), (v) => (news = v)),
+    ]);
+    reloading = false;
+  }
 
   // Screenshots and saves from the host's Steam folder. Images need the auth headers, so each is fetched to an
   // object URL as its tile scrolls into view (at most 12 fetches at once); all URLs are revoked on unmount or game change.
@@ -142,6 +162,7 @@
       <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} /></div>
 
       <div class="gd-main">
+        <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button></div>
         <!-- store description and screenshots -->
         <section class="sec" aria-busy={info === null}>
           {#if info === null}
@@ -227,7 +248,12 @@
     .gd-main { padding-bottom: 22px; }
   }
   .sec { padding: 14px 22px 0; display: grid; gap: 10px; }
-  .gd-main > .sec:first-child { padding-top: 22px; }
+  .rbar { display: flex; justify-content: flex-end; padding: 14px 22px 0; }
+  .rf { padding: 4px 10px; font-size: 12.5px; min-height: 24px; display: inline-flex; align-items: center; gap: 6px; }
+  .rf[aria-busy='true'] :global(svg) { animation: rf-spin 1s linear infinite; }
+  @keyframes rf-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .rf[aria-busy='true'] :global(svg) { animation: none; } }
+  .gd-main > .sec:first-child { padding-top: 8px; }
   .desc { line-height: 1.5; margin: 0; }
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
