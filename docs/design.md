@@ -60,7 +60,7 @@ Anti-goals (things that would make this a failure)
 7. Chrome only now, Firefox later.
 8. Licensing: do not care.
 9. "If Moonlight has tests we must pass them." Result: it has none (section 7).
-10. Front end: Astro + Svelte + Bits UI (headless Svelte components; decided 2026-10-24 — Toby chose Bits UI after I flagged that Base UI is React-only [U, not verified here]).
+10. Front end: Astro + Svelte + Bits UI (headless Svelte components; decided 2026-10-24, Toby chose Bits UI after I flagged that Base UI is React-only [U, not verified here]).
 11. Visual direction: take design inspiration from Linear (decided 2026-10-24). My reading, [CALL] until Toby reacts: dark-first with a light theme, dense and calm, keyboard-first (a command palette for apps, settings and connect/disconnect), restrained accent color, fast and minimal motion, nothing that competes with the video. In-stream UI (latency/stats overlay, menu) stays out of the way and never touches the video path. Details are for the UI task; use the frontend-design skill then and show mockups before building.
 
 ## 5. Architecture sketch (my reading of the above; details are the builder's)

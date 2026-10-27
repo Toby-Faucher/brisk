@@ -1,0 +1,1 @@
+# Allowed hits of scripts/wording-banned.txt: path | text that appears on the line | why

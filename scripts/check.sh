@@ -22,6 +22,8 @@ step "cargo deny"
 capped cargo deny check
 step "check-pure-rust"
 scripts/check-pure-rust.sh
+step "check-wording"
+scripts/check-wording.sh
 step "clippy, embed feature"
 BRISK_EMBED_DIR=$embed capped cargo clippy --workspace --all-targets --features brisk-hostd/embed -- -D warnings
 step "nextest, embed feature"
