@@ -1,4 +1,7 @@
 //! Per-game Steam data cached under `data_dir/steam/<name>.json` as `{fetched, value}`.
+
+mod warm;
+
 use crate::config::Config;
 use crate::http::AppState;
 use crate::steam::{account_id, now, steam_get, steam_id, store_get};
@@ -6,9 +9,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+pub use warm::{warm, warm_games};
 
 #[derive(Serialize, Deserialize)]
 struct Entry<T> {
@@ -532,68 +534,6 @@ fn avatar_ok(u: &str) -> bool {
     u.strip_prefix("https://")
         .and_then(|r| r.split('/').next())
         .is_some_and(|h| AVATAR_HOSTS.contains(&h))
-}
-
-/// Pause between games so a warm never bursts against the Web API.
-const WARM_PAUSE: Duration = Duration::from_millis(300);
-const WARM_INFO_PAUSE: Duration = Duration::from_millis(500);
-const WARM_MAX: usize = 60;
-const WARM_INFO_MAX: usize = 200;
-
-/// Fetches per-game data into the cache, one game at a time. Not spawned: tests await it.
-/// First achievements and news for `played` (at most 60), then store info for every `owned` game
-/// (at most 200; a fresh cache entry makes no upstream call).
-pub async fn warm_games(
-    cfg: &Config,
-    played: Vec<u32>,
-    owned: Vec<u32>,
-    pause: Duration,
-    info_pause: Duration,
-) {
-    // Pause only after a game that went upstream; cached ones cost nothing.
-    let mut went = false;
-    for id in played.into_iter().take(WARM_MAX) {
-        let (a, n) = (format!("ach-{id}"), format!("news-{id}"));
-        if answers_fresh(cfg, &a, HOUR_S) && answers_fresh(cfg, &n, NEWS_TTL_S) {
-            continue;
-        }
-        if went {
-            tokio::time::sleep(pause).await;
-        }
-        went = true;
-        achievements(cfg, id, false).await;
-        news(cfg, id, false).await;
-    }
-    went = false;
-    for id in owned.into_iter().take(WARM_INFO_MAX) {
-        if answers_fresh(cfg, &format!("info-{id}"), WEEK_S) {
-            continue;
-        }
-        if went {
-            tokio::time::sleep(info_pause).await;
-        }
-        went = true;
-        info(cfg, id, false).await;
-    }
-}
-
-/// Clears `warming` on drop, so a panic in the task cannot wedge it.
-struct Unwarm(Arc<AppState>);
-impl Drop for Unwarm {
-    fn drop(&mut self) {
-        self.0.warming.store(false, Ordering::SeqCst);
-    }
-}
-
-/// Background `warm_games`, at most one at a time; returns at once.
-pub fn warm(state: Arc<AppState>, played: Vec<u32>, owned: Vec<u32>) {
-    if state.warming.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    tokio::spawn(async move {
-        let guard = Unwarm(state);
-        warm_games(&guard.0.cfg, played, owned, WARM_PAUSE, WARM_INFO_PAUSE).await;
-    });
 }
 
 /// Screenshots and cloud-save summary from the host's own Steam folder (no network).
