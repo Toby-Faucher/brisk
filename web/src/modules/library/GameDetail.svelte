@@ -10,6 +10,7 @@
   import { badgeLabel, installLabel, playLabel, savesLine, smartTags } from './library';
   import GameNotes from './GameNotes.svelte';
   import TagChip from './TagChip.svelte';
+  import StreamHistory from './StreamHistory.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -146,6 +147,8 @@
         {/if}
         <Dialog.Close class="btn ghost close">Close</Dialog.Close>
       </div>
+
+      <StreamHistory {appid} />
 
       <!-- your note and tags (keyed: a fresh draft per game) -->
       {#key game.appid}<GameNotes appid={game.appid} name={game.name} />{/key}

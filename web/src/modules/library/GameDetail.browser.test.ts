@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { get } from 'svelte/store';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { api, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
+import { prefs } from '../../state/prefs';
+import { api, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
 import GameDetail from './GameDetail.svelte';
 
 const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false };
@@ -27,6 +29,7 @@ beforeEach(() => {
   vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
   vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
   vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: [], saves: null });
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] });
   vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: {} });
 });
 
@@ -186,5 +189,32 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
     expect(page.getByRole('heading', { name: 'Your screenshots' }).elements()).toHaveLength(0);
     expect(page.getByText(/Cloud saves/).elements()).toHaveLength(0);
+  });
+
+  it('shows the line and Use Balanced calls putPrefs with the saved codec', async () => {
+    const now = Date.now();
+    const rec = (n: number): SessionRec => ({ appid: 620, name: 'Portal 2', started: now - n * 86_400_000, ended: now - n * 86_400_000 + 3_600_000, host: 'h', preset: 'crisp', stats: { sent: 1000, dropped: 50 } as SessionRec['stats'] });
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [rec(3), rec(4), rec(5), { ...rec(6), stats: null }] });
+    const saved = { preset: 'balanced', codec: 'hevc', updated: 1 } as const;
+    const put = vi.spyOn(api, 'putPrefs').mockResolvedValue(saved);
+    prefs.set({ 620: { preset: 'crisp', codec: 'hevc', updated: 0 } });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Streamed 4 times · 4 h · last 3 d ago · usually Crisp')).toBeInTheDocument();
+    await expect.element(page.getByText(/Frames were dropped in 3 of the last 4 sessions at Crisp\. Try Balanced\?/)).toBeInTheDocument();
+    expect(put).not.toHaveBeenCalled();
+    await userEvent.click(page.getByRole('button', { name: 'Use Balanced' }));
+    expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'hevc' });
+    await vi.waitFor(() => expect(get(prefs)[620]).toEqual(saved));
+    await expect.element(page.getByRole('button', { name: 'Use Balanced' })).not.toBeInTheDocument();
+    prefs.set({});
+  });
+
+  it('hides both when the game was never streamed', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    expect(page.getByText(/Streamed/).elements()).toHaveLength(0);
+    expect(page.getByRole('button', { name: /Use / }).elements()).toHaveLength(0);
   });
 });
