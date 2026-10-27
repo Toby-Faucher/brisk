@@ -5,13 +5,15 @@
   import { api, type Game } from '../../state/api';
   import { games, gamesFailed, refreshGames, watchGames } from '../../state/games';
   import { startGame, watchPrefs } from '../../state/prefs';
+  import { notes, watchNotes } from '../../state/notes';
+  import TagChip from './TagChip.svelte';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import { glideSwap, splitIn } from '../../ui/motion';
   import GameDetail from './GameDetail.svelte';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
-  import { cardClick, filterGames, searchGames, shelves, sortGames, type Filter, type Sort } from './library';
+  import { cardClick, filterByTag, filterGames, searchGames, shelves, sortGames, type Filter, type Sort } from './library';
 
   const FILTERS: [Filter, string][] = [['all', 'All'], ['installed', 'Installed'], ['not-installed', 'Not installed'], ['recent', 'Recent']];
   const SORTS: [Sort, string][] = [['default', 'Default order'], ['az', 'A-Z'], ['most-played', 'Most played'], ['last-played', 'Last played']];
@@ -23,7 +25,12 @@
   let open = $state<Game | null>(null);
   const shownGame = $derived(open && ($games?.games.find((g) => g.appid === open!.appid) ?? open));
 
-  const s = $derived(shelves(sortGames(searchGames(filterGames($games?.games ?? [], f), q), sort)));
+  // Tag filter: one tag at a time, on top of the filter chips and search. A tag that is gone stops filtering.
+  let tagPick = $state<string | null>(null);
+  const tagF = $derived(tagPick && $notes.tags[tagPick] ? tagPick : null);
+  const usedTags = $derived(Object.entries($notes.tags).filter(([id]) => id === tagF || Object.values($notes.games).some((g) => g.tags.includes(id))));
+
+  const s = $derived(shelves(sortGames(searchGames(filterByTag(filterGames($games?.games ?? [], f), $notes, tagF), q), sort)));
   const hero = $derived(q.trim() ? null : s.hero);
 
   // Skeleton -> content: when the games first arrive the hero, shelf headers and first cards get the load entrance
@@ -83,7 +90,8 @@
   onMount(() => {
     const offGames = watchGames();
     const offPrefs = watchPrefs();
-    return () => (offGames(), offPrefs());
+    const offNotes = watchNotes();
+    return () => (offGames(), offPrefs(), offNotes());
   });
 
   async function run(g: Game, verb: string, task: () => Promise<unknown>) {
@@ -125,6 +133,12 @@
   <select class="sort" bind:value={sort} onchange={fade} aria-label="Sort games">{#each SORTS as [id, label] (id)}<option value={id}>{label}</option>{/each}</select>
 </div>
 
+{#if usedTags.length}
+  <div class="filters" role="group" aria-label="Filter by tag">
+    {#each usedTags as [id, t] (id)}<button class="fchip tagf" aria-pressed={tagF === id} onclick={() => ((tagPick = tagF === id ? null : id), fade())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name}</button>{/each}
+  </div>
+{/if}
+
 <div class="body" bind:this={body}>
   {#if $games && !$games.ownedAvailable}
     <div class="banner" role="status">Couldn't reach Steam. Showing installed games only for now.</div>
@@ -144,12 +158,12 @@
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
     {#if hero}<Hero game={hero} busy={busy === hero.appid} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
-    {#if s.fortnight.length && !q.trim() && f === 'all'}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
+    {#if s.fortnight.length && !q.trim() && f === 'all' && !tagF}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} />{/if}
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
       <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p>
-        <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'))}>Clear search and filter</button>
+        <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'), (tagPick = null))}>Clear search and filter</button>
       </div>
     {/if}
   {/if}
@@ -169,6 +183,7 @@
   /* the selected fill is a pseudo-element, so it can glide between chips (motion glideSwap) */
   .fchip[aria-pressed='true'] { border-color: transparent; color: var(--fg); }
   .fchip[aria-pressed='true']::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--accent) 20%, transparent); border: 1px solid var(--accent); transform-origin: 0 0; }
+  .tagf { display: inline-flex; align-items: center; gap: 6px; }
   .sort { margin-left: auto; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
   .sort:hover { color: var(--fg); border-color: #3a4152; }
   .body { padding-top: 16px; }

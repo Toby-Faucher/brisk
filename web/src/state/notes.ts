@@ -70,7 +70,7 @@ export function refreshNotes(): Promise<void> {
     .then((r) => {
       if (!r) return; // retried on the next focus
       fetchedAt = Date.now();
-      let n = r;
+      let n: Notes = { tags: r.tags ?? {}, games: r.games ?? {} };
       for (const [id, g] of unsaved) n = withGame(n, id, g);
       notes.set(n);
     })

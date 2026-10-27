@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { navigate } from 'astro:transitions/client';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
+import { notes } from '../../state/notes';
 
 const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false };
 
@@ -52,5 +53,18 @@ describe('GameCard', () => {
   it('shows no Updated chip otherwise', async () => {
     await render(GameCard, { props: { game, onpick: vi.fn() } });
     expect(page.getByText('Updated').elements()).toHaveLength(0);
+  });
+
+  it('shows up to 3 tag symbols, +n and a note mark, all named in the label', async () => {
+    const t = (name: string) => ({ name, color: 'blue' as const, symbol: 'star', note: '' });
+    notes.set({ tags: { a: t('Co-op night'), b: t('Backlog'), c: t('Short'), d: t('Cozy') }, games: { '400': { note: 'hi', tags: ['a', 'b', 'c', 'd'] } } });
+    await render(GameCard, { props: { game, onpick: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: /, tags: Co-op night, Backlog, Short, Cozy, note$/ })).toBeInTheDocument();
+    const chip = document.querySelector('.tchip')!;
+    expect(chip.getAttribute('aria-hidden')).toBe('true');
+    expect(chip.querySelectorAll('.tc')).toHaveLength(3);
+    expect(chip.textContent).toContain('+1');
+    expect(chip.querySelector('.nm')).not.toBeNull();
+    notes.set({ tags: {}, games: {} });
   });
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
   // The detail panel a Library card (or the Hero's Details) opens. Sections top to bottom: header art, actions,
-  // store facts, the host's screenshots and saves, achievements, patch notes.
+  // your notes and tags, store facts, the host's screenshots and saves, achievements, patch notes.
   import { Dialog } from 'bits-ui';
   import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
@@ -8,6 +8,7 @@
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { hue } from './Cover.svelte';
   import { badgeLabel, installLabel, playLabel, savesLine } from './library';
+  import GameNotes from './GameNotes.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -144,6 +145,9 @@
         {/if}
         <Dialog.Close class="btn ghost close">Close</Dialog.Close>
       </div>
+
+      <!-- your note and tags (keyed: a fresh draft per game) -->
+      {#key game.appid}<GameNotes appid={game.appid} name={game.name} />{/key}
 
       <!-- store facts -->
       <section class="sec" aria-busy={info === null}>

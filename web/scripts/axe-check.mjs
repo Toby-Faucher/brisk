@@ -14,6 +14,9 @@ const games = Array.from({ length: 139 }, (_, i) => ({ appid: 1000 + i, name: i 
 const sessions = Array.from({ length: 15 }, (_, i) => ({ appid: 1000, name: 'Portal 2', started: 1700000000000 + i * 1e6, ended: 1700000600000 + i * 1e6, host: 'bawn', preset: 'balanced', codec: 'h264', bitrateKbps: 20000, stats: null, spark: [1, 3, 2, 4, 3] }));
 const series = Array.from({ length: 120 }, (_, i) => [1700000000000 + i * 5000, 9 + Math.sin(i / 4) * 2, 58 + Math.sin(i / 6) * 3, 18 + Math.cos(i / 9) * 4]);
 const info = { available: true, description: 'A test description & more.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '1 Jan, 2020', metacritic: 90, screenshots: [] };
+// every tag color, so the chips' contrast is measured (Game 1 carries them all)
+const colors = ['gray', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
+const notes = { tags: Object.fromEntries(colors.map((c, i) => [`t${i}`, { name: `Tag ${c}`, color: c, symbol: 'star', note: i ? '' : 'A tag note' }])), games: { 1001: { note: 'A game note', tags: colors.map((_, i) => `t${i}`).slice(0, 16) } } };
 const host = { name: 'bawn', sunshine: 'ready', uptimeS: 5000, cpuTempC: 40, gpuTempC: 45, path: 'direct', relay: null };
 // A "live" stream whose WebTransport address answers nothing, so /stream degrades to its failed state.
 const live = { state: 'live', preset: 'balanced', codec: 'h264', appid: 1000, wt: 'https://127.0.0.1:4429/', hash: '00'.repeat(32) };
@@ -29,6 +32,7 @@ try {
       : p === '/api/host' ? host
       : p === '/api/stream' ? stream
       : p === '/api/prefs' ? { prefs: {} }
+      : p === '/api/notes' ? notes
       : p === '/api/sessions' ? { sessions }
       : p.startsWith('/api/sessions/') ? { session: sessions[0], series }
       : p.endsWith('/info') ? info
@@ -78,6 +82,14 @@ try {
   await page.getByRole('button', { name: /^Game 1, / }).first().click();
   await page.getByText('Full controller support').waitFor();
   await scan('game detail panel open');
+  await page.getByRole('button', { name: 'Edit tag Tag teal' }).click();
+  await page.getByRole('radiogroup', { name: 'Symbol' }).waitFor();
+  await scan('tag editor open');
+  await page.getByRole('button', { name: 'Delete tag' }).click();
+  await page.getByText('It is on 1 game.').waitFor();
+  await scan('tag delete confirm open');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 
   await go('/machines');
