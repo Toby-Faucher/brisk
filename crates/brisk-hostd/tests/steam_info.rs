@@ -38,8 +38,14 @@ async fn info_distils_store_details() {
     assert_eq!(v["metacritic"], 95);
     assert_eq!(v["release"], "18 Apr, 2011");
     let shots = v["screenshots"].as_array().unwrap();
-    assert!(!shots.is_empty() && shots.len() <= 6);
-    assert!(shots[0].as_str().unwrap().contains("600x338"));
+    // the fixture's first thumbnail is http://, so it is dropped before the cap of 6
+    assert_eq!(shots.len(), 6);
+    assert!(
+        shots
+            .iter()
+            .all(|s| s.as_str().unwrap().starts_with("https://"))
+    );
+    assert!(shots[0].as_str().unwrap().ends_with("ss_00.600x338.jpg"));
     let d = v["description"].as_str().unwrap();
     assert_eq!(
         d,

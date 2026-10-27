@@ -56,6 +56,11 @@
    ],
    "screenshots": [
     {
+     "id": 99,
+     "path_thumbnail": "http://cdn.example.test/apps/620/ss_plain.600x338.jpg",
+     "path_full": "http://cdn.example.test/apps/620/ss_plain.1920x1080.jpg"
+    },
+    {
      "id": 0,
      "path_thumbnail": "https://cdn.example.test/apps/620/ss_00.600x338.jpg",
      "path_full": "https://cdn.example.test/apps/620/ss_00.1920x1080.jpg"

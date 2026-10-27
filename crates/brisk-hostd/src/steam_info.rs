@@ -121,7 +121,9 @@ async fn fetch_info(cfg: &Config, appid: u32) -> Result<Info, String> {
         .filter_map(|c| c["id"].as_u64())
         .collect();
     let has = |ids: &[u64]| cats.iter().any(|c| ids.contains(c));
+    // they become <img src> in the UI: https only
     let mut screenshots = strs("screenshots", "path_thumbnail");
+    screenshots.retain(|u| u.starts_with("https://"));
     screenshots.truncate(6);
     Ok(Info {
         available: true,
@@ -154,6 +156,12 @@ fn plain_text(html: &str) -> String {
     let mut rest = html;
     while let Some(i) = rest.find('<') {
         out.push_str(&rest[..i]);
+        // only `<` + letter, `/` or `!` starts a tag; "a < b" stays text (`<` is ASCII, so i + 1 is a boundary)
+        if !rest[i + 1..].starts_with(|c: char| c.is_ascii_alphabetic() || c == '/' || c == '!') {
+            out.push('<');
+            rest = &rest[i + 1..];
+            continue;
+        }
         let Some(j) = rest[i..].find('>') else {
             rest = "";
             break;
@@ -186,7 +194,9 @@ fn decode_entities(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         rest = &rest[i..];
-        let end = rest[..rest.len().min(12)].find(';');
+        // bytes, not a str slice: byte 12 can fall inside a multi-byte char. `&` and `;` are ASCII, so
+        // slicing at them below is always on a char boundary.
+        let end = rest.bytes().take(12).position(|b| b == b';');
         let ch = end.and_then(|e| match &rest[1..e] {
             "amp" => Some('&'),
             "lt" => Some('<'),
@@ -296,6 +306,18 @@ mod tests {
             plain_text("a<br/>b &lt;i&gt; &#x27;c&#39; &bogus; & d<b"),
             "a b <i> 'c' &bogus; & d"
         );
+        // `&` followed by multi-byte text: the entity scan must never cut inside a character
+        for t in [
+            "& ééééééé;",
+            "&éééééééééééé;",
+            "Q&—A™",
+            "&™ and &—;",
+            "tail &",
+        ] {
+            assert_eq!(plain_text(t), t);
+        }
+        // a `<` that does not start a tag stays text
+        assert_eq!(plain_text("a < b, 3<4 <i>x</i>"), "a < b, 3<4 x");
     }
 
     #[tokio::test]
