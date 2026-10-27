@@ -56,12 +56,20 @@
   let reloading = $state(false);
   let cool = $state(false);
   let coolTimer: ReturnType<typeof setTimeout> | undefined;
-  $effect(() => () => clearTimeout(coolTimer));
+  let rgen = 0; // bumped per game: a refresh of the previous game neither cools nor blocks this one
+  $effect(() => {
+    appid;
+    rgen++;
+    clearTimeout(coolTimer);
+    cool = reloading = false;
+    return () => clearTimeout(coolTimer);
+  });
   async function refresh() {
     if (cool || reloading || info === null) return; // not while the plain load runs: its slower answer could overwrite ours
     cool = reloading = true;
     coolTimer = setTimeout(() => (cool = false), 10_000);
     const id = appid;
+    const rg = rgen;
     let fails = 0;
     const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === appid && set(v), () => void fails++); // a failure keeps what is shown
     await Promise.all([
@@ -69,7 +77,7 @@
       mine(api.gameAchievements(id, true), (v) => (ach = v)),
       mine(api.gameNews(id, true), (v) => (news = v)),
     ]);
-    reloading = false;
+    if (rg === rgen) reloading = false;
     if (fails && id === appid) toast('Could not refresh Steam data', { error: true });
   }
 

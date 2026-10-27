@@ -128,6 +128,43 @@ describe('GameDetail refresh guards', () => {
   });
 });
 
+describe('GameDetail refresh across games', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("the cooldown of game A does not carry over to game B", async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const r = await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    const b = page.getByRole('button', { name: 'Refresh Steam data' });
+    await userEvent.click(b);
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true'); // cooling down (or still reloading)
+    await expect.poll(() => (b.element() as HTMLElement).getAttribute('aria-busy')).not.toBe('true');
+    vi.useFakeTimers();
+    await r.rerender({ game: off });
+    await vi.advanceTimersByTimeAsync(50); // B's plain load, far less than 10 s
+    expect((b.element() as HTMLElement).getAttribute('aria-disabled')).not.toBe('true'); // no waiting: the 10 s must not carry over
+    vi.useRealTimers();
+    i.mockClear();
+    await userEvent.click(b);
+    expect(i).toHaveBeenCalledWith(400, true);
+  });
+
+  it('an in-flight refresh of game A does not block game B', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const r = await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    i.mockImplementationOnce(() => new Promise(() => {}));
+    const b = page.getByRole('button', { name: 'Refresh Steam data' });
+    await userEvent.click(b);
+    await r.rerender({ game: off });
+    await new Promise((res) => setTimeout(res, 50));
+    expect((b.element() as HTMLElement).getAttribute('aria-disabled')).not.toBe('true');
+    i.mockClear();
+    await userEvent.click(b);
+    expect(i).toHaveBeenCalledWith(400, true);
+  });
+});
+
 describe('GameDetail', () => {
   it('Refresh re-fetches info, achievements and news with refresh, updates sections, then waits', async () => {
     const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
