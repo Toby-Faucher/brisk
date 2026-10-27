@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { api, type Game, type GameInfo, type Achievements } from '../../state/api';
+import { api, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
 import GameDetail from './GameDetail.svelte';
 
 const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false };
@@ -26,7 +26,12 @@ afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
   vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
   vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
+  vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: [], saves: null });
 });
+
+const local: GameLocal = { screenshots: ['b.png', 'a.jpg'], saves: { files: 14, bytes: 2_100_000, modified: Math.floor(Date.now() / 1000) - 3 * 86_400 } };
+// a fetch-made object URL, as api.screenshot returns
+const blobUrl = () => URL.createObjectURL(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
 
 describe('GameDetail', () => {
   it('renders news items that share date and title', async () => {
@@ -138,5 +143,47 @@ describe('GameDetail', () => {
     await r.rerender({ game: { ...game, running: true } });
     await expect.element(page.getByRole('button', { name: 'Quit Portal 2' })).toBeInTheDocument();
     await expect.element(page.getByRole('button', { name: 'Resume', exact: true })).toBeInTheDocument();
+  });
+
+  it('screenshots load through fetch with the secret header, not img src', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'gameLocal').mockResolvedValue(local);
+    const shot = vi.spyOn(api, 'screenshot').mockImplementation(async () => blobUrl());
+    await render(GameDetail, { props: props(game) });
+    const img = page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' });
+    await expect.element(img).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    await expect.poll(() => shot.mock.calls.length).toBe(2);
+    expect(shot).toHaveBeenCalledWith(620, 'b.png');
+    expect(shot).toHaveBeenCalledWith(620, 'a.jpg');
+    expect(page.getByRole('img').elements().every((e) => (e as HTMLImageElement).src.startsWith('blob:'))).toBe(true);
+    await expect.element(page.getByText('Cloud saves: 14 files, 2.1 MB, synced 3 d ago')).toBeInTheDocument();
+  });
+
+  it('object URLs are revoked on close', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'gameLocal').mockResolvedValue(local);
+    const made: string[] = [];
+    vi.spyOn(api, 'screenshot').mockImplementation(async () => {
+      const u = blobUrl();
+      made.push(u);
+      return u;
+    });
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const p = props(game);
+    const r = await render(GameDetail, { props: p });
+    await expect.poll(() => made.length).toBe(2);
+    await expect.element(page.getByRole('img', { name: 'Portal 2 screenshot 2 from this PC' })).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => p.onclose.mock.calls.length).toBe(1);
+    r.unmount(); // what the Library does on onclose
+    for (const u of made) expect(revoke).toHaveBeenCalledWith(u);
+  });
+
+  it('no screenshots section or saves line when the host has none', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    expect(page.getByRole('heading', { name: 'Your screenshots' }).elements()).toHaveLength(0);
+    expect(page.getByText(/Cloud saves/).elements()).toHaveLength(0);
   });
 });

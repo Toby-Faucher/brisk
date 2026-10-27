@@ -1,13 +1,13 @@
 <script lang="ts">
   // The detail panel a Library card (or the Hero's Details) opens. Sections top to bottom: header art, actions,
-  // store facts; later sections (achievements, patch notes, local screenshots, saves) slot in below the store ones.
+  // store facts, the host's screenshots and saves, achievements, patch notes.
   import { Dialog } from 'bits-ui';
-  import { api, type Game, type GameInfo, type Achievements, type News } from '../../state/api';
+  import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { hue } from './Cover.svelte';
-  import { badgeLabel, installLabel, playLabel } from './library';
+  import { badgeLabel, installLabel, playLabel, savesLine } from './library';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -48,6 +48,62 @@
       () => {},
     );
   });
+
+  // Screenshots and saves from the host's Steam folder. Images need the auth headers, so each is fetched to an
+  // object URL as its tile scrolls into view (at most 12 fetches at once); all URLs are revoked on unmount or game change.
+  let local = $state<GameLocal | null>(null);
+  let shotUrl = $state<Record<string, string>>({});
+  let gen = 0;
+  let made: string[] = [];
+  let queue: string[] = [];
+  let active = 0;
+  const asked = new Set<string>();
+  $effect(() => {
+    const id = appid;
+    const g = ++gen;
+    local = null;
+    api.gameLocal(id).then(
+      (v) => g === gen && (local = v),
+      () => {},
+    );
+    return () => {
+      gen++;
+      queue = [];
+      asked.clear();
+      made.forEach((u) => URL.revokeObjectURL(u));
+      made = [];
+      shotUrl = {};
+    };
+  });
+  function pump() {
+    while (active < 12 && queue.length) {
+      const name = queue.shift()!;
+      const g = gen;
+      active++;
+      api
+        .screenshot(appid, name)
+        .then(
+          (u) => (g === gen ? (made.push(u), (shotUrl[name] = u)) : URL.revokeObjectURL(u)),
+          () => {},
+        )
+        .finally(() => (active--, pump()));
+    }
+  }
+  const lazy = (name: string) => (node: Element) => {
+    const io = new IntersectionObserver(
+      (es) => {
+        if (!es.some((e) => e.isIntersecting) || asked.has(name)) return;
+        io.disconnect();
+        asked.add(name);
+        queue.push(name);
+        pump();
+      },
+      { rootMargin: '200px' },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  };
+  const saves = $derived(savesLine(local?.saves ?? null));
 
   let heroBad = $state('');
   let logoLoaded = $state('');
@@ -113,6 +169,21 @@
         {/if}
       </section>
 
+      <!-- the host's own screenshots and cloud-save summary -->
+      {#if local && (local.screenshots.length || saves)}
+        <section class="sec">
+          {#if local.screenshots.length}
+            <h3>Your screenshots</h3>
+            <div class="shots">
+              {#each local.screenshots as name, i (name)}
+                {#if shotUrl[name]}<img src={shotUrl[name]} alt="{game.name} screenshot {i + 1} from this PC" decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
+              {/each}
+            </div>
+          {/if}
+          {#if saves}<p class="lab">{saves}</p>{/if}
+        </section>
+      {/if}
+
       <!-- achievements -->
       {#if ach && ach.total > 0}
         <section class="sec ach">
@@ -166,7 +237,7 @@
   .chips li.mode { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-  .shots img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); }
+  .shots img, .shots .ph { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); }
   .sec.ach { padding-top: 0; }
   .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--accent); }

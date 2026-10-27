@@ -356,7 +356,6 @@ async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
 }
 
 /// 64-bit SteamID to the 32-bit account id the store and some endpoints use.
-#[allow(dead_code)] // shortcut: first caller lands in a later task
 pub(crate) fn account_id(steam_id64: &str) -> Option<u32> {
     steam_id64
         .parse::<u64>()

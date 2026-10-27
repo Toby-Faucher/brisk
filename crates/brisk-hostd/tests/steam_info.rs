@@ -568,3 +568,192 @@ async fn friends_batches_over_100() {
     assert_eq!(v["available"], true);
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
+
+// Account id of the fixture loginusers.vdf's 76561198000000000.
+const ACCT: &str = "userdata/39734272";
+
+fn set_mtime(p: &std::path::Path, secs: u64) {
+    let f = std::fs::File::options().write(true).open(p).unwrap();
+    f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+        .unwrap();
+}
+
+/// A screenshots folder for appid 620 with `files` as (name, bytes, mtime).
+fn shots(s: &Steam, files: &[(&str, &[u8], u64)]) -> std::path::PathBuf {
+    let d = s
+        .cfg
+        .steam_dir
+        .join(ACCT)
+        .join("760/remote/620/screenshots");
+    std::fs::create_dir_all(d.join("thumbnails")).unwrap();
+    std::fs::write(d.join("thumbnails/t.jpg"), b"thumb").unwrap();
+    for (n, b, t) in files {
+        std::fs::write(d.join(n), b).unwrap();
+        set_mtime(&d.join(n), *t);
+    }
+    d
+}
+
+async fn get_raw(cfg: &brisk_hostd::config::Config, uri: &str) -> axum::response::Response {
+    use tower::ServiceExt;
+    brisk_hostd::http::router(Arc::new(AppState::new(cfg.clone())))
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(uri)
+                .header("host", H)
+                .header("x-brisk-secret", cfg.secret.as_str())
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn local_lists_screenshots_newest_first_and_saves_summary() {
+    let s = steam(NO_API, NO_API, None);
+    shots(
+        &s,
+        &[
+            ("old.jpg", b"a", 1_000),
+            ("new.PNG", b"b", 3_000),
+            ("mid.jpeg", b"c", 2_000),
+            ("notes.txt", b"d", 4_000),
+        ],
+    );
+    let saves = s.cfg.steam_dir.join(ACCT).join("620/remote");
+    std::fs::create_dir_all(saves.join("slot1/deep")).unwrap();
+    std::fs::write(saves.join("a.sav"), b"12345").unwrap();
+    std::fs::write(saves.join("slot1/deep/b.sav"), b"123").unwrap();
+    set_mtime(&saves.join("a.sav"), 5_000);
+    set_mtime(&saves.join("slot1/deep/b.sav"), 7_000);
+    let (st, v) = get_json(&s.cfg, "/api/games/620/local").await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(
+        v["screenshots"],
+        serde_json::json!(["new.PNG", "mid.jpeg", "old.jpg"])
+    );
+    assert_eq!(
+        v["saves"],
+        serde_json::json!({"files": 2, "bytes": 8, "modified": 7000})
+    );
+    let (st, _) = get_json(&s.cfg, "/api/games/999999/local").await;
+    assert_eq!(st, 404);
+}
+
+#[tokio::test]
+async fn local_caps_screenshots_at_60() {
+    let s = steam(NO_API, NO_API, None);
+    let names: Vec<String> = (0..70).map(|i| format!("s{i:02}.jpg")).collect();
+    let files: Vec<(&str, &[u8], u64)> = names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.as_str(), &b"x"[..], 1_000 + i as u64))
+        .collect();
+    shots(&s, &files);
+    let (_, v) = get_json(&s.cfg, "/api/games/620/local").await;
+    let l = v["screenshots"].as_array().unwrap();
+    assert_eq!(l.len(), 60);
+    assert_eq!(l[0], "s69.jpg");
+}
+
+#[tokio::test]
+async fn local_empty_when_no_userdata() {
+    let s = steam(NO_API, NO_API, None);
+    let (st, v) = get_json(&s.cfg, "/api/games/620/local").await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(v, serde_json::json!({"screenshots": [], "saves": null}));
+}
+
+#[tokio::test]
+async fn screenshot_serves_listed_file() {
+    let s = steam(NO_API, NO_API, None);
+    shots(
+        &s,
+        &[("a.jpg", b"JPEGDATA", 1_000), ("b.PNG", b"PNGDATA", 2_000)],
+    );
+    let r = get_raw(&s.cfg, "/api/games/620/screenshots/a.jpg").await;
+    assert_eq!(r.status(), 200);
+    let h = r.headers();
+    assert_eq!(h["content-type"], "image/jpeg");
+    assert_eq!(h["cache-control"], "private, max-age=3600");
+    assert_eq!(h["x-content-type-options"], "nosniff");
+    let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(&b[..], b"JPEGDATA");
+    let r = get_raw(&s.cfg, "/api/games/620/screenshots/b.PNG").await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["content-type"], "image/png");
+    for uri in [
+        "/api/games/620/screenshots/missing.jpg",
+        "/api/games/999999/screenshots/a.jpg",
+        "/api/games/620/screenshots/t.jpg",
+    ] {
+        assert_eq!(get_raw(&s.cfg, uri).await.status(), 404, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn screenshot_rejects_traversal() {
+    let s = steam(NO_API, NO_API, None);
+    let d = shots(&s, &[("a.jpg", b"x", 1_000)]);
+    // a file literally named like the decoded attack must not be reachable either
+    std::fs::write(d.join("..jpg"), b"x").unwrap();
+    for uri in [
+        "/api/games/620/screenshots/..%2F..%2Fconfig%2Floginusers.vdf",
+        "/api/games/620/screenshots/..%2F..%2F..%2F..%2F..%2F..%2Fconfig%2Floginusers.vdf",
+        "/api/games/620/screenshots//etc/passwd",
+        "/api/games/620/screenshots/%2Fetc%2Fpasswd",
+        "/api/games/620/screenshots/%00x.jpg",
+        "/api/games/620/screenshots/a.jpg%00",
+        "/api/games/620/screenshots/..jpg",
+        "/api/games/620/screenshots/thumbnails%2Ft.jpg",
+        "/api/games/620/screenshots/..%5Ca.jpg",
+    ] {
+        let r = get_raw(&s.cfg, uri).await;
+        assert_eq!(r.status(), 404, "{uri}");
+        let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        assert!(!String::from_utf8_lossy(&b).contains("users"), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn screenshot_rejects_symlink_out_of_dir() {
+    let s = steam(NO_API, NO_API, None);
+    let d = shots(&s, &[("real.jpg", b"x", 1_000)]);
+    std::os::unix::fs::symlink(
+        s.cfg.steam_dir.join("config/loginusers.vdf"),
+        d.join("a.jpg"),
+    )
+    .unwrap();
+    // even a link to a file inside the folder is refused
+    std::os::unix::fs::symlink(d.join("real.jpg"), d.join("b.jpg")).unwrap();
+    for n in ["a.jpg", "b.jpg"] {
+        let r = get_raw(&s.cfg, &format!("/api/games/620/screenshots/{n}")).await;
+        assert_eq!(r.status(), 404, "{n}");
+    }
+    let (_, v) = get_json(&s.cfg, "/api/games/620/local").await;
+    assert_eq!(v["screenshots"], serde_json::json!(["real.jpg"]));
+}
+
+#[tokio::test]
+async fn screenshot_wrong_extension_404() {
+    let s = steam(NO_API, NO_API, None);
+    let d = shots(&s, &[("a.jpg", b"x", 1_000)]);
+    std::fs::write(d.join("a.gif"), b"x").unwrap();
+    std::fs::write(d.join("a.vdf"), b"x").unwrap();
+    std::fs::create_dir(d.join("dir.jpg")).unwrap();
+    for n in ["a.gif", "a.vdf", "dir.jpg", "a.jpg.txt"] {
+        let r = get_raw(&s.cfg, &format!("/api/games/620/screenshots/{n}")).await;
+        assert_eq!(r.status(), 404, "{n}");
+    }
+}
+
+#[tokio::test]
+async fn screenshot_over_25_mib_404() {
+    let s = steam(NO_API, NO_API, None);
+    let d = shots(&s, &[("a.jpg", b"x", 1_000)]);
+    let big = std::fs::File::create(d.join("big.jpg")).unwrap();
+    big.set_len(25 * 1024 * 1024 + 1).unwrap(); // sparse: no real disk use
+    let r = get_raw(&s.cfg, "/api/games/620/screenshots/big.jpg").await;
+    assert_eq!(r.status(), 404);
+}

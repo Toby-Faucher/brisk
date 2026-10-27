@@ -159,6 +159,41 @@ async fn game_news(
     axum::Json(steam_info::news(&s.cfg, id, refresh).await).into_response()
 }
 
+/// Screenshot names and a cloud-save summary from the host's Steam folder; 404 for an unknown game.
+/// No folder is a 200 with empty fields.
+async fn game_local(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let s2 = s.clone();
+    match tokio::task::spawn_blocking(move || steam_info::local(&s2.cfg, id)).await {
+        Ok(l) => axum::Json(l).into_response(),
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "listing failed"),
+    }
+}
+
+/// One screenshot file, only if `name` is in the game's listing (see `steam_info::screenshot`).
+async fn game_screenshot(
+    State(s): State<Arc<AppState>>,
+    UrlPath((id, name)): UrlPath<(u32, String)>,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let s2 = s.clone();
+    match tokio::task::spawn_blocking(move || steam_info::screenshot(&s2.cfg, id, &name)).await {
+        Ok(Some((ct, body))) => (
+            [
+                (header::CONTENT_TYPE, ct),
+                (header::CACHE_CONTROL, "private, max-age=3600"),
+            ],
+            body,
+        )
+            .into_response(),
+        _ => err(StatusCode::NOT_FOUND, "no such screenshot"),
+    }
+}
+
 /// Friends in a game or online. Any failure is a 200 with `available: false`.
 async fn friends(State(s): State<Arc<AppState>>) -> Response {
     axum::Json(steam_info::friends_cached(&s).await).into_response()
@@ -556,6 +591,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{appid}/info", get(game_info))
         .route("/games/{appid}/achievements", get(game_achievements))
         .route("/games/{appid}/news", get(game_news))
+        .route("/games/{appid}/local", get(game_local))
+        .route("/games/{appid}/screenshots/{name}", get(game_screenshot))
         .route("/friends", get(friends))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))

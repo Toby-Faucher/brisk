@@ -1,5 +1,5 @@
-import type { Game } from '../../state/api';
-import { pickResume } from '../home/home';
+import type { Game, GameLocal } from '../../state/api';
+import { fmtAgo, pickResume } from '../home/home';
 
 export type Filter = 'all' | 'installed' | 'not-installed' | 'recent';
 
@@ -56,6 +56,13 @@ export function visibleRange(scrollLeft: number, width: number, stride: number, 
 
 export const fmtFortnight = (min: number) => `${min < 60 ? `${min} min` : `${(min / 60).toFixed(1)} h`} this fortnight`;
 export const fmtSize = (b: number | null) => (b ? `${(b / 1e9).toFixed(b < 1e10 ? 1 : 0)} GB` : null);
+/** "Cloud saves: 14 files, 2.1 MB, synced 3 d ago"; null when there are no save files. `now` is unix ms. */
+export function savesLine(s: GameLocal['saves'], now = Date.now()): string | null {
+  if (!s?.files) return null;
+  const b = s.bytes;
+  const size = b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} KB` : b < 1e9 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e9).toFixed(1)} GB`;
+  return `Cloud saves: ${s.files} ${s.files === 1 ? 'file' : 'files'}, ${size}${s.modified ? `, synced ${fmtAgo(s.modified * 1000, now)}` : ''}`;
+}
 export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
 /** A game still running on the host is resumed (streamed as is), not launched again. */
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');

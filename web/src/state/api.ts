@@ -46,6 +46,8 @@ export type GameInfo = {
   /** thumbnail URLs, at most 6 */
   screenshots: string[];
 };
+/** GET /api/games/{appid}/local: screenshot file names on the host (newest first, at most 60) and a cloud-save summary. */
+export type GameLocal = { screenshots: string[]; saves: { files: number; bytes: number; modified: number /* unix s */ } | null };
 export type HostInfo = {
   name: string;
   sunshine: 'ready' | 'busy' | 'down';
@@ -198,6 +200,12 @@ async function getClipboard(since: number | null): Promise<{ seq: number; clip: 
   return { seq, clip: { kind: 'text', text: (await r.json()).text } };
 }
 
+/** An object URL for one host screenshot: fetched with the auth headers, which an `<img src>` cannot send. Revoke it when done. */
+async function screenshot(appid: number, name: string): Promise<string> {
+  const r = await send(`/api/games/${appid}/screenshots/${encodeURIComponent(name)}`, { headers: auth() });
+  return URL.createObjectURL(await r.blob());
+}
+
 async function postClipboard(c: Clip): Promise<void> {
   const ct = c.kind === 'text' ? 'text/plain;charset=utf-8' : 'image/png';
   await send('/api/clipboard', { method: 'POST', headers: auth({ 'content-type': ct }), body: c.kind === 'text' ? c.text : c.blob });
@@ -224,6 +232,8 @@ export const api = {
   gameInfo: (appid: number) => call<GameInfo>('GET', `/api/games/${appid}/info`),
   gameAchievements: (appid: number) => call<Achievements>('GET', `/api/games/${appid}/achievements`),
   gameNews: (appid: number) => call<News>('GET', `/api/games/${appid}/news`),
+  gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
+  screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),

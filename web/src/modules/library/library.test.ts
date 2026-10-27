@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterGames, fmtFortnight, installLabel, playLabel, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterGames, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false, ...o });
@@ -112,5 +112,14 @@ describe('library', () => {
     expect(badgeLabel(g(1, 'a', { installed: true }))).toBe('Installed');
     expect(badgeLabel(g(1, 'a', { sizeBytes: 2e9 }))).toBe('2.0 GB');
     expect(badgeLabel(g(1, 'a'))).toBe('Not installed');
+  });
+
+  it('savesLine_counts_size_and_age', () => {
+    const now = 1_000_000_000_000;
+    expect(savesLine({ files: 14, bytes: 2_100_000, modified: now / 1000 - 3 * DAY }, now)).toBe('Cloud saves: 14 files, 2.1 MB, synced 3 d ago');
+    expect(savesLine({ files: 1, bytes: 400, modified: 0 }, now)).toBe('Cloud saves: 1 file, 1 KB');
+    expect(savesLine({ files: 3, bytes: 5_200_000_000, modified: now / 1000 - 120 }, now)).toBe('Cloud saves: 3 files, 5.2 GB, synced 2 min ago');
+    expect(savesLine({ files: 0, bytes: 0, modified: 0 }, now)).toBeNull();
+    expect(savesLine(null, now)).toBeNull();
   });
 });
