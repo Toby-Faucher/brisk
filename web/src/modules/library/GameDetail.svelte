@@ -1,16 +1,14 @@
 <script lang="ts">
-  // The detail panel a Library card (or the Hero's Details) opens. Sections top to bottom: header art, actions,
-  // your notes and tags, store facts, the host's screenshots and saves, achievements, patch notes.
+  // The detail panel a Library card (or the Hero's Details) opens. Wide screens: two panes, GameSide (art, actions,
+  // quick facts, notes and tags) stays put and the right pane scrolls (description, screenshots, the host's screenshots
+  // and saves, achievements, news, stream history). Under 760 px it is one scrolling column.
   import { Dialog } from 'bits-ui';
   import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
-  import Icon from '../../ui/Icon.svelte';
-  import PlayIcon from '../../ui/PlayIcon.svelte';
-  import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
-  import { hue } from './Cover.svelte';
-  import { badgeLabel, installLabel, playLabel, savesLine, smartTags } from './library';
-  import GameNotes from './GameNotes.svelte';
-  import TagChip from './TagChip.svelte';
+  import { savesLine } from './library';
+  import GameSide from './GameSide.svelte';
   import StreamHistory from './StreamHistory.svelte';
+  import Lightbox from './Lightbox.svelte';
+  import AchievementsDialog from './AchievementsDialog.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -92,14 +90,18 @@
         .finally(() => (active--, pump()));
     }
   }
+  const want = (name: string) => {
+    if (asked.has(name)) return;
+    asked.add(name);
+    queue.push(name);
+    pump();
+  };
   const lazy = (name: string) => (node: Element) => {
     const io = new IntersectionObserver(
       (es) => {
-        if (!es.some((e) => e.isIntersecting) || asked.has(name)) return;
+        if (!es.some((e) => e.isIntersecting)) return;
         io.disconnect();
-        asked.add(name);
-        queue.push(name);
-        pump();
+        want(name);
       },
       { rootMargin: '200px' },
     );
@@ -108,11 +110,21 @@
   };
   const saves = $derived(savesLine(local?.saves ?? null));
 
-  let heroBad = $state('');
-  let logoLoaded = $state('');
-  const logoOk = $derived(!!game.logo && logoLoaded === game.logo);
-  const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
-  const q = $derived($quitting.has(game.appid));
+
+  // The lightbox: which list and where in it. Store shots use the full-size URL when the server sent one; the host's
+  // own reuse their object URL (fetched now if the tile has not scrolled into view yet).
+  let box = $state<{ kind: 'store' | 'local'; i: number } | null>(null);
+  const storeShots = $derived.by(() => {
+    const v = info && info !== 'none' ? info : null;
+    return (v?.screenshots ?? []).map((src, i) => ({ src: v?.screenshotsFull?.[i] || src, alt: `${game.name} screenshot ${i + 1}` }));
+  });
+  const localShots = $derived((local?.screenshots ?? []).map((name, i) => ({ src: shotUrl[name] ?? '', alt: `${game.name} screenshot ${i + 1} from this PC` })));
+  function show(kind: 'store' | 'local', i: number) {
+    box = { kind, i };
+    if (kind === 'local') local?.screenshots.forEach((n) => want(n));
+  }
+  let allAch = $state(false);
+  const PREVIEW = 6;
 </script>
 
 <Dialog.Root bind:open onOpenChangeComplete={(o) => !o && onclose()}>
@@ -127,143 +139,111 @@
         }
       }}
     >
-      <!-- header -->
-      <div class="head" style="background:radial-gradient(120% 140% at 85% 0%, hsl({hue(game)} 62% 48% / .67), #12151c 62%)">
-        {#if game.hero && heroBad !== game.hero}<img class="art" src={game.hero} alt="" onerror={() => (heroBad = game.hero)} />{/if}
-        {#if game.logo}<img class="logo" class:on={logoOk} src={game.logo} alt="" onload={() => (logoLoaded = game.logo)} />{/if}
-        <Dialog.Title class={logoOk ? 'gd-t vh' : 'gd-t'}>{game.name}</Dialog.Title>
-        <Dialog.Description class="gd-d">{badgeLabel(game)}{game.playtimeMin ? ` · ${hrs} played` : ''}</Dialog.Description>
-      </div>
+      <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} /></div>
 
-      <!-- actions -->
-      {#if game.installed && game.update}<p class="upd" role="note">Steam still has to update this game. Starting it now may wait for the download.</p>{/if}
-      <div class="acts">
-        {#if game.installed}
-          <button class="btn" aria-disabled={busy} onclick={() => onplay(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
-        {:else}
-          <button class="btn" aria-disabled={busy} onclick={() => oninstall(game)}><Icon name="dl" size={14} /> {busy ? 'Asking Steam…' : installLabel(game)}</button>
-        {/if}
-        {#if game.running}
-          <button class="btn ghost" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={14} /> {q ? 'Quitting…' : 'Quit'}</button>
-        {/if}
-        <Dialog.Close class="btn ghost close">Close</Dialog.Close>
-      </div>
-
-      <StreamHistory {appid} />
-
-      <!-- your note and tags (keyed: a fresh draft per game) -->
-      {#key game.appid}<GameNotes appid={game.appid} name={game.name} />{/key}
-      {#if smartTags(game).length}
-        <section class="sec" aria-label="Automatic tags">
-          <h3>Automatic tags</h3>
-          <div class="auto">{#each smartTags(game) as t (t.id)}<TagChip name={t.name} color={t.color} symbol={t.symbol} />{/each}</div>
-        </section>
-      {/if}
-
-      <!-- store facts -->
-      <section class="sec" aria-busy={info === null}>
-        {#if info === null}
-          <p class="lab">Loading store details…</p>
-        {:else if info === 'none'}
-          <p class="lab">No store details</p>
-        {:else}
-          {#if info.description}<p class="desc">{info.description}</p>{/if}
-          {#if info.controller}<p class="ctl"><Icon name="pad" size={15} /> {info.controller === 'full' ? 'Full' : 'Partial'} controller support</p>{/if}
-          <ul class="chips" aria-label="Genres and modes">
-            {#each info.genres as g (g)}<li>{g}</li>{/each}
-            {#if info.coop}<li class="mode">Co-op</li>{/if}
-            {#if info.remotePlayTogether}<li class="mode">Remote Play Together</li>{/if}
-          </ul>
-          {#if info.release || info.metacritic}<p class="lab">{[info.release && `Released ${info.release}`, info.metacritic && `Metacritic ${info.metacritic}`].filter(Boolean).join(' · ')}</p>{/if}
-          {#if info.screenshots.length}
-            <h3>Screenshots</h3>
-            <div class="shots">
-              {#each info.screenshots as src, i (src)}<img {src} alt="{game.name} screenshot {i + 1}" loading="lazy" decoding="async" />{/each}
-            </div>
+      <div class="gd-main">
+        <!-- store description and screenshots -->
+        <section class="sec" aria-busy={info === null}>
+          {#if info === null}
+            <p class="lab">Loading store details…</p>
+          {:else if info === 'none'}
+            <p class="lab">No store details</p>
+          {:else}
+            {#if info.description}<p class="desc">{info.description}</p>{/if}
+            {#if storeShots.length}
+              <h3>Screenshots</h3>
+              <div class="shots">
+                {#each storeShots as s, i (s.src)}<button class="shot" aria-label="Open {s.alt}" aria-haspopup="dialog" onclick={() => show('store', i)}><img src={info.screenshots[i]} alt={s.alt} loading="lazy" decoding="async" /></button>{/each}
+              </div>
+            {/if}
           {/if}
-        {/if}
-      </section>
+        </section>
 
-      <!-- the host's own screenshots and cloud-save summary -->
-      {#if local && (local.screenshots.length || saves)}
-        <section class="sec">
-          {#if local.screenshots.length}
-            <h3>Your screenshots</h3>
-            <div class="shots">
-              {#each local.screenshots as name, i (name)}
-                {#if shotUrl[name]}<img src={shotUrl[name]} alt="{game.name} screenshot {i + 1} from this PC" decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
+        <!-- the host's own screenshots and cloud-save summary -->
+        {#if local && (local.screenshots.length || saves)}
+          <section class="sec">
+            {#if local.screenshots.length}
+              <h3>Your screenshots</h3>
+              <div class="shots">
+                {#each local.screenshots as name, i (name)}
+                  <button class="shot" aria-label="Open {localShots[i].alt}" aria-haspopup="dialog" onclick={() => show('local', i)}>
+                    {#if shotUrl[name]}<img src={shotUrl[name]} alt={localShots[i].alt} decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+            {#if saves}<p class="lab">{saves}</p>{/if}
+          </section>
+        {/if}
+
+        <!-- achievements: the first few, the rest in their own modal -->
+        {#if ach && ach.total > 0}
+          <section class="sec ach">
+            <div class="h"><h3>Achievements</h3>{#if ach.list.length}<button class="btn ghost more" aria-haspopup="dialog" aria-label="View all {ach.list.length} achievements" onclick={() => (allAch = true)}>View all</button>{/if}</div>
+            <ul class="alist">
+              {#each ach.list.slice(0, PREVIEW) as a (a.id)}
+                <li class:locked={a.unlockedAt === null}>
+                  {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}
+                  <span><b>{a.name}</b>{#if a.description}<small>{a.description}</small>{/if}</span>
+                </li>
               {/each}
-            </div>
-          {/if}
-          {#if saves}<p class="lab">{saves}</p>{/if}
-        </section>
-      {/if}
+            </ul>
+          </section>
+        {/if}
 
-      <!-- achievements -->
-      {#if ach && ach.total > 0}
-        <section class="sec ach">
-          <h3>Achievements</h3>
-          <p class="lab">{ach.unlocked} of {ach.total} unlocked</p>
-          <div class="bar" role="progressbar" aria-label="{ach.unlocked} of {ach.total} achievements" aria-valuemin={0} aria-valuemax={ach.total} aria-valuenow={ach.unlocked}><i style="width:{(ach.unlocked / ach.total) * 100}%"></i></div>
-          <ul class="alist">
-            {#each ach.list as a (a.id)}
-              <li class:locked={a.unlockedAt === null}>
-                {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}
-                <span><b>{a.name}</b>{#if a.description}<small>{a.description}</small>{/if}</span>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
+        <!-- patch notes: titles are text, only https URLs become links -->
+        {#if news && news.items.length}
+          <section class="sec">
+            <h3>Latest news</h3>
+            <ul class="news">
+              {#each news.items as n, i (i)}
+                <li>{#if n.url.startsWith('https://')}<a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>{:else}<span>{n.title}</span>{/if}{#if n.patch}<span class="pb">Patch</span>{/if}</li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
 
-      <!-- patch notes: titles are text, only https URLs become links -->
-      {#if news && news.items.length}
-        <section class="sec">
-          <h3>Latest news</h3>
-          <ul class="news">
-            {#each news.items as n, i (i)}
-              <li>{#if n.url.startsWith('https://')}<a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>{:else}{n.title}{/if}{#if n.patch} <small>patch</small>{/if}</li>
-            {/each}
-          </ul>
-        </section>
+        <StreamHistory {appid} />
+      </div>
+
+      {#if box}
+        {@const list = box.kind === 'store' ? storeShots : localShots}
+        {#if list.length}<Lightbox shots={list} bind:index={box.i} onclose={() => (box = null)} />{/if}
       {/if}
+      {#if allAch && ach}<AchievementsDialog {ach} name={game.name} onclose={() => (allAch = false)} />{/if}
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
 
 <style>
-  /* .rs gives the dialog motion (base.css) and position; .gd makes it a wide, scrolling panel */
-  :global(.rs.gd) { top: 6vh; width: min(720px, calc(100vw - 32px)); max-height: 88vh; overflow: auto; padding: 0; gap: 0; }
-  .head { position: relative; overflow: hidden; min-height: 170px; padding: 22px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; }
-  .head > :global(*:not(.art)) { position: relative; }
-  .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; opacity: .55; mask-image: linear-gradient(0deg, transparent, #000 70%); pointer-events: none; }
-  .logo { display: none; max-width: 260px; max-height: 84px; object-fit: contain; object-position: left; }
-  .logo.on { display: block; }
-  :global(.gd-t) { margin: 0; font-size: 24px; letter-spacing: -.03em; }
-  :global(.gd-t.vh) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  :global(.gd-d) { color: #c9d1e0; font-size: 13.5px; }
-  .upd { margin: 14px 22px 0; font-size: 13px; color: var(--muted); }
-  .acts { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 22px 0; }
-  .acts :global(.close) { margin-left: auto; }
-  .sec { padding: 14px 22px 22px; display: grid; gap: 10px; }
-  .desc { line-height: 1.5; }
-  .ctl { display: flex; gap: 6px; align-items: center; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
-  .chips li { padding: 3px 10px; border-radius: 999px; font-size: 12.5px; border: 1px solid var(--line); background: var(--panel); }
-  .chips li.mode { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
-.auto { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* .rs gives the dialog motion (base.css) and position; .gd makes it a wide two-pane panel: the side stays, the main
+     pane scrolls. Under 760 px: one column, the whole panel scrolls. */
+  :global(.rs.gd) { top: 6vh; width: min(1080px, calc(100vw - 32px)); height: min(88vh, 900px); padding: 0; gap: 0; display: grid; grid-template-columns: minmax(300px, 380px) 1fr; overflow: hidden; }
+  .gd-side { overflow: auto; overscroll-behavior: contain; padding-bottom: 22px; border-right: 1px solid var(--line); }
+  .gd-main { overflow: auto; overscroll-behavior: contain; padding-bottom: 22px; min-width: 0; }
+  @media (max-width: 759px) {
+    :global(.rs.gd) { display: block; height: auto; max-height: 88vh; overflow: auto; }
+    .gd-side, .gd-main { overflow: visible; padding-bottom: 0; border: 0; }
+    .gd-main { padding-bottom: 22px; }
+  }
+  .sec { padding: 14px 22px 0; display: grid; gap: 10px; }
+  .gd-main > .sec:first-child { padding-top: 22px; }
+  .desc { line-height: 1.5; margin: 0; }
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-  .shots img, .shots .ph { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); }
-  .sec.ach { padding-top: 0; }
-  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--accent); }
-  .alist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; max-height: 320px; overflow: auto; }
+  .shot { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; display: block; }
+  .shot img, .shot .ph { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); transition: filter .2s; }
+  .shot:hover img { filter: brightness(1.12); }
+  .h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .more { padding: 4px 10px; font-size: 12.5px; min-height: 24px; }
+  .alist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
   .alist li { display: flex; gap: 10px; align-items: center; }
   .alist li.locked { opacity: .6; }
   .alist img, .alist .ph { width: 40px; height: 40px; flex: none; border-radius: 6px; background: var(--panel); }
-  .news { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-  .news small { color: var(--muted); }
   .alist span:not(.ph) { display: grid; min-width: 0; }
   .alist small { color: var(--muted); }
+  .news { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .news li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; line-height: 1.4; }
+  .news a:hover { text-decoration: underline; }
+  .pb { flex: none; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); }
 </style>

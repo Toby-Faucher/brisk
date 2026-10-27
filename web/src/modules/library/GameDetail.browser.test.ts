@@ -276,4 +276,140 @@ describe('GameDetail', () => {
     expect(put).not.toHaveBeenCalled();
     await expect.element(sugg()).not.toHaveAttribute('aria-disabled', 'true');
   });
+
+  const thumbs = [0, 1, 2].map((i) => `https://cdn.example.test/ss_0${i}.600x338.jpg`);
+  const shotsInfo: GameInfo = { ...info, screenshots: thumbs, screenshotsFull: thumbs.map((u) => u.replace('600x338', '1920x1080')) };
+  const big = () => page.getByRole('dialog', { name: /^Screenshot \d of \d$/ });
+
+  it('a store screenshot opens a lightbox with the full-size image; arrows, buttons and Escape', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(shotsInfo);
+    await render(GameDetail, { props: props(game) });
+    const thumb = page.getByRole('button', { name: 'Open Portal 2 screenshot 2' });
+    await userEvent.click(thumb);
+    await expect.element(big()).toBeInTheDocument();
+    await expect.element(big()).toHaveAccessibleName('Screenshot 2 of 3');
+    await expect.element(big().getByRole('img')).toHaveAttribute('src', thumbs[1].replace('600x338', '1920x1080'));
+    await expect.element(big().getByRole('img')).toHaveAttribute('alt', 'Portal 2 screenshot 2');
+    await userEvent.keyboard('{ArrowRight}');
+    await expect.element(big()).toHaveAccessibleName('Screenshot 3 of 3');
+    await userEvent.keyboard('{ArrowRight}'); // wraps
+    await expect.element(big()).toHaveAccessibleName('Screenshot 1 of 3');
+    await userEvent.keyboard('{ArrowLeft}');
+    await expect.element(big()).toHaveAccessibleName('Screenshot 3 of 3');
+    await userEvent.click(page.getByRole('button', { name: 'Previous screenshot' }));
+    await expect.element(big()).toHaveAccessibleName('Screenshot 2 of 3');
+    await userEvent.click(page.getByRole('button', { name: 'Next screenshot' }));
+    await expect.element(big()).toHaveAccessibleName('Screenshot 3 of 3');
+    await expect.poll(() => big().element().contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    await expect.element(big()).not.toBeInTheDocument();
+    // only the lightbox closed; focus is back on the thumbnail that opened it
+    await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
+    await expect.poll(() => document.activeElement).toBe(thumb.element());
+  });
+
+  it('the lightbox uses the thumbnail when the server sent no full-size list', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue({ ...info, screenshots: thumbs });
+    await render(GameDetail, { props: props(game) });
+    await userEvent.click(page.getByRole('button', { name: 'Open Portal 2 screenshot 1' }));
+    await expect.element(big().getByRole('img')).toHaveAttribute('src', thumbs[0]);
+    await userEvent.click(page.getByRole('button', { name: 'Close screenshot' }));
+    await expect.element(big()).not.toBeInTheDocument();
+  });
+
+  it('your own screenshots open in the lightbox from the same blob URL', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'gameLocal').mockResolvedValue(local);
+    const made: string[] = [];
+    vi.spyOn(api, 'screenshot').mockImplementation(async () => (made.push(blobUrl()), made.at(-1)!));
+    await render(GameDetail, { props: props(game) });
+    await expect.poll(() => made.length).toBe(2);
+    const second = page.getByRole('img', { name: 'Portal 2 screenshot 2 from this PC' });
+    await expect.element(second).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    const src = second.element().getAttribute('src');
+    await userEvent.click(page.getByRole('button', { name: 'Open Portal 2 screenshot 2 from this PC' }));
+    await expect.element(big().getByRole('img')).toHaveAttribute('src', src!);
+    expect(made).toHaveLength(2); // no second fetch
+  });
+
+  const many: Achievements = {
+    available: true,
+    unlocked: 2,
+    total: 9,
+    list: [
+      { id: 'A', name: 'First Steps', description: 'Take a step.', icon: '', unlockedAt: 1700000100 },
+      { id: 'B', name: 'Pokémon Master', description: 'Catch them.', icon: '', unlockedAt: 1700000200 },
+      ...Array.from({ length: 7 }, (_, i) => ({ id: `L${i}`, name: `Locked ${i}`, description: i === 0 ? 'Find the café' : '', icon: '', unlockedAt: null })),
+    ],
+  };
+  const achDialog = () => page.getByRole('dialog', { name: 'Portal 2 achievements' });
+
+  it('View all opens every achievement in a modal with a small search', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue(many);
+    await render(GameDetail, { props: props(game) });
+    const open = page.getByRole('button', { name: 'View all 9 achievements' });
+    await userEvent.click(open);
+    await expect.element(achDialog()).toBeInTheDocument();
+    const items = () => achDialog().getByRole('listitem').elements();
+    expect(items()).toHaveLength(9);
+    expect(items().filter((li) => li.classList.contains('locked'))).toHaveLength(7);
+    await expect.element(achDialog().getByText(/^Unlocked /).first()).toBeInTheDocument();
+    const search = achDialog().getByRole('searchbox', { name: 'Search achievements' });
+    await userEvent.fill(search, 'pokemon');
+    await expect.poll(() => items().map((li) => li.querySelector('b')?.textContent)).toEqual(['Pokémon Master']);
+    await userEvent.fill(search, 'CAFE'); // description, accents and case ignored
+    await expect.poll(() => items().map((li) => li.querySelector('b')?.textContent)).toEqual(['Locked 0']);
+    await userEvent.fill(search, 'zzz');
+    await expect.element(achDialog().getByText('No matches')).toBeInTheDocument();
+    expect(items()).toHaveLength(0);
+    await userEvent.keyboard('{Escape}');
+    await expect.element(achDialog()).not.toBeInTheDocument();
+    await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
+    await expect.poll(() => document.activeElement).toBe(open.element());
+  });
+
+  it('a patch news item has a separate badge with space before it', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [{ title: 'Big update', url: 'https://n.example.test/a', date: 2, patch: true }] });
+    await render(GameDetail, { props: props(game) });
+    const a = page.getByRole('link', { name: 'Big update' });
+    await expect.element(a).toBeInTheDocument();
+    const badge = page.getByText('Patch', { exact: true }).element();
+    expect(badge.getBoundingClientRect().left - a.element().getBoundingClientRect().right).toBeGreaterThanOrEqual(6);
+  });
+
+  it('wide screens: two panes, the left one static and the right one scrolling', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue(ach);
+    await render(GameDetail, { props: props(game) });
+    const d = page.getByRole('dialog', { name: 'Portal 2' });
+    await expect.element(d.getByText('Think with portals & friends.')).toBeInTheDocument();
+    const box = d.element().getBoundingClientRect();
+    expect(box.width).toBeGreaterThanOrEqual(940);
+    expect(box.width).toBeLessThanOrEqual(1100);
+    const side = d.element().querySelector('.gd-side')!;
+    const main = d.element().querySelector('.gd-main')!;
+    expect(side.contains(page.getByRole('button', { name: 'Play', exact: true }).element())).toBe(true);
+    expect(main.contains(page.getByText('Think with portals & friends.').element())).toBe(true);
+    expect(side.getBoundingClientRect().right).toBeLessThanOrEqual(main.getBoundingClientRect().left + 1);
+    expect(getComputedStyle(main).overflowY).toBe('auto');
+    expect(getComputedStyle(d.element()).overflowY).not.toBe('auto');
+  });
+
+  it('narrow screens: one scrolling column', async () => {
+    await page.viewport(700, 800);
+    try {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      await render(GameDetail, { props: props(game) });
+      const d = page.getByRole('dialog', { name: 'Portal 2' });
+      await expect.element(d.getByText('Think with portals & friends.')).toBeInTheDocument();
+      const side = d.element().querySelector('.gd-side')!.getBoundingClientRect();
+      const main = d.element().querySelector('.gd-main')!.getBoundingClientRect();
+      expect(main.top).toBeGreaterThanOrEqual(side.bottom - 1);
+      expect(getComputedStyle(d.element()).overflowY).toBe('auto');
+    } finally {
+      await page.viewport(1280, 800);
+    }
+  });
 });
