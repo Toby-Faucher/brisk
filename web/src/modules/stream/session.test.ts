@@ -21,7 +21,10 @@ function fakeDeps(over: Partial<Deps> = {}) {
   const release = vi.fn();
   const ctxs: { state: string; resume: any; close: any }[] = [];
   const deps: Deps = {
-    api: { stream: vi.fn(async () => ({ ...LIVE, wt: 'https://h:4433/b' })), startStream: vi.fn(async () => ({ ...LIVE, wt: 'https://h:4433/new' })) },
+    api: {
+      stream: vi.fn(async () => ({ ...LIVE, wt: 'https://h:4433/b' })),
+      startStream: vi.fn(async () => ({ ...LIVE, wt: 'https://h:4433/new' })),
+    },
     open: vi.fn(() => {
       const t = fakeTransport(transports.length === 0 || !failAfterFirst.on);
       transports.push(t);
@@ -107,7 +110,11 @@ describe('StreamSession', () => {
     s.disconnect();
     // an older hostd without `started`: nothing to record
     let n = 0;
-    const moving = { get framesPresented() { return (n += 30); } };
+    const moving = {
+      get framesPresented() {
+        return (n += 30);
+      },
+    };
     const g = fakeDeps({ sample, startVideo: () => ({ stats: moving as any, done: new Promise(() => {}) }) });
     const t = new StreamSession(g.deps);
     await t.connect(LIVE);
@@ -239,7 +246,10 @@ describe('StreamSession', () => {
 
   it('poll_returns_live_once_started', async () => {
     let n = 0;
-    const api = { stream: vi.fn(async () => ({ ...LIVE, state: n++ < 2 ? ('starting' as const) : ('live' as const) })), startStream: vi.fn() };
+    const api = {
+      stream: vi.fn(async () => ({ ...LIVE, state: n++ < 2 ? ('starting' as const) : ('live' as const) })),
+      startStream: vi.fn(),
+    };
     const p = pollLive(api, () => true);
     await vi.advanceTimersByTimeAsync(2000);
     expect((await p)?.state).toBe('live');
@@ -253,7 +263,9 @@ describe('StreamSession', () => {
       const unis: number[][] = [];
       const f = fakeDeps({
         replaySeconds: () => seconds,
-        startVideo: (_t, _c, onDecode) => (onDecode && taps.push(onDecode), { stats: { framesPresented: 0 } as any, done: new Promise(() => {}) }),
+        startVideo: (_t, _c, onDecode) => (
+          onDecode && taps.push(onDecode), { stats: { framesPresented: 0 } as any, done: new Promise(() => {}) }
+        ),
         startAudio: async (_t, _c, _o, onPacket) => (audioTaps.push(onPacket), {}),
       });
       const open = f.deps.open;

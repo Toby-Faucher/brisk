@@ -104,7 +104,10 @@ export class SeriesUploader {
       }
     };
     try {
-      this.put(id, points).then(() => done(), (e) => done(e ?? new Error('failed')));
+      this.put(id, points).then(
+        () => done(),
+        (e) => done(e ?? new Error('failed')),
+      );
     } catch (e) {
       done(e);
     }

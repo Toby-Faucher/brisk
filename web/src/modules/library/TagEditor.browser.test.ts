@@ -6,7 +6,11 @@ import TagEditor from './TagEditor.svelte';
 afterEach(() => page.viewport(1280, 800));
 
 describe('TagEditor', () => {
-  for (const [w, h] of [[1280, 800], [1280, 420], [390, 640]]) {
+  for (const [w, h] of [
+    [1280, 800],
+    [1280, 420],
+    [390, 640],
+  ]) {
     it(`New tag is centred and fully inside a ${w}x${h} viewport, Save and Cancel visible`, async () => {
       await page.viewport(w, h);
       await render(TagEditor, { props: { id: null, onclose: vi.fn() } });

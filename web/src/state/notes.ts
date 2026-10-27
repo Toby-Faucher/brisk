@@ -24,7 +24,23 @@ export const TAG_COLORS: Record<TagColor, string> = {
 };
 
 /** Glyph names, drawn by TagChip.svelte. */
-export const TAG_SYMBOLS: string[] = ['star', 'heart', 'flag', 'check', 'clock', 'fire', 'bookmark', 'trophy', 'skull', 'gamepad', 'users', 'bolt', 'moon', 'gift', 'question'];
+export const TAG_SYMBOLS: string[] = [
+  'star',
+  'heart',
+  'flag',
+  'check',
+  'clock',
+  'fire',
+  'bookmark',
+  'trophy',
+  'skull',
+  'gamepad',
+  'users',
+  'bolt',
+  'moon',
+  'gift',
+  'question',
+];
 
 /** Shared by Library, the detail panel and the cards; filled by watchNotes. */
 export const notes = writable<Notes>({ tags: {}, games: {} });
@@ -53,7 +69,8 @@ export function withGame(map: Notes, appid: number, g: GameNote): Notes {
 export function withoutTag(map: Notes, id: string): Notes {
   const { [id]: _, ...tags } = map.tags;
   let n: Notes = { ...map, tags };
-  for (const [appid, g] of Object.entries(map.games)) if (g.tags.includes(id)) n = withGame(n, Number(appid), { ...g, tags: g.tags.filter((t) => t !== id) });
+  for (const [appid, g] of Object.entries(map.games))
+    if (g.tags.includes(id)) n = withGame(n, Number(appid), { ...g, tags: g.tags.filter((t) => t !== id) });
   return n;
 }
 

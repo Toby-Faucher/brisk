@@ -24,7 +24,13 @@ export const SMART_TAGS: SmartTag[] = [
   { id: 'auto-backlog', name: 'Backlog', color: 'gray', symbol: 'bookmark', test: (g) => g.playtimeMin < 30 },
   { id: 'auto-controller', name: 'Controller', color: 'blue', symbol: 'gamepad', test: (g) => g.controller === 'full' },
   { id: 'auto-coop', name: 'Co-op', color: 'green', symbol: 'users', test: (g) => g.coop },
-  { id: 'auto-almost', name: 'Almost done', color: 'yellow', symbol: 'trophy', test: (g) => !!g.achTotal && (g.achUnlocked ?? 0) / g.achTotal >= 0.8 && (g.achUnlocked ?? 0) < g.achTotal },
+  {
+    id: 'auto-almost',
+    name: 'Almost done',
+    color: 'yellow',
+    symbol: 'trophy',
+    test: (g) => !!g.achTotal && (g.achUnlocked ?? 0) / g.achTotal >= 0.8 && (g.achUnlocked ?? 0) < g.achTotal,
+  },
   { id: 'auto-updated', name: 'Updated', color: 'orange', symbol: 'bolt', test: (g) => g.updated },
 ];
 
@@ -33,7 +39,8 @@ const rule = (id: SmartTagId) => SMART_TAGS.find((t) => t.id === id)!.test;
 export const smartTags = (g: Game): SmartTag[] => SMART_TAGS.filter((t) => t.test(g));
 
 /** A random item, or null for an empty list. `rnd` returns [0, 1). */
-export const pickRandom = <T>(items: T[], rnd: () => number = Math.random): T | null => items[Math.min(items.length - 1, Math.floor(rnd() * items.length))] ?? null;
+export const pickRandom = <T>(items: T[], rnd: () => number = Math.random): T | null =>
+  items[Math.min(items.length - 1, Math.floor(rnd() * items.length))] ?? null;
 
 /** null: all games; else the games carrying tag `tagId` (your tag while it exists, or a smart tag's rule). Keeps the order. */
 export function filterByTag(games: Game[], notes: Notes, tagId: string | null): Game[] {
@@ -53,7 +60,13 @@ export function sortGames(games: Game[], s: Sort): Game[] {
 }
 
 /** Lowercase, accents dropped, punctuation as single spaces: "Pokémon: Legends" -> "pokemon legends". */
-export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+export const fold = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 
 /** Matches on a word start rank before plain substrings; ties (and an empty query) go most played first. */
 export function searchGames(games: Game[], q: string): Game[] {
@@ -70,12 +83,20 @@ export function searchGames(games: Game[], q: string): Game[] {
 /** Splits keeping input order; the hero is the same game Home's Resume card offers. */
 export function shelves(games: Game[]): { installed: Game[]; notInstalled: Game[]; fortnight: Game[]; hero: Game | null } {
   const fortnight = games.filter((g) => g.playtime2wkMin > 0).sort((a, b) => b.playtime2wkMin - a.playtime2wkMin);
-  return { installed: games.filter((g) => g.installed), notInstalled: games.filter((g) => !g.installed), fortnight, hero: pickResume(games) };
+  return {
+    installed: games.filter((g) => g.installed),
+    notInstalled: games.filter((g) => !g.installed),
+    fortnight,
+    hero: pickResume(games),
+  };
 }
 
 /** Backlog shelf: up to 40, least played first, then by name. */
 export const backlog = (games: Game[]): Game[] =>
-  games.filter(rule('auto-backlog')).sort((a, b) => a.playtimeMin - b.playtimeMin || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).slice(0, 40);
+  games
+    .filter(rule('auto-backlog'))
+    .sort((a, b) => a.playtimeMin - b.playtimeMin || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .slice(0, 40);
 
 /** Almost-done shelf: closest to 100% first. */
 export const almostDone = (games: Game[]): Game[] =>
@@ -105,7 +126,8 @@ export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.siz
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
 export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));
 
-export const updateLabel = (g: Game): string | null => (g.update === 'needed' ? 'Update needed' : g.update === 'running' ? 'Updating…' : null);
+export const updateLabel = (g: Game): string | null =>
+  g.update === 'needed' ? 'Update needed' : g.update === 'running' ? 'Updating…' : null;
 
 /** Every card opens the detail panel; Play and Install live there, so a click never starts or installs anything. */
 export function cardClick(_g: Game): { action: 'open' } {

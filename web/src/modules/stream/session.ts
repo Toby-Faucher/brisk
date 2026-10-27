@@ -42,7 +42,11 @@ export interface Deps {
   api: { stream(): Promise<StreamInfo>; startStream(r: StreamReq): Promise<StreamInfo> };
   open(url: string, hash: string): Transport;
   audioContext(): Ctx;
-  startVideo(t: Transport, c: Canvas, onDecode?: (au: Uint8Array, h: FrameHeader, at: number) => void): { stats: VideoStats; done: Promise<void> };
+  startVideo(
+    t: Transport,
+    c: Canvas,
+    onDecode?: (au: Uint8Array, h: FrameHeader, at: number) => void,
+  ): { stats: VideoStats; done: Promise<void> };
   startAudio(t: Transport, ctx: Ctx, out?: Gain, onPacket?: (h: AudioHeader) => void): Promise<unknown>;
   /** Replay buffer length, read at each connect; 0 or absent = off. */
   replaySeconds?(): number;
@@ -57,7 +61,16 @@ export interface Deps {
   sample?(started: number, elapsedS: number | null, delayMs: number, fps: number, mbps: number): void;
 }
 
-type Conn = { t: Transport; ctx: Ctx; gain?: Gain; video?: { stats: VideoStats }; input?: { release(): void }; replay?: Replay; ours: boolean; liveAt: number };
+type Conn = {
+  t: Transport;
+  ctx: Ctx;
+  gain?: Gain;
+  video?: { stats: VideoStats };
+  input?: { release(): void };
+  replay?: Replay;
+  ours: boolean;
+  liveAt: number;
+};
 
 /** hostd's stream, waiting up to 10 s while it is 'starting'; null as soon as `alive()` turns false. */
 export async function pollLive(api: Deps['api'], alive: () => boolean): Promise<StreamInfo | null> {
@@ -172,9 +185,16 @@ export class StreamSession {
     const on = replay.seconds > 0;
     // conn === this.conn: a late frame of a replaced connection is not kept (clear() also kills the ring).
     const live = () => conn === this.conn;
-    conn.video = this.d.startVideo(t, canvas, on ? (au, h, at) => live() && replay.video(au, h.idr, h.captureNs || h.bridgeNs, at) : undefined);
+    conn.video = this.d.startVideo(
+      t,
+      canvas,
+      on ? (au, h, at) => live() && replay.video(au, h.idr, h.captureNs || h.bridgeNs, at) : undefined,
+    );
     const onpads = (p: PadInfo[]) => conn === this.conn && this.pads.set(p);
-    this.d.startInput(t, canvas, onpads).then((i) => (conn.input = i), () => {});
+    this.d.startInput(t, canvas, onpads).then(
+      (i) => (conn.input = i),
+      () => {},
+    );
     conn.gain = ctx.createGain?.();
     if (conn.gain) {
       conn.gain.gain.value = this.volume;
@@ -250,11 +270,14 @@ export class StreamSession {
       const at = performance.now();
       // Sunshine sends no periodic IDR; a clip has to start at one. Only while replay is on.
       if (conn.replay?.refreshDue(at)) {
-        conn.t.createUnidirectionalStream?.().then(async (u) => {
-          const w = u.getWriter();
-          await w.write(Uint8Array.of(MSG_REFRESH_KEY));
-          await w.close();
-        }).catch(() => {});
+        conn.t
+          .createUnidirectionalStream?.()
+          .then(async (u) => {
+            const w = u.getWriter();
+            await w.write(Uint8Array.of(MSG_REFRESH_KEY));
+            await w.close();
+          })
+          .catch(() => {});
       }
       const ts = await conn.t.getStats?.().catch(() => undefined);
       if (conn !== this.conn) return;
@@ -271,7 +294,8 @@ export class StreamSession {
       const delay = p(s.bridgeCaptureMs) + (rtt ?? 0) / 2 + over + p(s.decodeMs) + p(s.presentMs);
       const { started, elapsedS } = this.info ?? {};
       // No frames (connecting, a stall before the first key frame): not a reading of the stream.
-      if (started != null && fps > 0) this.d.sample?.(started, elapsedS == null ? null : elapsedS + (at - this.infoAt) / 1000, delay, fps, mbps);
+      if (started != null && fps > 0)
+        this.d.sample?.(started, elapsedS == null ? null : elapsedS + (at - this.infoAt) / 1000, delay, fps, mbps);
       this.stats.update((v) => ({
         delay: push(v.delay, delay),
         fps: push(v.fps, fps),

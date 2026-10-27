@@ -7,8 +7,31 @@ import { notes, notesLoaded } from '../../state/notes';
 import Library from './Library.svelte';
 import Toasts from '../../shell/Toasts.svelte';
 
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
-const list = [g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }), g(2, 'Bravo', { playtimeMin: 200 }), g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true })];
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
+  appid,
+  name,
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 100,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running: false,
+  ...o,
+});
+const list = [
+  g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }),
+  g(2, 'Bravo', { playtimeMin: 200 }),
+  g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true }),
+];
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -22,7 +45,18 @@ beforeEach(() => {
   vi.spyOn(api, 'games').mockResolvedValue({ games: list, ownedAvailable: true });
   vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: {} });
   vi.spyOn(api, 'prefs').mockResolvedValue({ prefs: {} });
-  vi.spyOn(api, 'gameInfo').mockResolvedValue({ available: false, description: '', genres: [], controller: null, singleplayer: false, coop: false, remotePlayTogether: false, release: null, metacritic: null, screenshots: [] });
+  vi.spyOn(api, 'gameInfo').mockResolvedValue({
+    available: false,
+    description: '',
+    genres: [],
+    controller: null,
+    singleplayer: false,
+    coop: false,
+    remotePlayTogether: false,
+    release: null,
+    metacritic: null,
+    screenshots: [],
+  });
   vi.spyOn(api, 'gameAchievements').mockResolvedValue({ available: false, unlocked: 0, total: 0, list: [] });
   vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
   vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: [], saves: null });
@@ -54,7 +88,10 @@ describe('Library', () => {
   });
 
   it('opens with one of your tags from ?tag=', async () => {
-    const mine = { tags: { mine: { name: 'Mine', color: 'red' as const, symbol: 'star', note: '' } }, games: { 2: { note: '', tags: ['mine'] } } };
+    const mine = {
+      tags: { mine: { name: 'Mine', color: 'red' as const, symbol: 'star', note: '' } },
+      games: { 2: { note: '', tags: ['mine'] } },
+    };
     notes.set(mine);
     vi.spyOn(api, 'notes').mockResolvedValue(mine);
     history.replaceState(null, '', '?tag=mine');
@@ -67,7 +104,8 @@ describe('Library', () => {
     history.replaceState(null, '', '?tag=nope');
     await render(Library);
     await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toBeInTheDocument();
-    for (const n of ['Alpha', 'Bravo', 'Charlie']) expect(page.getByRole('button', { name: new RegExp(`^${n}`) }).elements().length).toBeGreaterThan(0);
+    for (const n of ['Alpha', 'Bravo', 'Charlie'])
+      expect(page.getByRole('button', { name: new RegExp(`^${n}`) }).elements().length).toBeGreaterThan(0);
     await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'false');
   });
 

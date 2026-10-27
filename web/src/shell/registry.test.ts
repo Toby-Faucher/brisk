@@ -17,7 +17,14 @@ describe('registry', () => {
   });
 
   it('adding_a_module_folder_needs_no_shell_edit', () => {
-    const fake: ModuleManifest = { id: 'fake', title: 'Fake', icon: 'plus', color: 'var(--accent)', order: 2.5, routes: [{ path: '/fake', title: 'Fake' }] };
+    const fake: ModuleManifest = {
+      id: 'fake',
+      title: 'Fake',
+      icon: 'plus',
+      color: 'var(--accent)',
+      order: 2.5,
+      routes: [{ path: '/fake', title: 'Fake' }],
+    };
     const glob = {
       '../modules/b/module.ts': { default: { ...fake, id: 'b', order: 9 } },
       '../modules/fake/module.ts': { default: fake },

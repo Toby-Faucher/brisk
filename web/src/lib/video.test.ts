@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { codecFromAccessUnit, codecFromHevcSps, codecFromSps, findSps, hevcSupported, KeyGate, parseHeader, startVideo, Window, HEADER_LEN } from './video';
+import {
+  codecFromAccessUnit,
+  codecFromHevcSps,
+  codecFromSps,
+  findSps,
+  hevcSupported,
+  KeyGate,
+  parseHeader,
+  startVideo,
+  Window,
+  HEADER_LEN,
+} from './video';
 
 const hex = (s: string) => Uint8Array.from(s.match(/../g)!.map((b) => parseInt(b, 16)));
 
@@ -65,7 +76,9 @@ describe('codecFromAccessUnit', () => {
 describe('hevcSupported', () => {
   it('asks isConfigSupported for hvc1 and is false when it says no or throws', async () => {
     const calls: VideoDecoderConfig[] = [];
-    const mk = (r: boolean | Error) => ({ isConfigSupported: async (c: VideoDecoderConfig) => (calls.push(c), r instanceof Error ? Promise.reject(r) : { supported: r }) });
+    const mk = (r: boolean | Error) => ({
+      isConfigSupported: async (c: VideoDecoderConfig) => (calls.push(c), r instanceof Error ? Promise.reject(r) : { supported: r }),
+    });
     expect(await hevcSupported(mk(true))).toBe(true);
     expect(calls[0].codec).toBe('hvc1.1.6.L120.B0');
     expect(await hevcSupported(mk(false))).toBe(false);
@@ -188,8 +201,18 @@ describe('Window', () => {
 
 describe('startVideo', () => {
   it('closes the decoder when the transport closes', async () => {
-    const decoder = { state: 'configured', decodeQueueSize: 0, configure() {}, decode() {}, close: vi.fn(() => { decoder.state = 'closed'; }) };
-    function FakeDecoder() { return decoder; } // a declaration, not an arrow: the code under test calls it with `new`
+    const decoder = {
+      state: 'configured',
+      decodeQueueSize: 0,
+      configure() {},
+      decode() {},
+      close: vi.fn(() => {
+        decoder.state = 'closed';
+      }),
+    };
+    function FakeDecoder() {
+      return decoder;
+    } // a declaration, not an arrow: the code under test calls it with `new`
     vi.stubGlobal('VideoDecoder', Object.assign(FakeDecoder, { isConfigSupported: async () => ({ supported: true }) }));
     vi.stubGlobal('requestAnimationFrame', () => 0);
     let closeTransport!: () => void;
@@ -198,7 +221,14 @@ describe('startVideo', () => {
     frame[4] = 1;
     const incoming = new ReadableStream({
       start(c) {
-        c.enqueue(new ReadableStream({ start(s) { s.enqueue(frame); s.close(); } }));
+        c.enqueue(
+          new ReadableStream({
+            start(s) {
+              s.enqueue(frame);
+              s.close();
+            },
+          }),
+        );
       },
     });
     const transport = {

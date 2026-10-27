@@ -6,7 +6,15 @@ const denied = () => Object.assign(new Error('Read permission denied.'), { name:
 
 /** A laptop clipboard plus a hostd that echoes nothing back, like the real one. */
 function rig(over: Partial<ClipDeps> = {}) {
-  const st = { local: null as Clip | null, focused: true, enabled: true, seq: 3, remote: null as Clip | null, readErr: null as Error | null, writeErr: null as Error | null };
+  const st = {
+    local: null as Clip | null,
+    focused: true,
+    enabled: true,
+    seq: 3,
+    remote: null as Clip | null,
+    readErr: null as Error | null,
+    writeErr: null as Error | null,
+  };
   const posts: Clip[] = [];
   const writes: Clip[] = [];
   const notify = vi.fn();
@@ -228,7 +236,11 @@ describe('browserClipboard', () => {
 
   it('reads_png_before_text_and_text_otherwise', async () => {
     const png = new Blob([new Uint8Array([1])], { type: 'image/png' });
-    const nav = { read: vi.fn(async () => [item({ 'text/html': new Blob(['<img>']), 'image/png': png })]), write: vi.fn(), writeText: vi.fn() };
+    const nav = {
+      read: vi.fn(async () => [item({ 'text/html': new Blob(['<img>']), 'image/png': png })]),
+      write: vi.fn(),
+      writeText: vi.fn(),
+    };
     const b = browserClipboard(nav as any);
     expect(await b.read()).toEqual({ kind: 'image', blob: png });
     nav.read.mockResolvedValue([item({ 'text/plain': new Blob(['hi']) })]);
@@ -291,7 +303,11 @@ describe('uploadQueue', () => {
     finish.c();
     await vi.waitFor(() => expect(progress).toHaveBeenLastCalledWith(null, 0));
     expect(order).toEqual(['start a', 'end a', 'start b', 'end b', 'start c', 'end c']);
-    expect(done.mock.calls).toEqual([['a', '/dl/a'], ['b', '/dl/b'], ['c', '/dl/c']]);
+    expect(done.mock.calls).toEqual([
+      ['a', '/dl/a'],
+      ['b', '/dl/b'],
+      ['c', '/dl/c'],
+    ]);
     expect(error).not.toHaveBeenCalled();
   });
 

@@ -12,9 +12,14 @@ const BROWSER = '*.browser.test.ts';
 const exe = process.env.BRISK_CHROMIUM;
 if (!exe) {
   const pw = dirname(createRequire(import.meta.url).resolve('playwright-core'));
-  const rev = JSON.parse(readFileSync(join(pw, 'browsers.json'), 'utf8')).browsers.find((b: { name: string }) => b.name === 'chromium-headless-shell')?.revision;
+  const rev = JSON.parse(readFileSync(join(pw, 'browsers.json'), 'utf8')).browsers.find(
+    (b: { name: string }) => b.name === 'chromium-headless-shell',
+  )?.revision;
   const dir = join(process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(homedir(), '.cache/ms-playwright'), `chromium_headless_shell-${rev}`);
-  if (!existsSync(dir)) console.warn(`browser tests: no ${dir}; run \`npx playwright install chromium-headless-shell\` or set BRISK_CHROMIUM=/path/to/chrome-headless-shell`);
+  if (!existsSync(dir))
+    console.warn(
+      `browser tests: no ${dir}; run \`npx playwright install chromium-headless-shell\` or set BRISK_CHROMIUM=/path/to/chrome-headless-shell`,
+    );
 }
 
 // Two projects: `unit` (node, what `npm test` runs, no DOM) and `browser` (real Svelte components in the

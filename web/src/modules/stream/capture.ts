@@ -35,7 +35,14 @@ export function reserveHotkeys(win: EventTarget, active: () => boolean, on: (k: 
 
 /** `brisk-<game or desktop>-<YYYYMMDD-HHMMSS>.<ext>`, local time. */
 export function fileName(game: string | null, ext: 'png' | 'mp4', d = new Date()): string {
-  const slug = (game ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'desktop';
+  const slug =
+    (game ?? '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'desktop';
   const p = (n: number) => String(n).padStart(2, '0');
   return `brisk-${slug}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`;
 }
@@ -54,7 +61,10 @@ export function screenshot(canvas: HTMLCanvasElement): { png: Promise<Blob>; cop
   const png = new Promise<Blob>((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('nothing on screen yet'))), 'image/png'));
   let copied: Promise<boolean> = Promise.resolve(false);
   try {
-    copied = navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).then(() => true, () => false);
+    copied = navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).then(
+      () => true,
+      () => false,
+    );
   } catch {}
   return { png, copied };
 }
@@ -65,7 +75,12 @@ export const CLIP_TIMEOUT_MS = 30_000;
 
 /** Chooses and muxes the clip in a worker. The ring keeps its references: each packet is copied
  *  once (slice, then transferred), in batches with a yield between them so the stream keeps going. */
-export async function clipInWorker(snap: Snapshot, width: number, height: number, worker = () => new Worker(new URL('./clip-worker.ts', import.meta.url), { type: 'module' })): Promise<{ blob: Blob; seconds: number }> {
+export async function clipInWorker(
+  snap: Snapshot,
+  width: number,
+  height: number,
+  worker = () => new Worker(new URL('./clip-worker.ts', import.meta.url), { type: 'module' }),
+): Promise<{ blob: Blob; seconds: number }> {
   const w = worker();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -77,7 +92,10 @@ export async function clipInWorker(snap: Snapshot, width: number, height: number
     });
     done.catch(() => {}); // awaited below; a failure while still posting is not "unhandled"
     w.postMessage({ begin: { from: snap.from, width, height } });
-    for (const [key, list] of [['v', snap.v], ['a', snap.a]] as const) {
+    for (const [key, list] of [
+      ['v', snap.v],
+      ['a', snap.a],
+    ] as const) {
       for (let i = 0; i < list.length; ) {
         const batch: unknown[] = [];
         const bufs: ArrayBuffer[] = [];

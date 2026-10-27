@@ -3,7 +3,26 @@ import type { Game } from '../state/api';
 import type { Notes } from '../state/notes';
 import { openEntries, surpriseEntry, tagEntries } from './menuEntries';
 
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
+  appid,
+  name,
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 100,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running: false,
+  ...o,
+});
 const none: Notes = { tags: {}, games: {} };
 
 describe('tagEntries', () => {

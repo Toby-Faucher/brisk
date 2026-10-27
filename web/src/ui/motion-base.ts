@@ -38,7 +38,13 @@ export const box = (el: Element): Box => {
  */
 export function ringPulse(ring: Element): Animation | null {
   if (onStreamRoute() || reducedMotion()) return null;
-  return ring.animate([{ scale: 1.3, opacity: 0.6 }, { scale: 2.4, opacity: 0 }], { duration: 700, easing: cssVar('--ease') });
+  return ring.animate(
+    [
+      { scale: 1.3, opacity: 0.6 },
+      { scale: 2.4, opacity: 0 },
+    ],
+    { duration: 700, easing: cssVar('--ease') },
+  );
 }
 
 /**
@@ -53,7 +59,10 @@ export function dotFade(was: Element): Animation | null {
 /** FLIP: the translate + scale (transform-origin top left) that lay the `to` box over the `from` box; null for no move or a zero box. */
 export function flipDelta(from: Box, to: Box): { dx: number; dy: number; sx: number; sy: number } | null {
   if (!to.w || !to.h || !from.w || !from.h) return null; // a zero box would scale from a corner
-  const dx = from.x - to.x, dy = from.y - to.y, sx = from.w / to.w, sy = from.h / to.h;
+  const dx = from.x - to.x,
+    dy = from.y - to.y,
+    sx = from.w / to.w,
+    sy = from.h / to.h;
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return null;
   return { dx, dy, sx, sy };
 }
@@ -70,7 +79,14 @@ export function glide(el: Element, from: Box, to: Box, o: { pseudo?: string; eas
   if (!d) return null;
   const { dx, dy, sx, sy } = d;
   return el.animate(
-    [{ translate: `${dx}px ${dy}px`, scale: `${sx} ${sy}` }, { translate: '0 0', scale: '1 1' }],
-    { duration: ms('--spring-snappy-dur', 400), easing: o.easing ?? (cssVar('--spring-snappy') || cssVar('--ease')), pseudoElement: o.pseudo },
+    [
+      { translate: `${dx}px ${dy}px`, scale: `${sx} ${sy}` },
+      { translate: '0 0', scale: '1 1' },
+    ],
+    {
+      duration: ms('--spring-snappy-dur', 400),
+      easing: o.easing ?? (cssVar('--spring-snappy') || cssVar('--ease')),
+      pseudoElement: o.pseudo,
+    },
   );
 }

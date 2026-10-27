@@ -41,7 +41,11 @@ export function quitFlow(deps: QuitDeps) {
       const r = await deps.quit(game.appid, force);
       mark(stuck, game.appid, r.state === 'still-running');
       if (r.state === 'closed') deps.toast(`Closed ${game.name}`);
-      else deps.toast(`Still running: ${game.name} (try Force quit)`, { ms: 30_000, action: { label: 'Force quit', run: () => request(game, true) } });
+      else
+        deps.toast(`Still running: ${game.name} (try Force quit)`, {
+          ms: 30_000,
+          action: { label: 'Force quit', run: () => request(game, true) },
+        });
     } catch (e) {
       const err = e as Error & { status?: number };
       // Another tab or button started this quit: its answer is still coming.
@@ -62,5 +66,7 @@ export const quitItems = (games: Game[], stuck: ReadonlySet<number>, request: (g
     .filter((g) => g.running)
     .flatMap((g) => [
       { id: `quit:${g.appid}`, label: `Quit ${g.name}`, icon: 'power', run: () => request(g, false) },
-      ...(stuck.has(g.appid) ? [{ id: `forcequit:${g.appid}`, label: `Force quit ${g.name}`, icon: 'power', run: () => request(g, true) }] : []),
+      ...(stuck.has(g.appid)
+        ? [{ id: `forcequit:${g.appid}`, label: `Force quit ${g.name}`, icon: 'power', run: () => request(g, true) }]
+        : []),
     ]);

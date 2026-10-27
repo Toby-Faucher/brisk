@@ -20,7 +20,11 @@ export function enter() {
   const main = document.querySelector('main.page-in');
   if (main && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const els = [...main.querySelectorAll<HTMLElement>(':is(.reveal, .enter):not([data-enter], [data-hold] *)')];
-    const plan = planEnter(els.map((e) => e.getBoundingClientRect()), innerWidth, innerHeight);
+    const plan = planEnter(
+      els.map((e) => e.getBoundingClientRect()),
+      innerWidth,
+      innerHeight,
+    );
     els.forEach((e, k) => {
       if (plan[k] == null) return;
       e.style.setProperty('--i', String(plan[k]));

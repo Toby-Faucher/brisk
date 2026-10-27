@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { api, ApiError, type Game } from './api';
-import { gameTags, newTagId, noteSaver, notes, notesLoaded, refreshNotes, TAG_COLORS, TAG_SYMBOLS, type GameNote, type Notes } from './notes';
+import {
+  gameTags,
+  newTagId,
+  noteSaver,
+  notes,
+  notesLoaded,
+  refreshNotes,
+  TAG_COLORS,
+  TAG_SYMBOLS,
+  type GameNote,
+  type Notes,
+} from './notes';
 import { filterByTag } from '../modules/library/library';
 
 afterEach(() => {
@@ -10,8 +21,29 @@ afterEach(() => {
 });
 
 const tag = (name: string) => ({ name, color: 'teal' as const, symbol: 'users', note: '' });
-const map: Notes = { tags: { coop: tag('Co-op night'), back: tag('Backlog') }, games: { '620': { note: '', tags: ['gone', 'coop'] }, '400': { note: 'x', tags: ['back'] } } };
-const g = (appid: number): Game => ({ appid, name: `G${appid}`, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false });
+const map: Notes = {
+  tags: { coop: tag('Co-op night'), back: tag('Backlog') },
+  games: { '620': { note: '', tags: ['gone', 'coop'] }, '400': { note: 'x', tags: ['back'] } },
+};
+const g = (appid: number): Game => ({
+  appid,
+  name: `G${appid}`,
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 0,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running: false,
+});
 
 describe('notes helpers', () => {
   it('gameTags skips ids that are not tags', () => {
@@ -100,7 +132,12 @@ describe('noteSaver', () => {
     put.mockImplementation(echo);
     await s.retry();
     const sent = put.mock.calls.slice(-2);
-    expect(sent).toEqual(expect.arrayContaining([[1, { note: 'A', tags: [] }], [2, { note: 'B', tags: [] }]]));
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        [1, { note: 'A', tags: [] }],
+        [2, { note: 'B', tags: [] }],
+      ]),
+    );
     expect(st(s, 1)).toBe('saved');
     expect(st(s, 2)).toBe('saved');
     expect(get(notes).games['1'].note).toBe('A');
@@ -108,7 +145,9 @@ describe('noteSaver', () => {
 
   it('an answer to an older PUT does not overwrite newer text or say saved', async () => {
     let first!: (v: GameNote) => void;
-    const put = vi.fn((_id: number, b: GameNote) => (put.mock.calls.length === 1 ? new Promise<GameNote>((r) => (first = r)) : echo(_id, b)));
+    const put = vi.fn((_id: number, b: GameNote) =>
+      put.mock.calls.length === 1 ? new Promise<GameNote>((r) => (first = r)) : echo(_id, b),
+    );
     const s = noteSaver({ put, delay: 800 });
     s.save(5, { note: 'one', tags: [] });
     void s.flush(); // request 1 in flight

@@ -107,7 +107,9 @@ export function codecFromAccessUnit(annexb: Uint8Array): string | null {
 
 /// Whether this browser can decode HEVC (Main, level 4.0), to offer it at all. Annex B in-band
 /// parameter sets, so no `description` (WebCodecs HEVC registration).
-export async function hevcSupported(vd: Pick<typeof VideoDecoder, 'isConfigSupported'> | undefined = globalThis.VideoDecoder): Promise<boolean> {
+export async function hevcSupported(
+  vd: Pick<typeof VideoDecoder, 'isConfigSupported'> | undefined = globalThis.VideoDecoder,
+): Promise<boolean> {
   try {
     return !!vd && !!(await vd.isConfigSupported({ codec: 'hvc1.1.6.L120.B0' })).supported;
   } catch {
@@ -134,7 +136,7 @@ export class KeyGate {
       return { decode: true, askKey: false };
     }
     if (!idr && !this.needKey) {
-      if (((idx - this.last) >>> 0) === 1) {
+      if ((idx - this.last) >>> 0 === 1) {
         this.last = idx;
         return { decode: true, askKey: false };
       }
@@ -222,14 +224,39 @@ export interface Video {
 
 /// Plays the bridge's video from `transport` onto `canvas`. `onDecode` (replay buffer) gets each
 /// access unit that goes to the decoder, by reference.
-export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement, onDecode?: (annexb: Uint8Array, h: FrameHeader, arrival: number) => void): Video {
+export function startVideo(
+  transport: WebTransport,
+  canvas: HTMLCanvasElement,
+  onDecode?: (annexb: Uint8Array, h: FrameHeader, arrival: number) => void,
+): Video {
   const stats: VideoStats = {
-    codec: null, supported: null, hardwareAcceleration: null, width: 0, height: 0,
-    framesReceived: 0, bytesReceived: 0, framesDecoded: 0, framesPresented: 0, framesDropped: 0, framesSkipped: 0,
-    streamsReset: 0, decodeErrors: 0, keyRequests: 0, decodeQueueSize: 0, lastError: null,
-    bridgeCaptureMs: new Window(), decodeMs: new Window(), presentMs: new Window(),
-    rafMs: new Window(), drawMs: new Window(), stalls: [], lastBytes: 0, tinyRun: 0, tinyMax: 0,
-    jitterMs: new Window(), queueMs: new Window(),
+    codec: null,
+    supported: null,
+    hardwareAcceleration: null,
+    width: 0,
+    height: 0,
+    framesReceived: 0,
+    bytesReceived: 0,
+    framesDecoded: 0,
+    framesPresented: 0,
+    framesDropped: 0,
+    framesSkipped: 0,
+    streamsReset: 0,
+    decodeErrors: 0,
+    keyRequests: 0,
+    decodeQueueSize: 0,
+    lastError: null,
+    bridgeCaptureMs: new Window(),
+    decodeMs: new Window(),
+    presentMs: new Window(),
+    rafMs: new Window(),
+    drawMs: new Window(),
+    stalls: [],
+    lastBytes: 0,
+    tinyRun: 0,
+    tinyMax: 0,
+    jitterMs: new Window(),
+    queueMs: new Window(),
   };
   // desynchronized: draw straight to the front buffer, no wait for the compositor's next frame.
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
@@ -247,13 +274,16 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement, o
     if (now - lastAsk < KEY_ASK_EVERY_MS) return;
     lastAsk = now;
     stats.keyRequests++;
-    transport.createUnidirectionalStream().then(async (s) => {
-      const w = s.getWriter();
-      await w.write(new Uint8Array([MSG_WANT_KEY]));
-      await w.close();
-    }).catch((e) => {
-      stats.lastError = `key request: ${e}`;
-    });
+    transport
+      .createUnidirectionalStream()
+      .then(async (s) => {
+        const w = s.getWriter();
+        await w.write(new Uint8Array([MSG_WANT_KEY]));
+        await w.close();
+      })
+      .catch((e) => {
+        stats.lastError = `key request: ${e}`;
+      });
   };
 
   const newDecoder = () => {
@@ -329,7 +359,9 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement, o
       if (++stats.tinyRun > stats.tinyMax) stats.tinyMax = stats.tinyRun;
     } else {
       if (stats.tinyRun >= 20) {
-        stats.stalls.push(`t=${(performance.now() / 1000).toFixed(1)}s SAME PICTURE for ${stats.tinyRun} frames (tiny frames from bawn) end_epoch=${Date.now()}`);
+        stats.stalls.push(
+          `t=${(performance.now() / 1000).toFixed(1)}s SAME PICTURE for ${stats.tinyRun} frames (tiny frames from bawn) end_epoch=${Date.now()}`,
+        );
         if (stats.stalls.length > 6) stats.stalls.shift();
       }
       stats.tinyRun = 0;
@@ -339,7 +371,9 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement, o
     const q = arrival - bridgeMs;
     stats.queueMs.push(q);
     if (prev && arrival - prev.arrival > 250) {
-      stats.stalls.push(`t=${(arrival / 1000).toFixed(1)}s src gap ${(bridgeMs - prev.bridgeMs).toFixed(0)} ms, arrival gap ${(arrival - prev.arrival).toFixed(0)} ms`);
+      stats.stalls.push(
+        `t=${(arrival / 1000).toFixed(1)}s src gap ${(bridgeMs - prev.bridgeMs).toFixed(0)} ms, arrival gap ${(arrival - prev.arrival).toFixed(0)} ms`,
+      );
       if (stats.stalls.length > 6) stats.stalls.shift();
     }
     if (prev) stats.jitterMs.push(Math.abs(arrival - prev.arrival - (bridgeMs - prev.bridgeMs)));
@@ -378,7 +412,9 @@ export function startVideo(transport: WebTransport, canvas: HTMLCanvasElement, o
   const paint = (t: number) => {
     if (lastRaf) stats.rafMs.push(t - lastRaf);
     if (lastRaf && t - lastRaf > 250) {
-      stats.stalls.push(`t=${(t / 1000).toFixed(1)}s page raf gap ${(t - lastRaf).toFixed(0)} ms vis=${document.visibilityState} focus=${document.hasFocus()} lock=${document.pointerLockElement ? 1 : 0}`);
+      stats.stalls.push(
+        `t=${(t / 1000).toFixed(1)}s page raf gap ${(t - lastRaf).toFixed(0)} ms vis=${document.visibilityState} focus=${document.hasFocus()} lock=${document.pointerLockElement ? 1 : 0}`,
+      );
       if (stats.stalls.length > 6) stats.stalls.shift();
     }
     lastRaf = t;

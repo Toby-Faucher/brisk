@@ -16,7 +16,15 @@ afterEach(() => vi.unstubAllGlobals());
 describe('settings', () => {
   it('defaults_are_mint_balanced', async () => {
     vi.stubGlobal('localStorage', memStorage());
-    expect(get(await fresh())).toEqual({ accent: 'mint', sounds: true, shaders: true, defaultPreset: 'balanced', clipboardSync: true, replaySeconds: 0, keepAwake: true });
+    expect(get(await fresh())).toEqual({
+      accent: 'mint',
+      sounds: true,
+      shaders: true,
+      defaultPreset: 'balanced',
+      clipboardSync: true,
+      replaySeconds: 0,
+      keepAwake: true,
+    });
   });
 
   it('survives_throwing_localstorage', async () => {

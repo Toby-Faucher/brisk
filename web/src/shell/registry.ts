@@ -1,7 +1,14 @@
 import type { Component } from 'svelte';
 import type { TagColor } from '../state/notes';
 
-export type CommandItem = { id: string; label: string; hint?: string; icon?: string; tag?: { color: TagColor; symbol: string }; run: () => void };
+export type CommandItem = {
+  id: string;
+  label: string;
+  hint?: string;
+  icon?: string;
+  tag?: { color: TagColor; symbol: string };
+  run: () => void;
+};
 
 export type ModuleManifest = {
   id: string;

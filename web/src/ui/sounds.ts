@@ -4,8 +4,15 @@ import { settings } from '../state/settings';
 // Short synthesized tones: [frequency Hz, duration s] played back to back.
 const TONES = {
   click: [[1200, 0.03]],
-  connect: [[660, 0.08], [880, 0.08], [1320, 0.18]],
-  error: [[330, 0.1], [220, 0.2]],
+  connect: [
+    [660, 0.08],
+    [880, 0.08],
+    [1320, 0.18],
+  ],
+  error: [
+    [330, 0.1],
+    [220, 0.2],
+  ],
 } as const;
 
 let ctx: AudioContext | null = null;

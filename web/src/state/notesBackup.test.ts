@@ -3,10 +3,14 @@ import { backupName, buildBackup, MAX_BACKUP_BYTES, parseBackup, planRestore } f
 import type { Notes } from './notes';
 
 const notes: Notes = {
-  tags: { coop: { name: 'Co-op night', color: 'teal', symbol: 'users', note: 'Needs 4 pads', pinned: true }, 'to-play': { name: 'To play', color: 'blue', symbol: 'star', note: '' } },
+  tags: {
+    coop: { name: 'Co-op night', color: 'teal', symbol: 'users', note: 'Needs 4 pads', pinned: true },
+    'to-play': { name: 'To play', color: 'blue', symbol: 'star', note: '' },
+  },
   games: { 620: { note: 'Bring snacks', tags: ['coop'] }, 400: { note: '', tags: ['to-play', 'coop'] } },
 };
-const file = (over: Record<string, unknown> = {}) => JSON.stringify({ format: 'brisk-notes', version: 1, exported: 'x', ...notes, ...over });
+const file = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({ format: 'brisk-notes', version: 1, exported: 'x', ...notes, ...over });
 const err = (text: string) => {
   const r = parseBackup(text);
   if (r.ok) throw new Error('expected a rejection');
@@ -72,7 +76,14 @@ describe('parseBackup', () => {
 
   it('counts characters, not UTF-16 units', () => {
     const emoji = '😀';
-    expect(parseBackup(file({ tags: { a: tag({ name: emoji.repeat(24), note: emoji.repeat(500) }) }, games: { 5: { note: emoji.repeat(4000), tags: [] } } })).ok).toBe(true);
+    expect(
+      parseBackup(
+        file({
+          tags: { a: tag({ name: emoji.repeat(24), note: emoji.repeat(500) }) },
+          games: { 5: { note: emoji.repeat(4000), tags: [] } },
+        }),
+      ).ok,
+    ).toBe(true);
     expect(err(file({ tags: { a: tag({ name: emoji.repeat(25) }) }, games: {} }))).toMatch(/name/);
     expect(err(file({ tags: {}, games: { 5: { note: emoji.repeat(4001), tags: [] } } }))).toMatch(/note/);
   });
@@ -83,7 +94,9 @@ describe('parseBackup', () => {
     expect(parseBackup(file({ tags: {}, games: { 4294967295: { note: 'n', tags: [] } } })).ok).toBe(true);
   });
   it('defaults a missing note and missing tags, as hostd does', () => {
-    const r = parseBackup(file({ tags: { a: { name: 'A', color: 'red', symbol: 'star' } }, games: { 5: { note: 'only a note' }, 6: { tags: ['a'] } } }));
+    const r = parseBackup(
+      file({ tags: { a: { name: 'A', color: 'red', symbol: 'star' } }, games: { 5: { note: 'only a note' }, 6: { tags: ['a'] } } }),
+    );
     expect(r).toEqual({ ok: true, tags: { a: tag() }, games: { 5: { note: 'only a note', tags: [] }, 6: { note: '', tags: ['a'] } } });
   });
   it('trims the tag name', () => {
@@ -124,7 +137,9 @@ describe('planRestore', () => {
     const live = { tags: many(60, () => t), games: many(1990, () => ({ note: 'n', tags: [] })) } as never;
     expect(planRestore(live, tagMap(64), many(2000, () => ({ note: 'n', tags: [] })) as never).error).toBeUndefined();
     expect(planRestore(live, { x1: t, x2: t, x3: t, x4: t, x5: t }, {}).error).toMatch(/65 tags/);
-    expect(planRestore(live, {}, { 5000: { note: 'n', tags: [] }, ...many(2000, () => ({ note: 'n', tags: [] })) }).error).toMatch(/2001 games/);
+    expect(planRestore(live, {}, { 5000: { note: 'n', tags: [] }, ...many(2000, () => ({ note: 'n', tags: [] })) }).error).toMatch(
+      /2001 games/,
+    );
     expect(planRestore(empty, {}, {})).toEqual({ replaced: 0 });
   });
 });

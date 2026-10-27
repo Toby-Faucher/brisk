@@ -3,16 +3,23 @@ import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import FriendsCard from './FriendsCard.svelte';
 
-const reply = (body: unknown) => vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body))));
+const reply = (body: unknown) =>
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify(body))),
+  );
 afterEach(() => vi.unstubAllGlobals());
 
 describe('FriendsCard', () => {
   it('lists names with what they play; letter placeholder without an avatar', async () => {
-    reply({ available: true, online: [
-      { name: 'TestFriend1', avatar: 'https://avatars.steamstatic.com/x.jpg', state: 'online', playing: 'Portal 2', appid: 620 },
-      { name: 'testAway', avatar: '', state: 'away', playing: null, appid: null },
-      { name: 'testBusyPlayer', avatar: '', state: 'busy', playing: 'Hades', appid: 1 },
-    ] });
+    reply({
+      available: true,
+      online: [
+        { name: 'TestFriend1', avatar: 'https://avatars.steamstatic.com/x.jpg', state: 'online', playing: 'Portal 2', appid: 620 },
+        { name: 'testAway', avatar: '', state: 'away', playing: null, appid: null },
+        { name: 'testBusyPlayer', avatar: '', state: 'busy', playing: 'Hades', appid: 1 },
+      ],
+    });
     await render(FriendsCard);
     await expect.element(page.getByRole('list')).toBeInTheDocument();
     await expect.element(page.getByText('TestFriend1')).toBeInTheDocument();

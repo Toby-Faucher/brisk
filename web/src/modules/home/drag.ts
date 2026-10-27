@@ -33,7 +33,10 @@ const STEP: Record<string, number> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1
 /** From (dx, dy) back to where the element is laid out; null for no move, reduced motion or /stream. */
 function slide(el: Element, dx: number, dy: number, spring: string): Animation | null {
   if ((Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) || !motionAllowed()) return null;
-  return el.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }], { duration: ms(`${spring}-dur`, 600), easing: cssVar(spring) || 'ease-out' });
+  return el.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }], {
+    duration: ms(`${spring}-dur`, 600),
+    easing: cssVar(spring) || 'ease-out',
+  });
 }
 
 export function reorder(o: ReorderOpts) {
@@ -47,7 +50,8 @@ export function reorder(o: ReorderOpts) {
       const r = bento.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
-    const inside = (c: HTMLElement, p: { x: number; y: number }) => p.x >= c.offsetLeft && p.x < c.offsetLeft + c.offsetWidth && p.y >= c.offsetTop && p.y < c.offsetTop + c.offsetHeight;
+    const inside = (c: HTMLElement, p: { x: number; y: number }) =>
+      p.x >= c.offsetLeft && p.x < c.offsetLeft + c.offsetWidth && p.y >= c.offsetTop && p.y < c.offsetTop + c.offsetHeight;
     const fly = (el: Element, a: Animation | null) => {
       if (!a) return;
       flights.set(el, a);
@@ -64,7 +68,8 @@ export function reorder(o: ReorderOpts) {
       o.set(ids);
       moving = false;
       for (const e of els) {
-        const a = from.get(e)!, b = box(e);
+        const a = from.get(e)!,
+          b = box(e);
         fly(e, slide(e, a.x - b.x, a.y - b.y, '--spring-snappy'));
       }
     }
@@ -92,7 +97,8 @@ export function reorder(o: ReorderOpts) {
       drag = null;
       removeEventListener('keydown', esc, true);
       if (d.pointer != null && bento.hasPointerCapture(d.pointer)) bento.releasePointerCapture(d.pointer);
-      const x0 = d.el.offsetLeft + d.tx, y0 = d.el.offsetTop + d.ty; // where it is drawn, in bento coordinates
+      const x0 = d.el.offsetLeft + d.tx,
+        y0 = d.el.offsetTop + d.ty; // where it is drawn, in bento coordinates
       if (!keep && o.order().join() !== d.start.join()) shift(d.start, d.pointer != null ? d.el : undefined);
       d.follow?.cancel();
       delete d.el.dataset.lifted; // the scale settles back by the CSS transition
@@ -140,7 +146,8 @@ export function reorder(o: ReorderOpts) {
       follow(d);
     }
 
-    const up = (e: PointerEvent) => drag && e.pointerId === drag.pointer && finish(e.type === 'pointerup' || e.type === 'lostpointercapture');
+    const up = (e: PointerEvent) =>
+      drag && e.pointerId === drag.pointer && finish(e.type === 'pointerup' || e.type === 'lostpointercapture');
 
     function esc(e: KeyboardEvent) {
       if (e.key !== 'Escape' || drag?.pointer == null) return;
@@ -154,14 +161,15 @@ export function reorder(o: ReorderOpts) {
       if (!grip) return;
       if (!drag) {
         // a held Space repeats: only the first press picks up (else hold = pick up, then drop)
-        if (e.key === ' ') (e.preventDefault(), e.repeat || lift(grip, null));
+        if (e.key === ' ') e.preventDefault(), e.repeat || lift(grip, null);
         return;
       }
       if (drag.grip !== grip || drag.pointer != null) return;
       const step = STEP[e.key];
       if (step) {
         e.preventDefault();
-        const ids = o.order(), i = ids.indexOf(drag.id);
+        const ids = o.order(),
+          i = ids.indexOf(drag.id);
         if (i + step < 0 || i + step >= ids.length) return;
         shift(moveItem(ids, i, i + step));
         grip.focus(); // Svelte may have moved this card's node, which drops focus

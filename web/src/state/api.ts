@@ -34,7 +34,13 @@ export type NewsItem = { title: string; url: string; date: number; patch: boolea
 /** GET /api/games/{appid}/news; an empty list when Steam had nothing. */
 export type News = { items: NewsItem[] };
 /** One friend who is online or in a game. `name` is text only; `avatar` is an https Steam URL or empty. */
-export type Friend = { name: string; avatar: string; state: 'online' | 'away' | 'busy' | 'snooze'; playing: string | null; appid: number | null };
+export type Friend = {
+  name: string;
+  avatar: string;
+  state: 'online' | 'away' | 'busy' | 'snooze';
+  playing: string | null;
+  appid: number | null;
+};
 /** GET /api/friends. `available` false: the list is private or Steam did not answer. */
 export type Friends = { available: boolean; online: Friend[] };
 /** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
@@ -68,7 +74,15 @@ export type HostInfo = {
 export type Preset = 'fast' | 'balanced' | 'crisp' | 'custom';
 export type Codec = 'h264' | 'hevc';
 /** `codec` defaults to h264 on hostd. */
-export type StreamReq = { preset: Preset; width?: number; height?: number; fps?: number; bitrateKbps?: number; codec?: Codec; appid?: number };
+export type StreamReq = {
+  preset: Preset;
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrateKbps?: number;
+  codec?: Codec;
+  appid?: number;
+};
 export type StreamInfo = {
   state: 'idle' | 'starting' | 'live';
   preset: Preset | null;
@@ -124,7 +138,10 @@ import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
   }
 }
@@ -229,7 +246,9 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
     x.open('PUT', `/api/files/${encodeURIComponent(f.name)}`);
     for (const [k, v] of Object.entries(auth())) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => progress(e.loaded);
-    x.onload = () => (seen(x.status), x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText)));
+    x.onload = () => (
+      seen(x.status), x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText))
+    );
     x.onerror = () => no(new ApiError('the upload was cut off', 0));
     x.send(f);
   });

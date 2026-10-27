@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionRec, SessionStats } from '../../state/api';
-import { chartRows, fmtClock, fmtWhen, filterSessions, listState, qualityLabel, sessionParam, sparkPath, statRows, summarize } from './history';
+import {
+  chartRows,
+  fmtClock,
+  fmtWhen,
+  filterSessions,
+  listState,
+  qualityLabel,
+  sessionParam,
+  sparkPath,
+  statRows,
+  summarize,
+} from './history';
 
 describe('filterSessions', () => {
   const l = [{ name: 'Pokémon Legends' }, { name: 'Hades II' }, { name: 'Celeste' }];
@@ -59,12 +70,21 @@ describe('detail view model', () => {
     expect(sessionParam('')).toBeNull();
   });
   it('summarizes a column for the charts text alternative', () => {
-    const rows = chartRows([[0, 20, 60, 18], [5, 41, 30, 19], [10, 20, 60, 20]]);
+    const rows = chartRows([
+      [0, 20, 60, 18],
+      [5, 41, 30, 19],
+      [10, 20, 60, 20],
+    ]);
     expect(summarize(rows, 'delay')).toEqual({ min: 20, avg: 27, max: 41, peakT: 5 });
     expect(summarize([], 'fps')).toBeNull();
   });
   it('chart rows from series points', () => {
-    expect(chartRows([[0, 20, 60, 18], [5, 22.5, 59, 19]])).toEqual([
+    expect(
+      chartRows([
+        [0, 20, 60, 18],
+        [5, 22.5, 59, 19],
+      ]),
+    ).toEqual([
       { t: 0, delay: 20, fps: 60, mbps: 18 },
       { t: 5, delay: 22.5, fps: 59, mbps: 19 },
     ]);

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { fileName, hotkey } from './capture';
 
-const k = (code: string, m: Partial<Record<'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey', boolean>> = {}) => ({ code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...m });
+const k = (code: string, m: Partial<Record<'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey', boolean>> = {}) => ({
+  code,
+  ctrlKey: false,
+  altKey: false,
+  shiftKey: false,
+  metaKey: false,
+  ...m,
+});
 
 describe('hotkey', () => {
   it('ctrl_alt_s_and_r_only', () => {

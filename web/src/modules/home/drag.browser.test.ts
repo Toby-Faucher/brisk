@@ -5,7 +5,11 @@ import { reorder } from './drag';
 function rig() {
   const bento = document.createElement('div');
   bento.style.cssText = 'position: relative; display: grid; grid-template-columns: 100px 100px; width: 200px;';
-  for (const id of ['a', 'b']) bento.insertAdjacentHTML('beforeend', `<div data-card="${id}" style="height: 100px"><button data-grip aria-pressed="false">${id}</button></div>`);
+  for (const id of ['a', 'b'])
+    bento.insertAdjacentHTML(
+      'beforeend',
+      `<div data-card="${id}" style="height: 100px"><button data-grip aria-pressed="false">${id}</button></div>`,
+    );
   document.body.append(bento);
   // synthetic pointers are not active pointers, so capture would throw
   bento.setPointerCapture = () => {};
@@ -20,7 +24,9 @@ function rig() {
   const grip = (id: string) => bento.querySelector<HTMLElement>(`[data-card="${id}"] [data-grip]`)!;
   const at = (type: string, el: Element, x: number, y: number) => {
     const r = bento.getBoundingClientRect();
-    el.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, button: 0, pointerId: 7, clientX: r.left + x, clientY: r.top + y }));
+    el.dispatchEvent(
+      new PointerEvent(type, { bubbles: true, isPrimary: true, button: 0, pointerId: 7, clientX: r.left + x, clientY: r.top + y }),
+    );
   };
   return { bento, o, off, grip, at, ids: () => ids };
 }
@@ -30,7 +36,10 @@ afterEach(() => (cleanup?.(), (cleanup = null), (document.body.innerHTML = '')))
 describe('Home reorder (drag.ts)', () => {
   for (const [what, fire] of [
     ['window blur', () => window.dispatchEvent(new Event('blur'))],
-    ['the tab hiding', () => (vi.spyOn(document, 'hidden', 'get').mockReturnValue(true), document.dispatchEvent(new Event('visibilitychange')))],
+    [
+      'the tab hiding',
+      () => (vi.spyOn(document, 'hidden', 'get').mockReturnValue(true), document.dispatchEvent(new Event('visibilitychange'))),
+    ],
   ] as const) {
     it(`cancels a pointer drag on ${what}: back to the start order, nothing dropped, nothing left`, () => {
       const r = rig();

@@ -39,15 +39,53 @@ function table(): Record<string, number> {
   }
   for (let i = 1; i <= 24; i++) t[`F${i}`] = 0x6f + i;
   return Object.assign(t, {
-    Backspace: 0x08, Tab: 0x09, Enter: 0x0d, NumpadEnter: 0x0d, Pause: 0x13, CapsLock: 0x14,
-    Escape: 0x1b, Space: 0x20, PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24,
-    ArrowLeft: 0x25, ArrowUp: 0x26, ArrowRight: 0x27, ArrowDown: 0x28, PrintScreen: 0x2c,
-    Insert: 0x2d, Delete: 0x2e, MetaLeft: 0x5b, MetaRight: 0x5c, ContextMenu: 0x5d,
-    NumpadMultiply: 0x6a, NumpadAdd: 0x6b, NumpadSubtract: 0x6d, NumpadDecimal: 0x6e,
-    NumpadDivide: 0x6f, NumLock: 0x90, ScrollLock: 0x91,
-    ShiftLeft: 0xa0, ShiftRight: 0xa1, ControlLeft: 0xa2, ControlRight: 0xa3, AltLeft: 0xa4, AltRight: 0xa5,
-    Semicolon: 0xba, Equal: 0xbb, Comma: 0xbc, Minus: 0xbd, Period: 0xbe, Slash: 0xbf, Backquote: 0xc0,
-    BracketLeft: 0xdb, Backslash: 0xdc, BracketRight: 0xdd, Quote: 0xde, IntlBackslash: 0xe2,
+    Backspace: 0x08,
+    Tab: 0x09,
+    Enter: 0x0d,
+    NumpadEnter: 0x0d,
+    Pause: 0x13,
+    CapsLock: 0x14,
+    Escape: 0x1b,
+    Space: 0x20,
+    PageUp: 0x21,
+    PageDown: 0x22,
+    End: 0x23,
+    Home: 0x24,
+    ArrowLeft: 0x25,
+    ArrowUp: 0x26,
+    ArrowRight: 0x27,
+    ArrowDown: 0x28,
+    PrintScreen: 0x2c,
+    Insert: 0x2d,
+    Delete: 0x2e,
+    MetaLeft: 0x5b,
+    MetaRight: 0x5c,
+    ContextMenu: 0x5d,
+    NumpadMultiply: 0x6a,
+    NumpadAdd: 0x6b,
+    NumpadSubtract: 0x6d,
+    NumpadDecimal: 0x6e,
+    NumpadDivide: 0x6f,
+    NumLock: 0x90,
+    ScrollLock: 0x91,
+    ShiftLeft: 0xa0,
+    ShiftRight: 0xa1,
+    ControlLeft: 0xa2,
+    ControlRight: 0xa3,
+    AltLeft: 0xa4,
+    AltRight: 0xa5,
+    Semicolon: 0xba,
+    Equal: 0xbb,
+    Comma: 0xbc,
+    Minus: 0xbd,
+    Period: 0xbe,
+    Slash: 0xbf,
+    Backquote: 0xc0,
+    BracketLeft: 0xdb,
+    Backslash: 0xdc,
+    BracketRight: 0xdd,
+    Quote: 0xde,
+    IntlBackslash: 0xe2,
   });
 }
 
@@ -55,8 +93,7 @@ function table(): Record<string, number> {
 /// distinct, like moonlight-qt).
 export const CODE_TO_VK: Record<string, number> = table();
 
-export const keyFrame = (vk: number, down: boolean, mods: number) =>
-  Uint8Array.of(4, KIND_KEY, vk, down ? 1 : 0, mods);
+export const keyFrame = (vk: number, down: boolean, mods: number) => Uint8Array.of(4, KIND_KEY, vk, down ? 1 : 0, mods);
 export const buttonFrame = (button: number, down: boolean) => Uint8Array.of(3, KIND_BUTTON, button, down ? 1 : 0);
 export function moveFrame(dx: number, dy: number) {
   const f = Uint8Array.of(5, KIND_MOVE, 0, 0, 0, 0);
@@ -205,7 +242,8 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
   // Every listener goes when `closed` settles, so a reconnect does not leave the old ones behind.
   const gone = new AbortController();
   // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
-  const on = (t: EventTarget, type: string, f: (e: any) => void, passive = true) => t.addEventListener(type, f, { passive, signal: gone.signal });
+  const on = (t: EventTarget, type: string, f: (e: any) => void, passive = true) =>
+    t.addEventListener(type, f, { passive, signal: gone.signal });
   // The first non-zero motion once locked is the cursor jumping to where Chrome parks it, not
   // the user's: dropped. Headless Chromium sends it (-640,-360 on a 1280x720 page) before
   // `pointerlockchange`, so the flag is set when the lock is asked for.
@@ -245,11 +283,16 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
   };
   on(canvas, 'mousedown', button(true), false);
   on(canvas, 'mouseup', button(false), false);
-  on(canvas, 'wheel', (e: WheelEvent) => {
-    if (!locked()) return;
-    e.preventDefault();
-    s.wheel(wheelUnits(e.deltaY, e.deltaMode));
-  }, false);
+  on(
+    canvas,
+    'wheel',
+    (e: WheelEvent) => {
+      if (!locked()) return;
+      e.preventDefault();
+      s.wheel(wheelUnits(e.deltaY, e.deltaMode));
+    },
+    false,
+  );
   on(canvas, 'contextmenu', (e: Event) => e.preventDefault(), false);
   on(win, 'blur', leave);
   on(win, 'pagehide', leave);

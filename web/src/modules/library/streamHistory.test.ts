@@ -6,7 +6,12 @@ const H = 3_600_000;
 const s = (started: number, o: Partial<SessionRec> & { drop?: number; sent?: number | null } = {}): SessionRec => {
   const { drop, sent, ...rest } = o;
   return {
-    appid: 1, name: 'G', started, ended: started + H, host: 'h', preset: 'crisp',
+    appid: 1,
+    name: 'G',
+    started,
+    ended: started + H,
+    host: 'h',
+    preset: 'crisp',
     stats: { sent: sent === undefined ? 1000 : sent, dropped: drop ?? 0 } as SessionRec['stats'],
     ...rest,
   };
@@ -25,7 +30,10 @@ describe('gameHistory', () => {
     expect(gameHistory([], 1)).toEqual({ count: 0, totalMs: 0, last: null, usualPreset: null });
   });
   it('usualPreset ties go to the latest', () => {
-    expect(gameHistory([s(1, { preset: 'fast' }), s(2, { preset: 'crisp' }), s(3, { preset: 'fast' }), s(4, { preset: 'crisp' })], 1).usualPreset).toBe('crisp');
+    expect(
+      gameHistory([s(1, { preset: 'fast' }), s(2, { preset: 'crisp' }), s(3, { preset: 'fast' }), s(4, { preset: 'crisp' })], 1)
+        .usualPreset,
+    ).toBe('crisp');
     expect(gameHistory([s(1, { preset: 'fast' }), s(2, { preset: 'fast' }), s(3, { preset: 'crisp' })], 1).usualPreset).toBe('fast');
   });
 });
