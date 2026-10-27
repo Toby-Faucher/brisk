@@ -374,7 +374,7 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
 
 ### Steam data
 Routes that need the Web API key answer from a cache and degrade to `available: false` (or an empty list) without it.
-All need the usual auth; `?refresh=1` skips the cache. Caches are `{fetched, value}` files under `data_dir/steam/`.
+All need the usual auth. The games, info, achievements and news routes also take `?refresh=1`, which skips the cache. Caches are `{fetched, value}` files under `data_dir/steam/`.
 
 | Route | Cache file | TTL |
 |---|---|---|
@@ -397,8 +397,8 @@ All need the usual auth; `?refresh=1` skips the cache. Caches are `{fetched, val
   500 ms pause after one that went upstream. A game whose cache entries are fresh costs no call and no pause.
 - Friends are never written to disk: the list (names, avatars, what they play) lives in `AppState` for 120 s. Online or
   in a game only, playing first, at most 30; only the first 1000 friend ids are looked at; an avatar must be https on a
-  Steam avatar host. A private list or no key gives `available: false`.
-- Screenshots: `/local` lists regular image files (png, jpg) from `userdata/<account>/760/remote/<appid>/screenshots`,
+  Steam avatar host. A private list, no key or Steam being down gives `available: false` (the card says "Friends are not available").
+- Screenshots: `/local` lists regular image files (png, jpg, jpeg) from `userdata/<account>/760/remote/<appid>/screenshots`,
   newest first, at most 60, none over 25 MiB, no symlinks. The account id comes from `loginusers.vdf`, never the client.
   `/screenshots/{name}` serves a name only when it equals an entry of that listing (never joined from the request
   otherwise), opened with `O_NOFOLLOW | O_NONBLOCK`, regular files only, read capped at 25 MiB. An `<img src>` cannot send
@@ -408,12 +408,13 @@ All need the usual auth; `?refresh=1` skips the cache. Caches are `{fetched, val
 - Update state (`update` on installed games: `needed`, `running` or none) comes from `StateFlags` in
   `appmanifest_*.acf`. Seen on this host: only 4 (fully installed), on all 10 manifests. The other bits are from
   memory of Valve's `EAppState` and unverified against a live update: 2 update required, 512 paused (counts as
-  needed), and 256, 1024, 1048576, 2097152, 4194304 as running. Check with a real update before trusting them. The
+  needed), and 256, 1024, 1048576, 2097152, 4194304 as running. Check with a real update before trusting them. A paused
+  update (512) counts as needed and wins over the running bits, so 1542 (2, 4, 512 and 1024) reads as needed. The
   card shows an orange chip, the panel a note; Play stays enabled.
 
 ### Notes and tags
 `data_dir/notes.json`: `{"tags": {<id>: {name, color, symbol, note, pinned}}, "games": {<appid>: {note, tags: [ids]}}}`.
-Limits and validation are in the API list above (64 tags, 2000 games, 16 per game, 24-char names, 500/4000-char
+Limits and validation are in the API list below (64 tags, 2000 games, 16 per game, 24-char names, 500/4000-char
 notes). Only per-tag and per-game writes exist, so two browsers never overwrite each other's games; there is no
 whole-document PUT. The page keeps a store (`state/notes.ts`) and one saver for the panel: a change shows at once, is
 sent 800 ms later (PUTs one at a time, in order, every changed game kept), and takes hostd's answer only if no newer
@@ -426,10 +427,11 @@ closed; a 400/409/413 is shown as refused and not retried. Saving waits until th
 |---|---|---|
 | `auto-backlog` | Backlog | under 30 min played |
 | `auto-controller` | Controller | store info says full controller support |
-| `auto-coop` | Co-op | store info says co-op |
+| `auto-coop` | Co-op | store info says co-op or Remote Play Together |
 | `auto-almost` | Almost done | at least 80% but not all achievements |
 | `auto-updated` | Updated | a patch-notes item since the last play, under 30 days old |
 
+- Tag ids starting with `auto-` are reserved for these smart tags: `PUT /api/notes/tags/auto-...` answers 400.
 - Home shows a card for each tag with `pinned` set (card id `tag-<tag id>`, ordered by name) and links to `/library?tag=<id>`.
 - Stream history in the panel (from `GET /api/sessions`, last 100): total, count, last time and the usual preset. A
   session is bad when its quality gate failed or more than 2% of sent frames were dropped. Of the newest 5 closed
