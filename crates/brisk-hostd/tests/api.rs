@@ -572,6 +572,7 @@ fn rig_with(mode: &str, service: bool) -> Rig {
             running: false,
             ach_unlocked: None,
             ach_total: None,
+            updated: false,
         }],
         owned_available: true,
     });

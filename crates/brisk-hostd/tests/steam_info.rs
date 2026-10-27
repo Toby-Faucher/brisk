@@ -250,8 +250,8 @@ async fn warm_caps_at_60_games_and_clears_the_flag() {
     let s = steam(&api, NO_API, Some(KEY));
     brisk_hostd::steam_info::warm_games(&s.cfg, (1000..1061).collect(), std::time::Duration::ZERO)
         .await;
-    // a failing player call is one request per game
-    assert_eq!(hits.load(SeqCst), 60);
+    // per game: a failing player call, plus one news call (404 here)
+    assert_eq!(hits.load(SeqCst), 120);
     let st = Arc::new(AppState::new(s.cfg.clone()));
     brisk_hostd::steam_info::warm(st.clone(), vec![]);
     for _ in 0..100 {
@@ -274,4 +274,136 @@ async fn duplicate_achievement_ids_keep_the_first() {
     let (_, v) = get_json(&s.cfg, "/api/games/620/achievements").await;
     assert_eq!(v["total"], 1);
     assert_eq!(v["list"][0]["name"], "First");
+}
+
+fn news_fixture() -> String {
+    std::fs::read_to_string(format!("{FIX}/news-620.json")).unwrap()
+}
+
+fn news_of(items: &[(u64, bool)]) -> brisk_hostd::steam_info::News {
+    use brisk_hostd::steam_info::{News, NewsItem};
+    News {
+        items: items
+            .iter()
+            .map(|&(date, patch)| NewsItem {
+                title: String::new(),
+                url: String::new(),
+                date,
+                patch,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn news_marks_updated_when_patch_after_last_played() {
+    use brisk_hostd::steam_info::is_updated;
+    // fixture patch 1700001000, Portal 2 last played 1700000500
+    assert!(is_updated(
+        &news_of(&[(1700001000, true)]),
+        1700000500,
+        1700002000
+    ));
+}
+
+#[test]
+fn news_not_updated_when_played_after() {
+    use brisk_hostd::steam_info::is_updated;
+    assert!(!is_updated(
+        &news_of(&[(1700001000, true)]),
+        1700001500,
+        1700002000
+    ));
+    // a non-patch item never counts, and a never-played game is never "updated"
+    assert!(!is_updated(
+        &news_of(&[(1700001000, false)]),
+        1700000500,
+        1700002000
+    ));
+    assert!(!is_updated(&news_of(&[(1700001000, true)]), 0, 1700002000));
+}
+
+#[test]
+fn news_old_patch_not_updated() {
+    use brisk_hostd::steam_info::is_updated;
+    let n = news_of(&[(1700001000, true)]);
+    let day = 86_400;
+    assert!(is_updated(&n, 1700000500, 1700001000 + 30 * day));
+    assert!(!is_updated(&n, 1700000500, 1700001000 + 30 * day + 1));
+}
+
+#[tokio::test]
+async fn news_non_https_url_is_dropped() {
+    let api = mock_steam(vec![
+        ("/IPlayerService/GetOwnedGames/", 200, owned()),
+        ("/ISteamNews/", 200, news_fixture()),
+    ])
+    .await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (st, v) = get_json(&s.cfg, "/api/games/620/news").await;
+    assert_eq!(st, 200, "{v}");
+    let l = v["items"].as_array().unwrap();
+    assert_eq!(l.len(), 4);
+    assert_eq!(l[0]["title"], "Update notes & fixes");
+    assert_eq!(l[0]["url"], "https://news.example.test/a");
+    assert_eq!(
+        (l[0]["patch"].clone(), l[1]["patch"].clone()),
+        (true.into(), false.into())
+    );
+    assert_eq!(l[2]["url"], "");
+    assert_eq!(l[3]["url"], "");
+    assert!(!v.to_string().contains("TESTKEY"));
+}
+
+#[tokio::test]
+async fn news_unknown_appid_404_and_failure_is_empty_and_cached() {
+    let (api, hits) = mock_steam_hits(vec![
+        ("/IPlayerService/GetOwnedGames/", 200, owned()),
+        ("/ISteamNews/", 500, String::new()),
+    ])
+    .await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (st, _) = get_json(&s.cfg, "/api/games/999999/news").await;
+    assert_eq!(st, 404);
+    for _ in 0..2 {
+        let (st, v) = get_json(&s.cfg, "/api/games/620/news").await;
+        assert_eq!(
+            (st.as_u16(), v["items"].clone()),
+            (200, serde_json::json!([]))
+        );
+    }
+    // at most the library lookups plus ONE news call: the failure was cached
+    let n = hits.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(n <= 4, "news failure was not cached: {n} hits");
+}
+
+#[tokio::test]
+async fn warm_fetches_news_and_games_show_updated() {
+    let recent = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        - 3600;
+    let body = format!(
+        r#"{{"appnews":{{"newsitems":[{{"title":"Patch","url":"https://n.example.test/p","feedname":"steam_community_announcements","date":{recent}}}]}}}}"#
+    );
+    let api = mock_steam(vec![("/ISteamNews/", 200, body)]).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620, 400], std::time::Duration::ZERO).await;
+    let api2 = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned())]).await;
+    let mut cfg = s.cfg.clone();
+    cfg.steam_api_base = api2;
+    let (v, _) = games_json(&cfg, "/api/games").await;
+    let g = |id: u64| {
+        v["games"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["appid"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(g(620)["updated"], true);
+    // 400 has the same news but is not installed
+    assert_eq!(g(400)["updated"], false);
 }

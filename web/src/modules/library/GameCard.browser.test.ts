@@ -5,7 +5,7 @@ import { navigate } from 'astro:transitions/client';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 
-const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, running: false };
+const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false };
 
 describe('GameCard', () => {
   it('clicking a not-installed card calls onpick and never installs', async () => {
@@ -41,5 +41,16 @@ describe('GameCard', () => {
     expect(document.querySelector('.ach')).toBeNull();
     await rerender({ game: { ...game, achUnlocked: 0, achTotal: 0 }, onpick: vi.fn() });
     expect(document.querySelector('.ach')).toBeNull();
+  });
+
+  it('shows an Updated chip and names it in the label', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: /updated since you played/ })).toBeInTheDocument();
+    expect(page.getByRole('button', { name: /updated since you played/ }).element().textContent).toContain('Updated');
+  });
+
+  it('shows no Updated chip otherwise', async () => {
+    await render(GameCard, { props: { game, onpick: vi.fn() } });
+    expect(page.getByText('Updated').elements()).toHaveLength(0);
   });
 });

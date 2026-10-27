@@ -2,7 +2,7 @@
   // The detail panel a Library card (or the Hero's Details) opens. Sections top to bottom: header art, actions,
   // store facts; later sections (achievements, patch notes, local screenshots, saves) slot in below the store ones.
   import { Dialog } from 'bits-ui';
-  import { api, type Game, type GameInfo, type Achievements } from '../../state/api';
+  import { api, type Game, type GameInfo, type Achievements, type News } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
@@ -34,6 +34,17 @@
     ach = null;
     api.gameAchievements(id).then(
       (v) => id === appid && (ach = v),
+      () => {},
+    );
+  });
+
+  // Patch notes: same pattern; no items hides the section.
+  let news = $state<News | null>(null);
+  $effect(() => {
+    const id = appid;
+    news = null;
+    api.gameNews(id).then(
+      (v) => id === appid && (news = v),
       () => {},
     );
   });
@@ -118,6 +129,18 @@
           </ul>
         </section>
       {/if}
+
+      <!-- patch notes: titles are text, only https URLs become links -->
+      {#if news && news.items.length}
+        <section class="sec">
+          <h3>Latest news</h3>
+          <ul class="news">
+            {#each news.items as n (n.date + n.title)}
+              <li>{#if n.url.startsWith('https://')}<a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>{:else}{n.title}{/if}{#if n.patch} <small>patch</small>{/if}</li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
@@ -151,6 +174,8 @@
   .alist li { display: flex; gap: 10px; align-items: center; }
   .alist li.locked { opacity: .6; }
   .alist img, .alist .ph { width: 40px; height: 40px; flex: none; border-radius: 6px; background: var(--panel); }
+  .news { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  .news small { color: var(--muted); }
   .alist span:not(.ph) { display: grid; min-width: 0; }
   .alist small { color: var(--muted); }
 </style>

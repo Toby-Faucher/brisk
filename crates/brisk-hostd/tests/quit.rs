@@ -214,6 +214,7 @@ fn game(appid: u32, name: &str) -> Game {
         running: false,
         ach_unlocked: None,
         ach_total: None,
+        updated: false,
     }
 }
 

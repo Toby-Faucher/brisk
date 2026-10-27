@@ -15,6 +15,7 @@
   const sub = $derived(showFortnight && game.playtime2wkMin > 0 ? fmtFortnight(game.playtime2wkMin) : game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
   const label = $derived(
     (game.installed ? (game.running ? `${game.name}, running on the host` : `${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`) +
+      (game.updated ? ', updated since you played' : '') +
       (saved ? `, saved quality ${prefsChip(saved)}` : '') +
       (game.achTotal ? `, ${game.achUnlocked ?? 0} of ${game.achTotal} achievements` : ''),
   );
@@ -26,6 +27,7 @@
     <Cover {game}>
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
       {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
+      {#if game.updated}<span class="uchip" aria-hidden="true">Updated</span>{/if}
       <span class="glow"></span>
       <span class="btn play">Details</span>
     </Cover>
@@ -52,6 +54,7 @@
   .badge.off i { background: var(--muted); }
   .badge.run i { background: var(--accent); }
   .pchip { position: absolute; left: 10px; top: 36px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: #000c; backdrop-filter: blur(6px); white-space: nowrap; }
+  .uchip { position: absolute; left: 10px; top: 62px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: color-mix(in srgb, var(--accent) 80%, #000); white-space: nowrap; }
   .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; background: radial-gradient(80% 60% at 50% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%); pointer-events: none; z-index: 1; }
   .play { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(12px); opacity: 0; transition: all .35s var(--ease); z-index: 3; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }
   .g:hover .glow, .g:hover .play, .g:focus-visible .glow, .g:focus-visible .play { opacity: 1; }

@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { api, type Game, type GameInfo, type Achievements } from '../../state/api';
 import GameDetail from './GameDetail.svelte';
 
-const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, running: false };
+const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false };
 const off: Game = { ...game, appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 };
 const info: GameInfo = { available: true, description: 'Think with portals & friends.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '18 Apr, 2011', metacritic: 95, screenshots: [] };
 const none: GameInfo = { available: false, description: '', genres: [], controller: null, singleplayer: false, coop: false, remotePlayTogether: false, release: null, metacritic: null, screenshots: [] };
@@ -23,9 +23,29 @@ const noAch: Achievements = { available: false, unlocked: 0, total: 0, list: [] 
 const props = (g: Game, extra = {}) => ({ game: g, busy: false, onclose: vi.fn(), onplay: vi.fn(), oninstall: vi.fn(), ...extra });
 
 afterEach(() => vi.restoreAllMocks());
-beforeEach(() => vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch));
+beforeEach(() => {
+  vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
+  vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
+});
 
 describe('GameDetail', () => {
+  it('links only https news URLs', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'gameNews').mockResolvedValue({
+      items: [
+        { title: 'Safe patch', url: 'https://n.example.test/a', date: 2, patch: true },
+        { title: 'No link <b>x</b>', url: '', date: 1, patch: false },
+      ],
+    });
+    await render(GameDetail, { props: props(game) });
+    const a = page.getByRole('link', { name: 'Safe patch' });
+    await expect.element(a).toHaveAttribute('href', 'https://n.example.test/a');
+    await expect.element(a).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect.element(a).toHaveAttribute('target', '_blank');
+    await expect.element(page.getByText('No link <b>x</b>')).toBeInTheDocument();
+    expect(page.getByRole('link').elements().filter((e) => e.textContent?.includes('No link'))).toHaveLength(0);
+  });
+
   it('shows 3 of 5 unlocked with a progress bar and the list', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(ach);

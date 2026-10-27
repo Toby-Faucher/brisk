@@ -1,0 +1,5 @@
+{"appnews":{"appid":620,"newsitems":[
+{"gid":"1","title":"Update notes &amp; fixes","url":"https://news.example.test/a","feedname":"steam_community_announcements","date":1700001000},
+{"gid":"2","title":"A review roundup","url":"https://news.example.test/b","feedname":"pcgamer","date":1700000900},
+{"gid":"3","title":"Odd link","url":"http://news.example.test/c","feedname":"steam_community_announcements","date":1700000800},
+{"gid":"4","title":"Script link","url":"javascript:alert(1)","feedname":"pcgamer","date":1700000700}],"count":4}}

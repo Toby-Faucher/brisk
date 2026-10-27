@@ -139,6 +139,23 @@ async fn game_achievements(
     axum::Json(steam_info::achievements(&s.cfg, id, refresh).await).into_response()
 }
 
+/// Latest headlines for the detail panel; 404 for an unknown game before any upstream call. An
+/// upstream failure is a 200 with an empty list.
+async fn game_news(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    req: Request,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    axum::Json(steam_info::news(&s.cfg, id, refresh).await).into_response()
+}
+
 async fn host_status(State(s): State<Arc<AppState>>) -> Response {
     axum::Json(host::host_info(&s.cfg).await).into_response()
 }
@@ -530,6 +547,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games", get(games))
         .route("/games/{appid}/info", get(game_info))
         .route("/games/{appid}/achievements", get(game_achievements))
+        .route("/games/{appid}/news", get(game_news))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))
         .route(

@@ -16,11 +16,17 @@ export type Game = {
   /** Achievement counts once the host has fetched them (it warms its cache in the background); null until then. */
   achUnlocked: number | null;
   achTotal: number | null;
+  /** Installed, and the host saw a patch newer than your last play (from its news cache). */
+  updated: boolean;
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
 /** GET /api/games/{appid}/achievements. `available` false (no stats, private profile): total is 0. */
 export type Achievements = { available: boolean; unlocked: number; total: number; list: Ach[] };
+/** One headline; `title` is text only, `url` is https or empty. `patch`: the game's own announcements feed. */
+export type NewsItem = { title: string; url: string; date: number; patch: boolean };
+/** GET /api/games/{appid}/news; an empty list when Steam had nothing. */
+export type News = { items: NewsItem[] };
 /** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
 export type GameInfo = {
   available: boolean;
@@ -213,6 +219,7 @@ export const api = {
   games: () => call<{ games: Game[]; ownedAvailable: boolean }>('GET', '/api/games'),
   gameInfo: (appid: number) => call<GameInfo>('GET', `/api/games/${appid}/info`),
   gameAchievements: (appid: number) => call<Achievements>('GET', `/api/games/${appid}/achievements`),
+  gameNews: (appid: number) => call<News>('GET', `/api/games/${appid}/news`),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),
