@@ -44,6 +44,7 @@
 :root[data-accent='lime'] { --accent: #a3e635; --accent-fg: #142004; }
 :root[data-accent='sky'] { --accent: #60a5fa; --accent-fg: #07162b; }
 
+/* biome-ignore format: generated block, gen-spring-tokens.mjs --check compares it byte for byte */
 /* BEGIN generated springs: node web/scripts/gen-spring-tokens.mjs (do not edit by hand) */
 :root {
   /* hover lifts: quick, no overshoot; stiffness 400, damping 40, zeta 1.00, overshoot 0.0%, 90% at 195 ms, capped at 450 ms (settles in 700) */
