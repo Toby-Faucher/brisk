@@ -347,7 +347,7 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   line with `wt=` or the token are re-printed as `bridge<TAB>page <redacted>` (hostd still parses them for
   GET/POST /api/stream). `logs` also masks any `?s=`/`&s=` and `?wt=`/`&wt=` value. brisk-up and manual runs still print the full link. brisk-up/brisk-down refuse
   while the unit is active or enabled.
-- Owned games (`GetOwnedGames`) are fetched in-process with `ureq` over rustls with the pure-Rust
+- Steam data (owned games, per-game info, achievements, news, friends; see "Steam data" below) is fetched in-process with `ureq` over rustls with the pure-Rust
   `rustls-graviola` provider (no curl, no C or ring), certificates checked against the system roots
   (/etc/ssl/certs, read by `rustls-platform-verifier`, so it works offline-installed on Arch and follows
   `ca-certificates` updates). The key is read from its file per request and goes only into the query
@@ -371,6 +371,71 @@ Chrome floor: 152 (Toby's laptop moves to 156). Everything below is in 152; each
   https but fine on localhost: the Host header is not allowed (hostd learns the ts.net name from
   `tailscale status --json` at startup and again, at most every 30 s, when an unknown *.ts.net name
   arrives; or set `BRISK_ALLOWED_HOSTS`).
+
+### Steam data
+Routes that need the Web API key answer from a cache and degrade to `available: false` (or an empty list) without it.
+All need the usual auth; `?refresh=1` skips the cache. Caches are `{fetched, value}` files under `data_dir/steam/`.
+
+| Route | Cache file | TTL |
+|---|---|---|
+| `GET /api/games` | `data_dir/owned.json` | 6 h (`GetOwnedGames`); a stale file is used when Steam fails |
+| `GET /api/games/{appid}/info` | `info-<id>.json`, `info-<id>-ok.json` | success 7 days, failure 10 min |
+| `GET /api/games/{appid}/achievements` | `ach-<id>.json`, `ach-<id>-ok.json` | success 1 h, failure 10 min |
+| `GET /api/games/{appid}/news` | `news-<id>.json`, `news-<id>-ok.json` | success 6 h, failure 10 min |
+| `GET /api/games/{appid}/local` | none (reads `userdata/<account>/` on the host) | each request |
+| `GET /api/games/{appid}/screenshots/{name}` | none | `Cache-Control: private, max-age=3600` |
+| `GET /api/friends` | none, in memory only | 120 s, failure 60 s |
+| `GET /api/notes`, `PUT/DELETE /api/notes/tags/{id}`, `PUT /api/notes/games/{appid}` | `data_dir/notes.json` | none |
+
+- Two-level cache: the `-ok` file only ever holds successes, so a stale success beats the default and a failure
+  is not retried for 10 minutes. `info` is the store `appdetails` page (controller support, co-op, release, Metacritic,
+  up to 6 screenshot thumbnails); `store_get` uses `BRISK_STEAM_STORE_BASE`. `updated` on a game means a patch-notes
+  item newer than the last play, not in the future and under 30 days old, read from the news cache alone.
+- Warm task: `GET /api/games` starts `steam_info::warm` in the background and returns at once; only one runs at a time
+  (a flag, cleared on drop even after a panic). First, achievements and news for installed games with play time (at
+  most 60), 300 ms pause after a game that went upstream; then store info for every owned game (at most 200),
+  500 ms pause after one that went upstream. A game whose cache entries are fresh costs no call and no pause.
+- Friends are never written to disk: the list (names, avatars, what they play) lives in `AppState` for 120 s. Online or
+  in a game only, playing first, at most 30; only the first 1000 friend ids are looked at; an avatar must be https on a
+  Steam avatar host. A private list or no key gives `available: false`.
+- Screenshots: `/local` lists regular image files (png, jpg) from `userdata/<account>/760/remote/<appid>/screenshots`,
+  newest first, at most 60, none over 25 MiB, no symlinks. The account id comes from `loginusers.vdf`, never the client.
+  `/screenshots/{name}` serves a name only when it equals an entry of that listing (never joined from the request
+  otherwise), opened with `O_NOFOLLOW | O_NONBLOCK`, regular files only, read capped at 25 MiB. An `<img src>` cannot send
+  the auth headers, so the page fetches each image with them and shows a blob URL (`URL.createObjectURL`), revoked
+  when the panel closes or the game changes. The cloud-save summary is counts only (files, bytes, newest mtime; at
+  most 10 000 entries, depth 8); file names and contents never leave the host.
+- Update state (`update` on installed games: `needed`, `running` or none) comes from `StateFlags` in
+  `appmanifest_*.acf`. Seen on this host: only 4 (fully installed), on all 10 manifests. The other bits are from
+  memory of Valve's `EAppState` and unverified against a live update: 2 update required, 512 paused (counts as
+  needed), and 256, 1024, 1048576, 2097152, 4194304 as running. Check with a real update before trusting them. The
+  card shows an orange chip, the panel a note; Play stays enabled.
+
+### Notes and tags
+`data_dir/notes.json`: `{"tags": {<id>: {name, color, symbol, note, pinned}}, "games": {<appid>: {note, tags: [ids]}}}`.
+Limits and validation are in the API list above (64 tags, 2000 games, 16 per game, 24-char names, 500/4000-char
+notes). Only per-tag and per-game writes exist, so two browsers never overwrite each other's games; there is no
+whole-document PUT. The page keeps a store (`state/notes.ts`) and one saver for the panel: a change shows at once, is
+sent 800 ms later (PUTs one at a time, in order, every changed game kept), and takes hostd's answer only if no newer
+change exists. A failed PUT keeps its change and retries on the next save or on window focus, even after the panel
+closed; a 400/409/413 is shown as refused and not retried. Saving waits until the first load finished.
+- Smart tags are read-only, computed on the page from the game list, never stored, and filter like your own tags
+  (`/library?tag=<id>`; an unknown id is ignored):
+
+| Id | Name | Rule |
+|---|---|---|
+| `auto-backlog` | Backlog | under 30 min played |
+| `auto-controller` | Controller | store info says full controller support |
+| `auto-coop` | Co-op | store info says co-op |
+| `auto-almost` | Almost done | at least 80% but not all achievements |
+| `auto-updated` | Updated | a patch-notes item since the last play, under 30 days old |
+
+- Home shows a card for each tag with `pinned` set (card id `tag-<tag id>`, ordered by name) and links to `/library?tag=<id>`.
+- Stream history in the panel (from `GET /api/sessions`, last 100): total, count, last time and the usual preset. A
+  session is bad when its quality gate failed or more than 2% of sent frames were dropped. Of the newest 5 closed
+  sessions for the game, if 3 or more on the newest session's preset were bad, the panel offers one step down
+  (Crisp to Balanced, Balanced to Fast), never up, never below Fast. It is a button only: it sets the per-game preset
+  when clicked, and hostd never changes it by itself.
 
 ### Static files (web/dist)
 `crates/brisk-hostd/src/site.rs`: tower-http 0.7.1 `ServeDir` behind a small backend and wrapper.
@@ -489,7 +554,8 @@ reports; then add `frame-ancestors 'none'` and drop X-Frame-Options.
   `[]` when unset); PUT /api/prefs/layout `{homeOrder: string[]}` (400 unless an array of strings; ids not 1..32 of
   `a-z 0-9 -`, repeats and anything past 32 ids are dropped; answers the stored order), DELETE /api/prefs/layout = Reset
   layout (204). In prefs.json as `"layout": {"v": 1, "homeOrder": [...]}`, absent when unset; another `v` loads as unset.
-- GET /api/notes `{tags: {<id>: {name, color, symbol, note}}, games: {<appid>: {note, tags}}}`; PUT/DELETE
+- GET /api/games/<appid>/info|achievements|news|local, GET /api/games/<appid>/screenshots/<name>, GET /api/friends (see Steam data)
+- GET /api/notes `{tags: {<id>: {name, color, symbol, note, pinned}}, games: {<appid>: {note, tags}}}`; PUT/DELETE
   /api/notes/tags/<id> (16 KiB body), PUT /api/notes/games/<appid> (64 KiB body). notes.rs: `<data_dir>/notes.json`,
   0600 temp file + rename, a corrupt file loads empty (kept until the next save). Tag id 1..16 of `a-z 0-9 -`, name
   1..24 chars after trim, color gray|red|orange|yellow|green|teal|blue|purple|pink, symbol 1..16 of `a-z -`, notes
