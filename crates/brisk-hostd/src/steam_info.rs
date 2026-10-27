@@ -78,6 +78,10 @@ pub struct Info {
     pub metacritic: Option<u32>,
     /// Thumbnail URLs, at most 6.
     pub screenshots: Vec<String>,
+    /// The full-size image for each thumbnail, same order (the thumbnail again when the Store's
+    /// full-size URL is not https). Empty in a cache entry written before this field existed.
+    #[serde(default)]
+    pub screenshots_full: Vec<String>,
 }
 
 const WEEK_S: u64 = 7 * 86_400;
@@ -165,10 +169,7 @@ async fn fetch_info(cfg: &Config, appid: u32) -> Result<Info, String> {
         .filter_map(|c| c["id"].as_u64())
         .collect();
     let has = |ids: &[u64]| cats.iter().any(|c| ids.contains(c));
-    // they become <img src> in the UI: https only
-    let mut screenshots = strs("screenshots", "path_thumbnail");
-    screenshots.retain(|u| u.starts_with("https://"));
-    screenshots.truncate(6);
+    let (screenshots, screenshots_full) = shots(&d["screenshots"]);
     Ok(Info {
         available: true,
         description: plain_text(d["short_description"].as_str().unwrap_or("")),
@@ -190,7 +191,29 @@ async fn fetch_info(cfg: &Config, appid: u32) -> Result<Info, String> {
             .as_u64()
             .and_then(|n| n.try_into().ok()),
         screenshots,
+        screenshots_full,
     })
+}
+
+/// (thumbnails, full-size) from the Store's `screenshots` array, at most 6 pairs. They become
+/// `<img src>` in the UI: https only; a pair without an https thumbnail is dropped, a full-size URL
+/// that is not https falls back to the thumbnail.
+fn shots(list: &serde_json::Value) -> (Vec<String>, Vec<String>) {
+    let https = |v: &serde_json::Value| {
+        v.as_str()
+            .filter(|u| u.starts_with("https://"))
+            .map(String::from)
+    };
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|x| {
+            let t = https(&x["path_thumbnail"])?;
+            Some((https(&x["path_full"]).unwrap_or_else(|| t.clone()), t))
+        })
+        .take(6)
+        .map(|(f, t)| (t, f))
+        .unzip()
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -858,6 +881,26 @@ mod tests {
         let c = cfg(d.path());
         let r = cached(&c, "a", 100, false, async { Err::<u32, _>("down".into()) }).await;
         assert_eq!(r, None);
+    }
+
+    #[test]
+    fn shots_pairs_thumbnails_with_full_size_https_only() {
+        let (t, f) = shots(&serde_json::json!([
+            {"path_thumbnail": "http://a/0.jpg", "path_full": "https://a/0f.jpg"},
+            {"path_thumbnail": "https://a/1.jpg", "path_full": "https://a/1f.jpg"},
+            {"path_thumbnail": "https://a/2.jpg", "path_full": "http://a/2f.jpg"},
+            {"path_thumbnail": "https://a/3.jpg"},
+        ]));
+        assert_eq!(t, ["https://a/1.jpg", "https://a/2.jpg", "https://a/3.jpg"]);
+        assert_eq!(
+            f,
+            ["https://a/1f.jpg", "https://a/2.jpg", "https://a/3.jpg"]
+        );
+        let many: Vec<_> = (0..9)
+            .map(|i| serde_json::json!({"path_thumbnail": format!("https://a/{i}.jpg")}))
+            .collect();
+        assert_eq!(shots(&serde_json::Value::from(many)).0.len(), 6);
+        assert_eq!(shots(&serde_json::Value::Null), (vec![], vec![]));
     }
 
     #[test]

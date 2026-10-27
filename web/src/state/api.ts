@@ -51,6 +51,8 @@ export type GameInfo = {
   metacritic: number | null;
   /** thumbnail URLs, at most 6 */
   screenshots: string[];
+  /** the full-size image for each thumbnail, same order (absent in a cache entry written before it existed) */
+  screenshotsFull?: string[];
 };
 /** GET /api/games/{appid}/local: screenshot file names on the host (newest first, at most 60) and a cloud-save summary. */
 export type GameLocal = { screenshots: string[]; saves: { files: number; bytes: number; modified: number /* unix s */ } | null };

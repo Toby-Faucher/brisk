@@ -49,6 +49,11 @@ async fn info_distils_store_details() {
             .all(|s| s.as_str().unwrap().starts_with("https://"))
     );
     assert!(shots[0].as_str().unwrap().ends_with("ss_00.600x338.jpg"));
+    // the full-size image for each thumbnail, same order and filter
+    let full = v["screenshotsFull"].as_array().unwrap();
+    assert_eq!(full.len(), 6);
+    assert!(full[0].as_str().unwrap().ends_with("ss_00.1920x1080.jpg"));
+    assert!(full[5].as_str().unwrap().ends_with("ss_05.1920x1080.jpg"));
     let d = v["description"].as_str().unwrap();
     assert_eq!(
         d,
