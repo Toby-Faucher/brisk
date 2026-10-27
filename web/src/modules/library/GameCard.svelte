@@ -15,7 +15,8 @@
   const sub = $derived(showFortnight && game.playtime2wkMin > 0 ? fmtFortnight(game.playtime2wkMin) : game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
   const label = $derived(
     (game.installed ? (game.running ? `${game.name}, running on the host` : `${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`) +
-      (saved ? `, saved quality ${prefsChip(saved)}` : ''),
+      (saved ? `, saved quality ${prefsChip(saved)}` : '') +
+      (game.achTotal ? `, ${game.achUnlocked ?? 0} of ${game.achTotal} achievements` : ''),
   );
 </script>
 
@@ -30,7 +31,7 @@
     </Cover>
     <span class="name">{game.name}</span>
     <span class="sub">{sub}</span>
-    {#if game.achTotal}<span class="ach" role="progressbar" aria-label="{game.achUnlocked ?? 0} of {game.achTotal} achievements" aria-valuemin={0} aria-valuemax={game.achTotal} aria-valuenow={game.achUnlocked ?? 0}><i style="width:{((game.achUnlocked ?? 0) / game.achTotal) * 100}%"></i></span>{/if}
+    {#if game.achTotal}<span class="ach" aria-hidden="true"><i style="width:{((game.achUnlocked ?? 0) / game.achTotal) * 100}%"></i></span>{/if}
   </button>
   {#if game.running}
     {@const q = $quitting.has(game.appid)}

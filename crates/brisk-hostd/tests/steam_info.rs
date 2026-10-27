@@ -196,7 +196,7 @@ async fn achievements_private_profile_is_unavailable_and_cached_briefly() {
 async fn warm_fills_cache_and_games_show_counts() {
     let api = mock_steam(ach_fixtures()).await;
     let s = steam(&api, NO_API, Some(KEY));
-    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620]).await;
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620], std::time::Duration::ZERO).await;
     let api2 = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned())]).await;
     let mut cfg = s.cfg.clone();
     cfg.steam_api_base = api2;
@@ -241,4 +241,37 @@ async fn warm_runs_once_at_a_time() {
         }
     }
     panic!("warm never finished");
+}
+
+#[tokio::test]
+async fn warm_caps_at_60_games_and_clears_the_flag() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (api, hits) = mock_steam_hits(vec![("/ISteamUserStats/", 403, String::new())]).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    brisk_hostd::steam_info::warm_games(&s.cfg, (1000..1061).collect(), std::time::Duration::ZERO)
+        .await;
+    // a failing player call is one request per game
+    assert_eq!(hits.load(SeqCst), 60);
+    let st = Arc::new(AppState::new(s.cfg.clone()));
+    brisk_hostd::steam_info::warm(st.clone(), vec![]);
+    for _ in 0..100 {
+        if !st.warming.load(SeqCst) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("flag never cleared");
+}
+
+#[tokio::test]
+async fn duplicate_achievement_ids_keep_the_first() {
+    let dup = r#"{"game":{"availableGameStats":{"achievements":[
+{"name":"A","displayName":"First","hidden":0,"description":"","icon":"","icongray":""},
+{"name":"A","displayName":"Again","hidden":0,"description":"","icon":"","icongray":""}]}}}"#;
+    let player = r#"{"playerstats":{"success":true,"achievements":[]}}"#;
+    let api = mock_steam(ach_api(player.into(), dup.into())).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (_, v) = get_json(&s.cfg, "/api/games/620/achievements").await;
+    assert_eq!(v["total"], 1);
+    assert_eq!(v["list"][0]["name"], "First");
 }

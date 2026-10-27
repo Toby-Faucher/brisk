@@ -186,6 +186,7 @@ pub struct Ach {
     pub unlocked_at: Option<u64>,
 }
 
+/// Warm and the panel share this 1 h achievements TTL (acceptable: ~3k calls/day worst case).
 const HOUR_S: u64 = 3600;
 
 /// Merged schema (names, icons) and player flags. No stats for the game (HTTP 400) or a private
@@ -250,6 +251,12 @@ async fn fetch_achievements(cfg: &Config, appid: u32) -> Result<Achievements, St
             })
         })
         .collect();
+    // the UI keys its list by id: keep the first of any duplicate
+    let mut seen = std::collections::HashSet::new();
+    let list: Vec<Ach> = list
+        .into_iter()
+        .filter(|a| seen.insert(a.id.clone()))
+        .collect();
     if list.is_empty() {
         return Err("no achievements".into());
     }
@@ -273,10 +280,10 @@ const WARM_PAUSE: Duration = Duration::from_millis(300);
 const WARM_MAX: usize = 60;
 
 /// Fetches per-game data into the cache, one game at a time. Not spawned: tests await it.
-pub async fn warm_games(cfg: &Config, appids: Vec<u32>) {
+pub async fn warm_games(cfg: &Config, appids: Vec<u32>, pause: Duration) {
     for (i, id) in appids.into_iter().take(WARM_MAX).enumerate() {
         if i > 0 {
-            tokio::time::sleep(WARM_PAUSE).await;
+            tokio::time::sleep(pause).await;
         }
         achievements(cfg, id, false).await;
     }
@@ -297,7 +304,7 @@ pub fn warm(state: Arc<AppState>, appids: Vec<u32>) {
     }
     tokio::spawn(async move {
         let guard = Unwarm(state);
-        warm_games(&guard.0.cfg, appids).await;
+        warm_games(&guard.0.cfg, appids, WARM_PAUSE).await;
     });
 }
 

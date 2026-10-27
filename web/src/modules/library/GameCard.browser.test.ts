@@ -31,13 +31,15 @@ describe('GameCard', () => {
 
   it('shows a thin progress bar when achTotal > 0', async () => {
     await render(GameCard, { props: { game: { ...game, achUnlocked: 3, achTotal: 5 }, onpick: vi.fn() } });
-    await expect.element(page.getByRole('progressbar', { name: '3 of 5 achievements' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /3 of 5 achievements/ })).toBeInTheDocument();
+    expect(page.getByRole('progressbar').elements()).toHaveLength(0);
+    expect(document.querySelector('.ach')?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('shows no progress bar when achTotal is null or 0', async () => {
     const { rerender } = await render(GameCard, { props: { game, onpick: vi.fn() } });
-    expect(page.getByRole('progressbar').elements()).toHaveLength(0);
+    expect(document.querySelector('.ach')).toBeNull();
     await rerender({ game: { ...game, achUnlocked: 0, achTotal: 0 }, onpick: vi.fn() });
-    expect(page.getByRole('progressbar').elements()).toHaveLength(0);
+    expect(document.querySelector('.ach')).toBeNull();
   });
 });

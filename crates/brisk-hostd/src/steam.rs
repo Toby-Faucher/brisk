@@ -491,13 +491,21 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
         }
     }
     let proc = cfg.proc_dir.clone();
-    let running = tokio::task::spawn_blocking(move || crate::running::running_appids(&proc))
-        .await
-        .unwrap_or_default();
+    let cfg2 = cfg.clone();
+    let ids: Vec<u32> = by_id.keys().copied().collect();
+    let (running, counts) = tokio::task::spawn_blocking(move || {
+        let counts: HashMap<u32, (u32, u32)> = ids
+            .into_iter()
+            .filter_map(|id| Some((id, crate::steam_info::ach_counts(&cfg2, id)?)))
+            .collect();
+        (crate::running::running_appids(&proc), counts)
+    })
+    .await
+    .unwrap_or_default();
     let mut games: Vec<Game> = by_id.into_values().collect();
     for g in &mut games {
         g.running = running.contains(&g.appid);
-        if let Some((u, t)) = crate::steam_info::ach_counts(cfg, g.appid) {
+        if let Some(&(u, t)) = counts.get(&g.appid) {
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }
     }
