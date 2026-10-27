@@ -156,6 +156,13 @@ describe('Library ?open=', () => {
     expect(location.search).toBe('');
   });
 
+  it('still opens ?open= when a refresh failed but the old list is there', async () => {
+    gamesFailed.set(true);
+    history.replaceState(null, '', '?open=2');
+    await render(Library);
+    await expect.element(page.getByRole('dialog').getByText('Bravo', { exact: true })).toBeInTheDocument();
+  });
+
   it('ignores an unknown ?open= (and clears it)', async () => {
     history.replaceState(null, '', '?open=999');
     await render(Library);

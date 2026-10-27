@@ -116,7 +116,7 @@
   }
   $effect(() => {
     if (wantOpen == null) return;
-    if ($gamesFailed) return void (wantOpen = null); // never open a panel from a later, unrelated load
+    if ($gamesFailed && !$games) return void (wantOpen = null); // no usable list; a failed refresh that left the old list still opens it
     if (!$games) return;
     open = $games.games.find((x) => x.appid === wantOpen) ?? open; // an unknown appid is ignored
     wantOpen = null;
