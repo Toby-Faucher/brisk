@@ -220,7 +220,7 @@ struct OwnedCache {
     games: Vec<Owned>,
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
@@ -289,9 +289,10 @@ fn https_get(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| safe_err(&e))
 }
 
-/// One GetOwnedGames call. The key is read from its file here and goes only into the request's
-/// query string (that is how Steam's Web API takes it); errors never carry the URL.
-async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
+/// One Steam Web API GET (`path_query` like `ISteamUser/GetPlayerSummaries/v2/?steamids=1,2`).
+/// The key is read from its file here and goes only into the request's query string (that is how
+/// Steam's Web API takes it); `format=json` is appended too. Errors never carry the URL.
+pub(crate) async fn steam_get(cfg: &Config, path_query: &str) -> Result<serde_json::Value, String> {
     let base = cfg.steam_api_base.trim_end_matches('/');
     if !base_ok(base) {
         return Err("steam_api_base must be https (or http to loopback)".into());
@@ -306,23 +307,57 @@ async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
     {
         return Err("API key file is not a plain key".into());
     }
-    let url = format!(
-        "{base}/IPlayerService/GetOwnedGames/v1/?key={key}&steamid={}&include_appinfo=1&include_played_free_games=1&format=json",
-        steam_id(&cfg.steam_dir).ok_or("no Steam account id")?
-    );
+    let sep = if path_query.contains('?') { '&' } else { '?' };
+    json_get(format!("{base}/{path_query}{sep}key={key}&format=json")).await
+}
+
+/// One store.steampowered.com GET: keyless, so nothing to hide in the URL.
+#[allow(dead_code)] // shortcut: first caller lands in a later task
+pub(crate) async fn store_get(cfg: &Config, path_query: &str) -> Result<serde_json::Value, String> {
+    let base = cfg.steam_store_base.trim_end_matches('/');
+    if !base_ok(base) {
+        return Err("steam_store_base must be https (or http to loopback)".into());
+    }
+    json_get(format!("{base}/{path_query}")).await
+}
+
+async fn json_get(url: String) -> Result<serde_json::Value, String> {
     let body = tokio::task::spawn_blocking(move || https_get(&url))
         .await
         .map_err(|_| "request task failed")??;
-    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|_| "response is not JSON")?;
+    serde_json::from_slice(&body).map_err(|_| "response is not JSON".into())
+}
+
+/// One GetOwnedGames call.
+async fn fetch_owned(cfg: &Config) -> Result<Vec<Owned>, String> {
+    let id = steam_id(&cfg.steam_dir).ok_or("no Steam account id")?;
+    let v = steam_get(
+        cfg,
+        &format!(
+            "IPlayerService/GetOwnedGames/v1/?steamid={id}&include_appinfo=1&include_played_free_games=1"
+        ),
+    )
+    .await?;
     v.get("response")
         .and_then(|r| r.get("games"))
         .and_then(|g| serde_json::from_value(g.clone()).ok())
         .ok_or_else(|| "response has no games list".into())
 }
 
+/// 64-bit SteamID to the 32-bit account id the store and some endpoints use.
+#[allow(dead_code)] // shortcut: first caller lands in a later task
+pub(crate) fn account_id(steam_id64: &str) -> Option<u32> {
+    steam_id64
+        .parse::<u64>()
+        .ok()?
+        .checked_sub(76561197960265728)?
+        .try_into()
+        .ok()
+}
+
 /// Steam account id: the entry marked MostRecent, else (newer clients drop that field) the one
 /// with the newest `timestamp`.
-fn steam_id(steam_dir: &Path) -> Option<String> {
+pub(crate) fn steam_id(steam_dir: &Path) -> Option<String> {
     let text = std::fs::read_to_string(steam_dir.join("config/loginusers.vdf")).ok()?;
     let top = parse_vdf(&text)?;
     let V::M(users) = get(&top, "users")? else {
@@ -503,6 +538,14 @@ mod fetch_tests {
     }
 
     #[test]
+    fn account_id_is_steamid_minus_base() {
+        assert_eq!(account_id("76561197960265729"), Some(1));
+        assert_eq!(account_id("76561198000000000"), Some(39734272));
+        assert_eq!(account_id("5"), None);
+        assert_eq!(account_id("x"), None);
+    }
+
+    #[test]
     fn only_https_or_loopback_http() {
         for ok in [
             "https://api.steampowered.com",
@@ -580,6 +623,30 @@ mod fetch_tests {
             }
         });
         (base, n)
+    }
+
+    #[tokio::test]
+    async fn key_never_in_errors() {
+        let (base, _) = mock(
+            "HTTP/1.1 500 X\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            0,
+        );
+        let d = tempfile::tempdir().unwrap();
+        let cfg = cfg_with(&base, d.path());
+        let e = steam_get(&cfg, "ISteamUser/GetPlayerSummaries/v2/?steamids=1")
+            .await
+            .unwrap_err();
+        assert_eq!(e, "HTTP 500");
+        assert!(!e.contains("SENTINELKEY"));
+        // store_get has the same error shape.
+        let mut cfg = cfg;
+        cfg.steam_store_base = base;
+        assert_eq!(
+            store_get(&cfg, "api/appdetails?appids=1")
+                .await
+                .unwrap_err(),
+            "HTTP 500"
+        );
     }
 
     #[tokio::test]

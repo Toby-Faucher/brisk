@@ -6,8 +6,6 @@ use brisk_hostd::http::{AppState, router};
 use std::sync::Arc;
 use tower::ServiceExt;
 
-const SECRET: &str = "s3cret";
-
 fn app(dist: &std::path::Path) -> axum::Router {
     let mut cfg = Config::from_env(dist.to_path_buf());
     cfg.secret = SECRET.into();
@@ -46,8 +44,6 @@ fn dist() -> tempfile::TempDir {
     std::fs::write(d.path().join("library/index.html"), "<h1>lib</h1>").unwrap();
     d
 }
-
-const H: &str = "localhost:8443";
 
 #[tokio::test]
 async fn serves_index_from_dist() {
@@ -189,108 +185,23 @@ async fn missing_asset_is_404_but_unknown_page_falls_back() {
 
 use std::path::{Path, PathBuf};
 
-const KEY: &str = "TESTKEY-0123456789abcdef";
-const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/steam");
-
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for e in std::fs::read_dir(from).unwrap() {
-        let e = e.unwrap();
-        std::fs::copy(e.path(), to.join(e.file_name())).unwrap();
-    }
+/// Mock whose GetOwnedGames answers `status` (200 = the fixture, only for the exact query).
+async fn owned_mock(status: u16) -> String {
+    let body = if status == 200 {
+        std::fs::read_to_string(format!("{FIX}/owned.json")).unwrap()
+    } else {
+        String::new()
+    };
+    mock_steam(vec![(
+        "/IPlayerService/GetOwnedGames/v1/?steamid=76561198000000000&include_appinfo=1&include_played_free_games=1",
+        status,
+        body,
+    )])
+    .await
 }
 
-/// Mock Steam API: 200 with the fixture only when the sentinel key is in the query, else 403.
-async fn mock_steam(status: u16) -> String {
-    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", l.local_addr().unwrap());
-    tokio::spawn(async move {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        loop {
-            let (mut c, _) = l.accept().await.unwrap();
-            let mut buf = vec![0u8; 8192];
-            let n = c.read(&mut buf).await.unwrap_or(0);
-            let head = String::from_utf8_lossy(&buf[..n]).to_string();
-            let ok = head.contains("/IPlayerService/GetOwnedGames/v1/")
-                && head.contains(&format!("key={KEY}"))
-                && head.contains("include_appinfo=1")
-                && head.contains("include_played_free_games=1");
-            let (code, body) = if status != 200 {
-                (status, String::new())
-            } else if ok {
-                (
-                    200,
-                    std::fs::read_to_string(format!("{FIX}/owned.json")).unwrap(),
-                )
-            } else {
-                (403, String::new())
-            };
-            let r = format!(
-                "HTTP/1.1 {code} X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = c.write_all(r.as_bytes()).await;
-        }
-    });
-    base
-}
-
-struct Steam {
-    _t: tempfile::TempDir,
-    cfg: Config,
-}
-
-fn steam(base: &str, key: Option<&str>) -> Steam {
-    let t = tempfile::tempdir().unwrap();
-    let (s, l2) = (t.path().join("steam"), t.path().join("lib2"));
-    copy_dir(
-        Path::new(FIX).join("lib1/steamapps").as_path(),
-        &s.join("steamapps"),
-    );
-    copy_dir(
-        Path::new(FIX).join("lib2/steamapps").as_path(),
-        &l2.join("steamapps"),
-    );
-    let vdf = std::fs::read_to_string(format!("{FIX}/libraryfolders.vdf.tmpl"))
-        .unwrap()
-        .replace("@LIB1@", s.to_str().unwrap())
-        .replace("@LIB2@", l2.to_str().unwrap());
-    std::fs::write(s.join("steamapps/libraryfolders.vdf"), vdf).unwrap();
-    std::fs::create_dir_all(s.join("config")).unwrap();
-    std::fs::write(
-        s.join("config/loginusers.vdf"),
-        "\"users\"\n{\n\t\"76561198000000000\"\n\t{\n\t\t\"MostRecent\"\t\"1\"\n\t}\n}\n",
-    )
-    .unwrap();
-    let mut cfg = Config::from_env(t.path().join("dist"));
-    cfg.secret = SECRET.into();
-    cfg.steam_dir = s;
-    cfg.data_dir = t.path().join("data");
-    cfg.steam_api_base = base.into();
-    cfg.steam_key_file = t.path().join("key");
-    if let Some(k) = key {
-        std::fs::write(&cfg.steam_key_file, format!("{k}\n")).unwrap();
-    }
-    Steam { _t: t, cfg }
-}
-
-async fn games_json(cfg: &Config, uri: &str) -> (serde_json::Value, String) {
-    let app = router(Arc::new(AppState::new(cfg.clone())));
-    let r = app
-        .oneshot(
-            Request::builder()
-                .uri(uri)
-                .header("host", H)
-                .header("x-brisk-secret", cfg.secret.as_str())
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(r.status(), StatusCode::OK);
-    let b = body(r).await;
-    (serde_json::from_str(&b).unwrap(), b)
-}
+mod common;
+use common::*;
 
 fn find(v: &serde_json::Value, id: u64) -> &serde_json::Value {
     v["games"]
@@ -322,7 +233,7 @@ fn acf_parser_handles_odd_files() {
 
 #[tokio::test]
 async fn installed_games_parsed_from_all_libraries() {
-    let s = steam("http://127.0.0.1:1", None);
+    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     let g = find(&v, 1091500);
     assert_eq!(g["name"], "Pokémon \"Quoted\" Legends");
@@ -338,7 +249,7 @@ async fn installed_games_parsed_from_all_libraries() {
 
 #[tokio::test]
 async fn partial_install_is_not_installed() {
-    let s = steam("http://127.0.0.1:1", None);
+    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     let g = find(&v, 730);
     assert_eq!(g["installed"], false);
@@ -347,7 +258,7 @@ async fn partial_install_is_not_installed() {
 
 #[tokio::test]
 async fn owned_games_merged_with_installed() {
-    let s = steam(&mock_steam(200).await, Some(KEY));
+    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], true);
     assert_eq!(v["games"].as_array().unwrap().len(), 6);
@@ -372,7 +283,7 @@ async fn owned_games_merged_with_installed() {
 
 #[tokio::test]
 async fn duplicate_appid_listed_once() {
-    let s = steam("http://127.0.0.1:1", None);
+    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(
         v["games"]
@@ -388,7 +299,7 @@ async fn duplicate_appid_listed_once() {
 
 #[tokio::test]
 async fn api_down_still_lists_installed() {
-    let s = steam(&mock_steam(500).await, Some(KEY));
+    let s = steam(&owned_mock(500).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
     assert_eq!(v["games"].as_array().unwrap().len(), 3);
@@ -397,7 +308,7 @@ async fn api_down_still_lists_installed() {
 
 #[tokio::test]
 async fn missing_key_file_is_not_an_error() {
-    let s = steam(&mock_steam(200).await, None);
+    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", None);
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
     assert_eq!(v["games"].as_array().unwrap().len(), 3);
@@ -405,7 +316,7 @@ async fn missing_key_file_is_not_an_error() {
 
 #[tokio::test]
 async fn owned_cache_is_used_until_refresh() {
-    let s = steam(&mock_steam(200).await, Some(KEY));
+    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     games_json(&s.cfg, "/api/games").await;
     let mut dead = s.cfg.clone();
     dead.steam_api_base = "http://127.0.0.1:1".into();
@@ -421,7 +332,7 @@ async fn owned_cache_is_used_until_refresh() {
 
 #[tokio::test]
 async fn is_known_appid_uses_cached_library() {
-    let s = steam(&mock_steam(200).await, Some(KEY));
+    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     let st = AppState::new(s.cfg.clone());
     assert!(st.is_known_appid(570).await);
     assert!(!st.is_known_appid(999).await);
@@ -431,7 +342,7 @@ async fn is_known_appid_uses_cached_library() {
 async fn key_never_in_response() {
     let mut out = String::new();
     for status in [200, 500] {
-        let s = steam(&mock_steam(status).await, Some(KEY));
+        let s = steam(&owned_mock(status).await, "http://127.0.0.1:1", Some(KEY));
         out += &games_json(&s.cfg, "/api/games").await.1;
         out += &format!("{:?}", s.cfg);
     }
@@ -1182,7 +1093,7 @@ async fn dropped_request_mid_stop_still_leaves_one_bridge() {
 #[tokio::test]
 async fn steam_tools_are_not_games() {
     // With the owned list: installed apps missing from it are dropped.
-    let s = steam(&mock_steam(200).await, Some(KEY));
+    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert!(
         v["games"]
@@ -1192,7 +1103,7 @@ async fn steam_tools_are_not_games() {
             .all(|g| g["appid"] != 1628350 && g["appid"] != 1493710)
     );
     // Without it: dropped by name prefix, real games stay.
-    let s = steam(&mock_steam(500).await, Some(KEY));
+    let s = steam(&owned_mock(500).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
     assert_eq!(v["games"].as_array().unwrap().len(), 3);
@@ -1260,7 +1171,7 @@ async fn fresh_launch_fullscreens_the_window_once_it_appears() {
 
 #[tokio::test]
 async fn games_marks_running_game() {
-    let mut s = steam("http://127.0.0.1:1", None);
+    let mut s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
     let p = s.cfg.data_dir.join("proc");
     fake_procs(
         &p,

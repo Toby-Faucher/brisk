@@ -16,6 +16,7 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_STEAM_DIR` | Steam install, for the `appmanifest_*.acf` library. | `~/.local/share/Steam` | `hostd/src/config.rs` |
 | `BRISK_STEAM_KEY_FILE` | File with the Steam Web API key (0600). | `~/.config/brisk/steam-api-key` | `hostd/src/config.rs` |
 | `BRISK_STEAM_API_BASE` | Steam Web API base URL (tests point it at a mock). | `https://api.steampowered.com` | `hostd/src/config.rs` |
+| `BRISK_STEAM_STORE_BASE` | Steam store base URL (tests point it at a mock). | `https://store.steampowered.com` | `hostd/src/config.rs` |
 | `BRISK_BRIDGE_BIN` | `brisk-bridge` binary hostd starts per stream. | `brisk-bridge` (on PATH) | `hostd/src/config.rs` |
 | `BRISK_LISTEN` | Bridge address, `IPv4:PORT`; `scripts/brisk-up.sh` rejects `0.0.0.0`. | the Tailscale IPv4 on `:4433`, asked at each stream start | `hostd/src/config.rs`, `scripts/brisk-up.sh` |
 | `BRISK_TLS_DIR` | Bridge certificate directory. | `~/.config/brisk/tls` | `hostd/src/config.rs` |
