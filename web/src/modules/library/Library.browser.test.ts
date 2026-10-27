@@ -88,6 +88,19 @@ describe('Library', () => {
     expect(order).toEqual(['Played this fortnight', 'Installed', 'Almost done', 'Backlog', 'Not installed']);
   });
 
+  it('the sort dropdown reorders the shelves', async () => {
+    const two = [g(7, 'Zed', { playtimeMin: 900 }), g(8, 'Able', { playtimeMin: 800 })];
+    games.set({ games: two, ownedAvailable: true });
+    vi.spyOn(api, 'games').mockResolvedValue({ games: two, ownedAvailable: true });
+    await render(Library);
+    const names = () => [...document.querySelectorAll('.shelf .name')].map((e) => e.textContent);
+    await expect.poll(names).toEqual(['Zed', 'Able']);
+    await userEvent.click(page.getByRole('combobox', { name: 'Sort games' }));
+    await userEvent.click(page.getByRole('option', { name: 'A-Z' }));
+    await expect.poll(names).toEqual(['Able', 'Zed']);
+    await expect.element(page.getByRole('combobox', { name: 'Sort games' })).toHaveTextContent('A-Z');
+  });
+
   it('Backlog and Almost done shelves show only with no search, filter or tag', async () => {
     const shelf = (n: string) => page.getByRole('heading', { name: new RegExp(`^${n} \\d+$`) }).elements().length;
     await render(Library);

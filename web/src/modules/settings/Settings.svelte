@@ -9,6 +9,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Tip from '../../ui/Tip.svelte';
+  import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
   import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
@@ -117,11 +118,9 @@
         </Card>
         <Card cols={2}>
           <h4>Replay buffer</h4>
-          <label class="opt"><span>Keep the last <small class="lab">for Save replay, Ctrl+Alt+R</small></span>
-            <select value={$settings.replaySeconds} onchange={(e) => set({ replaySeconds: Number(e.currentTarget.value) as ReplaySeconds })}>
-              {#each REPLAY_SECONDS as n (n)}<option value={n}>{n ? `${n} s` : 'Off'}</option>{/each}
-            </select>
-          </label>
+          <div class="opt"><span>Keep the last <small class="lab">for Save replay, Ctrl+Alt+R</small></span>
+            <Dropdown value={String($settings.replaySeconds)} options={REPLAY_SECONDS.map((n): [string, string] => [String(n), n ? `${n} s` : 'Off'])} label="Keep the last, replay buffer" onchange={(v) => set({ replaySeconds: Number(v) as ReplaySeconds })} />
+          </div>
           <p class="note">Held in this browser's memory only (at most 160 MB), dropped when the stream disconnects or changes quality. While on, the page asks the host for a key frame every 10 s. Applies from the next connect. Ctrl+Alt+S takes a screenshot.</p>
         </Card>
         <Card cols={2}>
@@ -176,7 +175,6 @@
   .sw[aria-checked='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }
   .opt { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
   .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
-  .opt select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font: inherit; font-size: 13px; }
   .opt input { accent-color: var(--accent); width: 18px; height: 18px; }
   .chips { isolation: isolate; } /* the gliding fill passes under the other chips */
   .fchip { position: relative; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; text-transform: capitalize; transition: color .2s var(--ease); }

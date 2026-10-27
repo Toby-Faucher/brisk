@@ -9,6 +9,7 @@
   import TagChip from './TagChip.svelte';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap, splitIn } from '../../ui/motion';
   import GameDetail from './GameDetail.svelte';
   import Hero from './Hero.svelte';
@@ -142,7 +143,7 @@
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
   {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => pickFilter(id)}>{label}</button>{/each}
-  <select class="sort" bind:value={sort} onchange={fade} aria-label="Sort games">{#each SORTS as [id, label] (id)}<option value={id}>{label}</option>{/each}</select>
+  <span class="sort"><Dropdown bind:value={sort} options={SORTS} label="Sort games" onchange={fade} /></span>
 </div>
 
 {#if smart.length || usedTags.length}
@@ -201,8 +202,7 @@
   .auto { border-style: dashed; }
   .cnt { color: var(--muted); font-size: 12px; }
   .tagf { display: inline-flex; align-items: center; gap: 6px; }
-  .sort { margin-left: auto; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
-  .sort:hover { color: var(--fg); border-color: #3a4152; }
+  .sort { margin-left: auto; }
   .body { padding-top: 16px; }
   .banner { margin-bottom: 14px; padding: 9px 14px; border-radius: 12px; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
   .empty { padding: 48px 0; display: grid; gap: 6px; justify-items: center; text-align: center; }
