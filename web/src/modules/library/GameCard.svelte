@@ -26,8 +26,12 @@
   <button class="g" class:off={!game.installed} aria-haspopup="dialog" onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
-      {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
-      {#if game.updated}<span class="uchip" aria-hidden="true">Updated</span>{/if}
+      {#if saved || game.updated}
+        <div class="chips">
+          {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
+          {#if game.updated}<span class="uchip" aria-hidden="true">Updated</span>{/if}
+        </div>
+      {/if}
       <span class="glow"></span>
       <span class="btn play">Details</span>
     </Cover>
@@ -53,8 +57,9 @@
   .badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   .badge.off i { background: var(--muted); }
   .badge.run i { background: var(--accent); }
-  .pchip { position: absolute; left: 10px; top: 36px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: #000c; backdrop-filter: blur(6px); white-space: nowrap; }
-  .uchip { position: absolute; left: 10px; top: 62px; z-index: 2; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: color-mix(in srgb, var(--accent) 80%, #000); white-space: nowrap; }
+  .chips { position: absolute; left: 10px; top: 36px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .pchip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: #000c; backdrop-filter: blur(6px); white-space: nowrap; }
+  .uchip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: color-mix(in srgb, var(--accent) 80%, #000); white-space: nowrap; }
   .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; background: radial-gradient(80% 60% at 50% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%); pointer-events: none; z-index: 1; }
   .play { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(12px); opacity: 0; transition: all .35s var(--ease); z-index: 3; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }
   .g:hover .glow, .g:hover .play, .g:focus-visible .glow, .g:focus-visible .play { opacity: 1; }

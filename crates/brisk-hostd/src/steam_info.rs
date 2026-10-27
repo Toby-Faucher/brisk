@@ -330,6 +330,7 @@ async fn fetch_news(cfg: &Config, appid: u32) -> Result<News, String> {
             date: n["date"].as_u64().unwrap_or(0),
             patch: n["feedname"] == "steam_community_announcements",
         })
+        .filter(|i| !i.title.is_empty()) // an empty title would be a link with no name
         .collect();
     Ok(News { items })
 }
@@ -338,7 +339,7 @@ async fn fetch_news(cfg: &Config, appid: u32) -> Result<News, String> {
 pub fn is_updated(news: &News, last_played: u64, now: u64) -> bool {
     last_played > 0
         && news.items.iter().any(|i| {
-            i.patch && i.date > last_played && now.saturating_sub(i.date) <= UPDATED_WINDOW_S
+            i.patch && i.date > last_played && i.date <= now && now - i.date <= UPDATED_WINDOW_S
         })
 }
 

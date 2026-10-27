@@ -29,6 +29,15 @@ beforeEach(() => {
 });
 
 describe('GameDetail', () => {
+  it('renders news items that share date and title', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const it = { title: 'Same', url: 'https://n.example.test/a', date: 5, patch: true };
+    vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [it, { ...it }] });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByRole('link', { name: 'Same' }).first()).toBeInTheDocument();
+    expect(page.getByRole('link', { name: 'Same' }).elements()).toHaveLength(2);
+  });
+
   it('links only https news URLs', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'gameNews').mockResolvedValue({

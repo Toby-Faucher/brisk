@@ -332,6 +332,41 @@ fn news_old_patch_not_updated() {
     assert!(!is_updated(&n, 1700000500, 1700001000 + 30 * day + 1));
 }
 
+#[test]
+fn news_future_equal_and_empty_are_not_updates() {
+    use brisk_hostd::steam_info::is_updated;
+    // bogus future date, date == last played, no items
+    assert!(!is_updated(
+        &news_of(&[(1700003000, true)]),
+        1700000500,
+        1700002000
+    ));
+    assert!(!is_updated(
+        &news_of(&[(1700000500, true)]),
+        1700000500,
+        1700002000
+    ));
+    assert!(!is_updated(&news_of(&[]), 1700000500, 1700002000));
+}
+
+#[tokio::test]
+async fn news_empty_titles_are_dropped() {
+    let body = r#"{"appnews":{"newsitems":[
+{"title":"","url":"https://n.example.test/a","feedname":"x","date":1},
+{"title":"<br/>","url":"https://n.example.test/b","feedname":"x","date":2},
+{"url":"https://n.example.test/c","feedname":"x","date":3},
+{"title":"Kept","url":"https://n.example.test/d","feedname":"x","date":4}]}}"#;
+    let api = mock_steam(vec![
+        ("/IPlayerService/GetOwnedGames/", 200, owned()),
+        ("/ISteamNews/", 200, body.into()),
+    ])
+    .await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (_, v) = get_json(&s.cfg, "/api/games/620/news").await;
+    assert_eq!(v["items"].as_array().unwrap().len(), 1);
+    assert_eq!(v["items"][0]["title"], "Kept");
+}
+
 #[tokio::test]
 async fn news_non_https_url_is_dropped() {
     let api = mock_steam(vec![

@@ -135,7 +135,7 @@
         <section class="sec">
           <h3>Latest news</h3>
           <ul class="news">
-            {#each news.items as n (n.date + n.title)}
+            {#each news.items as n, i (i)}
               <li>{#if n.url.startsWith('https://')}<a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>{:else}{n.title}{/if}{#if n.patch} <small>patch</small>{/if}</li>
             {/each}
           </ul>
