@@ -1,8 +1,9 @@
 <script lang="ts">
   // Your note and tags for one game, in the detail panel. The note saves 800 ms after you stop typing, on blur and
-  // when the panel closes; a failed save keeps the text and tries again on the next edit or on focus.
+  // when the panel closes; a failed save keeps the text and tries again on the next edit or on focus. Nothing can be
+  // edited until the notes have loaded, so a save never replaces a note or tags it has not seen.
   import { onMount } from 'svelte';
-  import { gameNoteSaver as saver, gameTags, notes } from '../../state/notes';
+  import { gameNoteSaver as saver, gameTags, notes, notesLoaded, refreshNotes } from '../../state/notes';
   import TagChip from './TagChip.svelte';
   import TagEditor from './TagEditor.svelte';
 
@@ -31,8 +32,8 @@
   }
 
   onMount(() => {
-    if ($status === 'saved') status.set('idle'); // that was another game, or an earlier visit
-    const retry = () => void saver.retry();
+    const retry = () => void (saver.retry(), $notesLoaded !== true && refreshNotes());
+    if ($notesLoaded !== true) void refreshNotes();
     const flush = () => void saver.flush();
     addEventListener('focus', retry);
     addEventListener('pagehide', flush);
@@ -43,13 +44,27 @@
     };
   });
 
-  const STATUS = { idle: '', saving: 'Saving…', saved: 'Saved', failed: 'Not saved, will retry' };
+  const off = $derived($notesLoaded !== true);
+  const mine = $derived($status[appid]);
+  const line = $derived(
+    $notesLoaded === false ? 'Loading notes…'
+    : $notesLoaded === 'failed' ? 'Could not load notes, retrying'
+    : mine?.st === 'saving' ? 'Saving…'
+    : mine?.st === 'saved' ? 'Saved'
+    : mine?.st === 'failed' ? 'Not saved, will retry'
+    : mine?.st === 'refused' ? `Not saved: ${mine.msg}`
+    : '',
+  );
+  let addBtn: HTMLButtonElement | undefined = $state();
+  let box: HTMLTextAreaElement | undefined = $state();
 </script>
 
 <section class="gn">
   <h3>Notes</h3>
   <textarea
     bind:value={draft}
+    bind:this={box}
+    disabled={off}
     aria-label="Note for {name}"
     placeholder="Anything to remember about this game"
     maxlength={4000}
@@ -58,17 +73,17 @@
     onblur={() => void saver.flush()}
     onfocus={() => void saver.retry()}
   ></textarea>
-  <p class="st lab" aria-live="polite">{STATUS[$status]}</p>
+  <p class="st lab" aria-live="polite">{line}</p>
 
   <ul class="tags" aria-label="Tags">
     {#each tags as t (t.id)}
       <li>
-        <button class="tb" aria-label="Edit tag {t.name}" onclick={() => (editing = t.id)}><TagChip name={t.name} color={t.color} symbol={t.symbol} /></button>
-        <button class="x" aria-label="Remove tag {t.name}" onclick={() => setTags(ids().filter((i) => i !== t.id))}>×</button>
+        <button class="tb" aria-label="Edit tag {t.name}" disabled={off} onclick={() => (editing = t.id)}><TagChip name={t.name} color={t.color} symbol={t.symbol} /></button>
+        <button class="x" aria-label="Remove tag {t.name}" disabled={off} onclick={() => setTags(ids().filter((i) => i !== t.id))}>×</button>
       </li>
     {/each}
     {#if tags.length < 16}
-      <li><button class="btn ghost add" aria-label="Add a tag" aria-expanded={picking} onclick={() => (picking = !picking)}>+ Tag</button></li>
+      <li><button class="btn ghost add" bind:this={addBtn} aria-label="Add a tag" aria-expanded={picking} disabled={off} onclick={() => (picking = !picking)}>+ Tag</button></li>
     {/if}
   </ul>
   {#if picking}
@@ -85,7 +100,7 @@
 </section>
 
 {#if editing !== undefined}
-  <TagEditor id={editing} onclose={() => (editing = undefined)} onsaved={(id) => editing === null && setTags([...ids(), id])} />
+  <TagEditor id={editing} onclose={() => (editing = undefined)} onsaved={(id) => editing === null && setTags([...ids(), id])} ondeleted={() => (addBtn ?? box)?.focus()} />
 {/if}
 
 <style>

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { Game } from './api';
-import { gameTags, newTagId, noteSaver, notes, TAG_COLORS, TAG_SYMBOLS, type GameNote, type Notes } from './notes';
+import { api, ApiError, type Game } from './api';
+import { gameTags, newTagId, noteSaver, notes, notesLoaded, refreshNotes, TAG_COLORS, TAG_SYMBOLS, type GameNote, type Notes } from './notes';
 import { filterByTag } from '../modules/library/library';
 
 afterEach(() => {
@@ -37,29 +37,32 @@ describe('notes helpers', () => {
 });
 
 describe('noteSaver', () => {
+  const echo = async (_id: number, b: GameNote) => ({ note: b.note, tags: b.tags });
   const rig = (fail = false) => {
-    const put = vi.fn(async (_id: number, b: GameNote) => {
+    const put = vi.fn(async (id: number, b: GameNote) => {
       if (fail) throw new Error('offline');
-      return { note: b.note.trimEnd(), tags: b.tags };
+      return echo(id, b);
     });
     return { put, s: noteSaver({ put, delay: 800 }) };
   };
+  const st = (s: ReturnType<typeof noteSaver>, id: number) => get(s.status)[id]?.st;
 
   it('three edits inside 800 ms send one PUT, then show saved', async () => {
     vi.useFakeTimers();
-    const { put, s } = rig();
+    const put = vi.fn(async (_id: number, b: GameNote) => ({ note: b.note + '!', tags: b.tags }));
+    const s = noteSaver({ put, delay: 800 });
     s.save(5, { note: 'a', tags: [] });
     await vi.advanceTimersByTimeAsync(300);
     s.save(5, { note: 'ab', tags: [] });
     await vi.advanceTimersByTimeAsync(300);
-    s.save(5, { note: 'abc ', tags: [] });
-    expect(get(notes).games['5'].note).toBe('abc '); // optimistic
+    s.save(5, { note: 'abc', tags: [] });
+    expect(get(notes).games['5'].note).toBe('abc'); // optimistic
     await vi.advanceTimersByTimeAsync(799);
     expect(put).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(put).toHaveBeenCalledExactlyOnceWith(5, { note: 'abc ', tags: [] });
-    await vi.waitFor(() => expect(get(s.status)).toBe('saved'));
-    expect(get(notes).games['5'].note).toBe('abc'); // reconciled with the answer
+    expect(put).toHaveBeenCalledExactlyOnceWith(5, { note: 'abc', tags: [] });
+    await vi.waitFor(() => expect(st(s, 5)).toBe('saved'));
+    expect(get(notes).games['5'].note).toBe('abc!'); // reconciled with the answer
   });
 
   it('a failed PUT keeps the draft and retries on the next edit or on focus', async () => {
@@ -67,7 +70,7 @@ describe('noteSaver', () => {
     const { put, s } = rig(true);
     s.save(5, { note: 'draft', tags: [] });
     await vi.advanceTimersByTimeAsync(800);
-    await vi.waitFor(() => expect(get(s.status)).toBe('failed'));
+    await vi.waitFor(() => expect(st(s, 5)).toBe('failed'));
     expect(get(notes).games['5'].note).toBe('draft');
     // focus: the same draft again
     await s.retry();
@@ -79,11 +82,61 @@ describe('noteSaver', () => {
     expect(put).toHaveBeenCalledTimes(3);
     expect(put.mock.calls[2]).toEqual([5, { note: 'draft 2', tags: [] }]);
     // works again: saved, nothing left to retry
-    put.mockImplementation(async (_id, b) => b);
+    put.mockImplementation(echo);
     await s.retry();
-    expect(get(s.status)).toBe('saved');
+    expect(st(s, 5)).toBe('saved');
     await s.retry();
     expect(put).toHaveBeenCalledTimes(4);
+  });
+
+  it('a game that failed twice is not lost when you edit another game', async () => {
+    const { put, s } = rig(true);
+    s.save(1, { note: 'A', tags: [] });
+    await s.flush(); // A fails
+    s.save(2, { note: 'B', tags: [] });
+    await s.flush(); // A and B both fail
+    expect(st(s, 1)).toBe('failed');
+    expect(st(s, 2)).toBe('failed');
+    put.mockImplementation(echo);
+    await s.retry();
+    const sent = put.mock.calls.slice(-2);
+    expect(sent).toEqual(expect.arrayContaining([[1, { note: 'A', tags: [] }], [2, { note: 'B', tags: [] }]]));
+    expect(st(s, 1)).toBe('saved');
+    expect(st(s, 2)).toBe('saved');
+    expect(get(notes).games['1'].note).toBe('A');
+  });
+
+  it('an answer to an older PUT does not overwrite newer text or say saved', async () => {
+    let first!: (v: GameNote) => void;
+    const put = vi.fn((_id: number, b: GameNote) => (put.mock.calls.length === 1 ? new Promise<GameNote>((r) => (first = r)) : echo(_id, b)));
+    const s = noteSaver({ put, delay: 800 });
+    s.save(5, { note: 'one', tags: [] });
+    void s.flush(); // request 1 in flight
+    await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    s.save(5, { note: 'one two', tags: [] });
+    const second = s.flush(); // request 2 waits behind request 1
+    first({ note: 'one', tags: [] });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(get(notes).games['5'].note).toBe('one two');
+    expect(st(s, 5)).not.toBe('saved');
+    await second;
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(get(notes).games['5'].note).toBe('one two');
+    expect(st(s, 5)).toBe('saved');
+  });
+
+  it('a refused PUT (400/409) is not retried on focus and says why', async () => {
+    const put = vi.fn(async () => {
+      throw new ApiError('too many notes or tags', 409);
+    });
+    const s = noteSaver({ put, delay: 800 });
+    s.save(9, { note: 'x', tags: [] });
+    await s.flush();
+    expect(get(s.status)[9]).toEqual({ st: 'refused', msg: 'too many notes or tags' });
+    await s.retry();
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(get(notes).games['9'].note).toBe('x'); // the text stays
   });
 
   it('flush sends a pending change at once', async () => {
@@ -93,11 +146,24 @@ describe('noteSaver', () => {
     expect(put).toHaveBeenCalledExactlyOnceWith(7, { note: 'x', tags: [] });
   });
 
-  it('an empty answer removes the game from the store', async () => {
+  it('a blank answer removes the game from the store', async () => {
     notes.set({ tags: {}, games: { '7': { note: 'old', tags: [] } } });
     const { s } = rig();
     s.save(7, { note: '  ', tags: [] });
     await s.flush();
     expect(get(notes).games['7']).toBeUndefined();
+  });
+});
+
+describe('refreshNotes', () => {
+  it('marks the notes loaded only after a GET works', async () => {
+    const spy = vi.spyOn(api, 'notes').mockRejectedValueOnce(new Error('down'));
+    await refreshNotes();
+    expect(get(notesLoaded)).toBe('failed');
+    spy.mockResolvedValueOnce({ tags: {}, games: { '3': { note: 'n', tags: [] } } });
+    await refreshNotes();
+    expect(get(notesLoaded)).toBe(true);
+    expect(get(notes).games['3'].note).toBe('n');
+    spy.mockRestore();
   });
 });

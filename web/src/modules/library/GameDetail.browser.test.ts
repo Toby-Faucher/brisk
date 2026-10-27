@@ -27,6 +27,7 @@ beforeEach(() => {
   vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
   vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
   vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: [], saves: null });
+  vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: {} });
 });
 
 const local: GameLocal = { screenshots: ['b.png', 'a.jpg'], saves: { files: 14, bytes: 2_100_000, modified: Math.floor(Date.now() / 1000) - 3 * 86_400 } };

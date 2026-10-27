@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { api } from './api';
+import { api, ApiError } from './api';
 
 /** The colors hostd accepts (notes.rs COLORS). */
 export type TagColor = 'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink';
@@ -63,16 +63,20 @@ const unsaved = new Map<number, GameNote>();
 let fetchedAt = -Infinity;
 let inflight: Promise<void> | null = null;
 
+/** true once a GET worked; 'failed' while the first one has not. Editing waits for it, so a save never wipes notes it never saw. */
+export const notesLoaded = writable<boolean | 'failed'>(false);
+
 export function refreshNotes(): Promise<void> {
   return (inflight ??= api
     .notes()
     .catch(() => null)
     .then((r) => {
-      if (!r) return; // retried on the next focus
+      if (!r) return void notesLoaded.update((l) => l || 'failed'); // retried on the next focus
       fetchedAt = Date.now();
       let n: Notes = { tags: r.tags ?? {}, games: r.games ?? {} };
       for (const [id, g] of unsaved) n = withGame(n, id, g);
       notes.set(n);
+      notesLoaded.set(true);
     })
     .finally(() => (inflight = null)));
 }
@@ -89,56 +93,67 @@ export function watchNotes(win: EventTarget = window): () => void {
 }
 
 export const NOTE_SAVE_MS = 800;
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
+/** Per game; no entry means nothing to report. `refused`: hostd said no (400/409/413), `msg` says why; not retried. */
+export type SaveState = { st: 'saving' | 'saved' | 'failed' | 'refused'; msg?: string };
 
 /**
- * Debounced save of one game's note and tags. The store updates at once and takes hostd's answer when it comes.
- * A failed PUT keeps the change: the next `save` or a `retry` (on focus) sends it again. PUTs go one at a time, in order.
+ * Debounced save of games' notes and tags. The store updates at once and takes hostd's answer when it is the answer to
+ * the latest change. A failed PUT keeps its change for the next `save` or `retry` (on focus); a refused one is not
+ * retried. Every game with a change is kept; PUTs go one at a time, in order.
  */
 export function noteSaver(d: { put?: (appid: number, b: GameNote) => Promise<GameNote>; delay?: number } = {}) {
   const put = d.put ?? ((a: number, b: GameNote) => api.putGameNote(a, b));
-  const status = writable<SaveStatus>('idle');
-  let pending: { appid: number; body: GameNote } | null = null;
+  const status = writable<Record<number, SaveState>>({});
+  const set = (appid: number, s: SaveState | null) =>
+    status.update((m) => {
+      const { [appid]: _, ...rest } = m;
+      return s ? { ...rest, [appid]: s } : rest;
+    });
+  const pending = new Map<number, GameNote>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let chain: Promise<void> = Promise.resolve();
 
+  const send = (appid: number, body: GameNote) =>
+    put(appid, body).then(
+      (r) => {
+        if (unsaved.get(appid) !== body) return; // a newer change exists; its answer reconciles
+        unsaved.delete(appid);
+        notes.update((n) => withGame(n, appid, r));
+        set(appid, { st: 'saved' });
+      },
+      (e) => {
+        if (unsaved.get(appid) !== body) return;
+        if (e instanceof ApiError && [400, 409, 413].includes(e.status)) return set(appid, { st: 'refused', msg: e.message });
+        pending.set(appid, body);
+        set(appid, { st: 'failed' });
+      },
+    );
+
   const flush = (): Promise<void> => {
     clearTimeout(timer);
-    const p = pending;
-    if (!p) return chain;
-    pending = null;
-    status.set('saving');
-    chain = chain.then(() =>
-      put(p.appid, p.body).then(
-        (r) => {
-          if (pending?.appid === p.appid) return; // a newer change is waiting; its answer will reconcile
-          if (unsaved.get(p.appid) === p.body) unsaved.delete(p.appid);
-          notes.update((n) => withGame(n, p.appid, r));
-          if (!pending) status.set('saved');
-        },
-        () => {
-          pending ??= p;
-          status.set('failed');
-        },
-      ),
-    );
+    if (!pending.size) return chain;
+    const batch = [...pending];
+    pending.clear();
+    for (const [appid] of batch) set(appid, { st: 'saving' });
+    chain = chain.then(async () => {
+      for (const [appid, body] of batch) await send(appid, body);
+    });
     return chain;
   };
 
   return {
     status,
     save(appid: number, body: GameNote) {
-      if (pending && pending.appid !== appid) void flush();
-      pending = { appid, body };
+      pending.set(appid, body);
       unsaved.set(appid, body);
       notes.update((n) => withGame(n, appid, body));
-      status.set('idle');
+      set(appid, null);
       clearTimeout(timer);
       timer = setTimeout(flush, d.delay ?? NOTE_SAVE_MS);
     },
     flush,
-    /** Send a change that failed (or is waiting) now; nothing to send is a no-op. */
-    retry: () => (pending ? flush() : chain),
+    /** Send the changes that failed (or are waiting) now; nothing to send is a no-op. */
+    retry: () => (pending.size ? flush() : chain),
   };
 }
 

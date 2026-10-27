@@ -1,16 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { api } from '../../state/api';
-import { notes, type GameNote, type Tag } from '../../state/notes';
+import { api, ApiError } from '../../state/api';
+import { gameNoteSaver, notes, notesLoaded, type GameNote, type Tag } from '../../state/notes';
 import GameNotes from './GameNotes.svelte';
 
 const coop: Tag = { name: 'Co-op night', color: 'teal', symbol: 'users', note: 'Needs 4 controllers' };
 const echo = () => vi.spyOn(api, 'putGameNote').mockImplementation(async (_id: number, b: GameNote) => ({ note: b.note.trimEnd(), tags: b.tags }));
 
-afterEach(() => {
+beforeEach(() => notesLoaded.set(true));
+afterEach(async () => {
+  // nothing pending carries over to the next test
+  vi.spyOn(api, 'putGameNote').mockImplementation(async (_id: number, b: GameNote) => b);
+  await gameNoteSaver.retry();
   vi.restoreAllMocks();
   notes.set({ tags: {}, games: {} });
+  gameNoteSaver.status.set({});
 });
 
 describe('GameNotes', () => {
@@ -71,6 +76,7 @@ describe('GameNotes', () => {
     await userEvent.click(page.getByRole('button', { name: 'Delete', exact: true }));
     expect(del).toHaveBeenCalledExactlyOnceWith('coop');
     await expect.element(page.getByRole('button', { name: 'Edit tag Co-op night' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Add a tag' })).toHaveFocus();
   });
 
   it('notes render as text, never as HTML', async () => {
@@ -80,5 +86,47 @@ describe('GameNotes', () => {
     await expect.element(page.getByRole('textbox', { name: 'Note for Portal 2' })).toHaveValue(evil);
     await expect.element(page.getByText(evil)).toBeInTheDocument();
     expect(document.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('waits for the notes to load: nothing to edit and no PUT before that', async () => {
+    notesLoaded.set(false);
+    let answer!: (n: { tags: Record<string, Tag>; games: Record<string, GameNote> }) => void;
+    vi.spyOn(api, 'notes').mockReturnValue(new Promise((r) => (answer = r)));
+    const put = echo();
+    await render(GameNotes, { props: { appid: 620, name: 'Portal 2' } });
+    const box = page.getByRole('textbox', { name: 'Note for Portal 2' });
+    await expect.element(box).toBeDisabled();
+    await expect.element(page.getByRole('button', { name: 'Add a tag' })).toBeDisabled();
+    await expect.element(page.getByText('Loading notes…')).toBeInTheDocument();
+    answer({ tags: { coop }, games: { '620': { note: 'From hostd', tags: ['coop'] } } });
+    await expect.element(box).toBeEnabled();
+    await expect.element(box).toHaveValue('From hostd');
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('says when the notes could not load', async () => {
+    notesLoaded.set(false);
+    vi.spyOn(api, 'notes').mockRejectedValue(new Error('down'));
+    await render(GameNotes, { props: { appid: 620, name: 'Portal 2' } });
+    await expect.element(page.getByText('Could not load notes, retrying')).toBeInTheDocument();
+    await expect.element(page.getByRole('textbox', { name: 'Note for Portal 2' })).toBeDisabled();
+  });
+
+  it('a refused save says why and is not retried on focus', async () => {
+    const put = vi.spyOn(api, 'putGameNote').mockRejectedValue(new ApiError('too many notes or tags', 409));
+    await render(GameNotes, { props: { appid: 620, name: 'Portal 2' } });
+    await userEvent.type(page.getByRole('textbox', { name: 'Note for Portal 2' }), 'x');
+    await userEvent.click(document.body);
+    await expect.element(page.getByText('Not saved: too many notes or tags')).toBeInTheDocument();
+    window.dispatchEvent(new Event('focus'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no save status of another game', async () => {
+    gameNoteSaver.status.set({ 400: { st: 'failed' } });
+    await render(GameNotes, { props: { appid: 620, name: 'Portal 2' } });
+    await expect.element(page.getByRole('textbox', { name: 'Note for Portal 2' })).toBeInTheDocument();
+    expect(page.getByText(/Not saved/).elements()).toHaveLength(0);
   });
 });

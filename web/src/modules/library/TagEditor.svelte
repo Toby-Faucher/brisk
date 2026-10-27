@@ -6,8 +6,8 @@
   import { toast } from '../../shell/Toasts.svelte';
   import TagChip from './TagChip.svelte';
 
-  /** `id` null: a new tag. `onsaved` gets the id once hostd has stored it. */
-  let { id, onclose, onsaved }: { id: string | null; onclose: () => void; onsaved?: (id: string) => void } = $props();
+  /** `id` null: a new tag. `onsaved` gets the id once hostd has stored it; `ondeleted` places focus (the trigger is gone). */
+  let { id, onclose, onsaved, ondeleted }: { id: string | null; onclose: () => void; onsaved?: (id: string) => void; ondeleted?: () => void } = $props();
 
   const COLORS = Object.keys(TAG_COLORS) as TagColor[];
   // the form starts from the tag as it is when the editor opens
@@ -20,6 +20,8 @@
   let open = $state(true);
   let confirming = $state(false);
   let busy = $state(false);
+  let deleted = false;
+  const keepFocus = (e: Event) => deleted && e.preventDefault(); // ondeleted places it once the editor is gone
   const uses = $derived(id ? tagUses($notes, id) : 0);
 
   /** Arrow keys move the choice in a radio group (roving tabindex), as Settings' accent swatches do. */
@@ -55,6 +57,7 @@
     try {
       await api.deleteTag(id);
       notes.update((n) => withoutTag(n, id));
+      deleted = true;
       confirming = false;
       open = false;
     } catch (err) {
@@ -65,10 +68,10 @@
   }
 </script>
 
-<Dialog.Root bind:open onOpenChangeComplete={(o) => !o && onclose()}>
+<Dialog.Root bind:open onOpenChangeComplete={(o) => !o && (onclose(), deleted && ondeleted?.())}>
   <Dialog.Portal>
     <Dialog.Overlay class="cm-dim te-dim" />
-    <Dialog.Content class="rs glass te">
+    <Dialog.Content class="rs glass te" onCloseAutoFocus={keepFocus}>
       <Dialog.Title class="rs-t">{id ? 'Edit tag' : 'New tag'}</Dialog.Title>
       <form onsubmit={save}>
         <label class="f">Name <input bind:value={name} maxlength={24} required autocomplete="off" /></label>
@@ -83,8 +86,8 @@
         <div class="f">
           <span id="te-s">Symbol</span>
           <div class="row" role="radiogroup" aria-labelledby="te-s">
-            {#each TAG_SYMBOLS as s (s)}
-              <button type="button" class="sy" data-v={s} role="radio" aria-checked={symbol === s} aria-label={s} tabindex={symbol === s ? 0 : -1} onkeydown={(e) => arrow(e, TAG_SYMBOLS, symbol, (v) => (symbol = v))} onclick={() => (symbol = s)}><TagChip {color} symbol={s} bare size={16} /></button>
+            {#each TAG_SYMBOLS as s, i (s)}
+              <button type="button" class="sy" data-v={s} role="radio" aria-checked={symbol === s} aria-label={s} tabindex={symbol === s || (i === 0 && !TAG_SYMBOLS.includes(symbol)) ? 0 : -1} onkeydown={(e) => arrow(e, TAG_SYMBOLS, symbol, (v) => (symbol = v))} onclick={() => (symbol = s)}><TagChip {color} symbol={s} bare size={16} /></button>
             {/each}
           </div>
         </div>
@@ -103,7 +106,7 @@
 <Dialog.Root bind:open={confirming}>
   <Dialog.Portal>
     <Dialog.Overlay class="cm-dim te-dim2" />
-    <Dialog.Content class="rs glass te2">
+    <Dialog.Content class="rs glass te2" onCloseAutoFocus={keepFocus}>
       <Dialog.Title class="rs-t">Delete tag {name.trim() || start.name}?</Dialog.Title>
       <Dialog.Description class="lab">{uses === 0 ? 'No game uses it.' : `It is on ${uses} ${uses === 1 ? 'game' : 'games'}. Their notes stay.`}</Dialog.Description>
       <div class="rs-a">
