@@ -21,6 +21,9 @@ pub struct Game {
     /// Minutes played in the last two weeks (Steam leaves the field out when 0).
     pub playtime2wk_min: u64,
     pub cover: String,
+    /// Wide library art (404s for some games: the UI falls back) and the title logo.
+    pub hero: String,
+    pub logo: String,
     /// Steam is running it now (its launcher reaper is alive).
     pub running: bool,
 }
@@ -422,8 +425,8 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let (owned, owned_available) = owned(cfg, refresh).await;
 
     let mut by_id: HashMap<u32, Game> = HashMap::new();
-    let cover =
-        |id| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/library_600x900.jpg");
+    let art =
+        |id, file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
     for o in owned {
         by_id.insert(
             o.appid,
@@ -435,7 +438,9 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 last_played: (o.rtime_last_played > 0).then_some(o.rtime_last_played),
                 playtime_min: o.playtime_forever,
                 playtime2wk_min: o.playtime_2weeks,
-                cover: cover(o.appid),
+                cover: art(o.appid, "library_600x900.jpg"),
+                hero: art(o.appid, "library_hero.jpg"),
+                logo: art(o.appid, "logo.png"),
                 running: false,
             },
         );
@@ -466,7 +471,9 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             last_played: None,
             playtime_min: 0,
             playtime2wk_min: 0,
-            cover: cover(i.appid),
+            cover: art(i.appid, "library_600x900.jpg"),
+            hero: art(i.appid, "library_hero.jpg"),
+            logo: art(i.appid, "logo.png"),
             running: false,
         });
         g.installed = i.state_flags & 4 != 0;

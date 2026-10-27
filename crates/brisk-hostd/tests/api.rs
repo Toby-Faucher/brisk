@@ -257,6 +257,21 @@ async fn partial_install_is_not_installed() {
 }
 
 #[tokio::test]
+async fn games_have_art_urls() {
+    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    let g = find(&v, 620);
+    assert_eq!(
+        g["hero"],
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/620/library_hero.jpg"
+    );
+    assert_eq!(
+        g["logo"],
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/620/logo.png"
+    );
+}
+
+#[tokio::test]
 async fn games_have_fortnight_minutes() {
     let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
@@ -552,6 +567,8 @@ fn rig_with(mode: &str, service: bool) -> Rig {
             playtime_min: 0,
             playtime2wk_min: 0,
             cover: String::new(),
+            hero: String::new(),
+            logo: String::new(),
             running: false,
         }],
         owned_available: true,

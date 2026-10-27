@@ -9,6 +9,8 @@ export type Game = {
   /** minutes played in the last two weeks */
   playtime2wkMin: number;
   cover: string;
+  hero: string;
+  logo: string;
   /** Steam is running it on the host now: Play streams it without relaunching. */
   running: boolean;
 };

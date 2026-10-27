@@ -209,6 +209,8 @@ fn game(appid: u32, name: &str) -> Game {
         playtime_min: 0,
         playtime2wk_min: 0,
         cover: String::new(),
+        hero: String::new(),
+        logo: String::new(),
         running: false,
     }
 }
