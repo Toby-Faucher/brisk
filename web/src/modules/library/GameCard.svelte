@@ -6,14 +6,14 @@
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
-  import { badgeLabel, fmtSize, installLabel, playLabel } from './library';
+  import { badgeLabel, fmtFortnight, fmtSize, installLabel, playLabel } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
-  let { game, busy = false, selected = false, onpick, oninstall }: { game: Game; busy?: boolean; selected?: boolean; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
+  let { game, busy = false, selected = false, onpick, oninstall, showFortnight = false }: { showFortnight?: boolean; game: Game; busy?: boolean; selected?: boolean; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
   const saved = $derived($prefs[game.appid]);
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');
-  const sub = $derived(game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
+  const sub = $derived(showFortnight && game.playtime2wkMin > 0 ? fmtFortnight(game.playtime2wkMin) : game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
   const label = $derived(
     (game.installed ? (game.running ? `Resume ${game.name}, running on the host` : `Play ${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`) +
       (saved ? `, saved quality ${prefsChip(saved)}` : ''),

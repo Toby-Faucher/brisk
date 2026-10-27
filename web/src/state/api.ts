@@ -6,6 +6,8 @@ export type Game = {
   sizeBytes: number | null;
   lastPlayed: number | null /* unix s */;
   playtimeMin: number;
+  /** minutes played in the last two weeks */
+  playtime2wkMin: number;
   cover: string;
   /** Steam is running it on the host now: Play streams it without relaunching. */
   running: boolean;

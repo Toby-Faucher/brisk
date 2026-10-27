@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import type { Game } from './api';
 import { quitFlow, quitItems, type QuitState } from './quit';
 
-const g = (appid: number, name: string, running: boolean): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', running });
+const g = (appid: number, name: string, running: boolean): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', running });
 
 function rig(answers: (QuitState | Error)[]) {
   const calls: [number, boolean][] = [];

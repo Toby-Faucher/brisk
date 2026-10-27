@@ -207,6 +207,7 @@ fn game(appid: u32, name: &str) -> Game {
         size_bytes: None,
         last_played: None,
         playtime_min: 0,
+        playtime2wk_min: 0,
         cover: String::new(),
         running: false,
     }

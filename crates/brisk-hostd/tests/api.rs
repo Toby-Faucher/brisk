@@ -257,6 +257,14 @@ async fn partial_install_is_not_installed() {
 }
 
 #[tokio::test]
+async fn games_have_fortnight_minutes() {
+    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    assert_eq!(find(&v, 620)["playtime2wkMin"], 192u64);
+    assert_eq!(find(&v, 220)["playtime2wkMin"], 0u64);
+}
+
+#[tokio::test]
 async fn owned_games_merged_with_installed() {
     let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
@@ -542,6 +550,7 @@ fn rig_with(mode: &str, service: bool) -> Rig {
             size_bytes: None,
             last_played: None,
             playtime_min: 0,
+            playtime2wk_min: 0,
             cover: String::new(),
             running: false,
         }],

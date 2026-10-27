@@ -18,6 +18,8 @@ pub struct Game {
     pub size_bytes: Option<u64>,
     pub last_played: Option<u64>,
     pub playtime_min: u64,
+    /// Minutes played in the last two weeks (Steam leaves the field out when 0).
+    pub playtime2wk_min: u64,
     pub cover: String,
     /// Steam is running it now (its launcher reaper is alive).
     pub running: bool,
@@ -210,6 +212,8 @@ struct Owned {
     appid: u32,
     name: String,
     playtime_forever: u64,
+    #[serde(default)]
+    playtime_2weeks: u64,
     #[serde(default)]
     rtime_last_played: u64,
 }
@@ -430,6 +434,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 size_bytes: None,
                 last_played: (o.rtime_last_played > 0).then_some(o.rtime_last_played),
                 playtime_min: o.playtime_forever,
+                playtime2wk_min: o.playtime_2weeks,
                 cover: cover(o.appid),
                 running: false,
             },
@@ -460,6 +465,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             size_bytes: None,
             last_played: None,
             playtime_min: 0,
+            playtime2wk_min: 0,
             cover: cover(i.appid),
             running: false,
         });

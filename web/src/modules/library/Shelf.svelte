@@ -4,7 +4,7 @@
   import Icon from '../../ui/Icon.svelte';
   import { visibleRange, wheelToX } from './library';
 
-  let { title, games, busy, selected, onpick, oninstall }: { title: string; games: Game[]; busy: number | null; selected: number | null; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
+  let { title, games, busy, selected, onpick, oninstall, showFortnight = false }: { showFortnight?: boolean; title: string; games: Game[]; busy: number | null; selected: number | null; onpick: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
   const CARD = 138;
   const GAP = 14;
@@ -62,7 +62,7 @@
   </h4>
   {#if grid}
     <div class="grid">
-      {#each games.slice(0, shown) as g (g.appid)}<GameCard game={g} busy={busy === g.appid} selected={selected === g.appid} {onpick} {oninstall} />{/each}
+      {#each games.slice(0, shown) as g (g.appid)}<GameCard game={g} busy={busy === g.appid} selected={selected === g.appid} {onpick} {oninstall} {showFortnight} />{/each}
     </div>
     {#if shown < games.length}<button class="btn ghost page" onclick={() => (shown += PAGE)}>Show {Math.min(PAGE, games.length - shown)} more</button>{/if}
   {:else}
@@ -70,7 +70,7 @@
     <div class="row" {@attach track}>
       <div class="track" style:width="{full}px" style:padding-left="{r.start * (CARD + GAP)}px">
         {#each games.slice(r.start, r.end) as g, i (g.appid)}
-          <div class="slot" class:enter={r.start === 0 && i < 8}><GameCard game={g} busy={busy === g.appid} selected={selected === g.appid} {onpick} {oninstall} /></div>
+          <div class="slot" class:enter={r.start === 0 && i < 8}><GameCard game={g} busy={busy === g.appid} selected={selected === g.appid} {onpick} {oninstall} {showFortnight} /></div>
         {/each}
       </div>
     </div>

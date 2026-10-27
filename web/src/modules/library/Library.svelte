@@ -142,6 +142,7 @@
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
     {#if hero}<Hero game={hero} busy={busy === hero.appid} onpick={pick} titleIn={titleIn} />{/if}
+    {#if s.fortnight.length && !q.trim() && f === 'all'}<Shelf title="Played this fortnight" games={s.fortnight} {busy} {selected} onpick={pick} oninstall={install} showFortnight />{/if}
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} {busy} {selected} onpick={pick} oninstall={install} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}

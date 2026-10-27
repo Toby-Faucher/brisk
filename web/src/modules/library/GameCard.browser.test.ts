@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 
-const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, cover: '', running: false };
+const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', running: false };
 
 describe('GameCard (not installed)', () => {
   it('one click selects it and never installs; the explicit Install button does', async () => {

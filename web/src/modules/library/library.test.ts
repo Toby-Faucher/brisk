@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterGames, installLabel, playLabel, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterGames, fmtFortnight, installLabel, playLabel, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, cover: '', running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', running: false, ...o });
 
 describe('library', () => {
   it('sortGames_orders_and_default_keeps_input', () => {
@@ -50,8 +50,18 @@ describe('library', () => {
     expect(s.notInstalled.map((x) => x.appid)).toEqual([2]);
   });
 
+  it('shelves_fortnight_orders_most_first', () => {
+    const list = [g(730, 'cs', { playtime2wkMin: 30 }), g(220, 'hl'), g(620, 'p2', { playtime2wkMin: 192 })];
+    expect(shelves(list).fortnight.map((x) => x.appid)).toEqual([620, 730]);
+  });
+
+  it('fmtFortnight_hours_or_minutes', () => {
+    expect(fmtFortnight(192)).toBe('3.2 h this fortnight');
+    expect(fmtFortnight(25)).toBe('25 min this fortnight');
+  });
+
   it('shelves_handle_zero_games', () => {
-    expect(shelves([])).toEqual({ installed: [], notInstalled: [], hero: null });
+    expect(shelves([])).toEqual({ installed: [], notInstalled: [], fortnight: [], hero: null });
     expect(shelves([g(1, 'a', { installed: true })]).hero).toBeNull(); // never played: no hero
   });
 

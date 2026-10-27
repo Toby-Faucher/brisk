@@ -39,8 +39,9 @@ export function searchGames(games: Game[], q: string): Game[] {
 }
 
 /** Splits keeping input order; the hero is the same game Home's Resume card offers. */
-export function shelves(games: Game[]): { installed: Game[]; notInstalled: Game[]; hero: Game | null } {
-  return { installed: games.filter((g) => g.installed), notInstalled: games.filter((g) => !g.installed), hero: pickResume(games) };
+export function shelves(games: Game[]): { installed: Game[]; notInstalled: Game[]; fortnight: Game[]; hero: Game | null } {
+  const fortnight = games.filter((g) => g.playtime2wkMin > 0).sort((a, b) => b.playtime2wkMin - a.playtime2wkMin);
+  return { installed: games.filter((g) => g.installed), notInstalled: games.filter((g) => !g.installed), fortnight, hero: pickResume(games) };
 }
 
 const OVERSCAN = 2;
@@ -53,6 +54,7 @@ export function visibleRange(scrollLeft: number, width: number, stride: number, 
   return { start, end };
 }
 
+export const fmtFortnight = (min: number) => `${min < 60 ? `${min} min` : `${(min / 60).toFixed(1)} h`} this fortnight`;
 export const fmtSize = (b: number | null) => (b ? `${(b / 1e9).toFixed(b < 1e10 ? 1 : 0)} GB` : null);
 export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
 /** A game still running on the host is resumed (streamed as is), not launched again. */
