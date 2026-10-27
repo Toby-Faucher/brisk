@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { cdp, page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { Game } from '../../state/api';
 import Shelf from './Shelf.svelte';
@@ -34,4 +34,32 @@ describe('Shelf', () => {
       if (!grid) expect(w).toBe(138);
     });
   }
+
+  const many = Array.from({ length: 12 }, (_, i) => g(100 + i, `Game ${i}`));
+  const styled = () => [...document.querySelectorAll<HTMLElement>('.slot')].filter((e) => e.getAttribute('style')).length;
+  const motion = (value: string) => cdp().send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value }] });
+
+  it('reduced motion: a fresh pop animates nothing and leaves no inline style', async () => {
+    expect(matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(true);
+    await render(Shelf, { props: { title: 'Installed', games: many, onpick: vi.fn(), pop: { n: 1, at: performance.now() } } });
+    await expect.poll(() => document.querySelectorAll('.slot').length).toBeGreaterThan(5);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(styled()).toBe(0);
+    expect(document.getAnimations()).toHaveLength(0);
+  });
+
+  it('with motion: the cards on screen pop in once, then their inline styles are gone; an old pop does nothing', async () => {
+    await motion('no-preference');
+    try {
+      const r = await render(Shelf, { props: { title: 'Installed', games: many, onpick: vi.fn(), pop: { n: 1, at: performance.now() } } });
+      await expect.poll(styled).toBeGreaterThan(5); // hidden, then tweened
+      await expect.poll(styled, { timeout: 3000 }).toBe(0);
+      r.unmount();
+      await render(Shelf, { props: { title: 'Again', games: many, onpick: vi.fn(), pop: { n: 1, at: performance.now() - 5000 } } });
+      await new Promise((res) => setTimeout(res, 50));
+      expect(styled()).toBe(0);
+    } finally {
+      await motion('reduce');
+    }
+  });
 });

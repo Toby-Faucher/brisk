@@ -47,8 +47,11 @@
   // Skeleton -> content: when the games first arrive the hero, shelf headers and first cards get the load entrance
   // (once per mount; scrolling a shelf or paging it mounts cards that never animate).
   let arrived = false;
+  // Cards pop in (Shelf, anime.js) when the games first arrive and on a filter chip, tag chip or sort change; never per keystroke.
+  let pop = $state({ n: 0, at: 0 });
+  const popCards = () => (pop = { n: pop.n + 1, at: performance.now() });
   $effect(() => {
-    if ($games && !arrived) (arrived = true), void tick().then(enter);
+    if ($games && !arrived) (arrived = true), popCards(), void tick().then(enter);
   });
 
   // The hero title rises word by word once per page mount: not again when the hero remounts (search cleared, data refresh).
@@ -84,7 +87,7 @@
     for (const el of els.filter((e) => !named.has(e)).slice(0, 60 - named.size)) (el.style.viewTransitionName = `vt-${el.dataset.appid}`), named.add(el);
   };
   function pickFilter(id: Filter) {
-    const update = () => glideSwap(chips, '[aria-pressed="true"]', () => (f = id));
+    const update = () => glideSwap(chips, '[aria-pressed="true"]', () => ((f = id), popCards()));
     vt?.skipTransition();
     unname();
     if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.hasAttribute('data-astro-transition'))
@@ -143,13 +146,13 @@
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
   {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => pickFilter(id)}>{label}</button>{/each}
-  <span class="sort"><Dropdown bind:value={sort} options={SORTS} label="Sort games" onchange={fade} /></span>
+  <span class="sort"><Dropdown bind:value={sort} options={SORTS} label="Sort games" onchange={() => (fade(), popCards())} /></span>
 </div>
 
 {#if smart.length || usedTags.length}
   <div class="filters" role="group" aria-label="Filter by tag">
-    {#each smart as { t, n } (t.id)}<button class="fchip tagf auto" aria-pressed={tagF === t.id} onclick={() => ((tagPick = tagF === t.id ? null : t.id), fade())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name} <span class="cnt">{n}</span></button>{/each}
-    {#each usedTags as [id, t] (id)}<button class="fchip tagf" aria-pressed={tagF === id} onclick={() => ((tagPick = tagF === id ? null : id), fade())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name}</button>{/each}
+    {#each smart as { t, n } (t.id)}<button class="fchip tagf auto" aria-pressed={tagF === t.id} onclick={() => ((tagPick = tagF === t.id ? null : t.id), fade(), popCards())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name} <span class="cnt">{n}</span></button>{/each}
+    {#each usedTags as [id, t] (id)}<button class="fchip tagf" aria-pressed={tagF === id} onclick={() => ((tagPick = tagF === id ? null : id), fade(), popCards())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name}</button>{/each}
   </div>
 {/if}
 
@@ -172,11 +175,11 @@
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
     {#if hero}<Hero game={hero} busy={busy === hero.appid} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
-    {#if s.fortnight.length && bare}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
-    {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} />{/if}
-    {#if almostShelf.length}<Shelf title="Almost done" games={almostShelf} onpick={pick} />{/if}
-    {#if backlogShelf.length}<Shelf title="Backlog" games={backlogShelf} onpick={pick} />{/if}
-    {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} />{/if}
+    {#if s.fortnight.length && bare}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight {pop} />{/if}
+    {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} {pop} />{/if}
+    {#if almostShelf.length}<Shelf title="Almost done" games={almostShelf} onpick={pick} {pop} />{/if}
+    {#if backlogShelf.length}<Shelf title="Backlog" games={backlogShelf} onpick={pick} {pop} />{/if}
+    {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} {pop} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
       <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p>
         <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'), (tagPick = null))}>Clear search and filter</button>

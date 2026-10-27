@@ -2,9 +2,12 @@
   import type { Game } from '../../state/api';
   import GameCard from './GameCard.svelte';
   import Icon from '../../ui/Icon.svelte';
+  import { cardsIn } from '../../ui/motion';
+  import { tick } from 'svelte';
   import { visibleRange, wheelToX } from './library';
 
-  let { title, games, onpick, showFortnight = false }: { showFortnight?: boolean; title: string; games: Game[]; onpick: (g: Game) => void } = $props();
+  /** `pop`: the Library's last "cards in" moment (games arrived, a filter chip, a tag chip or the sort changed). */
+  let { title, games, onpick, showFortnight = false, pop = { n: 0, at: 0 } }: { showFortnight?: boolean; title: string; games: Game[]; onpick: (g: Game) => void; pop?: { n: number; at: number } } = $props();
 
   const CARD = 138;
   const GAP = 14;
@@ -41,6 +44,23 @@
       row = undefined;
     };
   };
+  // The cards on screen pop in at each new `pop`, and at mount only when it is that fresh (a shelf a filter brought
+  // back); a shelf the search brings back, a data refresh and the cards scrolling mounts stay still. Cards the filter
+  // view transition has named are left to it (an opacity 0 would be in its snapshot).
+  let section: HTMLElement | undefined = $state();
+  $effect(() => {
+    const p = pop;
+    if (!p.n || performance.now() - p.at > 300) return;
+    let off = () => {};
+    void tick().then(() => {
+      const els = [...(section?.querySelectorAll<HTMLElement>('.slot, .grid > [data-appid]') ?? [])].filter((e) => {
+        const r = e.getBoundingClientRect();
+        return !e.style.viewTransitionName && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+      });
+      off = cardsIn(els.slice(0, 24));
+    });
+    return () => off();
+  });
   const page = (dir: number) => row?.scrollBy({ left: dir * Math.max(CARD + GAP, row.clientWidth - 2 * (CARD + GAP)), behavior: 'smooth' });
   const toggle = () => {
     grid = !grid;
@@ -49,7 +69,7 @@
   };
 </script>
 
-<section class="shelf">
+<section class="shelf" bind:this={section}>
   <h4 class="reveal">
     <span>{title} <span class="n">{games.length}</span></span>
     <span class="acts">
@@ -69,8 +89,8 @@
     <!-- Only the cards near the viewport are mounted; the track keeps the full scroll width. -->
     <div class="row" {@attach track}>
       <div class="track" style:width="{full}px" style:padding-left="{r.start * (CARD + GAP)}px">
-        {#each games.slice(r.start, r.end) as g, i (g.appid)}
-          <div class="slot" class:enter={r.start === 0 && i < 8}><GameCard game={g} {onpick} {showFortnight} /></div>
+        {#each games.slice(r.start, r.end) as g (g.appid)}
+          <div class="slot"><GameCard game={g} {onpick} {showFortnight} /></div>
         {/each}
       </div>
     </div>
