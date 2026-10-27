@@ -180,6 +180,7 @@ pub struct TapFrame {
     pub tap_ns: u64,
     /// Frames the tap dropped so far in this session (socket full).
     pub dropped: u32,
+    /// The access unit in Annex B form, without filler data NAL units (see [`strip_filler`]).
     pub annexb: Bytes,
 }
 
@@ -274,9 +275,43 @@ impl TapConn {
             capture_ns: h.capture_ns,
             tap_ns: h.tap_ns,
             dropped: h.dropped_total,
-            annexb: m.slice(start..),
+            annexb: strip_filler(m.slice(start..), h.codec),
         })
     }
+}
+
+/// `annexb` without its filler data NAL units (H.264 type 12, HEVC type 38). AMD's VAAPI encoder
+/// pads every constant-bitrate frame with them up to the bitrate budget. Decoders drop them, but
+/// sent as they are they keep the stream at full bitrate on a still screen. A frame without
+/// filler (Intel) comes back as it was, with no copy. `codec` is the tap header's video format.
+fn strip_filler(annexb: Bytes, codec: u32) -> Bytes {
+    let is_filler = |b: u8| match codec {
+        0 => b & 0x1f == 12,
+        1 => (b >> 1) & 0x3f == 38,
+        _ => false,
+    };
+    // (where a NAL unit begins, counting the zero byte of a 4-byte start code; its header byte)
+    let units = || {
+        annexb
+            .windows(3)
+            .enumerate()
+            .filter(|(_, w)| *w == [0, 0, 1])
+            .map(|(i, _)| (i - (i > 0 && annexb[i - 1] == 0) as usize, i + 3))
+    };
+    let filler_at = |h: usize| annexb.get(h).is_some_and(|&b| is_filler(b));
+    if !units().any(|(_, h)| filler_at(h)) {
+        return annexb;
+    }
+    let mut out = BytesMut::with_capacity(annexb.len());
+    let mut it = units().peekable();
+    out.extend_from_slice(&annexb[..it.peek().map_or(annexb.len(), |&(b, _)| b)]);
+    while let Some((begin, h)) = it.next() {
+        let end = it.peek().map_or(annexb.len(), |&(n, _)| n);
+        if !filler_at(h) {
+            out.extend_from_slice(&annexb[begin..end]);
+        }
+    }
+    out.freeze()
 }
 
 /// The first SPS NAL unit (type 7) of an Annex B access unit, without its start code.
@@ -523,8 +558,60 @@ impl std::fmt::Display for TapSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::find_sps;
+    use super::{find_sps, strip_filler};
+    use bytes::Bytes;
     use proptest::prelude::*;
+
+    const SPS: &[u8] = &[0, 0, 0, 1, 0x67, 0x64, 0x0c];
+    const SLICE: &[u8] = &[0, 0, 1, 0x41, 0x9a, 0x02, 0x03];
+
+    fn cat(parts: &[&[u8]]) -> Bytes {
+        Bytes::from(parts.concat())
+    }
+
+    #[test]
+    fn strip_filler_drops_h264_filler_and_keeps_the_rest() {
+        // a filler NAL (type 12) with a 4-byte start code, after the slice
+        let filler: &[u8] = &[0, 0, 0, 1, 0x0c, 0xff, 0xff, 0xff, 0x80];
+        let got = strip_filler(cat(&[SPS, SLICE, filler]), 0);
+        assert_eq!(got, cat(&[SPS, SLICE]));
+        // a filler NAL with a 3-byte start code, between two others
+        let filler: &[u8] = &[0, 0, 1, 0x0c, 0xff, 0x80];
+        assert_eq!(
+            strip_filler(cat(&[SPS, filler, SLICE]), 0),
+            cat(&[SPS, SLICE])
+        );
+    }
+
+    #[test]
+    fn strip_filler_drops_hevc_filler() {
+        // HEVC filler data is type 38: header byte 38 << 1, then 1
+        let filler: &[u8] = &[0, 0, 0, 1, 0x4c, 0x01, 0xff, 0xff, 0x80];
+        let hevc_slice: &[u8] = &[0, 0, 0, 1, 0x02, 0x01, 0xaf];
+        assert_eq!(
+            strip_filler(cat(&[hevc_slice, filler]), 1),
+            cat(&[hevc_slice])
+        );
+        // AV1 and unknown codecs are passed through
+        assert_eq!(strip_filler(cat(&[SPS, filler]), 2), cat(&[SPS, filler]));
+    }
+
+    #[test]
+    fn strip_filler_leaves_a_frame_without_filler_alone() {
+        let f = cat(&[SPS, SLICE]);
+        let got = strip_filler(f.clone(), 0);
+        assert_eq!(got, f);
+        assert_eq!(got.as_ptr(), f.as_ptr(), "no copy");
+    }
+
+    #[test]
+    fn strip_filler_handles_degenerate_input() {
+        for b in [&[][..], &[0], &[0, 0, 1], &[0, 0, 1, 0x0c], &[1, 2, 3, 4]] {
+            let _ = strip_filler(Bytes::copy_from_slice(b), 0);
+        }
+        // only a filler NAL: nothing is left
+        assert!(strip_filler(Bytes::from_static(&[0, 0, 1, 0x0c, 0x80]), 0).is_empty());
+    }
 
     proptest! {
         /// Any Annex B bytes (start codes are frequent in the strategy): no panic, and an SPS
@@ -537,6 +624,17 @@ mod tests {
                 prop_assert_eq!(s[0] & 0x1f, 7);
                 prop_assert!(s.len() <= b.len());
             }
+        }
+
+        /// Any bytes, either codec: no panic, never longer, and a second pass changes nothing.
+        #[test]
+        fn strip_filler_shrinks_and_is_idempotent(
+            b in prop::collection::vec(prop::sample::select(vec![0u8, 0, 1, 0x0c, 0x4c, 0x67, 0xff]), 0..200),
+            codec in 0u32..3
+        ) {
+            let once = strip_filler(Bytes::from(b.clone()), codec);
+            prop_assert!(once.len() <= b.len());
+            prop_assert_eq!(strip_filler(once.clone(), codec), once);
         }
     }
 }
