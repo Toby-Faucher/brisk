@@ -11,13 +11,15 @@ describe('FriendsCard', () => {
     reply({ available: true, online: [
       { name: 'TestFriend1', avatar: 'https://avatars.steamstatic.com/x.jpg', state: 'online', playing: 'Portal 2', appid: 620 },
       { name: 'testAway', avatar: '', state: 'away', playing: null, appid: null },
+      { name: 'testBusyPlayer', avatar: '', state: 'busy', playing: 'Hades', appid: 1 },
     ] });
     await render(FriendsCard);
     await expect.element(page.getByRole('list')).toBeInTheDocument();
     await expect.element(page.getByText('TestFriend1')).toBeInTheDocument();
     await expect.element(page.getByText('playing Portal 2')).toBeInTheDocument();
-    await expect.element(page.getByText('away')).toBeInTheDocument();
-    expect(page.getByRole('listitem').elements()).toHaveLength(2);
+    await expect.element(page.getByText('away', { exact: true })).toBeInTheDocument();
+    await expect.element(page.getByText('playing Hades (busy)')).toBeInTheDocument();
+    expect(page.getByRole('listitem').elements()).toHaveLength(3);
     const imgs = document.querySelectorAll('li img');
     expect(imgs).toHaveLength(1);
     expect(imgs[0].getAttribute('alt')).toBe('');

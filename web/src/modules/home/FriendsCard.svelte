@@ -18,7 +18,7 @@
       {#each f.online as p, i (i)}
         <li>
           {#if p.avatar}<img class="av" src={p.avatar} alt="" />{:else}<span class="av" aria-hidden="true">{[...p.name][0]?.toUpperCase()}</span>{/if}
-          <div class="txt"><b>{p.name}</b><div class="lab">{p.playing ? `playing ${p.playing}` : p.state}</div></div>
+          <div class="txt"><b>{p.name}</b><div class="lab">{p.playing ? `playing ${p.playing}${p.state === 'online' ? '' : ` (${p.state})`}` : p.state}</div></div>
         </li>
       {/each}
     </ul>
