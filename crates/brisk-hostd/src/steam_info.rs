@@ -83,6 +83,17 @@ pub struct Info {
 const WEEK_S: u64 = 7 * 86_400;
 const MISS_S: u64 = 600;
 
+/// True when `cached_with_misses(name, ok_ttl_s)` would answer from disk with no upstream call.
+fn answers_fresh(cfg: &Config, name: &str, ok_ttl_s: u64) -> bool {
+    let fresh = |n: String, ttl: u64| {
+        std::fs::read(cfg.data_dir.join(format!("steam/{n}.json")))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Entry<serde::de::IgnoredAny>>(&b).ok())
+            .is_some_and(|e| now().saturating_sub(e.fetched) < ttl)
+    };
+    fresh(name.to_string(), MISS_S) || fresh(format!("{name}-ok"), ok_ttl_s)
+}
+
 /// Two TTLs from the one-TTL `cached()`: the outer entry (`<name>`, 10 minutes) holds whatever the
 /// last answer was, success or the default ("unavailable"). When it is stale its fetch asks the inner
 /// entry (`<name>-ok`, `ok_ttl_s`), which only ever stores successes because its fetch errs on
@@ -516,17 +527,29 @@ pub async fn warm_games(
     pause: Duration,
     info_pause: Duration,
 ) {
-    for (i, id) in played.into_iter().take(WARM_MAX).enumerate() {
-        if i > 0 {
+    // Pause only after a game that went upstream; cached ones cost nothing.
+    let mut went = false;
+    for id in played.into_iter().take(WARM_MAX) {
+        let (a, n) = (format!("ach-{id}"), format!("news-{id}"));
+        if answers_fresh(cfg, &a, HOUR_S) && answers_fresh(cfg, &n, NEWS_TTL_S) {
+            continue;
+        }
+        if went {
             tokio::time::sleep(pause).await;
         }
+        went = true;
         achievements(cfg, id, false).await;
         news(cfg, id, false).await;
     }
-    for (i, id) in owned.into_iter().take(WARM_INFO_MAX).enumerate() {
-        if i > 0 {
+    went = false;
+    for id in owned.into_iter().take(WARM_INFO_MAX) {
+        if answers_fresh(cfg, &format!("info-{id}"), WEEK_S) {
+            continue;
+        }
+        if went {
             tokio::time::sleep(info_pause).await;
         }
+        went = true;
         info(cfg, id, false).await;
     }
 }

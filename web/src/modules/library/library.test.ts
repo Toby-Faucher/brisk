@@ -179,4 +179,10 @@ describe('library', () => {
     const ach = [g(1, 'x', { achUnlocked: 85, achTotal: 100 }), g(2, 'y', { achUnlocked: 99, achTotal: 100 }), g(3, 'z', { achUnlocked: 50, achTotal: 100 })];
     expect(almostDone(ach).map((x) => x.appid)).toEqual([2, 1]);
   });
+
+  it('backlog_shelf_is_capped_at_40', () => {
+    const many = Array.from({ length: 50 }, (_, i) => g(i + 1, `g${i}`, { playtimeMin: i % 10 }));
+    expect(backlog(many)).toHaveLength(40);
+    expect(backlog(many)[0].playtimeMin).toBe(0);
+  });
 });

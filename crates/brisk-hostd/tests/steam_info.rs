@@ -858,3 +858,32 @@ async fn warm_caps_info_at_200() {
     brisk_hostd::steam_info::warm_games(&s.cfg, vec![], (1000..1250).collect(), Z, Z).await;
     assert_eq!(hits.load(SeqCst), 200);
 }
+
+#[tokio::test]
+async fn warm_skips_the_pause_for_cached_info() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (store, hits) = mock_steam_hits(vec![("/api/appdetails", 200, appdetails())]).await;
+    let s = steam(NO_API, &store, Some(KEY));
+    let ok = r#"{"available":true,"description":"","genres":[],"controller":null,"singleplayer":false,"coop":false,"remotePlayTogether":false,"release":null,"metacritic":null,"screenshots":[]}"#;
+    for id in 1..=5 {
+        seed_info(&s.cfg, &format!("info-{id}-ok"), ok);
+    }
+    let pause = std::time::Duration::from_millis(200);
+    let t = std::time::Instant::now();
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![], (1..=5).collect(), pause, pause).await;
+    assert!(
+        t.elapsed() < std::time::Duration::from_millis(400),
+        "{:?}",
+        t.elapsed()
+    );
+    assert_eq!(hits.load(SeqCst), 0);
+}
+
+#[tokio::test]
+async fn warm_fetches_every_uncached_game() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (store, hits) = mock_steam_hits(vec![("/api/appdetails", 200, appdetails())]).await;
+    let s = steam(NO_API, &store, Some(KEY));
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![], (1..=5).collect(), Z, Z).await;
+    assert_eq!(hits.load(SeqCst), 5);
+}

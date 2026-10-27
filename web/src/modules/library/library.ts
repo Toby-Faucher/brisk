@@ -28,6 +28,8 @@ export const SMART_TAGS: SmartTag[] = [
   { id: 'auto-updated', name: 'Updated', color: 'orange', symbol: 'bolt', test: (g) => g.updated },
 ];
 
+const rule = (id: SmartTagId) => SMART_TAGS.find((t) => t.id === id)!.test;
+
 export const smartTags = (g: Game): SmartTag[] => SMART_TAGS.filter((t) => t.test(g));
 
 /** A random item, or null for an empty list. `rnd` returns [0, 1). */
@@ -73,11 +75,11 @@ export function shelves(games: Game[]): { installed: Game[]; notInstalled: Game[
 
 /** Backlog shelf: up to 40, least played first, then by name. */
 export const backlog = (games: Game[]): Game[] =>
-  games.filter(SMART_TAGS[0].test).sort((a, b) => a.playtimeMin - b.playtimeMin || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).slice(0, 40);
+  games.filter(rule('auto-backlog')).sort((a, b) => a.playtimeMin - b.playtimeMin || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).slice(0, 40);
 
 /** Almost-done shelf: closest to 100% first. */
 export const almostDone = (games: Game[]): Game[] =>
-  games.filter(SMART_TAGS[3].test).sort((a, b) => b.achUnlocked! / b.achTotal! - a.achUnlocked! / a.achTotal!);
+  games.filter(rule('auto-almost')).sort((a, b) => b.achUnlocked! / b.achTotal! - a.achUnlocked! / a.achTotal!);
 
 const OVERSCAN = 2;
 const MAX_MOUNTED = 20;

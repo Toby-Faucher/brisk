@@ -7,7 +7,7 @@ import { notes, notesLoaded } from '../../state/notes';
 import Library from './Library.svelte';
 
 const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false, ...o });
-const list = [g(1, 'Alpha', { playtimeMin: 300 }), g(2, 'Bravo', { playtimeMin: 200 }), g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true })];
+const list = [g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }), g(2, 'Bravo', { playtimeMin: 200 }), g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true })];
 
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
@@ -48,5 +48,25 @@ describe('Library', () => {
     await userEvent.click(page.getByRole('button', { name: /^Co-op 1$/ }));
     await expect.element(page.getByRole('button', { name: /^Charlie/ })).toBeInTheDocument();
     expect(page.getByRole('button', { name: /^Alpha/ }).elements()).toHaveLength(0);
+  });
+
+  it('Backlog and Almost done shelves show only with no search, filter or tag', async () => {
+    const shelf = (n: string) => page.getByRole('heading', { name: new RegExp(`^${n} \\d+$`) }).elements().length;
+    await render(Library);
+    await expect.element(page.getByRole('heading', { name: /^Backlog \d+$/ })).toBeInTheDocument();
+    expect(shelf('Almost done')).toBe(1);
+    await userEvent.fill(page.getByRole('searchbox', { name: 'Search games' }), 'a');
+    await expect.poll(() => shelf('Backlog')).toBe(0);
+    expect(shelf('Almost done')).toBe(0);
+    await userEvent.fill(page.getByRole('searchbox', { name: 'Search games' }), '');
+    await expect.poll(() => shelf('Backlog')).toBe(1);
+    await userEvent.click(page.getByRole('button', { name: 'Installed', exact: true }));
+    await expect.poll(() => shelf('Backlog')).toBe(0);
+    expect(shelf('Almost done')).toBe(0);
+    await userEvent.click(page.getByRole('button', { name: 'All', exact: true }));
+    await expect.poll(() => shelf('Backlog')).toBe(1);
+    await userEvent.click(page.getByRole('button', { name: /^Co-op 1$/ }));
+    await expect.poll(() => shelf('Backlog')).toBe(0);
+    expect(shelf('Almost done')).toBe(0);
   });
 });
