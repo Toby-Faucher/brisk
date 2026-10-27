@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { api, type Game } from '../../state/api';
-import { games } from '../../state/games';
+import { games, gamesFailed } from '../../state/games';
 import { notes, notesLoaded } from '../../state/notes';
 import Library from './Library.svelte';
 import Toasts from '../../shell/Toasts.svelte';
@@ -18,6 +18,7 @@ beforeEach(() => {
   notes.set({ tags: {}, games: {} });
   notesLoaded.set(true);
   games.set({ games: list, ownedAvailable: true });
+  gamesFailed.set(false);
   vi.spyOn(api, 'games').mockResolvedValue({ games: list, ownedAvailable: true });
   vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: {} });
   vi.spyOn(api, 'prefs').mockResolvedValue({ prefs: {} });
