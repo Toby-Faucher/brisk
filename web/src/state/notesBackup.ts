@@ -11,6 +11,9 @@ export type Backup = { format: 'brisk-notes'; version: 1; exported: string } & N
 export const buildBackup = (n: Notes, now: Date): Backup => ({ format: 'brisk-notes', version: 1, exported: now.toISOString(), tags: n.tags, games: n.games });
 
 // hostd's limits (notes.rs): text lengths count Unicode characters, trailing whitespace not counted
+// the server counts text without trailing whitespace, but the whole text must fit its body limit (16 KiB tag, 64 KiB game)
+const RAW_TAG_NOTE = 2000;
+const RAW_GAME_NOTE = 16000;
 const len = (s: string) => [...s.trimEnd()].length;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -27,21 +30,28 @@ function parseTag(id: string, v: unknown): Tag {
   if (!name || [...name].length > 24) bad(`Tag ${id} needs a name of 1 to 24 characters.`);
   if (!COLORS.includes(v.color as TagColor)) bad(`Tag ${id} has an unknown color.`);
   if (typeof v.symbol !== 'string' || !/^[a-z-]{1,16}$/.test(v.symbol)) bad(`Tag ${id} has an invalid symbol (1 to 16 of a-z and -).`);
-  if (typeof v.note !== 'string' || len(v.note) > 500) bad(`The note of tag ${id} must be text of at most 500 characters.`);
+  const note = v.note ?? ''; // hostd defaults a missing note, so a hand-made file may leave it out
+  if (typeof note !== 'string') return bad(`The note of tag ${id} must be text.`);
+  if (len(note) > 500) bad(`The note of tag ${id} must be text of at most 500 characters.`);
+  if (note.length > RAW_TAG_NOTE) bad(`The note of tag ${id} is too long.`);
   if (v.pinned !== undefined && typeof v.pinned !== 'boolean') bad(`Tag ${id} has an invalid pinned value.`);
-  const t: Tag = { name, color: v.color as TagColor, symbol: v.symbol as string, note: v.note as string };
+  const t: Tag = { name, color: v.color as TagColor, symbol: v.symbol as string, note };
   if (v.pinned !== undefined) t.pinned = v.pinned as boolean;
   return t;
 }
 
 function parseGame(appid: string, v: unknown, tags: Record<string, Tag>): GameNote | null {
-  if (!/^[1-9]\d*$/.test(appid) || !Number.isSafeInteger(Number(appid))) bad(`"${appid}" is not a valid appid (a positive whole number).`);
+  if (!/^[1-9]\d*$/.test(appid) || Number(appid) > 0xffffffff) bad(`"${appid}" is not a valid appid (a positive whole number up to 4294967295).`);
   if (!isObj(v)) return bad(`Game ${appid} is not an object.`);
-  if (typeof v.note !== 'string' || len(v.note) > 4000) bad(`The note of game ${appid} must be text of at most 4000 characters.`);
-  if (!Array.isArray(v.tags) || v.tags.some((t) => typeof t !== 'string')) bad(`The tags of game ${appid} must be a list of tag ids.`);
-  const ids = [...new Set(v.tags as string[])].filter((t) => Object.hasOwn(tags, t)); // unknown ids are dropped, as hostd does
+  const note = v.note ?? '';
+  const list = v.tags ?? [];
+  if (typeof note !== 'string') return bad(`The note of game ${appid} must be text.`);
+  if (len(note) > 4000) bad(`The note of game ${appid} must be text of at most 4000 characters.`);
+  if (note.length > RAW_GAME_NOTE) bad(`The note of game ${appid} is too long.`);
+  if (!Array.isArray(list) || list.some((t) => typeof t !== 'string')) bad(`The tags of game ${appid} must be a list of tag ids.`);
+  const ids = [...new Set(list as string[])].filter((t) => Object.hasOwn(tags, t)); // unknown ids are dropped, as hostd does
   if (ids.length > 16) bad(`Game ${appid} has more than 16 tags.`);
-  return !(v.note as string).trim() && !ids.length ? null : { note: v.note as string, tags: ids };
+  return !note.trim() && !ids.length ? null : { note, tags: ids };
 }
 
 /** Checks a backup file strictly; the first problem found is the error. Unknown fields are ignored. */
@@ -77,4 +87,21 @@ export function parseBackup(text: string): { ok: true; tags: Record<string, Tag>
     if (e instanceof Bad) return { ok: false, error: e.message };
     throw e;
   }
+}
+
+/** `brisk-notes-YYYY-MM-DD.json`, with the local date. */
+export const backupName = (d: Date) => `brisk-notes-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+
+/**
+ * How many games in the file replace a game that is already here, and a refusal when the result would pass hostd's
+ * limits (64 tags, 2000 games, counted over the union), so Restore does not fail with a 409 half way.
+ */
+export function planRestore(live: Notes, tags: Record<string, Tag>, games: Record<string, GameNote>): { replaced: number; error?: string } {
+  const have = (o: object, k: string) => Object.hasOwn(o, k);
+  const nTags = Object.keys(live.tags).length + Object.keys(tags).filter((k) => !have(live.tags, k)).length;
+  const nGames = Object.keys(live.games).length + Object.keys(games).filter((k) => !have(live.games, k)).length;
+  const replaced = Object.keys(games).filter((k) => have(live.games, k)).length;
+  if (nTags > 64) return { replaced, error: `Restoring would leave ${nTags} tags here, and the limit is 64. Delete some tags first.` };
+  if (nGames > 2000) return { replaced, error: `Restoring would leave ${nGames} games with notes here, and the limit is 2000.` };
+  return { replaced };
 }

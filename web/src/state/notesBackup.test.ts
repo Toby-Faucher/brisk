@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBackup, MAX_BACKUP_BYTES, parseBackup } from './notesBackup';
+import { backupName, buildBackup, MAX_BACKUP_BYTES, parseBackup, planRestore } from './notesBackup';
 import type { Notes } from './notes';
 
 const notes: Notes = {
@@ -61,6 +61,9 @@ describe('parseBackup', () => {
     ['appid not a number', file({ tags: {}, games: { abc: { note: 'n', tags: [] } } }), /appid/],
     ['appid with a sign', file({ tags: {}, games: { '-5': { note: 'n', tags: [] } } }), /appid/],
     ['appid beyond safe integers', file({ tags: {}, games: { '99999999999999999999': { note: 'n', tags: [] } } }), /appid/],
+    ['appid above u32', file({ tags: {}, games: { 4294967296: { note: 'n', tags: [] } } }), /appid/],
+    ['raw tag note too long', file({ tags: { a: tag({ note: ` ${' '.repeat(2000)}` }) }, games: {} }), /too long/],
+    ['raw game note too long', file({ tags: {}, games: { 5: { note: `x${' '.repeat(16000)}`, tags: [] } } }), /too long/],
     ['game not an object', file({ tags: {}, games: { 5: null } }), /Game 5/],
     ['long game note', file({ tags: {}, games: { 5: { note: 'x'.repeat(4001), tags: [] } } }), /note/],
     ['game tags not an array', file({ tags: {}, games: { 5: { note: 'n', tags: 'a' } } }), /tags/],
@@ -75,6 +78,13 @@ describe('parseBackup', () => {
   });
   it('does not count trailing whitespace, as the server does', () => {
     expect(parseBackup(file({ tags: { a: tag({ note: `${'x'.repeat(500)}   \n` }) }, games: {} })).ok).toBe(true);
+  });
+  it('accepts the largest u32 appid', () => {
+    expect(parseBackup(file({ tags: {}, games: { 4294967295: { note: 'n', tags: [] } } })).ok).toBe(true);
+  });
+  it('defaults a missing note and missing tags, as hostd does', () => {
+    const r = parseBackup(file({ tags: { a: { name: 'A', color: 'red', symbol: 'star' } }, games: { 5: { note: 'only a note' }, 6: { tags: ['a'] } } }));
+    expect(r).toEqual({ ok: true, tags: { a: tag() }, games: { 5: { note: 'only a note', tags: [] }, 6: { note: '', tags: ['a'] } } });
   });
   it('trims the tag name', () => {
     const r = parseBackup(file({ tags: { a: tag({ name: '  Hi  ' }) }, games: {} }));
@@ -94,5 +104,27 @@ describe('parseBackup', () => {
   });
   it('rejects text over 2 MiB', () => {
     expect(err(' '.repeat(MAX_BACKUP_BYTES + 1))).toMatch(/2 MiB/);
+  });
+});
+
+describe('backupName', () => {
+  it('uses the local date', () => expect(backupName(new Date(2026, 9, 27, 23, 59))).toBe('brisk-notes-2026-10-27.json'));
+  it('pads month and day', () => expect(backupName(new Date(2026, 0, 5, 0, 1))).toBe('brisk-notes-2026-01-05.json'));
+});
+
+describe('planRestore', () => {
+  const t = tag() as never;
+  const tagMap = (n: number) => many(n, () => t) as Record<string, never>;
+  const many = (n: number, f: (i: number) => unknown) => Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i + 1), f(i)]));
+  const empty = { tags: {}, games: {} };
+  it('counts the games that replace one here', () => {
+    expect(planRestore(notes, {}, { 620: { note: 'x', tags: [] }, 1: { note: 'y', tags: [] } })).toEqual({ replaced: 1 });
+  });
+  it('counts the union, so ids that are already here do not add up', () => {
+    const live = { tags: many(60, () => t), games: many(1990, () => ({ note: 'n', tags: [] })) } as never;
+    expect(planRestore(live, tagMap(64), many(2000, () => ({ note: 'n', tags: [] })) as never).error).toBeUndefined();
+    expect(planRestore(live, { x1: t, x2: t, x3: t, x4: t, x5: t }, {}).error).toMatch(/65 tags/);
+    expect(planRestore(live, {}, { 5000: { note: 'n', tags: [] }, ...many(2000, () => ({ note: 'n', tags: [] })) }).error).toMatch(/2001 games/);
+    expect(planRestore(empty, {}, {})).toEqual({ replaced: 0 });
   });
 });

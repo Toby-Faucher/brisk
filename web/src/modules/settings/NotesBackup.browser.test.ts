@@ -11,10 +11,11 @@ const data: Notes = {
 };
 const backup = JSON.stringify({ format: 'brisk-notes', version: 1, exported: '2026-10-27T00:00:00.000Z', ...data });
 const upload = (text: string, name = 'notes.json') => userEvent.upload(page.getByLabelText('Restore from file'), new File([text], name, { type: 'application/json' }));
-const spies = () => ({
+const none: Notes = { tags: {}, games: {} };
+const spies = (live: Notes = none) => ({
   putTag: vi.spyOn(api, 'putTag').mockImplementation(async (_i, t) => t),
   putGame: vi.spyOn(api, 'putGameNote').mockImplementation(async (_i, g) => g),
-  get: vi.spyOn(api, 'notes').mockResolvedValue(data),
+  get: vi.spyOn(api, 'notes').mockResolvedValue(live),
 });
 
 afterEach(() => {
@@ -24,18 +25,21 @@ afterEach(() => {
 
 describe('NotesBackup', () => {
   it('Download sends a dated JSON file with the notes', async () => {
-    spies();
+    spies(data);
     let blob: Blob | undefined;
     vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => ((blob = b as Blob), 'blob:x'));
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const now = new Date();
+    const local = `brisk-notes-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.json`;
     let name = '';
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       name = this.download;
     });
     await render(NotesBackup);
     await userEvent.click(page.getByRole('button', { name: 'Download notes and tags' }));
-    await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:x'));
-    expect(name).toMatch(/^brisk-notes-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(revoke).not.toHaveBeenCalled(); // not before the download has started
+    await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:x'), { timeout: 3000 });
+    expect(name).toBe(local);
     const j = JSON.parse(await blob!.text());
     expect(j).toMatchObject({ format: 'brisk-notes', version: 1, ...data });
     expect(typeof j.exported).toBe('string');
@@ -66,8 +70,9 @@ describe('NotesBackup', () => {
     const dialog = page.getByRole('dialog', { name: 'Restore notes and tags?' });
     await expect.element(dialog).toBeInTheDocument();
     await expect.poll(() => dialog.element().textContent).toContain('2 tags and 2 games');
-    await expect.poll(() => dialog.element().textContent).toContain('replaced');
-    await expect.poll(() => dialog.element().textContent).toContain('Nothing is deleted');
+    await expect.poll(() => dialog.element().textContent).toContain('replaces the one here, note and tags included');
+    await expect.poll(() => dialog.element().textContent).toContain('that are not in the file are kept');
+    expect(dialog.element().textContent).not.toContain('already here'); // nothing overlaps on an empty host
     expect(s.putTag).not.toHaveBeenCalled();
     await userEvent.click(page.getByRole('button', { name: 'Cancel' }));
     await expect.element(dialog).not.toBeInTheDocument();
@@ -93,9 +98,62 @@ describe('NotesBackup', () => {
     await render(NotesBackup);
     await upload(backup);
     await userEvent.click(page.getByRole('button', { name: 'Restore' }));
-    await expect.poll(() => page.getByRole('alert').element().textContent).toContain('Stopped after importing 2 of 4');
+    await expect.poll(() => page.getByRole('alert').element().textContent).toContain('Stopped after 2 of 4');
     await expect.poll(() => page.getByRole('alert').element().textContent).toContain('too many games');
     expect(s.putGame).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(s.get).toHaveBeenCalled());
+  });
+
+  it('the dialog says how many games replace one that is here', async () => {
+    spies({ tags: {}, games: { 620: { note: 'newer', tags: [] } } });
+    await render(NotesBackup);
+    await upload(backup);
+    const dialog = page.getByRole('dialog', { name: 'Restore notes and tags?' });
+    await expect.poll(() => dialog.element().textContent).toContain('1 of the games in the file replace a game that is already here');
+  });
+
+  it('refuses a restore that would pass 64 tags, and sends nothing', async () => {
+    const live: Notes = { tags: Object.fromEntries(Array.from({ length: 64 }, (_, i) => [`t${i}`, data.tags.coop])), games: {} };
+    const s = spies(live);
+    await render(NotesBackup);
+    await upload(backup);
+    await expect.poll(() => page.getByRole('alert').element().textContent).toContain('limit is 64');
+    expect(page.getByRole('dialog').query()).toBeNull();
+    expect(s.putTag).not.toHaveBeenCalled();
+  });
+
+  it('an empty file says nothing to import and opens no dialog', async () => {
+    const s = spies();
+    await render(NotesBackup);
+    await upload('{"format":"brisk-notes","version":1}');
+    await expect.poll(() => page.getByRole('status').element().textContent).toContain('Nothing to import');
+    expect(page.getByRole('dialog').query()).toBeNull();
+    expect(s.get).not.toHaveBeenCalled();
+  });
+
+  it('the status region exists before any text, and focus lands on it after Restore', async () => {
+    spies();
+    await render(NotesBackup);
+    const status = page.getByRole('status');
+    expect(status.element().textContent).toBe('');
+    await upload(backup);
+    await userEvent.click(page.getByRole('button', { name: 'Restore' }));
+    await expect.poll(() => status.element().textContent).toContain('Imported 2 tags and 2 games.');
+    await expect.poll(() => document.activeElement === status.element()).toBe(true);
+  });
+
+  it('Stop ends the restore between PUTs and reports the count', async () => {
+    const s = spies();
+    let release!: () => void;
+    s.putTag.mockImplementation((_i, t) => new Promise((r) => (release = () => r(t))));
+    await render(NotesBackup);
+    await upload(backup);
+    await userEvent.click(page.getByRole('button', { name: 'Restore' }));
+    await userEvent.click(page.getByRole('button', { name: 'Stop restoring' }));
+    release();
+    await expect.poll(() => page.getByRole('alert').element().textContent).toContain('Stopped after 1 of 4');
+    expect(s.putTag).toHaveBeenCalledTimes(1);
+    expect(s.putGame).not.toHaveBeenCalled();
+    expect(page.getByRole('button', { name: 'Stop restoring' }).query()).toBeNull();
   });
 });

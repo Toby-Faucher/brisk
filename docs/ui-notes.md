@@ -448,14 +448,18 @@ whole-document PUT. The page keeps a store (`state/notes.ts`) and one saver for 
 sent 800 ms later (PUTs one at a time, in order, every changed game kept), and takes hostd's answer only if no newer
 change exists. A failed PUT keeps its change and retries on the next save or on window focus, even after the panel
 closed; a 400/409/413 is shown as refused and not retried. Saving waits until the first load finished.
-Settings, General, has a backup: "Download notes and tags" saves `brisk-notes-YYYY-MM-DD.json`
-(`{"format": "brisk-notes", "version": 1, "exported": <ISO date>, "tags": ..., "games": ...}`, the two maps exactly as
+
+Settings, General, has a backup: "Download notes and tags" saves `brisk-notes-YYYY-MM-DD.json` (local date;
+`{"format": "brisk-notes", "version": 1, "exported": <ISO date>, "tags": ..., "games": ...}`, the two maps exactly as
 `GET /api/notes` returns them), and "Restore from file" reads one back (at most 2 MiB). `state/notesBackup.ts` checks the
-file with hostd's limits (ids, lengths in Unicode characters, 64 tags, 2000 games, 16 tags per game; unknown fields are
-ignored, unknown tag ids in games dropped) and the first problem is shown as the error; an invalid file sends nothing. A
-valid one asks first, then sends the tags and then the games with the normal per-item PUTs, one at a time, and stops at
-the first failure with the count imported. Restore never deletes: an entry with the same id is replaced, everything else
-stays.
+file with hostd's limits (ids, appids up to 4294967295, lengths in Unicode characters, 64 tags, 2000 games, 16 tags per
+game; a missing `note` or `tags` counts as empty, unknown fields are ignored, unknown tag ids in games dropped) and the
+first problem is shown as the error; an invalid file, or one that would pass 64 tags or 2000 games together with what is
+on the host, sends nothing. A valid one asks first (counts, and how many games replace one that is already here), then
+sends the tags and then the games with the normal per-item PUTs, one at a time. A Stop button ends it between PUTs; a
+failure or a stop reports how many were imported. Restore is not a merge of a game: each tag and game in the file
+replaces the one on the host, note and tags included, so an older backup overwrites newer notes. Tags and games that are
+not in the file are kept; nothing is deleted.
 - Smart tags are read-only, computed on the page from the game list, never stored, and filter like your own tags
   (`/library?tag=<id>`; an unknown id is ignored):
 
