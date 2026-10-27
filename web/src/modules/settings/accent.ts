@@ -1,4 +1,4 @@
-import { ACCENT_HEX, type Accent, type Settings } from '../../state/settings';
+import { ACCENT_HEX, type Settings } from '../../state/settings';
 
 /** tokens.css swaps --accent through html[data-accent]; unknown values fall back to mint. */
 export const applyAccent = (root: { dataset: DOMStringMap }, a: string) => void (root.dataset.accent = Object.hasOwn(ACCENT_HEX, a) ? a : 'mint');

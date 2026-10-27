@@ -42,7 +42,7 @@
   const pts = (p: [number, number][]) => p.map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`).join(' ');
   const trailPts = (t: Trail) => pts(t.points.map((p) => [p.x, p.y]));
   const pads = () => (navigator.getGamepads?.() ?? []) as (PadLike | null)[];
-  const cur = () => pads().find((g) => g && g.connected && g.index === sel) ?? null;
+  const cur = () => pads().find((g) => g?.connected && g.index === sel) ?? null;
   const pct = (v: number, d = 0) => (v * 100).toFixed(d);
   const sgn = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(2);
   const fmt1 = (v: number) => `${v.toFixed(1)}%`;
@@ -60,7 +60,7 @@
       choices = list;
     }
     if (!list.some((c) => c.index === sel)) sel = list[0]?.index ?? -1;
-    const g = all.find((p) => p && p.connected && p.index === sel);
+    const g = all.find((p) => p?.connected && p.index === sel);
     if (!g) {
       view = padView(noPad, dz / 100);
       rumbleOk = false;
@@ -135,6 +135,7 @@
 
   onMount(() => {
     const ac = new AbortController();
+    // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
     const on = (t: EventTarget, type: string, f: (e: any) => void) => t.addEventListener(type, f, { signal: ac.signal });
     on(window, 'focus', sync);
     on(window, 'blur', sync);

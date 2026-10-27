@@ -204,6 +204,7 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
   };
   // Every listener goes when `closed` settles, so a reconnect does not leave the old ones behind.
   const gone = new AbortController();
+  // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
   const on = (t: EventTarget, type: string, f: (e: any) => void, passive = true) => t.addEventListener(type, f, { passive, signal: gone.signal });
   // The first non-zero motion once locked is the cursor jumping to where Chrome parks it, not
   // the user's: dropped. Headless Chromium sends it (-640,-360 on a 1280x720 page) before

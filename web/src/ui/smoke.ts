@@ -5,7 +5,7 @@ type GLish = { getExtension(name: string): unknown };
 /** The canvas's WebGL2 context if it can run the smoke (float render targets included), else null = CSS fallback. */
 export function smokeGL<T extends GLish>(canvas: { getContext(id: string, opts?: object): unknown }): T | null {
   const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'low-power' }) as T | null;
-  return gl && gl.getExtension('EXT_color_buffer_float') ? gl : null;
+  return gl?.getExtension('EXT_color_buffer_float') ? gl : null;
 }
 
 /** Shaders are off on the Stream route (no WebGL context next to video decode) or when the setting says so. */

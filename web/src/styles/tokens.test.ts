@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-// @ts-ignore plain .mjs script, no types
 import { FILE, render, springs, t90 } from '../../scripts/gen-spring-tokens.mjs';
 
 describe('generated spring tokens', () => {

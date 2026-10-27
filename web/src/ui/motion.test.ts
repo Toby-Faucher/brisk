@@ -32,7 +32,7 @@ const docListeners: [string, () => void][] = [];
 const vars: Record<string, string> = { '--ease': 'cubic-bezier(.2, .8, .2, 1)', '--dur-count': '600ms', '--spring-snappy-dur': '700ms', '--spring-snappy': 'linear(0, 1)' };
 vi.stubGlobal('location', { get pathname() { return path; } });
 vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f), removeEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.splice(mqListeners.indexOf(f), 1) }));
-vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl(), createTextNode: (text: string) => ({ text }) });
+vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (_t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl(), createTextNode: (text: string) => ({ text }) });
 vi.stubGlobal('requestAnimationFrame', (f: () => void) => setTimeout(f, 0));
 vi.stubGlobal('CSSAnimation', class {});
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (n: string) => vars[n] ?? '' }));

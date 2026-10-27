@@ -128,7 +128,7 @@ describe('Playout', () => {
   });
 
   it('a long starvation that ends with a seq gap is loss, so an underrun', () => {
-    let { p, seq } = playing();
+    const { p, seq } = playing();
     for (let i = 0; i < (2 * PAUSE_FRAMES) / QUANTUM; i++) pull(p);
     p.push(seq + 5, ...pkt(0.5));
     expect(p.stats).toMatchObject({ underruns: 1, lost: 5, pauses: 0 });

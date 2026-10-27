@@ -128,7 +128,7 @@
 
   async function shot() {
     const c = $canvasEl;
-    if (!c || !c.width) return toast('Nothing on screen yet');
+    if (!c?.width) return toast('Nothing on screen yet');
     const name = fileName(gameOrNull(), 'png');
     const { png, copied } = screenshot(c);
     // Our own clipboard write is not a laptop copy: ClipSync must not send it to the host.

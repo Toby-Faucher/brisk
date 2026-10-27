@@ -25,7 +25,7 @@ export function padView(g: PadLike, deadzone: number): PadView {
 }
 
 export const padChoices = (pads: readonly (PadLike | null)[]) =>
-  pads.flatMap((g) => (g && g.connected ? [{ index: g.index, id: g.id, detail: `${g.mapping || 'no mapping'}, ${g.buttons.length} buttons, ${g.axes.length} axes` }] : []));
+  pads.flatMap((g) => (g?.connected ? [{ index: g.index, id: g.id, detail: `${g.mapping || 'no mapping'}, ${g.buttons.length} buttons, ${g.axes.length} axes` }] : []));
 
 // --- drift ---
 export type Verdict = 'OK' | 'Minor' | 'Drift';

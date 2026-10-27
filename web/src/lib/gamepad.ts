@@ -271,6 +271,7 @@ export function attachGamepads(s: GamepadSender, { doc, win, raf, caf }: Gamepad
   };
   frame = raf(loop);
   const gone = new AbortController();
+  // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
   const on = (t: EventTarget, type: string, f: (e: any) => void) => t.addEventListener(type, f, { signal: gone.signal });
   on(win, 'blur', () => s.release());
   on(doc, 'visibilitychange', () => doc.visibilityState === 'hidden' && s.release());

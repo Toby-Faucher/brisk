@@ -148,7 +148,8 @@ export class Playout {
       if (this.n < TARGET_FRAMES) {
         outL.fill(0);
         outR.fill(0);
-        return this.update();
+        this.update();
+        return;
       }
       this.playing = true;
     }

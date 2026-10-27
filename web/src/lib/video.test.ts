@@ -189,7 +189,8 @@ describe('Window', () => {
 describe('startVideo', () => {
   it('closes the decoder when the transport closes', async () => {
     const decoder = { state: 'configured', decodeQueueSize: 0, configure() {}, decode() {}, close: vi.fn(() => { decoder.state = 'closed'; }) };
-    vi.stubGlobal('VideoDecoder', Object.assign(function () { return decoder; }, { isConfigSupported: async () => ({ supported: true }) }));
+    function FakeDecoder() { return decoder; } // a declaration, not an arrow: the code under test calls it with `new`
+    vi.stubGlobal('VideoDecoder', Object.assign(FakeDecoder, { isConfigSupported: async () => ({ supported: true }) }));
     vi.stubGlobal('requestAnimationFrame', () => 0);
     let closeTransport!: () => void;
     const closed = new Promise<void>((r) => (closeTransport = r));
