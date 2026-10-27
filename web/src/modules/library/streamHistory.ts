@@ -23,16 +23,15 @@ const isBad = (s: SessionRec) => {
 };
 const CHEAPER: Partial<Record<Preset, Preset>> = { crisp: 'balanced', balanced: 'fast' };
 
-/** The next cheaper preset when the newest sessions at the newest session's preset kept dropping frames; never up. */
-export function recommendPreset(sessions: SessionRec[], appid: number): Preset | null {
+/** The newest closed sessions looked at (`of`), the preset of the newest (`from`) and how many sessions on that preset were bad. */
+export function recentTrouble(sessions: SessionRec[], appid: number): { from: Preset | null; bad: number; of: number } {
   const recent = closed(sessions, appid).sort((a, b) => b.started - a.started).slice(0, RECENT_SESSIONS);
-  const from = recent[0]?.preset;
-  const to = from && CHEAPER[from];
-  return to && recent.filter((s) => s.preset === from && isBad(s)).length >= BAD_SESSIONS_NEEDED ? to : null;
+  const from = recent[0]?.preset ?? null;
+  return { from, bad: recent.filter((s) => s.preset === from && isBad(s)).length, of: recent.length };
 }
 
-/** For the suggestion line: how many of the recent sessions were bad, and how many were looked at. */
-export function badCount(sessions: SessionRec[], appid: number): { bad: number; of: number } {
-  const recent = closed(sessions, appid).sort((a, b) => b.started - a.started).slice(0, RECENT_SESSIONS);
-  return { bad: recent.filter((s) => s.preset === recent[0]?.preset && isBad(s)).length, of: recent.length };
+/** The next cheaper preset when the newest sessions at the newest session's preset kept going badly; never up. */
+export function recommendPreset(sessions: SessionRec[], appid: number): Preset | null {
+  const { from, bad } = recentTrouble(sessions, appid);
+  return (from && bad >= BAD_SESSIONS_NEEDED && CHEAPER[from]) || null;
 }

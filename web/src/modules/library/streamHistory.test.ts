@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Preset, SessionRec } from '../../state/api';
-import { gameHistory, recommendPreset } from './streamHistory';
+import { gameHistory, recommendPreset, recentTrouble } from './streamHistory';
 
 const H = 3_600_000;
 const s = (started: number, o: Partial<SessionRec> & { drop?: number; sent?: number | null } = {}): SessionRec => {
@@ -59,5 +59,13 @@ describe('recommendPreset', () => {
   });
   it('sorts by started itself and skips open and other-game sessions', () => {
     expect(recommendPreset([bad(1), bad(2), s(9, { ended: null }), s(8, { appid: 2 }), bad(3)], 1)).toBe('balanced');
+  });
+  it('gate null is not bad', () => {
+    const g = (t: number) => s(t, { stats: { sent: 1000, dropped: 0, gate: null } as SessionRec['stats'] });
+    expect(recommendPreset([g(3), g(2), g(1)], 1)).toBeNull();
+  });
+  it('bad sessions split across presets: needs 3 on the newest preset', () => {
+    expect(recommendPreset([bad(5), bad(4, 'balanced'), bad(3, 'balanced'), bad(2)], 1)).toBeNull();
+    expect(recentTrouble([bad(5), bad(4, 'balanced'), bad(3), good(2)], 1)).toEqual({ from: 'crisp', bad: 2, of: 4 });
   });
 });

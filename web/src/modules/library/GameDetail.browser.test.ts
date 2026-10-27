@@ -24,12 +24,16 @@ const noAch: Achievements = { available: false, unlocked: 0, total: 0, list: [] 
 
 const props = (g: Game, extra = {}) => ({ game: g, busy: false, onclose: vi.fn(), onplay: vi.fn(), oninstall: vi.fn(), ...extra });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  prefs.set({});
+});
 beforeEach(() => {
   vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
   vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
   vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: [], saves: null });
   vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] });
+  vi.spyOn(api, 'prefs').mockImplementation(async () => ({ prefs: get(prefs), homeOrder: [] }));
   vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: {} });
 });
 
@@ -201,13 +205,12 @@ describe('GameDetail', () => {
     prefs.set({ 620: { preset: 'crisp', codec: 'hevc', updated: 0 } });
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByText('Streamed 4 times · 4 h · last 3 d ago · usually Crisp')).toBeInTheDocument();
-    await expect.element(page.getByText(/Frames were dropped in 3 of the last 4 sessions at Crisp\. Try Balanced\?/)).toBeInTheDocument();
+    await expect.element(page.getByText(/Streaming was rough in 3 of the last 4 sessions \(dropped frames or a failed check\)\. Try Balanced\?/)).toBeInTheDocument();
     expect(put).not.toHaveBeenCalled();
     await userEvent.click(page.getByRole('button', { name: 'Use Balanced' }));
     expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'hevc' });
     await vi.waitFor(() => expect(get(prefs)[620]).toEqual(saved));
     await expect.element(page.getByRole('button', { name: 'Use Balanced' })).not.toBeInTheDocument();
-    prefs.set({});
   });
 
   it('hides both when the game was never streamed', async () => {
@@ -216,5 +219,38 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
     expect(page.getByText(/Streamed/).elements()).toHaveLength(0);
     expect(page.getByRole('button', { name: /Use / }).elements()).toHaveLength(0);
+  });
+
+  const mk = (n: number, o: Partial<SessionRec> = {}): SessionRec => ({ appid: 620, name: 'Portal 2', started: 1_000_000 - n, ended: 1_000_000 - n + 60_000, host: 'h', preset: 'crisp', stats: { sent: 1000, dropped: 50 } as SessionRec['stats'], ...o });
+  const three = [mk(1), mk(2), mk(3)];
+  const sugg = () => page.getByRole('button', { name: 'Use Balanced' });
+
+  it('keeps a saved hevc and falls back to h264 without a saved codec', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
+    const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
+    await render(GameDetail, { props: props(game) });
+    await userEvent.click(sugg());
+    await vi.waitFor(() => expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'h264' }));
+  });
+
+  it('toasts and keeps the button on a failed save', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
+    const put = vi.spyOn(api, 'putPrefs').mockRejectedValue(new Error('x'));
+    await render(GameDetail, { props: props(game) });
+    await userEvent.click(sugg());
+    await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    await expect.element(sugg()).toBeInTheDocument();
+    expect(get(prefs)[620]).toBeUndefined();
+  });
+
+  it('hides the suggestion when Balanced is already saved', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
+    prefs.set({ 620: { preset: 'balanced', codec: 'h264', updated: 0 } });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText(/Streamed 3 times/)).toBeInTheDocument();
+    expect(page.getByText(/Streaming was rough/).elements()).toHaveLength(0);
   });
 });
