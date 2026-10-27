@@ -1,8 +1,10 @@
 use crate::config::Config;
 use crate::steam::{account_id, steam_id};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Screenshots and cloud-save summary from the host's own Steam folder (no network).
 #[derive(Serialize, Default, Debug)]
@@ -24,6 +26,45 @@ pub struct SaveInfo {
 
 const MAX_SHOTS: usize = 60;
 const MAX_SHOT_BYTES: u64 = 25 * 1024 * 1024;
+/// Directory entries looked at per listing; a bigger folder is cut here (newest-first among the ones read).
+const MAX_ENTRIES: usize = 5000;
+const SHOTS_TTL: Duration = Duration::from_secs(5);
+
+/// Per-game screenshot listings kept for a few seconds, so a page of tiles (one request each) reads the
+/// folder once. In `AppState`, so tests do not share it. Only ever holds file names.
+pub struct ShotCache {
+    ttl: Duration,
+    m: Mutex<HashMap<u32, (Instant, Vec<String>)>>,
+}
+
+impl Default for ShotCache {
+    fn default() -> Self {
+        Self::new(SHOTS_TTL)
+    }
+}
+
+impl ShotCache {
+    pub fn new(ttl: Duration) -> Self {
+        ShotCache {
+            ttl,
+            m: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Blocking: lists `dir` unless this game was listed less than the TTL ago (as of `now`).
+    fn listing(&self, appid: u32, dir: &Path, now: Instant) -> Vec<String> {
+        if let Some((at, v)) = self.m.lock().unwrap().get(&appid)
+            && now.saturating_duration_since(*at) < self.ttl
+        {
+            return v.clone();
+        }
+        let v = list_shots(dir);
+        let mut m = self.m.lock().unwrap();
+        m.retain(|_, (at, _)| now.saturating_duration_since(*at) < self.ttl);
+        m.insert(appid, (now, v.clone()));
+        v
+    }
+}
 
 /// `steam_dir/userdata/<account id>`; the id comes only from loginusers.vdf, never the client.
 fn user_dir(cfg: &Config) -> Option<PathBuf> {
@@ -55,6 +96,7 @@ fn list_shots(dir: &Path) -> Vec<String> {
     };
     let mut v: Vec<(SystemTime, String)> = rd
         .flatten()
+        .take(MAX_ENTRIES)
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;
             image_type(&name)?;
@@ -107,12 +149,16 @@ fn save_summary(dir: &Path) -> Option<SaveInfo> {
 }
 
 /// Blocking fs walk: call from `spawn_blocking`.
-pub fn local(cfg: &Config, appid: u32) -> Local {
+pub fn local(cfg: &Config, cache: &ShotCache, appid: u32) -> Local {
     let Some(u) = user_dir(cfg) else {
         return Local::default();
     };
     Local {
-        screenshots: list_shots(&u.join(format!("760/remote/{appid}/screenshots"))),
+        screenshots: cache.listing(
+            appid,
+            &u.join(format!("760/remote/{appid}/screenshots")),
+            Instant::now(),
+        ),
         saves: save_summary(&u.join(format!("{appid}/remote"))),
     }
 }
@@ -120,12 +166,20 @@ pub fn local(cfg: &Config, appid: u32) -> Local {
 /// `(content type, bytes)` for a screenshot `name` that is exactly one of `local()`'s names, else None.
 /// The name is only joined onto the folder after it matched a listing entry; the open refuses a
 /// symlink swapped in since (O_NOFOLLOW) and the read is capped. Blocking: call from `spawn_blocking`.
-pub fn screenshot(cfg: &Config, appid: u32, name: &str) -> Option<(&'static str, Vec<u8>)> {
+pub fn screenshot(
+    cfg: &Config,
+    cache: &ShotCache,
+    appid: u32,
+    name: &str,
+) -> Option<(&'static str, Vec<u8>)> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     let ct = image_type(name)?;
     let dir = shots_dir(cfg, appid)?;
-    let listed = list_shots(&dir).into_iter().find(|n| n == name)?;
+    let listed = cache
+        .listing(appid, &dir, Instant::now())
+        .into_iter()
+        .find(|n| n == name)?;
     let f = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK) // NONBLOCK: a FIFO swapped in must not hang
@@ -138,4 +192,44 @@ pub fn screenshot(cfg: &Config, appid: u32, name: &str) -> Option<(&'static str,
     let mut buf = Vec::with_capacity(m.len() as usize);
     f.take(MAX_SHOT_BYTES + 1).read_to_end(&mut buf).ok()?;
     (buf.len() as u64 <= MAX_SHOT_BYTES).then_some((ct, buf))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("brisk-shots-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_huge_folder_is_capped_without_a_panic() {
+        let d = dir("cap");
+        for n in 0..MAX_ENTRIES + 10 {
+            std::fs::write(d.join(format!("{n}.png")), b"x").unwrap();
+        }
+        let v = list_shots(&d);
+        assert_eq!(v.len(), MAX_SHOTS);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn two_requests_within_the_ttl_list_once_then_the_ttl_ends_it() {
+        let d = dir("ttl");
+        std::fs::write(d.join("a.png"), b"x").unwrap();
+        let c = ShotCache::new(Duration::from_secs(5));
+        let t0 = Instant::now();
+        assert_eq!(c.listing(1, &d, t0), ["a.png"]);
+        std::fs::write(d.join("b.png"), b"x").unwrap();
+        // inside the TTL: still the first listing (the folder was not read again)
+        assert_eq!(c.listing(1, &d, t0 + Duration::from_secs(4)), ["a.png"]);
+        // another game has its own entry
+        assert_eq!(c.listing(2, &d, t0 + Duration::from_secs(4)).len(), 2);
+        // after the TTL the new file shows
+        assert_eq!(c.listing(1, &d, t0 + Duration::from_secs(6)).len(), 2);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
 }

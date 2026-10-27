@@ -382,7 +382,7 @@ All need the usual auth. The games, info, achievements and news routes also take
 | `GET /api/games/{appid}/info` | `info-<id>.json`, `info-<id>-ok.json` | success 7 days, failure 10 min |
 | `GET /api/games/{appid}/achievements` | `ach-<id>.json`, `ach-<id>-ok.json` | success 1 h, failure 10 min |
 | `GET /api/games/{appid}/news` | `news-<id>.json`, `news-<id>-ok.json` | success 6 h, failure 10 min |
-| `GET /api/games/{appid}/local` | none (reads `userdata/<account>/` on the host) | each request |
+| `GET /api/games/{appid}/local` | none (reads `userdata/<account>/` on the host) | screenshot listing 5 s in memory |
 | `GET /api/games/{appid}/screenshots/{name}` | none | `Cache-Control: private, max-age=3600` |
 | `GET /api/friends` | none, in memory only | 120 s, failure 60 s (a failure keeps an older good list) |
 | `GET /api/notes`, `PUT/DELETE /api/notes/tags/{id}`, `PUT /api/notes/games/{appid}` | `data_dir/notes.json` | none |
@@ -405,7 +405,7 @@ All need the usual auth. The games, info, achievements and news routes also take
   Steam avatar host. A private list, no key or Steam being down gives `available: false` (the card says "Friends are not available"),
   unless a good list is already cached: then one failed fetch keeps serving that list and only delays the next try by 60 s.
 - Screenshots: `/local` lists regular image files (png, jpg, jpeg) from `userdata/<account>/760/remote/<appid>/screenshots`,
-  newest first, at most 60, none over 25 MiB, no symlinks. The account id comes from `loginusers.vdf`, never the client.
+  newest first, at most 60 (of the first 5000 directory entries; the listing is kept in memory for 5 s per game, so a page of tiles reads the folder once), none over 25 MiB, no symlinks. The account id comes from `loginusers.vdf`, never the client.
   `/screenshots/{name}` serves a name only when it equals an entry of that listing (never joined from the request
   otherwise), opened with `O_NOFOLLOW | O_NONBLOCK`, regular files only, read capped at 25 MiB. An `<img src>` cannot send
   the auth headers, so the page fetches each image with them and shows a blob URL (`URL.createObjectURL`), revoked

@@ -41,6 +41,8 @@ pub struct AppState {
     pub warming: AtomicBool,
     /// Friends online: in memory only (other people's names never reach disk), see `steam_info::friends_cached`.
     pub friends: Mutex<Option<(std::time::Instant, steam_info::Friends)>>,
+    /// Screenshot listings per game for a few seconds (see `steam_info::ShotCache`).
+    pub shots: steam_info::ShotCache,
 }
 
 impl AppState {
@@ -62,6 +64,7 @@ impl AppState {
             site: Site::Disk(cfg.dist.clone()),
             warming: AtomicBool::new(false),
             friends: Mutex::new(None),
+            shots: steam_info::ShotCache::default(),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -171,7 +174,7 @@ async fn game_local(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -
         return err(StatusCode::NOT_FOUND, "unknown game");
     }
     let s2 = s.clone();
-    match tokio::task::spawn_blocking(move || steam_info::local(&s2.cfg, id)).await {
+    match tokio::task::spawn_blocking(move || steam_info::local(&s2.cfg, &s2.shots, id)).await {
         Ok(l) => axum::Json(l).into_response(),
         Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "listing failed"),
     }
@@ -186,7 +189,9 @@ async fn game_screenshot(
         return err(StatusCode::NOT_FOUND, "unknown game");
     }
     let s2 = s.clone();
-    match tokio::task::spawn_blocking(move || steam_info::screenshot(&s2.cfg, id, &name)).await {
+    match tokio::task::spawn_blocking(move || steam_info::screenshot(&s2.cfg, &s2.shots, id, &name))
+        .await
+    {
         Ok(Some((ct, body))) => (
             [
                 (header::CONTENT_TYPE, ct),
