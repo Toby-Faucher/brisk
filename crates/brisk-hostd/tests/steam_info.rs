@@ -15,6 +15,7 @@ async fn owned_still_works_through_steam_get() {
 }
 
 const NO_API: &str = "http://127.0.0.1:1";
+const Z: std::time::Duration = std::time::Duration::ZERO;
 
 fn appdetails() -> String {
     std::fs::read_to_string(format!("{FIX}/appdetails-620.json")).unwrap()
@@ -196,7 +197,7 @@ async fn achievements_private_profile_is_unavailable_and_cached_briefly() {
 async fn warm_fills_cache_and_games_show_counts() {
     let api = mock_steam(ach_fixtures()).await;
     let s = steam(&api, NO_API, Some(KEY));
-    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620], std::time::Duration::ZERO).await;
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620], vec![], Z, Z).await;
     let api2 = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned())]).await;
     let mut cfg = s.cfg.clone();
     cfg.steam_api_base = api2;
@@ -224,7 +225,7 @@ async fn warm_runs_once_at_a_time() {
     let s = steam(&api, NO_API, Some(KEY));
     let st = Arc::new(AppState::new(s.cfg.clone()));
     st.warming.store(true, SeqCst);
-    brisk_hostd::steam_info::warm(st.clone(), vec![620]);
+    brisk_hostd::steam_info::warm(st.clone(), vec![620], vec![]);
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     assert_eq!(hits.load(SeqCst), 0);
     assert!(
@@ -233,7 +234,7 @@ async fn warm_runs_once_at_a_time() {
     );
     // free: it runs, then clears the flag
     st.warming.store(false, SeqCst);
-    brisk_hostd::steam_info::warm(st.clone(), vec![620]);
+    brisk_hostd::steam_info::warm(st.clone(), vec![620], vec![]);
     for _ in 0..100 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         if !st.warming.load(SeqCst) && hits.load(SeqCst) > 0 {
@@ -248,12 +249,11 @@ async fn warm_caps_at_60_games_and_clears_the_flag() {
     use std::sync::atomic::Ordering::SeqCst;
     let (api, hits) = mock_steam_hits(vec![("/ISteamUserStats/", 403, String::new())]).await;
     let s = steam(&api, NO_API, Some(KEY));
-    brisk_hostd::steam_info::warm_games(&s.cfg, (1000..1061).collect(), std::time::Duration::ZERO)
-        .await;
+    brisk_hostd::steam_info::warm_games(&s.cfg, (1000..1061).collect(), vec![], Z, Z).await;
     // per game: a failing player call, plus one news call (404 here)
     assert_eq!(hits.load(SeqCst), 120);
     let st = Arc::new(AppState::new(s.cfg.clone()));
-    brisk_hostd::steam_info::warm(st.clone(), vec![]);
+    brisk_hostd::steam_info::warm(st.clone(), vec![], vec![]);
     for _ in 0..100 {
         if !st.warming.load(SeqCst) {
             return;
@@ -424,7 +424,7 @@ async fn warm_fetches_news_and_games_show_updated() {
     );
     let api = mock_steam(vec![("/ISteamNews/", 200, body)]).await;
     let s = steam(&api, NO_API, Some(KEY));
-    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620, 400], std::time::Duration::ZERO).await;
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![620, 400], vec![], Z, Z).await;
     let api2 = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned())]).await;
     let mut cfg = s.cfg.clone();
     cfg.steam_api_base = api2;
@@ -756,4 +756,105 @@ async fn screenshot_over_25_mib_404() {
     big.set_len(25 * 1024 * 1024 + 1).unwrap(); // sparse: no real disk use
     let r = get_raw(&s.cfg, "/api/games/620/screenshots/big.jpg").await;
     assert_eq!(r.status(), 404);
+}
+
+fn seed_info(cfg: &brisk_hostd::config::Config, name: &str, body: &str) {
+    let d = cfg.data_dir.join("steam");
+    std::fs::create_dir_all(&d).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    std::fs::write(
+        d.join(format!("{name}.json")),
+        format!(r#"{{"fetched":{now},"value":{body}}}"#),
+    )
+    .unwrap();
+}
+
+async fn game_of(cfg: &brisk_hostd::config::Config, id: u64) -> serde_json::Value {
+    let api = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned())]).await;
+    let mut cfg = cfg.clone();
+    cfg.steam_api_base = api;
+    let (v, _) = games_json(&cfg, "/api/games").await;
+    v["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["appid"] == id)
+        .unwrap()
+        .clone()
+}
+
+#[tokio::test]
+async fn games_carry_controller_and_coop_from_info_cache() {
+    let s = steam(NO_API, NO_API, Some(KEY));
+    seed_info(
+        &s.cfg,
+        "info-620",
+        r#"{"available":true,"description":"","genres":[],"controller":"full","singleplayer":true,"coop":true,"remotePlayTogether":false,"release":null,"metacritic":null,"screenshots":[]}"#,
+    );
+    let g = game_of(&s.cfg, 620).await;
+    assert_eq!(
+        (g["controller"].clone(), g["coop"].clone()),
+        ("full".into(), true.into())
+    );
+    let g = game_of(&s.cfg, 730).await;
+    assert!(g["controller"].is_null());
+    assert_eq!(g["coop"], false);
+}
+
+#[tokio::test]
+async fn remote_play_counts_as_coop_and_unavailable_entries_are_ignored() {
+    let s = steam(NO_API, NO_API, Some(KEY));
+    seed_info(
+        &s.cfg,
+        "info-620-ok",
+        r#"{"available":true,"description":"","genres":[],"controller":"partial","singleplayer":true,"coop":false,"remotePlayTogether":true,"release":null,"metacritic":null,"screenshots":[]}"#,
+    );
+    // the outer entry says "unavailable" (a recent failure): the success entry still counts
+    seed_info(
+        &s.cfg,
+        "info-620",
+        r#"{"available":false,"description":"","genres":[],"controller":null,"singleplayer":false,"coop":false,"remotePlayTogether":false,"release":null,"metacritic":null,"screenshots":[]}"#,
+    );
+    let g = game_of(&s.cfg, 620).await;
+    assert_eq!(
+        (g["controller"].clone(), g["coop"].clone()),
+        ("partial".into(), true.into())
+    );
+    // only an unavailable entry: nothing
+    seed_info(
+        &s.cfg,
+        "info-730",
+        r#"{"available":false,"description":"","genres":[],"controller":"full","singleplayer":false,"coop":true,"remotePlayTogether":false,"release":null,"metacritic":null,"screenshots":[]}"#,
+    );
+    let g = game_of(&s.cfg, 730).await;
+    assert!(g["controller"].is_null());
+    assert_eq!(g["coop"], false);
+}
+
+#[tokio::test]
+async fn games_without_info_cache_have_no_controller() {
+    let s = steam(NO_API, NO_API, Some(KEY));
+    let g = game_of(&s.cfg, 620).await;
+    assert!(g["controller"].is_null());
+    assert_eq!(g["coop"], false);
+}
+
+#[tokio::test]
+async fn warm_fetches_info_for_unplayed_games() {
+    let store = mock_steam(vec![("/api/appdetails", 200, appdetails())]).await;
+    let s = steam(NO_API, &store, Some(KEY));
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![], vec![220], Z, Z).await;
+    assert!(s.cfg.data_dir.join("steam/info-220.json").exists());
+}
+
+#[tokio::test]
+async fn warm_caps_info_at_200() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (store, hits) = mock_steam_hits(vec![("/api/appdetails", 500, String::new())]).await;
+    let s = steam(NO_API, &store, Some(KEY));
+    brisk_hostd::steam_info::warm_games(&s.cfg, vec![], (1000..1250).collect(), Z, Z).await;
+    assert_eq!(hits.load(SeqCst), 200);
 }

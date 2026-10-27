@@ -31,6 +31,10 @@ pub struct Game {
     pub ach_total: Option<u32>,
     /// Installed, and a patch note newer than the last play (from the news cache).
     pub updated: bool,
+    /// "full" or "partial", from the info cache (None until warmed or when the Store has none).
+    pub controller: Option<String>,
+    /// Co-op or Remote Play Together, from the info cache.
+    pub coop: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -448,6 +452,8 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 ach_unlocked: None,
                 ach_total: None,
                 updated: false,
+                controller: None,
+                coop: false,
             },
         );
     }
@@ -484,6 +490,8 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             ach_unlocked: None,
             ach_total: None,
             updated: false,
+            controller: None,
+            coop: false,
         });
         g.installed = i.state_flags & 4 != 0;
         if g.installed {
@@ -496,15 +504,20 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let proc = cfg.proc_dir.clone();
     let cfg2 = cfg.clone();
     let ids: Vec<u32> = by_id.keys().copied().collect();
+    let ids2 = ids.clone();
     let played: Vec<(u32, u64)> = by_id
         .values()
         .filter(|g| g.installed)
         .filter_map(|g| Some((g.appid, g.last_played?)))
         .collect();
-    let (running, counts, updated) = tokio::task::spawn_blocking(move || {
+    let (running, counts, updated, controls) = tokio::task::spawn_blocking(move || {
         let counts: HashMap<u32, (u32, u32)> = ids
             .into_iter()
             .filter_map(|id| Some((id, crate::steam_info::ach_counts(&cfg2, id)?)))
+            .collect();
+        let controls: HashMap<u32, (Option<String>, bool)> = ids2
+            .into_iter()
+            .filter_map(|id| Some((id, crate::steam_info::cached_controls(&cfg2, id)?)))
             .collect();
         let t = now();
         let updated: std::collections::HashSet<u32> = played
@@ -512,7 +525,12 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             .filter(|&(id, lp)| crate::steam_info::cached_updated(&cfg2, id, lp, t))
             .map(|(id, _)| id)
             .collect();
-        (crate::running::running_appids(&proc), counts, updated)
+        (
+            crate::running::running_appids(&proc),
+            counts,
+            updated,
+            controls,
+        )
     })
     .await
     .unwrap_or_default();
@@ -520,6 +538,9 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     for g in &mut games {
         g.running = running.contains(&g.appid);
         g.updated = updated.contains(&g.appid);
+        if let Some((c, co)) = controls.get(&g.appid) {
+            (g.controller, g.coop) = (c.clone(), *co);
+        }
         if let Some(&(u, t)) = counts.get(&g.appid) {
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }

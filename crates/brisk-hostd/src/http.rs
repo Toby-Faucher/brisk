@@ -102,6 +102,7 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
             .filter(|x| x.installed && x.playtime_min > 0)
             .map(|x| x.appid)
             .collect(),
+        g.games.iter().map(|x| x.appid).collect(),
     );
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),

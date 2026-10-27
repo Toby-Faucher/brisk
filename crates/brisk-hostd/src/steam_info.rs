@@ -105,6 +105,22 @@ async fn cached_with_misses<T: Serialize + DeserializeOwned + Clone + Default>(
         .unwrap_or_default()
 }
 
+/// (controller, coop) from the info cache alone, no network. Reads the success entry, then the
+/// outer one; an entry that is not `available` never counts. None when neither has data.
+pub fn cached_controls(cfg: &Config, appid: u32) -> Option<(Option<String>, bool)> {
+    ["info-{}-ok", "info-{}"].iter().find_map(|n| {
+        let b = std::fs::read(cfg.data_dir.join(format!(
+            "steam/{}.json",
+            n.replace("{}", &appid.to_string())
+        )))
+        .ok()?;
+        let e: Entry<Info> = serde_json::from_slice(&b).ok()?;
+        let i = e.value;
+        i.available
+            .then_some((i.controller, i.coop || i.remote_play_together))
+    })
+}
+
 pub async fn info(cfg: &Config, appid: u32, refresh: bool) -> Info {
     cached_with_misses(
         cfg,
@@ -486,16 +502,32 @@ fn avatar_ok(u: &str) -> bool {
 
 /// Pause between games so a warm never bursts against the Web API.
 const WARM_PAUSE: Duration = Duration::from_millis(300);
+const WARM_INFO_PAUSE: Duration = Duration::from_millis(500);
 const WARM_MAX: usize = 60;
+const WARM_INFO_MAX: usize = 200;
 
 /// Fetches per-game data into the cache, one game at a time. Not spawned: tests await it.
-pub async fn warm_games(cfg: &Config, appids: Vec<u32>, pause: Duration) {
-    for (i, id) in appids.into_iter().take(WARM_MAX).enumerate() {
+/// First achievements and news for `played` (at most 60), then store info for every `owned` game
+/// (at most 200; a fresh cache entry makes no upstream call).
+pub async fn warm_games(
+    cfg: &Config,
+    played: Vec<u32>,
+    owned: Vec<u32>,
+    pause: Duration,
+    info_pause: Duration,
+) {
+    for (i, id) in played.into_iter().take(WARM_MAX).enumerate() {
         if i > 0 {
             tokio::time::sleep(pause).await;
         }
         achievements(cfg, id, false).await;
         news(cfg, id, false).await;
+    }
+    for (i, id) in owned.into_iter().take(WARM_INFO_MAX).enumerate() {
+        if i > 0 {
+            tokio::time::sleep(info_pause).await;
+        }
+        info(cfg, id, false).await;
     }
 }
 
@@ -508,13 +540,13 @@ impl Drop for Unwarm {
 }
 
 /// Background `warm_games`, at most one at a time; returns at once.
-pub fn warm(state: Arc<AppState>, appids: Vec<u32>) {
+pub fn warm(state: Arc<AppState>, played: Vec<u32>, owned: Vec<u32>) {
     if state.warming.swap(true, Ordering::SeqCst) {
         return;
     }
     tokio::spawn(async move {
         let guard = Unwarm(state);
-        warm_games(&guard.0.cfg, appids, WARM_PAUSE).await;
+        warm_games(&guard.0.cfg, played, owned, WARM_PAUSE, WARM_INFO_PAUSE).await;
     });
 }
 

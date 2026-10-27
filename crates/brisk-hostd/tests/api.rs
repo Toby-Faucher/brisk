@@ -573,6 +573,8 @@ fn rig_with(mode: &str, service: bool) -> Rig {
             ach_unlocked: None,
             ach_total: None,
             updated: false,
+            controller: None,
+            coop: false,
         }],
         owned_available: true,
     });
