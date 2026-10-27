@@ -61,10 +61,9 @@ export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.siz
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
 export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));
 
-/** Installed cards play on one click; a not-installed card only toggles its Install button, it never installs by itself. */
-export function cardClick(g: Game, selected: number | null): { action: 'play' | 'select'; selected: number | null } {
-  if (g.installed) return { action: 'play', selected: null };
-  return { action: 'select', selected: selected === g.appid ? null : g.appid };
+/** Every card opens the detail panel; Play and Install live there, so a click never starts or installs anything. */
+export function cardClick(_g: Game): { action: 'open' } {
+  return { action: 'open' };
 }
 
 /** Pixels to scroll a shelf sideways for a vertical wheel, or null to leave the event to the page (shelf at that edge, or nothing to scroll). */

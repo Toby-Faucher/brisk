@@ -8,6 +8,7 @@ use crate::running::{Quit, QuitError, Quitter};
 use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
 use crate::site::Site;
 use crate::steam::{self, GamesResult};
+use crate::steam_info;
 use crate::stream::{Codec, Preset, StreamReq, Supervisor};
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
@@ -89,6 +90,23 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
             err(StatusCode::INTERNAL_SERVER_ERROR, "games unavailable")
         }
     }
+}
+
+/// Store details for the detail panel; 404 for a game that is neither owned nor installed, so
+/// no upstream call is made for it. A Store failure is a 200 with `available: false`.
+async fn game_info(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<u32>,
+    req: Request,
+) -> Response {
+    if !s.is_known_appid(id).await {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    let refresh = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    axum::Json(steam_info::info(&s.cfg, id, refresh).await).into_response()
 }
 
 async fn host_status(State(s): State<Arc<AppState>>) -> Response {
@@ -480,6 +498,7 @@ async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>)
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/games", get(games))
+        .route("/games/{appid}/info", get(game_info))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))
         .route(

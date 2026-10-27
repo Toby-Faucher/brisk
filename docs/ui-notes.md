@@ -821,14 +821,14 @@ Use `web/scripts/axe-check.mjs` for the a11y part meanwhile.
   on serious or critical violations; exceptions live in its `EXCEPTIONS` list with a one-line reason (today: the command
   menu listbox, scrolled from the input through aria-activedescendant). Used by ui-smoke and by
   `node web/scripts/axe-check.mjs` (against `npx astro preview --host 127.0.0.1 --port 4424`, mocked /api; Home, Library,
-  Machines, History list + session, every Settings tab, Stream idle and failed, command menu, Quit and restart dialogs).
+  Machines, History list + session, every Settings tab, Stream idle and failed, command menu, Quit and restart dialogs, game detail panel).
 - Browser tests: `*.browser.test.ts` next to the component, run by the `browser` project in `web/vitest.config.ts`
   (`@vitest/browser-playwright` + `vitest-browser-svelte`, Playwright's own chrome-headless-shell; `BRISK_CHROMIUM`
   overrides it, and a missing one prints how to install it). Reduced motion is forced in the test browser, so no dialog or
   menu animation can make a test wait or flake. Its API server is pinned to `127.0.0.1:4460` (strictPort): Vitest browser mode had critical advisories
   for an exposed API, so never 0.0.0.0. `astro:transitions/client` is aliased to `src/test/astro-transitions.ts` (a `navigate`
   spy). Covered: CommandMenu (Ctrl+K, filter, Enter navigates, Esc returns focus), the Quit confirm (focus in, Tab trap,
-  Esc, focus back; and with a test-only transition: still mounted with its text mid-exit, then unmounted), Settings tabs (arrows/Home/End and the hash), GameCard (a click on a not-installed card never installs).
+  Esc, focus back; and with a test-only transition: still mounted with its text mid-exit, then unmounted), Settings tabs (arrows/Home/End and the hash), GameCard (a click opens the detail panel, never plays or installs), GameDetail (store facts, "No store details", Esc returns focus to the card, Play/Install/Quit).
 
 ## HEVC
 - Select: ghost bar, Quality, Advanced..., Codec: HEVC, Apply. It reconnects like any custom quality

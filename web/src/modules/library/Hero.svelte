@@ -9,7 +9,7 @@
   import { playLabel } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
-  let { game, busy, onpick, titleIn }: { game: Game; busy: boolean; onpick: (g: Game) => void; titleIn?: (h: HTMLElement) => void | (() => void) } = $props();
+  let { game, busy, onplay, ondetails, titleIn }: { game: Game; busy: boolean; onplay: (g: Game) => void; ondetails: (g: Game) => void; titleIn?: (h: HTMLElement) => void | (() => void) } = $props();
   // Hero art 404s for some games: remember the url that failed (or loaded) and fall back to the wash alone.
   let heroBad = $state('');
   let logoLoaded = $state('');
@@ -31,7 +31,8 @@
     <h3 class:vh={logoOk} {@attach titleIn}><span>{game.name}</span></h3>
     <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}</div>
     <div class="acts">
-      <button class="btn" aria-disabled={busy} onclick={() => onpick(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
+      <button class="btn" aria-disabled={busy} onclick={() => onplay(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
+      <button class="btn ghost" aria-haspopup="dialog" onclick={() => ondetails(game)} aria-label="Details for {game.name}">Details</button>
       {#if game.running}
         {@const q = $quitting.has(game.appid)}
         <button class="btn ghost" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={14} /> {q ? 'Quitting…' : 'Quit'}</button>

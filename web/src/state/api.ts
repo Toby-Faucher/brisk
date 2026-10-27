@@ -14,6 +14,21 @@ export type Game = {
   /** Steam is running it on the host now: Play streams it without relaunching. */
   running: boolean;
 };
+/** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
+export type GameInfo = {
+  available: boolean;
+  /** plain text, never HTML */
+  description: string;
+  genres: string[];
+  controller: 'full' | 'partial' | null;
+  singleplayer: boolean;
+  coop: boolean;
+  remotePlayTogether: boolean;
+  release: string | null;
+  metacritic: number | null;
+  /** thumbnail URLs, at most 6 */
+  screenshots: string[];
+};
 export type HostInfo = {
   name: string;
   sunshine: 'ready' | 'busy' | 'down';
@@ -189,6 +204,7 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
 export const api = {
   host: () => call<HostInfo>('GET', '/api/host'),
   games: () => call<{ games: Game[]; ownedAvailable: boolean }>('GET', '/api/games'),
+  gameInfo: (appid: number) => call<GameInfo>('GET', `/api/games/${appid}/info`),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),

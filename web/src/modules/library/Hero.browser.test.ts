@@ -7,7 +7,7 @@ const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: n
 
 describe('Hero art', () => {
   it('hero falls back to the hue wash when the art fails', async () => {
-    const { container } = await render(Hero, { props: { game, busy: false, onpick: () => {} } });
+    const { container } = await render(Hero, { props: { game, busy: false, onplay: () => {}, ondetails: () => {} } });
     const hero = container.querySelector('.hero')!;
     await expect.poll(() => hero.querySelector('.art')).not.toBeNull();
     hero.querySelector('img[hidden]')!.dispatchEvent(new Event('error'));
@@ -17,7 +17,7 @@ describe('Hero art', () => {
   });
 
   it('a loaded logo replaces the title visually, keeping the h3', async () => {
-    const { container } = await render(Hero, { props: { game: { ...game, logo: game.hero }, busy: false, onpick: () => {} } });
+    const { container } = await render(Hero, { props: { game: { ...game, logo: game.hero }, busy: false, onplay: () => {}, ondetails: () => {} } });
     const hero = container.querySelector('.hero')!;
     const logo = hero.querySelector('img.logo')!;
     expect(logo.classList.contains('on')).toBe(false);

@@ -1,27 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { navigate } from 'astro:transitions/client';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 
 const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', running: false };
 
-describe('GameCard (not installed)', () => {
-  it('one click selects it and never installs; the explicit Install button does', async () => {
+describe('GameCard', () => {
+  it('clicking a not-installed card calls onpick and never installs', async () => {
     const onpick = vi.fn();
-    const oninstall = vi.fn();
-    const r = await render(GameCard, { props: { game, onpick, oninstall } });
+    await render(GameCard, { props: { game, onpick } });
     const card = page.getByRole('button', { name: /^Portal, not installed/ });
-    await expect.element(card).toHaveAttribute('aria-expanded', 'false');
-
+    await expect.element(card).toHaveAttribute('aria-haspopup', 'dialog');
     await userEvent.click(card);
-    expect(onpick).toHaveBeenCalledWith(game);
-    expect(oninstall).not.toHaveBeenCalled();
+    expect(onpick).toHaveBeenCalledExactlyOnceWith(game);
+    expect(page.getByRole('button', { name: /Install/ }).elements()).toHaveLength(0);
+  });
 
-    // The Library marks the picked card selected, which reveals Install.
-    await r.rerender({ selected: true });
-    await expect.element(card).toHaveAttribute('aria-expanded', 'true');
-    await userEvent.click(page.getByRole('button', { name: /Install/ }));
-    expect(oninstall).toHaveBeenCalledExactlyOnceWith(game);
+  it('clicking an installed card calls onpick without starting the stream', async () => {
+    const onpick = vi.fn();
+    const g = { ...game, installed: true };
+    vi.mocked(navigate).mockClear();
+    await render(GameCard, { props: { game: g, onpick } });
+    await expect.element(page.getByText('Details')).toBeInTheDocument();
+    await userEvent.click(page.getByRole('button', { name: /^Portal, ready to play/ }));
+    expect(onpick).toHaveBeenCalledExactlyOnceWith(g);
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

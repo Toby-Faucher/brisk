@@ -24,12 +24,22 @@ pub fn copy_dir(from: &Path, to: &Path) {
 /// Mock Steam: the first route whose path substring is in the request line answers with its
 /// status and body. Routes under `/I…/` (the Web API) need `key=KEY` in the query, else 403.
 pub async fn mock_steam(routes: Vec<(&'static str, u16, String)>) -> String {
+    mock_steam_hits(routes).await.0
+}
+
+/// `mock_steam` plus a count of the requests it has accepted.
+pub async fn mock_steam_hits(
+    routes: Vec<(&'static str, u16, String)>,
+) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", l.local_addr().unwrap());
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let h = hits.clone();
     tokio::spawn(async move {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         loop {
             let (mut c, _) = l.accept().await.unwrap();
+            h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let mut buf = vec![0u8; 8192];
             let n = c.read(&mut buf).await.unwrap_or(0);
             let head = String::from_utf8_lossy(&buf[..n]).to_string();
@@ -48,7 +58,7 @@ pub async fn mock_steam(routes: Vec<(&'static str, u16, String)>) -> String {
             let _ = c.write_all(r.as_bytes()).await;
         }
     });
-    base
+    (base, hits)
 }
 
 pub struct Steam {

@@ -84,13 +84,11 @@ describe('library', () => {
     expect(visibleRange(0, 10_000, stride, 139).end).toBe(20);
   });
 
-  it('not_installed_click_selects_and_never_installs', () => {
+  it('card_click_opens_the_panel_installed_or_not', () => {
     const off = g(1, 'Rust', { sizeBytes: 12.4e9 });
     const on = g(2, 'Hades II', { installed: true });
-    expect(cardClick(off, null)).toEqual({ action: 'select', selected: 1 });
-    expect(cardClick(off, 1)).toEqual({ action: 'select', selected: null }); // second click collapses
-    expect(cardClick(g(3, 'x'), 1)).toEqual({ action: 'select', selected: 3 }); // moves the selection
-    expect(cardClick(on, 1)).toEqual({ action: 'play', selected: null }); // installed stays one click
+    expect(cardClick(on)).toEqual({ action: 'open' });
+    expect(cardClick(off)).toEqual({ action: 'open' });
     expect(installLabel(off)).toBe('Install 12 GB');
     expect(installLabel(g(4, 'y', { sizeBytes: 3.21e9 }))).toBe('Install 3.2 GB');
     expect(installLabel(g(5, 'z'))).toBe('Install');

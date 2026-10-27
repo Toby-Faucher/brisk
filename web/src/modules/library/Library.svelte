@@ -8,6 +8,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import { glideSwap, splitIn } from '../../ui/motion';
+  import GameDetail from './GameDetail.svelte';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
   import { cardClick, filterGames, searchGames, shelves, sortGames, type Filter, type Sort } from './library';
@@ -18,7 +19,9 @@
   let sort = $state<Sort>('default');
   let f = $state<Filter>('all');
   let busy = $state<number | null>(null);
-  let selected = $state<number | null>(null); // the not-installed card showing its Install button
+  // The game in the detail panel; looked up in the live list so a refresh updates it (running, installed) in place.
+  let open = $state<Game | null>(null);
+  const shownGame = $derived(open && ($games?.games.find((g) => g.appid === open!.appid) ?? open));
 
   const s = $derived(shelves(sortGames(searchGames(filterGames($games?.games ?? [], f), q), sort)));
   const hero = $derived(q.trim() ? null : s.hero);
@@ -96,19 +99,18 @@
   }
 
   function pick(g: Game) {
-    const c = cardClick(g, selected);
-    selected = c.selected;
-    if (c.action === 'play')
-      void run(g, 'start', async () => {
-        await startGame(g.appid, toast);
-        await navigate('/stream');
-      });
+    if (cardClick(g).action === 'open') open = g;
   }
+
+  const play = (g: Game) =>
+    run(g, 'start', async () => {
+      await startGame(g.appid, toast);
+      await navigate('/stream');
+    });
 
   const install = (g: Game) =>
     run(g, 'install', async () => {
       await api.install(g.appid);
-      selected = null;
       toast(`Installing ${g.name}. Steam will show progress`);
       void refreshGames();
     });
@@ -141,10 +143,10 @@
   {:else if !$games.games.length}
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
-    {#if hero}<Hero game={hero} busy={busy === hero.appid} onpick={pick} titleIn={titleIn} />{/if}
-    {#if s.fortnight.length && !q.trim() && f === 'all'}<Shelf title="Played this fortnight" games={s.fortnight} {busy} {selected} onpick={pick} oninstall={install} showFortnight />{/if}
-    {#if s.installed.length}<Shelf title="Installed" games={s.installed} {busy} {selected} onpick={pick} oninstall={install} />{/if}
-    {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} {busy} {selected} onpick={pick} oninstall={install} />{/if}
+    {#if hero}<Hero game={hero} busy={busy === hero.appid} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
+    {#if s.fortnight.length && !q.trim() && f === 'all'}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
+    {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} />{/if}
+    {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
       <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p>
         <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'))}>Clear search and filter</button>
@@ -152,6 +154,8 @@
     {/if}
   {/if}
 </div>
+
+{#if shownGame}<GameDetail game={shownGame} busy={busy === shownGame.appid} onclose={() => (open = null)} onplay={play} oninstall={install} />{/if}
 
 <style>
   .top { display: flex; align-items: center; gap: 12px; padding: 0 2px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }

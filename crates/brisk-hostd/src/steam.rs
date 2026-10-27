@@ -319,7 +319,6 @@ pub(crate) async fn steam_get(cfg: &Config, path_query: &str) -> Result<serde_js
 }
 
 /// One store.steampowered.com GET: keyless, so nothing to hide in the URL.
-#[allow(dead_code)] // shortcut: first caller lands in a later task
 pub(crate) async fn store_get(cfg: &Config, path_query: &str) -> Result<serde_json::Value, String> {
     let base = cfg.steam_store_base.trim_end_matches('/');
     if !base_ok(base) {
