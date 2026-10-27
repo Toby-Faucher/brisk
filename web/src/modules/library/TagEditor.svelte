@@ -120,7 +120,9 @@
 </Dialog.Root>
 
 <style>
-  :global(.rs.te) { width: min(420px, calc(100vw - 32px)); z-index: 43; }
+  /* centred in the viewport (also over the wide game panel); a short window scrolls the form, Save and Cancel stay in view */
+  :global(.rs.te) { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain; z-index: 43; }
+  :global(.rs.te .rs-a) { position: sticky; bottom: -20px; margin: 2px -20px -20px; padding: 12px 20px 20px; background: #12151b; border-radius: 0 0 20px 20px; }
   /* above the detail panel (41), and the delete confirm above this */
   :global(.cm-dim.te-dim) { z-index: 42; }
   :global(.cm-dim.te-dim2) { z-index: 44; }
