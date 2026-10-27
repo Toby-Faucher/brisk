@@ -390,7 +390,7 @@ All need the usual auth. The games, info, achievements and news routes also take
 - Refresh: the Library header has a "Refresh library" icon button (next to the sort control) that calls `/api/games?refresh=1` through
   `refreshGames({ force: true })`; it shows a spinner with `aria-busy` and `aria-disabled` while running and toasts "Could not refresh the
   library" on failure. The game panel has a "Refresh" button on top of the right pane that re-fetches info, achievements and news with
-  `refresh=1`; it is `aria-disabled` for 10 seconds after a click (the title says so). The one-minute focus refresh stays cached.
+  `refresh=1`; it is `aria-disabled` for 10 seconds after a click and while a refresh or the first load is running (a hidden note explains the wait), and toasts "Could not refresh Steam data" when a request fails. hostd answers 200 with the stale cached value when Steam itself fails, so the toast only covers network and HTTP errors. The one-minute focus refresh stays cached.
 - Two-level cache: the `-ok` file only ever holds successes, so a stale success beats the default and a failure
   is not retried for 10 minutes. `info` is the store `appdetails` page (controller support, co-op, release, Metacritic,
   up to 6 screenshot thumbnails, each with its full-size URL in `screenshotsFull`, https only, the thumbnail again when
