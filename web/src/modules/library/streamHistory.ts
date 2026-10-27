@@ -35,3 +35,9 @@ export function recommendPreset(sessions: SessionRec[], appid: number): Preset |
   const { from, bad } = recentTrouble(sessions, appid);
   return (from && bad >= BAD_SESSIONS_NEEDED && CHEAPER[from]) || null;
 }
+
+/** Total streamed time: minutes under an hour, else whole hours; rounds first so 59.6 min is "1 h", not "60 min". */
+export function fmtTotal(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  return m < 60 ? `${m} min` : `${Math.round(m / 60)} h`;
+}

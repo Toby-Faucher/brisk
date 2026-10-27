@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { prefs } from '../../state/prefs';
+import { homeOrder, prefs } from '../../state/prefs';
 import { api, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
 import GameDetail from './GameDetail.svelte';
+import Toasts from '../../shell/Toasts.svelte';
 
 const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false };
 const off: Game = { ...game, appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 };
@@ -225,7 +226,7 @@ describe('GameDetail', () => {
   const three = [mk(1), mk(2), mk(3)];
   const sugg = () => page.getByRole('button', { name: 'Use Balanced' });
 
-  it('keeps a saved hevc and falls back to h264 without a saved codec', async () => {
+  it('falls back to h264 when no codec is saved', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
     const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
@@ -238,9 +239,11 @@ describe('GameDetail', () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
     const put = vi.spyOn(api, 'putPrefs').mockRejectedValue(new Error('x'));
+    await render(Toasts);
     await render(GameDetail, { props: props(game) });
     await userEvent.click(sugg());
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    await expect.element(page.getByText('Could not save Balanced')).toBeInTheDocument();
     await expect.element(sugg()).toBeInTheDocument();
     expect(get(prefs)[620]).toBeUndefined();
   });
@@ -252,5 +255,19 @@ describe('GameDetail', () => {
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByText(/Streamed 3 times/)).toBeInTheDocument();
     expect(page.getByText(/Streaming was rough/).elements()).toHaveLength(0);
+  });
+
+  it('does not save while the prefs could not be loaded', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
+    vi.spyOn(api, 'prefs').mockRejectedValue(new Error('down'));
+    const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
+    homeOrder.set(undefined);
+    await render(Toasts);
+    await render(GameDetail, { props: props(game) });
+    await userEvent.click(sugg());
+    await expect.element(page.getByText('Could not load your saved settings')).toBeInTheDocument();
+    expect(put).not.toHaveBeenCalled();
+    await expect.element(sugg()).not.toHaveAttribute('aria-disabled', 'true');
   });
 });

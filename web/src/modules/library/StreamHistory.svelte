@@ -1,10 +1,10 @@
 <script lang="ts">
   // "Streamed 12 times · 14 h · last 3 d ago · usually Crisp", plus a one-click suggestion for a cheaper preset.
   import { api, type Preset, type SessionRec } from '../../state/api';
-  import { prefs, refreshPrefs } from '../../state/prefs';
+  import { homeOrder, prefs, refreshPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
   import { fmtAgo } from '../home/home';
-  import { gameHistory, recentTrouble, recommendPreset } from './streamHistory';
+  import { gameHistory, fmtTotal, recentTrouble, recommendPreset } from './streamHistory';
 
   let { appid }: { appid: number } = $props();
 
@@ -25,8 +25,7 @@
   const rec = $derived(recommendPreset(sessions, appid));
   const trouble = $derived(recentTrouble(sessions, appid));
   const shown = $derived(rec && $prefs[appid]?.preset !== rec ? rec : null);
-  const mins = $derived(Math.round(h.totalMs / 60_000));
-  const dur = $derived(mins < 60 ? `${mins} min` : `${Math.round(mins / 60)} h`);
+  const dur = $derived(fmtTotal(h.totalMs));
 
   let saving = $state(false);
   async function use(preset: Preset) {
@@ -35,11 +34,15 @@
     const id = appid; // the panel may switch games while the save is in flight
     try {
       await refreshPrefs(); // so a saved codec is known before it is kept
+      if ($homeOrder === undefined) { // still undefined: the GET failed, so a saved codec is unknown
+        toast('Could not load your saved settings', { error: true });
+        return;
+      }
       const saved = await api.putPrefs(id, { preset, codec: $prefs[id]?.codec ?? 'h264' });
       prefs.update((m) => ({ ...m, [id]: saved }));
       toast(`Saved ${NAME[preset]} for this game`);
     } catch {
-      toast(`Could not save ${NAME[preset]}`);
+      toast(`Could not save ${NAME[preset]}`, { error: true });
     } finally {
       saving = false;
     }

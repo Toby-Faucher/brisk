@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Preset, SessionRec } from '../../state/api';
-import { gameHistory, recommendPreset, recentTrouble } from './streamHistory';
+import { gameHistory, recommendPreset, recentTrouble, fmtTotal } from './streamHistory';
 
 const H = 3_600_000;
 const s = (started: number, o: Partial<SessionRec> & { drop?: number; sent?: number | null } = {}): SessionRec => {
@@ -67,5 +67,13 @@ describe('recommendPreset', () => {
   it('bad sessions split across presets: needs 3 on the newest preset', () => {
     expect(recommendPreset([bad(5), bad(4, 'balanced'), bad(3, 'balanced'), bad(2)], 1)).toBeNull();
     expect(recentTrouble([bad(5), bad(4, 'balanced'), bad(3), good(2)], 1)).toEqual({ from: 'crisp', bad: 2, of: 4 });
+  });
+});
+
+describe('fmtTotal', () => {
+  it('rounds before choosing the unit', () => {
+    expect(fmtTotal(59.6 * 60_000)).toBe('1 h');
+    expect(fmtTotal(59.4 * 60_000)).toBe('59 min');
+    expect(fmtTotal(14 * H)).toBe('14 h');
   });
 });
