@@ -12,6 +12,9 @@
   import { askQuit, stuck } from './QuitDialog.svelte';
   import { quitItems } from '../state/quit';
   import Icon from '../ui/Icon.svelte';
+  import TagChip from '../modules/library/TagChip.svelte';
+  import { notes, notesLoaded, refreshNotes } from '../state/notes';
+  import { openEntries, surpriseEntry, tagEntries } from './menuEntries';
 
   const mods = loadModules().filter((m) => !m.soon);
   let open = $state(false);
@@ -28,13 +31,22 @@
       icon: 'play',
       run: () => void api.launch(g.appid).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
     })),
+    ...tagEntries($notes, $games?.games ?? [], go),
+    ...[surpriseEntry($games?.games ?? [], go)].flatMap((e) => (e ? [e] : [])),
     ...quitItems($games?.games ?? [], $stuck, askQuit),
     { id: 'cmd:machine', label: 'Switch machine', hint: $host?.name ?? 'host', icon: 'host', run: () => go('/machines') },
     ...presets.map((p) => ({ id: `cmd:preset:${p}`, label: `Quality: ${p}`, icon: 'stream', run: () => { if (!emitCommand({ type: 'preset', preset: p })) toast(`Default quality: ${p}`); } })),
     { id: 'cmd:stats', label: 'Toggle stats', hint: 'Stream', icon: 'bolt', run: () => emitCommand({ type: 'stats' }) },
     ...mods.flatMap((m) => m.commands?.() ?? []),
   ]);
-  const shown = $derived(rank(query, items).slice(0, 50));
+  // Open <game> uses Library's folded name search, so it is added after ranking rather than filtered by label.
+  // It goes just before the Launch entries: Enter on a game name opens it, Launch stays one arrow away.
+  const shown = $derived.by(() => {
+    const ranked = rank(query, items);
+    const at = ranked.findIndex((i) => i.id.startsWith('game:'));
+    ranked.splice(at < 0 ? ranked.length : at, 0, ...openEntries($games?.games ?? [], query, go));
+    return ranked.slice(0, 50);
+  });
 
   // The island remounts on every navigation: add on mount, remove on destroy.
   onMount(() => attachShortcuts(window, { open: () => (open = true), go }));
@@ -43,6 +55,7 @@
     if (open) {
       query = '';
       if (!$games) void refreshGames();
+      if ($notesLoaded !== true) void refreshNotes();
     }
   });
 
@@ -64,7 +77,7 @@
           <Command.Viewport class="cm-vp">
           {#each shown as it (it.id)}
             <Command.Item value={it.id} onSelect={() => pick(it)} class="cm-it">
-              {#if it.icon}<Icon name={it.icon} />{/if}
+              {#if it.icon}<Icon name={it.icon} />{:else if it.tag}<TagChip color={it.tag.color} symbol={it.tag.symbol} bare size={16} />{/if}
               <span>{it.label}</span>
               {#if it.hint}<kbd class="k">{it.hint}</kbd>{/if}
             </Command.Item>

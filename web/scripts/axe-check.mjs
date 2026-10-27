@@ -82,6 +82,9 @@ try {
   await page.keyboard.press('Control+k');
   await page.getByPlaceholder('Do something…').waitFor();
   await scan('command menu open');
+  await page.keyboard.type('portal');
+  await page.getByRole('option', { name: /^Open Portal 2/ }).waitFor();
+  await scan('command menu with game entries');
   await page.keyboard.press('Escape');
 
   await page.getByRole('combobox', { name: 'Sort games' }).click();
