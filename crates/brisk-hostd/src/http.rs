@@ -40,7 +40,7 @@ pub struct AppState {
     /// A background cache warm is running (see `steam_info::warm`).
     pub warming: AtomicBool,
     /// Friends online: in memory only (other people's names never reach disk), see `steam_info::friends_cached`.
-    pub friends: Mutex<Option<(std::time::Instant, steam_info::Friends)>>,
+    pub friends: Mutex<Option<steam_info::FriendsEntry>>,
     /// Screenshot listings per game for a few seconds (see `steam_info::ShotCache`).
     pub shots: steam_info::ShotCache,
 }

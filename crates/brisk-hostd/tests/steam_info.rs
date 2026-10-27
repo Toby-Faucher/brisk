@@ -552,14 +552,8 @@ async fn friends_failure_is_cached_briefly() {
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
-async fn friends_failed_refetch_keeps_the_good_list_and_backs_off() {
-    let (api, hits) =
-        mock_steam_hits(vec![("/ISteamUser/GetFriendList/", 500, String::new())]).await;
-    let s = steam(&api, NO_API, Some(KEY));
-    let st = Arc::new(AppState::new(s.cfg.clone()));
-    // a good list that has just gone stale (older than the 120 s TTL)
-    let good = brisk_hostd::steam_info::Friends {
+fn good_friends() -> brisk_hostd::steam_info::Friends {
+    brisk_hostd::steam_info::Friends {
         available: true,
         online: vec![brisk_hostd::steam_info::Friend {
             name: "TestFriend_A".into(),
@@ -568,20 +562,63 @@ async fn friends_failed_refetch_keeps_the_good_list_and_backs_off() {
             playing: None,
             appid: None,
         }],
-    };
-    let old = std::time::Instant::now() - std::time::Duration::from_secs(130);
-    *st.friends.lock().unwrap() = Some((old, good));
+    }
+}
+
+/// A state whose cache holds a good list checked `checked` ago and fetched fine `good` ago, with a
+/// mock Steam that answers the friend list with `code`. The injected instants stand in for a clock.
+async fn stale_friends(
+    code: u16,
+    checked: u64,
+    good: u64,
+) -> (Steam, Arc<AppState>, Arc<std::sync::atomic::AtomicUsize>) {
+    let (api, hits) =
+        mock_steam_hits(vec![("/ISteamUser/GetFriendList/", code, String::new())]).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let st = Arc::new(AppState::new(s.cfg.clone()));
+    let ago = |n| std::time::Instant::now() - std::time::Duration::from_secs(n);
+    *st.friends.lock().unwrap() = Some((ago(checked), ago(good), good_friends()));
+    (s, st, hits)
+}
+
+#[tokio::test]
+async fn friends_transient_failure_keeps_the_good_list_and_backs_off() {
+    let (_s, st, hits) = stale_friends(500, 130, 130).await;
     for _ in 0..3 {
         let f = brisk_hostd::steam_info::friends_cached(&st).await;
         assert!(f.available);
         assert_eq!(f.online[0].name, "TestFriend_A");
     }
-    // one failed call, then the backoff holds Steam off
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
-    // after the backoff it asks again, and still keeps the list
-    st.friends.lock().unwrap().as_mut().unwrap().0 = old;
+    // after the 60 s backoff it asks again and still keeps the list
+    st.friends.lock().unwrap().as_mut().unwrap().0 =
+        std::time::Instant::now() - std::time::Duration::from_secs(130);
     assert!(brisk_hostd::steam_info::friends_cached(&st).await.available);
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn friends_stale_list_is_dropped_after_ten_minutes() {
+    let (_s, st, hits) = stale_friends(500, 130, 601).await;
+    assert!(!brisk_hostd::steam_info::friends_cached(&st).await.available);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn friends_refusal_clears_the_list_at_once() {
+    for code in [401, 403] {
+        let (_s, st, _) = stale_friends(code, 130, 130).await;
+        let f = brisk_hostd::steam_info::friends_cached(&st).await;
+        assert!(!f.available && f.online.is_empty(), "{code}");
+    }
+}
+
+#[tokio::test]
+async fn friends_missing_key_clears_the_list_at_once() {
+    let (s, st, hits) = stale_friends(500, 130, 130).await;
+    std::fs::remove_file(&s.cfg.steam_key_file).unwrap();
+    assert!(!brisk_hostd::steam_info::friends_cached(&st).await.available);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@ mod warm;
 use crate::config::Config;
 use crate::steam::now;
 pub use achievements::{Ach, Achievements, ach_counts, achievements};
-pub use friends::{Friend, Friends, friends, friends_cached};
+pub use friends::{Friend, Friends, FriendsEntry, friends, friends_cached};
 pub use local::{Local, SaveInfo, ShotCache, local, screenshot};
 pub use news::{News, NewsItem, cached_updated, is_updated, news};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

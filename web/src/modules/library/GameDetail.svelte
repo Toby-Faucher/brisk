@@ -130,6 +130,11 @@
     queue.push(name);
     pump();
   };
+  // Retry removes itself, so focus moves to the tile's own button first.
+  const retryShot = (e: MouseEvent, name: string) => {
+    (e.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>('.shot')?.focus();
+    want(name);
+  };
   const lazy = (name: string) => (node: Element) => {
     const io = new IntersectionObserver(
       (es) => {
@@ -208,7 +213,7 @@
                     <button class="shot" aria-label="Open {localShots[i].alt}" aria-haspopup="dialog" onclick={() => show('local', i)}>
                       {#if shotUrl[name]}<img src={shotUrl[name]} alt={localShots[i].alt} decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
                     </button>
-                    {#if shotBad[name]}<button class="btn ghost retry" aria-label="Retry loading screenshot {i + 1}" onclick={() => want(name)}>Retry</button>{/if}
+                    {#if shotBad[name]}<button class="btn ghost retry" aria-label="Retry loading screenshot {i + 1}" onclick={(e) => retryShot(e, name)}>Retry</button>{/if}
                   </div>
                 {/each}
               </div>

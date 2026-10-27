@@ -26,7 +26,8 @@ pub struct SaveInfo {
 
 const MAX_SHOTS: usize = 60;
 const MAX_SHOT_BYTES: u64 = 25 * 1024 * 1024;
-/// Directory entries looked at per listing; a bigger folder is cut here (newest-first among the ones read).
+/// Directory entries looked at per listing. `read_dir` order is arbitrary, so in a folder with more than this
+/// many files the newest can be missed (fine in practice); the ones read are sorted newest first.
 const MAX_ENTRIES: usize = 5000;
 const SHOTS_TTL: Duration = Duration::from_secs(5);
 
@@ -91,12 +92,16 @@ fn image_type(name: &str) -> Option<&'static str> {
 
 /// Regular image files (no symlinks, no dirs such as `thumbnails/`, none over the size cap), newest first.
 fn list_shots(dir: &Path) -> Vec<String> {
+    list_shots_capped(dir, MAX_ENTRIES)
+}
+
+fn list_shots_capped(dir: &Path, cap: usize) -> Vec<String> {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut v: Vec<(SystemTime, String)> = rd
         .flatten()
-        .take(MAX_ENTRIES)
+        .take(cap)
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;
             image_type(&name)?;
@@ -211,8 +216,8 @@ mod tests {
         for n in 0..MAX_ENTRIES + 10 {
             std::fs::write(d.join(format!("{n}.png")), b"x").unwrap();
         }
-        let v = list_shots(&d);
-        assert_eq!(v.len(), MAX_SHOTS);
+        assert_eq!(list_shots(&d).len(), MAX_SHOTS);
+        assert_eq!(list_shots_capped(&d, 3).len(), 3); // the cut itself
         std::fs::remove_dir_all(&d).unwrap();
     }
 

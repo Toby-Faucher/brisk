@@ -327,6 +327,7 @@ describe('GameDetail', () => {
     const retry = page.getByRole('button', { name: 'Retry loading screenshot 1' });
     await expect.element(retry).toBeInTheDocument();
     await userEvent.click(retry);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Open Portal 2 screenshot 1 from this PC');
     await expect.element(page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' })).toHaveAttribute('src', expect.stringMatching(/^blob:/));
     expect(shot).toHaveBeenCalledTimes(2);
     expect(page.getByRole('button', { name: 'Retry loading screenshot 1' }).elements()).toHaveLength(0);

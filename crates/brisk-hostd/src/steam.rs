@@ -332,6 +332,26 @@ fn https_get(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| safe_err(&e))
 }
 
+/// The key from its file; only plain key characters, so it cannot change the shape of the URL.
+pub(crate) fn read_key(cfg: &Config) -> Result<String, &'static str> {
+    let key = std::fs::read_to_string(&cfg.steam_key_file).map_err(|_| "no API key file")?;
+    let key = key.trim();
+    if key.is_empty()
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("API key file is not a plain key");
+    }
+    Ok(key.to_string())
+}
+
+/// A `steam_get` error that will not go away by waiting: Steam refused the key or the list is private
+/// (the texts come from `safe_err` / `https_get` above).
+pub(crate) fn is_refusal(err: &str) -> bool {
+    matches!(err, "HTTP 401" | "HTTP 403")
+}
+
 /// One Steam Web API GET (`path_query` like `ISteamUser/GetPlayerSummaries/v2/?steamids=1,2`).
 /// The key is read from its file here and goes only into the request's query string (that is how
 /// Steam's Web API takes it); `format=json` is appended too. Errors never carry the URL.
@@ -340,16 +360,7 @@ pub(crate) async fn steam_get(cfg: &Config, path_query: &str) -> Result<serde_js
     if !base_ok(base) {
         return Err("steam_api_base must be https (or http to loopback)".into());
     }
-    let key = std::fs::read_to_string(&cfg.steam_key_file).map_err(|_| "no API key file")?;
-    let key = key.trim();
-    // Only plain key characters, so the key cannot change the shape of the URL.
-    if key.is_empty()
-        || !key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err("API key file is not a plain key".into());
-    }
+    let key = read_key(cfg)?;
     let sep = if path_query.contains('?') { '&' } else { '?' };
     json_get(format!("{base}/{path_query}{sep}key={key}&format=json")).await
 }
