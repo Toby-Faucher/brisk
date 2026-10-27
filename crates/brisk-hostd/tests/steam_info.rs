@@ -553,6 +553,38 @@ async fn friends_failure_is_cached_briefly() {
 }
 
 #[tokio::test]
+async fn friends_failed_refetch_keeps_the_good_list_and_backs_off() {
+    let (api, hits) =
+        mock_steam_hits(vec![("/ISteamUser/GetFriendList/", 500, String::new())]).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let st = Arc::new(AppState::new(s.cfg.clone()));
+    // a good list that has just gone stale (older than the 120 s TTL)
+    let good = brisk_hostd::steam_info::Friends {
+        available: true,
+        online: vec![brisk_hostd::steam_info::Friend {
+            name: "TestFriend_A".into(),
+            avatar: String::new(),
+            state: "online".into(),
+            playing: None,
+            appid: None,
+        }],
+    };
+    let old = std::time::Instant::now() - std::time::Duration::from_secs(130);
+    *st.friends.lock().unwrap() = Some((old, good));
+    for _ in 0..3 {
+        let f = brisk_hostd::steam_info::friends_cached(&st).await;
+        assert!(f.available);
+        assert_eq!(f.online[0].name, "TestFriend_A");
+    }
+    // one failed call, then the backoff holds Steam off
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // after the backoff it asks again, and still keeps the list
+    st.friends.lock().unwrap().as_mut().unwrap().0 = old;
+    assert!(brisk_hostd::steam_info::friends_cached(&st).await.available);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
 async fn friends_batches_over_100() {
     let ids: Vec<_> = (0..150)
         .map(|n| serde_json::json!({"steamid": format!("7656119800001{n:04}")}))

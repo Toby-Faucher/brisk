@@ -39,6 +39,7 @@ const AVATAR_HOSTS: [&str; 5] = [
 ];
 
 /// `friends` held in `state.friends`: 120 s, or 60 s for a failure (a private list must not hammer Steam).
+/// A failed fetch keeps a good list that was cached before: it is served again and the retry waits 60 s.
 pub async fn friends_cached(state: &AppState) -> Friends {
     if let Some((at, f)) = &*state.friends.lock().unwrap() {
         let ttl = if f.available {
@@ -50,8 +51,24 @@ pub async fn friends_cached(state: &AppState) -> Friends {
             return f.clone();
         }
     }
-    let f = friends(&state.cfg).await;
-    *state.friends.lock().unwrap() = Some((std::time::Instant::now(), f.clone()));
+    let now = std::time::Instant::now();
+    let (at, f) = match fetch_friends(&state.cfg).await {
+        Ok(f) => (now, f),
+        Err(err) => {
+            eprintln!("warning: steam friends failed: {err}");
+            let prev = state.friends.lock().unwrap().take();
+            match prev {
+                // the old list expires after 60 s more (TTL minus MISS_TTL already counted as age)
+                Some((_, f)) if f.available => (
+                    now.checked_sub(FRIENDS_TTL - FRIENDS_MISS_TTL)
+                        .unwrap_or(now),
+                    f,
+                ),
+                _ => (now, Friends::default()),
+            }
+        }
+    };
+    *state.friends.lock().unwrap() = Some((at, f.clone()));
     f
 }
 

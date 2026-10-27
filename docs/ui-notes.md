@@ -384,7 +384,7 @@ All need the usual auth. The games, info, achievements and news routes also take
 | `GET /api/games/{appid}/news` | `news-<id>.json`, `news-<id>-ok.json` | success 6 h, failure 10 min |
 | `GET /api/games/{appid}/local` | none (reads `userdata/<account>/` on the host) | each request |
 | `GET /api/games/{appid}/screenshots/{name}` | none | `Cache-Control: private, max-age=3600` |
-| `GET /api/friends` | none, in memory only | 120 s, failure 60 s |
+| `GET /api/friends` | none, in memory only | 120 s, failure 60 s (a failure keeps an older good list) |
 | `GET /api/notes`, `PUT/DELETE /api/notes/tags/{id}`, `PUT /api/notes/games/{appid}` | `data_dir/notes.json` | none |
 
 - Refresh: the Library header has a "Refresh library" icon button (next to the sort control) that calls `/api/games?refresh=1` through
@@ -402,7 +402,8 @@ All need the usual auth. The games, info, achievements and news routes also take
   500 ms pause after one that went upstream. A game whose cache entries are fresh costs no call and no pause.
 - Friends are never written to disk: the list (names, avatars, what they play) lives in `AppState` for 120 s. Online or
   in a game only, playing first, at most 30; only the first 1000 friend ids are looked at; an avatar must be https on a
-  Steam avatar host. A private list, no key or Steam being down gives `available: false` (the card says "Friends are not available").
+  Steam avatar host. A private list, no key or Steam being down gives `available: false` (the card says "Friends are not available"),
+  unless a good list is already cached: then one failed fetch keeps serving that list and only delays the next try by 60 s.
 - Screenshots: `/local` lists regular image files (png, jpg, jpeg) from `userdata/<account>/760/remote/<appid>/screenshots`,
   newest first, at most 60, none over 25 MiB, no symlinks. The account id comes from `loginusers.vdf`, never the client.
   `/screenshots/{name}` serves a name only when it equals an entry of that listing (never joined from the request
