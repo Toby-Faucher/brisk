@@ -13,7 +13,7 @@
   import { quitItems } from '../state/quit';
   import Icon from '../ui/Icon.svelte';
   import TagChip from '../modules/library/TagChip.svelte';
-  import { notes, refreshNotes } from '../state/notes';
+  import { notes, notesLoaded, refreshNotes } from '../state/notes';
   import { openEntries, surpriseEntry, tagEntries } from './menuEntries';
 
   const mods = loadModules().filter((m) => !m.soon);
@@ -55,7 +55,7 @@
     if (open) {
       query = '';
       if (!$games) void refreshGames();
-      void refreshNotes();
+      if ($notesLoaded !== true) void refreshNotes();
     }
   });
 

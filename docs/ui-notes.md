@@ -939,8 +939,7 @@ Ctrl+K lists routes, commands and games. It also knows the Library's tags and ga
 tags that match a game) and "Tag: <name>" (every tag you made, with its symbol) go to `/library?tag=<id>`; "Surprise me"
 picks a random Backlog game (same rule and `pickRandom` as the Library) and goes to `/library?open=<appid>`; typing a name
 adds "Open <game>" (up to 8, the Library's folded search, listed before the "Launch <game>" entries, which still only
-start the game on the host). Entry builders: `shell/menuEntries.ts`. Library reads both parameters on mount and again on
-`popstate` and `astro:page-load`, so they also work when you are already on /library. `?open=<appid>` opens that game's
+start the game on the host). Entry builders: `shell/menuEntries.ts`. Library reads both parameters on mount (the router remounts it on each visit). `?open=<appid>` opens that game's
 panel once the list is known (an unknown appid is ignored) and is removed with `history.replaceState`, so a reload does
 not reopen it.
 

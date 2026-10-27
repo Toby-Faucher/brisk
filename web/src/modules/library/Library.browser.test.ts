@@ -138,10 +138,9 @@ describe('Library ?open=', () => {
     expect(location.search).toBe('');
   });
 
-  it('reacts to a later ?tag= without a remount', async () => {
+  it('mounts filtered by ?tag= (the router remounts Library on each visit)', async () => {
+    history.replaceState(null, '', '?tag=auto-coop');
     await render(Library);
-    history.pushState(null, '', '?tag=auto-coop');
-    window.dispatchEvent(new PopStateEvent('popstate'));
     await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'true');
   });
 });

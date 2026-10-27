@@ -46,6 +46,7 @@ describe('openEntries', () => {
   });
   it('is empty without a query and capped otherwise', () => {
     expect(openEntries(games, ' ', vi.fn())).toEqual([]);
+    expect(openEntries(games, ' - : ', vi.fn())).toEqual([]); // folds to nothing
     expect(openEntries(games, 'star', vi.fn())).toHaveLength(8);
   });
 });

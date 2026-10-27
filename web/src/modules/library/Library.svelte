@@ -115,20 +115,19 @@
     }
   }
   $effect(() => {
-    if (wantOpen == null || !$games) return;
+    if (wantOpen == null) return;
+    if ($gamesFailed) return void (wantOpen = null); // never open a panel from a later, unrelated load
+    if (!$games) return;
     open = $games.games.find((x) => x.appid === wantOpen) ?? open; // an unknown appid is ignored
     wantOpen = null;
   });
 
   onMount(() => {
     readParams();
-    // The router may keep this island on a same-page visit (command menu while on /library): re-read then.
-    addEventListener('popstate', readParams);
-    addEventListener('astro:page-load', readParams);
     const offGames = watchGames();
     const offPrefs = watchPrefs();
     const offNotes = watchNotes();
-    return () => (offGames(), offPrefs(), offNotes(), removeEventListener('popstate', readParams), removeEventListener('astro:page-load', readParams));
+    return () => (offGames(), offPrefs(), offNotes());
   });
 
   async function run(g: Game, verb: string, task: () => Promise<unknown>) {
