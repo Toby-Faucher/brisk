@@ -12,6 +12,7 @@
   import Icon from '../../ui/Icon.svelte';
   import Smoke from '../../ui/Smoke.svelte';
   import HostCard from './HostCard.svelte';
+  import FriendsCard from './FriendsCard.svelte';
   import ResumeCard from './ResumeCard.svelte';
   import QuickActions from './QuickActions.svelte';
   import RecentSessions from './RecentSessions.svelte';
@@ -22,7 +23,7 @@
 
   const mods = loadModules();
   const soon = mods.filter((m) => m.soon);
-  const FIXED: Record<string, [string, Component]> = { host: ['Host', HostCard], resume: ['Resume', ResumeCard], quick: ['Quick actions', QuickActions], recent: ['Recent sessions', RecentSessions] };
+  const FIXED: Record<string, [string, Component]> = { host: ['Host', HostCard], resume: ['Resume', ResumeCard], quick: ['Quick actions', QuickActions], recent: ['Recent sessions', RecentSessions], friends: ['Friends', FriendsCard] };
   let widgets: Record<string, [string, Component]> = $state({});
   // The saved order (hostd prefs) laid over the cards there are; "Add a module" always stays last.
   let saved: string[] = $state([]);

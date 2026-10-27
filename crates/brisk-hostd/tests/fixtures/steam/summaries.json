@@ -1,0 +1,46 @@
+{
+ "response": {
+  "players": [
+   {
+    "steamid": "76561198000000101",
+    "personaname": "testfriend_b",
+    "personastate": 1,
+    "avatarfull": "https://avatars.steamstatic.com/invented.jpg"
+   },
+   {
+    "steamid": "76561198000000102",
+    "personaname": "TestFriend_A",
+    "personastate": 1,
+    "avatarfull": "https://avatars.steamstatic.com/invented.jpg",
+    "gameextrainfo": "Portal 2",
+    "gameid": "620"
+   },
+   {
+    "steamid": "76561198000000103",
+    "personaname": "TestOffline",
+    "personastate": 0,
+    "avatarfull": "https://avatars.steamstatic.com/invented.jpg"
+   },
+   {
+    "steamid": "76561198000000104",
+    "personaname": "TestAway",
+    "personastate": 3,
+    "avatarfull": "https://avatars.steamstatic.com/invented.jpg"
+   },
+   {
+    "steamid": "76561198000000105",
+    "personaname": "TestGhost",
+    "personastate": 0,
+    "avatarfull": "https://avatars.steamstatic.com/invented.jpg",
+    "gameextrainfo": "Team Fortress 2",
+    "gameid": "440"
+   },
+   {
+    "steamid": "76561198000000106",
+    "personaname": "TestEvil",
+    "personastate": 2,
+    "avatarfull": "https://evil.example.com/x.jpg"
+   }
+  ]
+ }
+}

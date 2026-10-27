@@ -36,6 +36,8 @@ pub struct AppState {
     pub site: Site,
     /// A background cache warm is running (see `steam_info::warm`).
     pub warming: AtomicBool,
+    /// Friends online: in memory only (other people's names never reach disk), see `steam_info::friends_cached`.
+    pub friends: Mutex<Option<(std::time::Instant, steam_info::Friends)>>,
 }
 
 impl AppState {
@@ -55,6 +57,7 @@ impl AppState {
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
             warming: AtomicBool::new(false),
+            friends: Mutex::new(None),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -154,6 +157,11 @@ async fn game_news(
         .query()
         .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
     axum::Json(steam_info::news(&s.cfg, id, refresh).await).into_response()
+}
+
+/// Friends in a game or online. Any failure is a 200 with `available: false`.
+async fn friends(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(steam_info::friends_cached(&s).await).into_response()
 }
 
 async fn host_status(State(s): State<Arc<AppState>>) -> Response {
@@ -548,6 +556,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{appid}/info", get(game_info))
         .route("/games/{appid}/achievements", get(game_achievements))
         .route("/games/{appid}/news", get(game_news))
+        .route("/friends", get(friends))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))
         .route(

@@ -10,10 +10,10 @@ export async function refreshHost() {
 
 type Doc = EventTarget & { hidden: boolean };
 
-/** Refresh now and every `every` ms, but only while the tab is visible. Returns the cleanup for onMount. */
-export function pollHost(doc: Doc = document, every = 10_000): () => void {
+/** Run `fn` now and every `every` ms, but only while the tab is visible. Returns the cleanup for onMount. */
+export function pollVisible(fn: () => void, doc: Doc = document, every = 10_000): () => void {
   const tick = () => {
-    if (!doc.hidden) void refreshHost();
+    if (!doc.hidden) fn();
   };
   tick();
   const id = setInterval(tick, every);
@@ -23,3 +23,6 @@ export function pollHost(doc: Doc = document, every = 10_000): () => void {
     doc.removeEventListener('visibilitychange', tick);
   };
 }
+
+/** Refresh the host now and every `every` ms while visible. */
+export const pollHost = (doc: Doc = document, every = 10_000) => pollVisible(() => void refreshHost(), doc, every);

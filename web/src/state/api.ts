@@ -27,6 +27,10 @@ export type Achievements = { available: boolean; unlocked: number; total: number
 export type NewsItem = { title: string; url: string; date: number; patch: boolean };
 /** GET /api/games/{appid}/news; an empty list when Steam had nothing. */
 export type News = { items: NewsItem[] };
+/** One friend who is online or in a game. `name` is text only; `avatar` is an https Steam URL or empty. */
+export type Friend = { name: string; avatar: string; state: 'online' | 'away' | 'busy' | 'snooze'; playing: string | null; appid: number | null };
+/** GET /api/friends. `available` false: the list is private or Steam did not answer. */
+export type Friends = { available: boolean; online: Friend[] };
 /** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
 export type GameInfo = {
   available: boolean;
@@ -220,6 +224,7 @@ export const api = {
   gameInfo: (appid: number) => call<GameInfo>('GET', `/api/games/${appid}/info`),
   gameAchievements: (appid: number) => call<Achievements>('GET', `/api/games/${appid}/achievements`),
   gameNews: (appid: number) => call<News>('GET', `/api/games/${appid}/news`),
+  friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),

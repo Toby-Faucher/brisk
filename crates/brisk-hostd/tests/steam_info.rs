@@ -442,3 +442,129 @@ async fn warm_fetches_news_and_games_show_updated() {
     // 400 has the same news but is not installed
     assert_eq!(g(400)["updated"], false);
 }
+
+fn friends_routes() -> Vec<(&'static str, u16, String)> {
+    let r = |n: &str| std::fs::read_to_string(format!("{FIX}/{n}.json")).unwrap();
+    vec![
+        ("/ISteamUser/GetFriendList/", 200, r("friends")),
+        ("/ISteamUser/GetPlayerSummaries/", 200, r("summaries")),
+    ]
+}
+
+async fn friends_names(api: &str) -> (Steam, serde_json::Value) {
+    let s = steam(api, NO_API, Some(KEY));
+    let (st, v) = get_json(&s.cfg, "/api/friends").await;
+    assert_eq!(st, 200, "{v}");
+    (s, v)
+}
+
+#[tokio::test]
+async fn friends_online_sorted_playing_first() {
+    let api = mock_steam(friends_routes()).await;
+    let (_s, v) = friends_names(&api).await;
+    assert_eq!(v["available"], true);
+    let names: Vec<_> = v["online"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "TestFriend_A",
+            "TestGhost",
+            "TestAway",
+            "TestEvil",
+            "testfriend_b"
+        ]
+    );
+    let a = &v["online"][0];
+    assert_eq!(a["playing"], "Portal 2");
+    assert_eq!(a["appid"], 620);
+    assert_eq!(a["state"], "online");
+    assert_eq!(a["avatar"], "https://avatars.steamstatic.com/invented.jpg");
+    assert_eq!(v["online"][1]["state"], "online"); // offline persona but in a game
+    assert_eq!(v["online"][2]["state"], "away");
+    assert_eq!(v["online"][3]["state"], "busy");
+    assert_eq!(v["online"][3]["avatar"], ""); // foreign host dropped
+}
+
+#[tokio::test]
+async fn friends_offline_are_dropped() {
+    let api = mock_steam(friends_routes()).await;
+    let (_s, v) = friends_names(&api).await;
+    assert!(!v.to_string().contains("TestOffline"));
+}
+
+#[tokio::test]
+async fn friends_private_list_is_unavailable() {
+    let api = mock_steam(vec![("/ISteamUser/GetFriendList/", 401, String::new())]).await;
+    let (_s, v) = friends_names(&api).await;
+    assert_eq!(v, serde_json::json!({"available": false, "online": []}));
+    // no key at all: same answer
+    let s = steam(&api, NO_API, None);
+    let (st, v) = get_json(&s.cfg, "/api/friends").await;
+    assert_eq!(st, 200);
+    assert_eq!(v["available"], false);
+}
+
+#[tokio::test]
+async fn friends_cached_in_memory_not_on_disk() {
+    let (api, hits) = mock_steam_hits(friends_routes()).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let st = Arc::new(AppState::new(s.cfg.clone()));
+    let a = brisk_hostd::steam_info::friends_cached(&st).await;
+    let n = hits.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(n, 2);
+    let b = brisk_hostd::steam_info::friends_cached(&st).await;
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), n);
+    assert_eq!(a.online.len(), b.online.len());
+    fn walk(d: &std::path::Path, bad: &mut Vec<String>) {
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, bad);
+            } else if std::fs::read_to_string(&p).is_ok_and(|t| t.contains("TestFriend_A")) {
+                bad.push(p.display().to_string());
+            }
+        }
+    }
+    let mut bad = vec![];
+    walk(s._t.path(), &mut bad);
+    assert!(bad.is_empty(), "names on disk: {bad:?}");
+}
+
+#[tokio::test]
+async fn friends_failure_is_cached_briefly() {
+    let (api, hits) =
+        mock_steam_hits(vec![("/ISteamUser/GetFriendList/", 401, String::new())]).await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let st = Arc::new(AppState::new(s.cfg.clone()));
+    for _ in 0..3 {
+        assert!(!brisk_hostd::steam_info::friends_cached(&st).await.available);
+    }
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn friends_batches_over_100() {
+    let ids: Vec<_> = (0..150)
+        .map(|n| serde_json::json!({"steamid": format!("7656119800001{n:04}")}))
+        .collect();
+    let list = serde_json::json!({"friendslist": {"friends": ids}}).to_string();
+    let (api, hits) = mock_steam_hits(vec![
+        ("/ISteamUser/GetFriendList/", 200, list),
+        (
+            "/ISteamUser/GetPlayerSummaries/",
+            200,
+            r#"{"response":{"players":[]}}"#.into(),
+        ),
+    ])
+    .await;
+    let s = steam(&api, NO_API, Some(KEY));
+    let (st, v) = get_json(&s.cfg, "/api/friends").await;
+    assert_eq!(st, 200);
+    assert_eq!(v["available"], true);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 3);
+}
