@@ -457,9 +457,9 @@ game; a missing `note` or `tags` counts as empty, unknown fields are ignored, un
 first problem is shown as the error; an invalid file, or one that would pass 64 tags or 2000 games together with what is
 on the host, sends nothing. A valid one asks first (counts, and how many games replace one that is already here), then
 sends the tags and then the games with the normal per-item PUTs, one at a time. A Stop button ends it between PUTs; a
-failure or a stop reports how many were imported. Restore is not a merge of a game: each tag and game in the file
-replaces the one on the host, note and tags included, so an older backup overwrites newer notes. Tags and games that are
-not in the file are kept; nothing is deleted.
+failure or a stop reports how many were imported, and focus moves to that message. Each tag and game in the file
+replaces the one here, note and tags included. Tags and games that are not in the file are kept. An older backup
+therefore overwrites newer notes.
 - Smart tags are read-only, computed on the page from the game list, never stored, and filter like your own tags
   (`/library?tag=<id>`; an unknown id is ignored):
 

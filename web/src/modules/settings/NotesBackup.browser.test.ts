@@ -19,6 +19,7 @@ const spies = (live: Notes = none) => ({
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   notes.set({ tags: {}, games: {} });
 });
@@ -29,8 +30,7 @@ describe('NotesBackup', () => {
     let blob: Blob | undefined;
     vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => ((blob = b as Blob), 'blob:x'));
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const now = new Date();
-    const local = `brisk-notes-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.json`;
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 27, 23, 59) }); // late evening local time; timers stay real
     let name = '';
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       name = this.download;
@@ -39,7 +39,7 @@ describe('NotesBackup', () => {
     await userEvent.click(page.getByRole('button', { name: 'Download notes and tags' }));
     expect(revoke).not.toHaveBeenCalled(); // not before the download has started
     await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:x'), { timeout: 3000 });
-    expect(name).toBe(local);
+    expect(name).toBe('brisk-notes-2026-10-27.json');
     const j = JSON.parse(await blob!.text());
     expect(j).toMatchObject({ format: 'brisk-notes', version: 1, ...data });
     expect(typeof j.exported).toBe('string');
@@ -101,6 +101,7 @@ describe('NotesBackup', () => {
     await expect.poll(() => page.getByRole('alert').element().textContent).toContain('Stopped after 2 of 4');
     await expect.poll(() => page.getByRole('alert').element().textContent).toContain('too many games');
     expect(s.putGame).toHaveBeenCalledTimes(1);
+    await expect.poll(() => document.activeElement === page.getByRole('alert').element()).toBe(true);
     await vi.waitFor(() => expect(s.get).toHaveBeenCalled());
   });
 
@@ -155,5 +156,6 @@ describe('NotesBackup', () => {
     expect(s.putTag).toHaveBeenCalledTimes(1);
     expect(s.putGame).not.toHaveBeenCalled();
     expect(page.getByRole('button', { name: 'Stop restoring' }).query()).toBeNull();
+    await expect.poll(() => document.activeElement === page.getByRole('alert').element()).toBe(true);
   });
 });

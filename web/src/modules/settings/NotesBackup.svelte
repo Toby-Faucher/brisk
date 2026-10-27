@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { Dialog } from 'bits-ui';
   import { api } from '../../state/api';
   import { refreshNotes } from '../../state/notes';
@@ -16,6 +16,7 @@
   // what the dialog says; kept after the restore starts so the text does not change while the dialog closes
   let info = $state({ tags: 0, games: 0, replaced: 0 });
   let status: HTMLElement | undefined = $state();
+  let alertEl: HTMLElement | undefined = $state();
   let focusStatus = false;
   let stop = false;
   let revoke: ReturnType<typeof setTimeout> | undefined;
@@ -95,6 +96,8 @@
       error = `Stopped after ${done} of ${jobs.length} entries (tags first, then games): ${why}.`;
     } finally {
       busy = running = false;
+      await tick();
+      (error ? alertEl : status)?.focus(); // the Stop button is gone: the final message takes focus
       await refreshNotes();
     }
   }
@@ -103,10 +106,10 @@
 <Card cols={2}>
   <h4>Notes and tags</h4>
   <div class="opt"><span>Back up <small class="lab">a JSON file of all tags and game notes</small></span><button type="button" class="btn ghost" disabled={busy} onclick={download}>Download notes and tags</button></div>
-  <div class="opt"><span><label for="notes-restore">Restore from file</label> <small class="lab" id="notes-restore-hint">max 2 MiB; each tag and game in the file replaces the one here</small></span><input id="notes-restore" type="file" accept="application/json,.json" aria-describedby="notes-restore-hint" disabled={busy} onchange={pick} /></div>
+  <div class="opt"><span><label for="notes-restore">Restore from file</label> <small class="lab" id="notes-restore-hint">max 2 MiB. Each tag and game in the file replaces the one here, note and tags included. Tags and games that are not in the file are kept.</small></span><input id="notes-restore" type="file" accept="application/json,.json" aria-describedby="notes-restore-hint" disabled={busy} onchange={pick} /></div>
   <p class="note" role="status" tabindex="-1" bind:this={status}>{progress}</p>
   {#if running}<button type="button" class="btn ghost" onclick={() => (stop = true)}>Stop restoring</button>{/if}
-  {#if error}<p class="note err" role="alert">{error}</p>{/if}
+  {#if error}<p class="note err" role="alert" tabindex="-1" bind:this={alertEl}>{error}</p>{/if}
 </Card>
 
 <Dialog.Root bind:open={ask}>
@@ -116,9 +119,9 @@
       class="rs glass"
       onCloseAutoFocus={(e) => {
         if (!focusStatus) return;
-        e.preventDefault(); // the file input is disabled by now; the progress text takes focus
+        e.preventDefault(); // the file input is disabled by now; the progress text takes focus while it runs
         focusStatus = false;
-        status?.focus();
+        if (running) status?.focus();
       }}
     >
       <Dialog.Title class="rs-t">Restore notes and tags?</Dialog.Title>
