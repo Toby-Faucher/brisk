@@ -9,11 +9,13 @@ export const gamesFailed = writable(false);
 
 let fetchedAt = -Infinity;
 
-export async function refreshGames() {
+/** `force` skips hostd's 6 h owned-games cache. Resolves true when the list arrived. */
+export async function refreshGames({ force = false }: { force?: boolean } = {}): Promise<boolean> {
   fetchedAt = Date.now();
-  const g = await api.games().catch(() => null);
+  const g = await api.games(force || undefined).catch(() => null);
   gamesFailed.set(!g);
   if (g) games.set(g);
+  return !!g;
 }
 
 const stale = () => Date.now() - fetchedAt >= 60_000;

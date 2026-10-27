@@ -42,7 +42,115 @@ const local: GameLocal = { screenshots: ['b.png', 'a.jpg'], saves: { files: 14, 
 // a fetch-made object URL, as api.screenshot returns
 const blobUrl = () => URL.createObjectURL(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
 
+describe('GameDetail refresh guards', () => {
+  const flush = async () => {
+    for (let k = 0; k < 5; k++) await Promise.resolve();
+  };
+  afterEach(() => vi.useRealTimers());
+
+  it('ignores a second click while the first is in flight, even after 10 s; re-enables once done', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    const b = page.getByRole('button', { name: 'Refresh Steam data' });
+    const el = b.element() as HTMLElement;
+    let done!: (v: GameInfo) => void;
+    i.mockClear();
+    i.mockImplementation(() => new Promise((r) => (done = r)));
+    vi.useFakeTimers();
+    el.click();
+    await flush();
+    expect(i).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(el.getAttribute('aria-disabled')).toBe('true'); // still loading
+    el.click();
+    await flush();
+    expect(i).toHaveBeenCalledTimes(1);
+    done(info);
+    await flush();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(el.getAttribute('aria-disabled')).not.toBe('true'); // cooldown over and not loading
+    el.click();
+    await flush();
+    expect(i).toHaveBeenCalledTimes(2);
+  });
+
+  it('is disabled for 10 s after a click and then works again', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    const el = page.getByRole('button', { name: 'Refresh Steam data' }).element() as HTMLElement;
+    vi.useFakeTimers();
+    el.click();
+    await flush();
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(el.getAttribute('aria-disabled')).toBe('true');
+    await vi.advanceTimersByTimeAsync(1_001);
+    expect(el.getAttribute('aria-disabled')).not.toBe('true');
+    i.mockClear();
+    el.click();
+    await flush();
+    expect(i).toHaveBeenCalledTimes(1);
+  });
+
+  it('toasts when a refresh request fails and keeps what is shown', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    await render(GameDetail, { props: props(game) });
+    await render(Toasts);
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    i.mockRejectedValue(new Error('down'));
+    await userEvent.click(page.getByRole('button', { name: 'Refresh Steam data' }));
+    await expect.element(page.getByText('Could not refresh Steam data')).toBeInTheDocument();
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+  });
+
+  it('is disabled until the first load has finished', async () => {
+    vi.spyOn(api, 'gameInfo').mockImplementation(() => new Promise(() => {}));
+    await render(GameDetail, { props: props(game) });
+    const b = page.getByRole('button', { name: 'Refresh Steam data' });
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('drops late refresh answers after the panel switched to another game', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const r = await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    let late!: (v: GameInfo) => void;
+    i.mockImplementationOnce(() => new Promise((res) => (late = res)));
+    await userEvent.click(page.getByRole('button', { name: 'Refresh Steam data' }));
+    i.mockResolvedValue({ ...info, description: 'The other game.' });
+    await r.rerender({ game: off });
+    await expect.element(page.getByText('The other game.')).toBeInTheDocument();
+    late({ ...info, description: 'Stale answer.' });
+    await new Promise((res) => setTimeout(res, 50));
+    expect(page.getByText('Stale answer.').elements()).toHaveLength(0);
+    await expect.element(page.getByText('The other game.')).toBeInTheDocument();
+  });
+});
+
 describe('GameDetail', () => {
+  it('Refresh re-fetches info, achievements and news with refresh, updates sections, then waits', async () => {
+    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const a = vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
+    const n = vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    a.mockResolvedValue(ach);
+    n.mockResolvedValue({ items: [{ title: 'Fresh patch', url: 'https://n.example.test/f', date: 1, patch: true }] });
+    const b = page.getByRole('button', { name: 'Refresh Steam data' });
+    await userEvent.click(b);
+    expect(i).toHaveBeenLastCalledWith(620, true);
+    expect(a).toHaveBeenLastCalledWith(620, true);
+    expect(n).toHaveBeenLastCalledWith(620, true);
+    await expect.element(page.getByRole('link', { name: 'Fresh patch' })).toBeInTheDocument();
+    await expect.element(page.getByText('First Steps')).toBeInTheDocument();
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true');
+    await expect.element(b).toHaveAttribute('title', 'Steam data was just refreshed. Wait 10 seconds to refresh again.');
+    i.mockClear();
+    (b.element() as HTMLElement).click(); // a real click would wait for aria-disabled to clear
+    expect(i).not.toHaveBeenCalled();
+  });
+
   it('warns above Play while Steam has an update, and Play stays enabled', async () => {
     await render(GameDetail, { props: props({ ...game, update: 'needed' }) });
     await expect.element(page.getByText(/Steam still has to update this game/)).toBeInTheDocument();

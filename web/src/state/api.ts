@@ -235,12 +235,15 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
   });
 }
 
+const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
+
 export const api = {
   host: () => call<HostInfo>('GET', '/api/host'),
-  games: () => call<{ games: Game[]; ownedAvailable: boolean }>('GET', '/api/games'),
-  gameInfo: (appid: number) => call<GameInfo>('GET', `/api/games/${appid}/info`),
-  gameAchievements: (appid: number) => call<Achievements>('GET', `/api/games/${appid}/achievements`),
-  gameNews: (appid: number) => call<News>('GET', `/api/games/${appid}/news`),
+  /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
+  games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),
+  gameInfo: (appid: number, refresh?: boolean) => call<GameInfo>('GET', `/api/games/${appid}/info${q(refresh)}`),
+  gameAchievements: (appid: number, refresh?: boolean) => call<Achievements>('GET', `/api/games/${appid}/achievements${q(refresh)}`),
+  gameNews: (appid: number, refresh?: boolean) => call<News>('GET', `/api/games/${appid}/news${q(refresh)}`),
   gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),
