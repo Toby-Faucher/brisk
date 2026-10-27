@@ -6,7 +6,7 @@ import { games } from '../../state/games';
 import { notes, notesLoaded } from '../../state/notes';
 import Library from './Library.svelte';
 
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
 const list = [g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }), g(2, 'Bravo', { playtimeMin: 200 }), g(3, 'Charlie', { installed: false, playtimeMin: 5, coop: true })];
 
 afterEach(() => vi.restoreAllMocks());

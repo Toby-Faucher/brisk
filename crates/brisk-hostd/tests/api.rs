@@ -231,6 +231,42 @@ fn acf_parser_handles_odd_files() {
     );
 }
 
+#[test]
+fn parse_acf_update_flags() {
+    use brisk_hostd::steam::parse_acf;
+    let upd = |f: u32| {
+        parse_acf(&format!(
+            "\"AppState\"{{\"appid\"\"5\" \"name\"\"a\" \"StateFlags\"\"{f}\"}}"
+        ))
+        .unwrap()
+        .update
+    };
+    assert_eq!(upd(4), None);
+    assert_eq!(upd(4 | 2).as_deref(), Some("needed"));
+    assert_eq!(upd(4 | 256).as_deref(), Some("running"));
+    assert_eq!(upd(4 | 2 | 256).as_deref(), Some("running"));
+    assert_eq!(upd(1_048_576 | 4).as_deref(), Some("running"));
+    assert_eq!(upd(4 | 512).as_deref(), Some("needed"));
+    assert_eq!(upd(1026), None);
+}
+
+#[tokio::test]
+async fn games_show_update_state() {
+    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    assert_eq!(find(&v, 570)["update"], "needed");
+    assert!(find(&v, 620)["update"].is_null());
+}
+
+#[tokio::test]
+async fn not_installed_game_has_no_update_state() {
+    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    let g = find(&v, 730);
+    assert_eq!(g["installed"], false);
+    assert!(g["update"].is_null());
+}
+
 #[tokio::test]
 async fn installed_games_parsed_from_all_libraries() {
     let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
@@ -325,7 +361,7 @@ async fn api_down_still_lists_installed() {
     let s = steam(&owned_mock(500).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
-    assert_eq!(v["games"].as_array().unwrap().len(), 3);
+    assert_eq!(v["games"].as_array().unwrap().len(), 4);
     assert_eq!(find(&v, 620)["installed"], true);
 }
 
@@ -334,7 +370,7 @@ async fn missing_key_file_is_not_an_error() {
     let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", None);
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
-    assert_eq!(v["games"].as_array().unwrap().len(), 3);
+    assert_eq!(v["games"].as_array().unwrap().len(), 4);
 }
 
 #[tokio::test]
@@ -573,6 +609,7 @@ fn rig_with(mode: &str, service: bool) -> Rig {
             ach_unlocked: None,
             ach_total: None,
             updated: false,
+            update: None,
             controller: None,
             coop: false,
         }],
@@ -1137,7 +1174,7 @@ async fn steam_tools_are_not_games() {
     let s = steam(&owned_mock(500).await, "http://127.0.0.1:1", Some(KEY));
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(v["ownedAvailable"], false);
-    assert_eq!(v["games"].as_array().unwrap().len(), 3);
+    assert_eq!(v["games"].as_array().unwrap().len(), 4);
     assert!(
         v["games"]
             .as_array()

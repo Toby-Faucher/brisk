@@ -215,6 +215,7 @@ fn game(appid: u32, name: &str) -> Game {
         ach_unlocked: None,
         ach_total: None,
         updated: false,
+        update: None,
         controller: None,
         coop: false,
     }

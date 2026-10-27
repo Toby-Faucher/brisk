@@ -18,6 +18,8 @@ export type Game = {
   achTotal: number | null;
   /** Installed, and the host saw a patch newer than your last play (from its news cache). */
   updated: boolean;
+  /** Steam's own update state for an installed game (from its manifest); distinct from `updated`. */
+  update: 'needed' | 'running' | null;
   /** From the host's store-info cache (null until it has fetched this game, or when the Store has none). */
   controller: 'full' | 'partial' | null;
   /** Co-op or Remote Play Together, same source. */

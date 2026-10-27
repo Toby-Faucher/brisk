@@ -31,6 +31,8 @@ pub struct Game {
     pub ach_total: Option<u32>,
     /// Installed, and a patch note newer than the last play (from the news cache).
     pub updated: bool,
+    /// Steam's own update state of an installed game: "needed" or "running" (from StateFlags).
+    pub update: Option<String>,
     /// "full" or "partial", from the info cache (None until warmed or when the Store has none).
     pub controller: Option<String>,
     /// Co-op or Remote Play Together, from the info cache.
@@ -57,6 +59,7 @@ pub struct Installed {
     pub size: u64,
     pub state_flags: u32,
     pub last_played: u64,
+    pub update: Option<String>,
 }
 
 // ---- VDF / ACF ----
@@ -147,6 +150,26 @@ fn get_s<'a>(m: &'a [(String, V)], k: &str) -> Option<&'a str> {
 }
 
 /// `None` for anything that is not a usable `appmanifest_*.acf` (empty, garbage, no appid or name).
+// Steam's EAppState bits. Seen on this host: only 4 (FullyInstalled). The other bits, including the in-progress ones (256, 1024, 1048576, 2097152, 4194304),
+// are from Valve's headers and unverified against a live update. 512 (UpdatePaused) counts as needed.
+const FULLY_INSTALLED: u32 = 4;
+const UPDATE_REQUIRED: u32 = 2;
+const UPDATE_RUNNING: u32 = 256 | 1024 | 1_048_576 | 2_097_152 | 4_194_304;
+
+/// Only installed games get a state: an install in progress is shown by the install flow.
+fn update_state(flags: u32) -> Option<String> {
+    if flags & FULLY_INSTALLED == 0 {
+        return None;
+    }
+    if flags & UPDATE_RUNNING != 0 {
+        Some("running".into())
+    } else if flags & (UPDATE_REQUIRED | 512) != 0 {
+        Some("needed".into())
+    } else {
+        None
+    }
+}
+
 pub fn parse_acf(text: &str) -> Option<Installed> {
     let top = parse_vdf(text)?;
     let V::M(a) = get(&top, "AppState")? else {
@@ -157,12 +180,14 @@ pub fn parse_acf(text: &str) -> Option<Installed> {
     if name.is_empty() {
         return None;
     }
+    let flags = num("StateFlags").unwrap_or(0) as u32;
     Some(Installed {
         appid: get_s(a, "appid")?.parse().ok()?,
         name: name.to_string(),
         size: num("SizeOnDisk").unwrap_or(0),
-        state_flags: num("StateFlags").unwrap_or(0) as u32,
+        state_flags: flags,
         last_played: num("LastPlayed").unwrap_or(0),
+        update: update_state(flags),
     })
 }
 
@@ -452,6 +477,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 ach_unlocked: None,
                 ach_total: None,
                 updated: false,
+                update: None,
                 controller: None,
                 coop: false,
             },
@@ -490,10 +516,12 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             ach_unlocked: None,
             ach_total: None,
             updated: false,
+            update: None,
             controller: None,
             coop: false,
         });
         g.installed = i.state_flags & 4 != 0;
+        g.update = i.update.clone();
         if g.installed {
             g.size_bytes = Some(i.size);
         }

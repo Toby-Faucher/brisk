@@ -7,7 +7,7 @@
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
-  import { badgeLabel, fmtFortnight, fmtSize, smartTags } from './library';
+  import { badgeLabel, fmtFortnight, fmtSize, smartTags, updateLabel } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
   let { game, onpick, showFortnight = false }: { showFortnight?: boolean; game: Game; onpick: (g: Game) => void } = $props();
@@ -20,8 +20,10 @@
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');
   const sub = $derived(showFortnight && game.playtime2wkMin > 0 ? fmtFortnight(game.playtime2wkMin) : game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
+  const upd = $derived(updateLabel(game));
   const label = $derived(
     (game.installed ? (game.running ? `${game.name}, running on the host` : `${game.name}, ${played.toLowerCase()}`) : `${game.name}, not installed${size ? `, ${size}` : ''}`) +
+      (upd ? `, ${upd.toLowerCase()}` : '') +
       (game.updated ? ', updated since you played' : '') +
       (saved ? `, saved quality ${prefsChip(saved)}` : '') +
       (game.achTotal ? `, ${game.achUnlocked ?? 0} of ${game.achTotal} achievements` : '') +
@@ -35,9 +37,10 @@
   <button class="g" class:off={!game.installed} aria-haspopup="dialog" onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
-      {#if saved || game.updated || all.length || hasNote}
+      {#if saved || upd || game.updated || all.length || hasNote}
         <div class="chips">
           {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
+          {#if upd}<span class="uchip need" aria-hidden="true">{upd}</span>{/if}
           {#if game.updated}<span class="uchip" aria-hidden="true">Updated</span>{/if}
           {#if all.length || hasNote}
             <!-- in the card's aria-label already; title for the mouse -->
@@ -77,6 +80,7 @@
   .chips { position: absolute; left: 10px; top: 36px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
   .pchip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: #000c; backdrop-filter: blur(6px); white-space: nowrap; }
   .uchip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: color-mix(in srgb, var(--accent) 80%, #000); white-space: nowrap; }
+  .uchip.need { background: #b45309; }
   .tchip { display: flex; align-items: center; gap: 4px; font-size: 10.5px; padding: 3px 7px; border-radius: 999px; color: #fff; background: #000c; backdrop-filter: blur(6px); }
   .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; background: radial-gradient(80% 60% at 50% 100%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%); pointer-events: none; z-index: 1; }
   .play { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(12px); opacity: 0; transition: all .35s var(--ease); z-index: 3; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; white-space: nowrap; }

@@ -105,6 +105,8 @@ export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.siz
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
 export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));
 
+export const updateLabel = (g: Game): string | null => (g.update === 'needed' ? 'Update needed' : g.update === 'running' ? 'Updating…' : null);
+
 /** Every card opens the detail panel; Play and Install live there, so a click never starts or installs anything. */
 export function cardClick(_g: Game): { action: 'open' } {
   return { action: 'open' };

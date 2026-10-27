@@ -7,7 +7,7 @@ import { api, type SessionRec, type Game, type GameInfo, type Achievements, type
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
 
-const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false };
+const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false };
 const off: Game = { ...game, appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 };
 const info: GameInfo = { available: true, description: 'Think with portals & friends.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '18 Apr, 2011', metacritic: 95, screenshots: [] };
 const none: GameInfo = { available: false, description: '', genres: [], controller: null, singleplayer: false, coop: false, remotePlayTogether: false, release: null, metacritic: null, screenshots: [] };
@@ -43,6 +43,12 @@ const local: GameLocal = { screenshots: ['b.png', 'a.jpg'], saves: { files: 14, 
 const blobUrl = () => URL.createObjectURL(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
 
 describe('GameDetail', () => {
+  it('warns above Play while Steam has an update, and Play stays enabled', async () => {
+    await render(GameDetail, { props: props({ ...game, update: 'needed' }) });
+    await expect.element(page.getByText(/Steam still has to update this game/)).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Play/ })).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('renders news items that share date and title', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const it = { title: 'Same', url: 'https://n.example.test/a', date: 5, patch: true };

@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterByTag, almostDone, backlog, filterGames, pickRandom, smartTags, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterByTag, almostDone, backlog, filterGames, pickRandom, smartTags, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, updateLabel, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
 
 describe('library', () => {
+  it('updateLabel_names_the_state', () => {
+    expect(updateLabel(g(1, 'a', { update: 'needed' }))).toBe('Update needed');
+    expect(updateLabel(g(1, 'a', { update: 'running' }))).toBe('Updating…');
+    expect(updateLabel(g(1, 'a'))).toBeNull();
+  });
+
   it('sortGames_orders_and_default_keeps_input', () => {
     const list = [g(1, 'banjo', { playtimeMin: 5, lastPlayed: 10 }), g(2, 'Apex', { playtimeMin: 50 }), g(3, 'cave', { playtimeMin: 9, lastPlayed: 99 })];
     const ids = (s: Parameters<typeof sortGames>[1]) => sortGames(list, s).map((x) => x.appid);

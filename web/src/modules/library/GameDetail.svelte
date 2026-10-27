@@ -136,6 +136,7 @@
       </div>
 
       <!-- actions -->
+      {#if game.installed && game.update}<p class="upd" role="note">Steam still has to update this game. Starting it now may wait for the download.</p>{/if}
       <div class="acts">
         {#if game.installed}
           <button class="btn" aria-disabled={busy} onclick={() => onplay(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
@@ -241,6 +242,7 @@
   :global(.gd-t) { margin: 0; font-size: 24px; letter-spacing: -.03em; }
   :global(.gd-t.vh) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   :global(.gd-d) { color: #c9d1e0; font-size: 13.5px; }
+  .upd { margin: 14px 22px 0; font-size: 13px; color: var(--muted); }
   .acts { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 22px 0; }
   .acts :global(.close) { margin-left: auto; }
   .sec { padding: 14px 22px 22px; display: grid; gap: 10px; }

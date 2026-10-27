@@ -6,7 +6,7 @@ import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 import { notes } from '../../state/notes';
 
-const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false };
+const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false };
 
 describe('GameCard', () => {
   it('clicking a not-installed card calls onpick and never installs', async () => {
@@ -48,6 +48,13 @@ describe('GameCard', () => {
     await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
     await expect.element(page.getByRole('button', { name: /updated since you played/ })).toBeInTheDocument();
     expect(page.getByRole('button', { name: /updated since you played/ }).element().textContent).toContain('Updated');
+  });
+
+  it('shows the Steam update state as a chip and in the label', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, update: 'running' }, onpick: vi.fn() } });
+    const b = page.getByRole('button', { name: /updating…/ });
+    await expect.element(b).toBeInTheDocument();
+    expect(b.element().textContent).toContain('Updating…');
   });
 
   it('shows no Updated chip otherwise', async () => {
