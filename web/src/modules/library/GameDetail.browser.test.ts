@@ -319,6 +319,19 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('Cloud saves: 14 files, 2.1 MB, synced 3 d ago')).toBeInTheDocument();
   });
 
+  it('a failed screenshot tile offers Retry, and the retry loads it', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['b.png'], saves: null });
+    const shot = vi.spyOn(api, 'screenshot').mockRejectedValueOnce(new Error('down')).mockImplementation(async () => blobUrl());
+    await render(GameDetail, { props: props(game) });
+    const retry = page.getByRole('button', { name: 'Retry loading screenshot 1' });
+    await expect.element(retry).toBeInTheDocument();
+    await userEvent.click(retry);
+    await expect.element(page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' })).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    expect(shot).toHaveBeenCalledTimes(2);
+    expect(page.getByRole('button', { name: 'Retry loading screenshot 1' }).elements()).toHaveLength(0);
+  });
+
   it('object URLs are revoked on close', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
     vi.spyOn(api, 'gameLocal').mockResolvedValue(local);

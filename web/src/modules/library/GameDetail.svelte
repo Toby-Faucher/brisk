@@ -204,9 +204,12 @@
               <h3>Your screenshots</h3>
               <div class="shots">
                 {#each local.screenshots as name, i (name)}
-                  <button class="shot" aria-label="Open {localShots[i].alt}" aria-haspopup="dialog" onclick={() => show('local', i)}>
-                    {#if shotUrl[name]}<img src={shotUrl[name]} alt={localShots[i].alt} decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
-                  </button>
+                  <div class="tile">
+                    <button class="shot" aria-label="Open {localShots[i].alt}" aria-haspopup="dialog" onclick={() => show('local', i)}>
+                      {#if shotUrl[name]}<img src={shotUrl[name]} alt={localShots[i].alt} decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
+                    </button>
+                    {#if shotBad[name]}<button class="btn ghost retry" aria-label="Retry loading screenshot {i + 1}" onclick={() => want(name)}>Retry</button>{/if}
+                  </div>
                 {/each}
               </div>
             {/if}
@@ -275,7 +278,9 @@
   .desc { line-height: 1.5; margin: 0; }
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-  .shot { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; display: block; }
+  .tile { position: relative; }
+  .retry { position: absolute; inset: auto 8px 8px auto; padding: 4px 10px; font-size: 12.5px; min-height: 24px; background: var(--panel2); }
+  .shot { width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; display: block; }
   .shot img, .shot .ph { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); transition: filter .2s; }
   .shot:hover img { filter: brightness(1.12); }
   .h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
