@@ -7,14 +7,16 @@
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
-  import { badgeLabel, fmtFortnight, fmtSize } from './library';
+  import { badgeLabel, fmtFortnight, fmtSize, smartTags } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
   let { game, onpick, showFortnight = false }: { showFortnight?: boolean; game: Game; onpick: (g: Game) => void } = $props();
   const saved = $derived($prefs[game.appid]);
   const tags = $derived(gameTags($notes, game.appid));
   const hasNote = $derived(!!$notes.games[game.appid]?.note);
-  const tagNames = $derived(tags.map((t) => t.name).join(', '));
+  // Your tags first, then the automatic ones; names go into the aria-label, at most 3 symbols are drawn.
+  const all = $derived([...tags, ...smartTags(game)]);
+  const tagNames = $derived(all.map((t) => t.name).join(', '));
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');
   const sub = $derived(showFortnight && game.playtime2wkMin > 0 ? fmtFortnight(game.playtime2wkMin) : game.installed ? played : size ? `Not installed · ${size}` : 'Not installed');
@@ -23,7 +25,7 @@
       (game.updated ? ', updated since you played' : '') +
       (saved ? `, saved quality ${prefsChip(saved)}` : '') +
       (game.achTotal ? `, ${game.achUnlocked ?? 0} of ${game.achTotal} achievements` : '') +
-      (tags.length ? `, tags: ${tagNames}` : '') +
+      (all.length ? `, tags: ${tagNames}` : '') +
       (hasNote ? ', note' : ''),
   );
 </script>
@@ -33,15 +35,15 @@
   <button class="g" class:off={!game.installed} aria-haspopup="dialog" onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
       <span class="badge" class:off={!game.installed} class:run={game.running}><i></i>{badgeLabel(game)}</span>
-      {#if saved || game.updated || tags.length || hasNote}
+      {#if saved || game.updated || all.length || hasNote}
         <div class="chips">
           {#if saved}<span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}
           {#if game.updated}<span class="uchip" aria-hidden="true">Updated</span>{/if}
-          {#if tags.length || hasNote}
+          {#if all.length || hasNote}
             <!-- in the card's aria-label already; title for the mouse -->
             <span class="tchip" aria-hidden="true" title={[tagNames, hasNote && 'Has a note'].filter(Boolean).join(' · ')}>
-              {#each tags.slice(0, 3) as t (t.id)}<TagChip color={t.color} symbol={t.symbol} bare size={12} />{/each}
-              {#if tags.length > 3}<span>+{tags.length - 3}</span>{/if}
+              {#each all.slice(0, 3) as t (t.id)}<TagChip color={t.color} symbol={t.symbol} bare size={12} />{/each}
+              {#if all.length > 3}<span>+{all.length - 3}</span>{/if}
               {#if hasNote}<svg class="nm" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10v12H3zm2 3v1.4h6V5zm0 3v1.4h6V8zm0 3v1.4h4V11z" fill-rule="evenodd" /></svg>{/if}
             </span>
           {/if}

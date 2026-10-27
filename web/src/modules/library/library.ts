@@ -1,6 +1,6 @@
 import type { Game, GameLocal } from '../../state/api';
 import { fmtAgo, pickResume } from '../home/home';
-import type { Notes } from '../../state/notes';
+import type { Notes, TagColor } from '../../state/notes';
 
 export type Filter = 'all' | 'installed' | 'not-installed' | 'recent';
 
@@ -16,9 +16,28 @@ export function filterGames(games: Game[], f: Filter, now = Date.now()): Game[] 
   return games;
 }
 
-/** null: all games; else the games carrying tag `tagId` (while it exists). Keeps the order. */
+export type SmartTagId = 'auto-backlog' | 'auto-controller' | 'auto-coop' | 'auto-almost' | 'auto-updated';
+export type SmartTag = { id: SmartTagId; name: string; color: TagColor; symbol: string; test: (g: Game) => boolean };
+
+/** Read-only tags computed on the page from the game list; never stored in the notes. */
+export const SMART_TAGS: SmartTag[] = [
+  { id: 'auto-backlog', name: 'Backlog', color: 'gray', symbol: 'bookmark', test: (g) => g.playtimeMin < 30 },
+  { id: 'auto-controller', name: 'Controller', color: 'blue', symbol: 'gamepad', test: (g) => g.controller === 'full' },
+  { id: 'auto-coop', name: 'Co-op', color: 'green', symbol: 'users', test: (g) => g.coop },
+  { id: 'auto-almost', name: 'Almost done', color: 'yellow', symbol: 'trophy', test: (g) => !!g.achTotal && (g.achUnlocked ?? 0) / g.achTotal >= 0.8 && (g.achUnlocked ?? 0) < g.achTotal },
+  { id: 'auto-updated', name: 'Updated', color: 'orange', symbol: 'bolt', test: (g) => g.updated },
+];
+
+export const smartTags = (g: Game): SmartTag[] => SMART_TAGS.filter((t) => t.test(g));
+
+/** A random item, or null for an empty list. `rnd` returns [0, 1). */
+export const pickRandom = <T>(items: T[], rnd: () => number = Math.random): T | null => items[Math.min(items.length - 1, Math.floor(rnd() * items.length))] ?? null;
+
+/** null: all games; else the games carrying tag `tagId` (your tag while it exists, or a smart tag's rule). Keeps the order. */
 export function filterByTag(games: Game[], notes: Notes, tagId: string | null): Game[] {
   if (tagId === null) return games;
+  const smart = SMART_TAGS.find((t) => t.id === tagId);
+  if (smart) return games.filter(smart.test);
   if (!notes.tags[tagId]) return [];
   return games.filter((g) => notes.games[g.appid]?.tags.includes(tagId));
 }
@@ -51,6 +70,14 @@ export function shelves(games: Game[]): { installed: Game[]; notInstalled: Game[
   const fortnight = games.filter((g) => g.playtime2wkMin > 0).sort((a, b) => b.playtime2wkMin - a.playtime2wkMin);
   return { installed: games.filter((g) => g.installed), notInstalled: games.filter((g) => !g.installed), fortnight, hero: pickResume(games) };
 }
+
+/** Backlog shelf: up to 40, least played first, then by name. */
+export const backlog = (games: Game[]): Game[] =>
+  games.filter(SMART_TAGS[0].test).sort((a, b) => a.playtimeMin - b.playtimeMin || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).slice(0, 40);
+
+/** Almost-done shelf: closest to 100% first. */
+export const almostDone = (games: Game[]): Game[] =>
+  games.filter(SMART_TAGS[3].test).sort((a, b) => b.achUnlocked! / b.achTotal! - a.achUnlocked! / a.achTotal!);
 
 const OVERSCAN = 2;
 const MAX_MOUNTED = 20;

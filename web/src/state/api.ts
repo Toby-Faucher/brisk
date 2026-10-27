@@ -18,6 +18,10 @@ export type Game = {
   achTotal: number | null;
   /** Installed, and the host saw a patch newer than your last play (from its news cache). */
   updated: boolean;
+  /** From the host's store-info cache (null until it has fetched this game, or when the Store has none). */
+  controller: 'full' | 'partial' | null;
+  /** Co-op or Remote Play Together, same source. */
+  coop: boolean;
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };

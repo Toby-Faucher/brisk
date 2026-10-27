@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
 import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, pickResume, reconcileOrder } from './home';
 
-const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running });
+const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running });
 
 describe('home', () => {
   it('resume_picks_most_recent_played_installed_game', () => {

@@ -11,7 +11,7 @@ afterEach(() => {
 
 const tag = (name: string) => ({ name, color: 'teal' as const, symbol: 'users', note: '' });
 const map: Notes = { tags: { coop: tag('Co-op night'), back: tag('Backlog') }, games: { '620': { note: '', tags: ['gone', 'coop'] }, '400': { note: 'x', tags: ['back'] } } };
-const g = (appid: number): Game => ({ appid, name: `G${appid}`, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false });
+const g = (appid: number): Game => ({ appid, name: `G${appid}`, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false });
 
 describe('notes helpers', () => {
   it('gameTags skips ids that are not tags', () => {

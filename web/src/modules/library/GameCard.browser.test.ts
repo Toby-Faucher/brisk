@@ -6,7 +6,7 @@ import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 import { notes } from '../../state/notes';
 
-const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false };
+const game: Game = { appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false };
 
 describe('GameCard', () => {
   it('clicking a not-installed card calls onpick and never installs', async () => {
@@ -57,13 +57,13 @@ describe('GameCard', () => {
 
   it('shows up to 3 tag symbols, +n and a note mark, all named in the label', async () => {
     const t = (name: string) => ({ name, color: 'blue' as const, symbol: 'star', note: '' });
-    notes.set({ tags: { a: t('Co-op night'), b: t('Backlog'), c: t('Short'), d: t('Cozy') }, games: { '400': { note: 'hi', tags: ['a', 'b', 'c', 'd'] } } });
+    notes.set({ tags: { a: t('Co-op night'), b: t('Rainy day'), c: t('Short'), d: t('Cozy') }, games: { '400': { note: 'hi', tags: ['a', 'b', 'c', 'd'] } } });
     await render(GameCard, { props: { game, onpick: vi.fn() } });
-    await expect.element(page.getByRole('button', { name: /, tags: Co-op night, Backlog, Short, Cozy, note$/ })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /, tags: Co-op night, Rainy day, Short, Cozy, Backlog, note$/ })).toBeInTheDocument();
     const chip = document.querySelector('.tchip')!;
     expect(chip.getAttribute('aria-hidden')).toBe('true');
     expect(chip.querySelectorAll('.tc')).toHaveLength(3);
-    expect(chip.textContent).toContain('+1');
+    expect(chip.textContent).toContain('+2');
     expect(chip.querySelector('.nm')).not.toBeNull();
     notes.set({ tags: {}, games: {} });
   });

@@ -7,8 +7,9 @@
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { hue } from './Cover.svelte';
-  import { badgeLabel, installLabel, playLabel, savesLine } from './library';
+  import { badgeLabel, installLabel, playLabel, savesLine, smartTags } from './library';
   import GameNotes from './GameNotes.svelte';
+  import TagChip from './TagChip.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -148,6 +149,12 @@
 
       <!-- your note and tags (keyed: a fresh draft per game) -->
       {#key game.appid}<GameNotes appid={game.appid} name={game.name} />{/key}
+      {#if smartTags(game).length}
+        <section class="sec" aria-label="Automatic tags">
+          <h3>Automatic tags</h3>
+          <div class="auto">{#each smartTags(game) as t (t.id)}<TagChip name={t.name} color={t.color} symbol={t.symbol} />{/each}</div>
+        </section>
+      {/if}
 
       <!-- store facts -->
       <section class="sec" aria-busy={info === null}>
@@ -239,6 +246,7 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
   .chips li { padding: 3px 10px; border-radius: 999px; font-size: 12.5px; border: 1px solid var(--line); background: var(--panel); }
   .chips li.mode { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.auto { display: flex; flex-wrap: wrap; gap: 6px; }
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
   .shots img, .shots .ph { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); }

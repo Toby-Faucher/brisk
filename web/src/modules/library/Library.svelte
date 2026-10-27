@@ -13,7 +13,7 @@
   import GameDetail from './GameDetail.svelte';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
-  import { cardClick, filterByTag, filterGames, searchGames, shelves, sortGames, type Filter, type Sort } from './library';
+  import { almostDone, backlog, cardClick, filterByTag, filterGames, pickRandom, searchGames, shelves, SMART_TAGS, sortGames, type Filter, type Sort } from './library';
 
   const FILTERS: [Filter, string][] = [['all', 'All'], ['installed', 'Installed'], ['not-installed', 'Not installed'], ['recent', 'Recent']];
   const SORTS: [Sort, string][] = [['default', 'Default order'], ['az', 'A-Z'], ['most-played', 'Most played'], ['last-played', 'Last played']];
@@ -27,10 +27,20 @@
 
   // Tag filter: one tag at a time, on top of the filter chips and search. A tag that is gone stops filtering.
   let tagPick = $state<string | null>(null);
-  const tagF = $derived(tagPick && $notes.tags[tagPick] ? tagPick : null);
+  const tagF = $derived(tagPick && ($notes.tags[tagPick] || SMART_TAGS.some((t) => t.id === tagPick)) ? tagPick : null);
   const usedTags = $derived(Object.entries($notes.tags).filter(([id]) => id === tagF || Object.values($notes.games).some((g) => g.tags.includes(id))));
+  // Automatic tags: only the ones that match at least one game (or are picked), with their counts.
+  const smart = $derived(SMART_TAGS.map((t) => ({ t, n: ($games?.games ?? []).filter(t.test).length })).filter((x) => x.n || x.t.id === tagF));
 
-  const s = $derived(shelves(sortGames(searchGames(filterByTag(filterGames($games?.games ?? [], f), $notes, tagF), q), sort)));
+  const shown = $derived(sortGames(searchGames(filterByTag(filterGames($games?.games ?? [], f), $notes, tagF), q), sort));
+  const s = $derived(shelves(shown));
+  const bare = $derived(!q.trim() && f === 'all' && !tagF);
+  const backlogShelf = $derived(bare ? backlog(shown) : []);
+  const almostShelf = $derived(bare ? almostDone(shown) : []);
+  const surprise = () => {
+    const g = pickRandom(shown);
+    if (g) open = g;
+  };
   const hero = $derived(q.trim() ? null : s.hero);
 
   // Skeleton -> content: when the games first arrive the hero, shelf headers and first cards get the load entrance
@@ -127,14 +137,16 @@
 <div class="top reveal">
   <h2>Library</h2>
   <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} oninput={fade} onkeydown={(e) => e.key === 'Escape' && q && ((q = ''), e.currentTarget.blur(), fade())} placeholder="Search games" aria-label="Search games" /></label>
+  <button class="btn ghost" aria-disabled={!shown.length} title={shown.length ? 'Open a random game from the list below' : 'No game matches the current filters'} onclick={() => shown.length && surprise()}>Surprise me</button>
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>
   {#each FILTERS as [id, label] (id)}<button class="fchip" aria-pressed={f === id} onclick={() => pickFilter(id)}>{label}</button>{/each}
   <select class="sort" bind:value={sort} onchange={fade} aria-label="Sort games">{#each SORTS as [id, label] (id)}<option value={id}>{label}</option>{/each}</select>
 </div>
 
-{#if usedTags.length}
+{#if smart.length || usedTags.length}
   <div class="filters" role="group" aria-label="Filter by tag">
+    {#each smart as { t, n } (t.id)}<button class="fchip tagf auto" aria-pressed={tagF === t.id} onclick={() => ((tagPick = tagF === t.id ? null : t.id), fade())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name} <span class="cnt">{n}</span></button>{/each}
     {#each usedTags as [id, t] (id)}<button class="fchip tagf" aria-pressed={tagF === id} onclick={() => ((tagPick = tagF === id ? null : id), fade())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name}</button>{/each}
   </div>
 {/if}
@@ -158,7 +170,9 @@
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
     {#if hero}<Hero game={hero} busy={busy === hero.appid} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
-    {#if s.fortnight.length && !q.trim() && f === 'all' && !tagF}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
+    {#if s.fortnight.length && bare}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
+    {#if backlogShelf.length}<Shelf title="Backlog" games={backlogShelf} onpick={pick} />{/if}
+    {#if almostShelf.length}<Shelf title="Almost done" games={almostShelf} onpick={pick} />{/if}
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} />{/if}
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
@@ -183,6 +197,8 @@
   /* the selected fill is a pseudo-element, so it can glide between chips (motion glideSwap) */
   .fchip[aria-pressed='true'] { border-color: transparent; color: var(--fg); }
   .fchip[aria-pressed='true']::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--accent) 20%, transparent); border: 1px solid var(--accent); transform-origin: 0 0; }
+  .auto { border-style: dashed; }
+  .cnt { color: var(--muted); font-size: 12px; }
   .tagf { display: inline-flex; align-items: center; gap: 6px; }
   .sort { margin-left: auto; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
   .sort:hover { color: var(--fg); border-color: #3a4152; }

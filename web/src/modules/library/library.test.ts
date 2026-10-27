@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterByTag, filterGames, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
+import { badgeLabel, cardClick, filterByTag, almostDone, backlog, filterGames, pickRandom, smartTags, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, visibleRange, wheelToX } from './library';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, controller: null, coop: false, running: false, ...o });
 
 describe('library', () => {
   it('sortGames_orders_and_default_keeps_input', () => {
@@ -129,5 +129,54 @@ describe('library', () => {
     expect(searchGames(filterByTag(list, n, 'coop'), 'hades').map((x) => x.appid)).toEqual([2]);
     expect(filterByTag(searchGames(list, 'hades'), n, 'coop').map((x) => x.appid)).toEqual([2]);
     expect(filterByTag(searchGames(list, 'hades'), n, null).map((x) => x.appid)).toEqual([1, 2]);
+  });
+
+  const tagIds = (o: Partial<Game>) => smartTags(g(1, 'x', o)).map((t) => t.id);
+
+  it('backlog_is_under_30_minutes', () => {
+    expect(tagIds({ playtimeMin: 29 })).toContain('auto-backlog');
+    expect(tagIds({ playtimeMin: 30 })).not.toContain('auto-backlog');
+    expect(tagIds({ playtimeMin: 0 })).toContain('auto-backlog');
+  });
+
+  it('controller_needs_full_support', () => {
+    expect(tagIds({ playtimeMin: 99, controller: 'full' })).toEqual(['auto-controller']);
+    expect(tagIds({ playtimeMin: 99, controller: 'partial' })).toEqual([]);
+  });
+
+  it('almost_done_is_80_to_99_percent', () => {
+    const at = (u: number, t: number) => tagIds({ playtimeMin: 99, achUnlocked: u, achTotal: t }).includes('auto-almost');
+    expect(at(79, 100)).toBe(false);
+    expect(at(80, 100)).toBe(true);
+    expect(at(99, 100)).toBe(true);
+    expect(at(100, 100)).toBe(false);
+    expect(at(0, 0)).toBe(false);
+  });
+
+  it('smartTags_orders_backlog_first', () => {
+    expect(tagIds({ coop: true, updated: true, controller: 'full' })).toEqual(['auto-backlog', 'auto-controller', 'auto-coop', 'auto-updated']);
+  });
+
+  it('filterByTag_applies_auto_rule', () => {
+    const list = [g(1, 'a', { playtimeMin: 5 }), g(2, 'b', { playtimeMin: 500 }), g(3, 'c', { playtimeMin: 0 })];
+    const none = { tags: {}, games: {} };
+    expect(filterByTag(list, none, 'auto-backlog').map((x) => x.appid)).toEqual([1, 3]);
+    expect(filterByTag(list, none, 'auto-nope')).toEqual([]);
+  });
+
+  it('pickRandom_empty_is_null', () => {
+    expect(pickRandom([])).toBeNull();
+  });
+
+  it('pickRandom_uses_rng', () => {
+    expect(pickRandom([1, 2, 3], () => 0.99)).toBe(3);
+    expect(pickRandom([1, 2, 3], () => 0)).toBe(1);
+  });
+
+  it('shelves_backlog_and_almost_done_order', () => {
+    const list = [g(1, 'b', { playtimeMin: 10 }), g(2, 'a', { playtimeMin: 10 }), g(3, 'c', { playtimeMin: 0 }), g(4, 'd', { playtimeMin: 99 })];
+    expect(backlog(list).map((x) => x.appid)).toEqual([3, 2, 1]);
+    const ach = [g(1, 'x', { achUnlocked: 85, achTotal: 100 }), g(2, 'y', { achUnlocked: 99, achTotal: 100 }), g(3, 'z', { achUnlocked: 50, achTotal: 100 })];
+    expect(almostDone(ach).map((x) => x.appid)).toEqual([2, 1]);
   });
 });
