@@ -71,6 +71,19 @@ describe('Library', () => {
     await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('keeps ?tag= in step with the chips (other params, hash and state stay)', async () => {
+    history.replaceState({ k: 1 }, '', '?tag=auto-coop&x=1#h');
+    await render(Library);
+    const len = history.length;
+    await userEvent.click(page.getByRole('button', { name: /^Co-op 1$/ }));
+    expect(location.search).toBe('?x=1');
+    await userEvent.click(page.getByRole('button', { name: /^Co-op 1$/ }));
+    expect(location.search).toBe('?x=1&tag=auto-coop');
+    expect(location.hash).toBe('#h');
+    expect(history.state).toEqual({ k: 1 });
+    expect(history.length).toBe(len);
+  });
+
   it('lists smart tags that match with counts, and filters by one', async () => {
     await render(Library);
     await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toBeInTheDocument();

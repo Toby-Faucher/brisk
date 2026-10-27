@@ -104,6 +104,15 @@
   // ?tag= (Home tag card, command menu): an unknown id filters nothing (tagF). ?open=<appid> (command menu) opens that
   // game's panel once its list is known, then drops the param so a reload does not reopen it.
   let wantOpen = $state<number | null>(null);
+  // A chip change keeps ?tag= in step (same entry, other params and hash kept) so a reload does not bring the old filter back.
+  function pickTag(id: string | null) {
+    tagPick = id;
+    const p = new URLSearchParams(location.search);
+    if (id) p.set('tag', id);
+    else p.delete('tag');
+    const qs = p.toString();
+    history.replaceState(history.state, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+  }
   function readParams() {
     const p = new URLSearchParams(location.search);
     tagPick = p.get('tag');
@@ -182,8 +191,8 @@
 
 {#if smart.length || usedTags.length}
   <div class="filters" role="group" aria-label="Filter by tag">
-    {#each smart as { t, n } (t.id)}<button class="fchip tagf auto" aria-pressed={tagF === t.id} onclick={() => ((tagPick = tagF === t.id ? null : t.id), fade(), popCards())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name} <span class="cnt">{n}</span></button>{/each}
-    {#each usedTags as [id, t] (id)}<button class="fchip tagf" aria-pressed={tagF === id} onclick={() => ((tagPick = tagF === id ? null : id), fade(), popCards())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name}</button>{/each}
+    {#each smart as { t, n } (t.id)}<button class="fchip tagf auto" aria-pressed={tagF === t.id} onclick={() => (pickTag(tagF === t.id ? null : t.id), fade(), popCards())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name} <span class="cnt">{n}</span></button>{/each}
+    {#each usedTags as [id, t] (id)}<button class="fchip tagf" aria-pressed={tagF === id} onclick={() => (pickTag(tagF === id ? null : id), fade(), popCards())}><TagChip color={t.color} symbol={t.symbol} bare size={13} />{t.name}</button>{/each}
   </div>
 {/if}
 
@@ -213,7 +222,7 @@
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} {pop} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
       <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p>
-        <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'), (tagPick = null))}>Clear search and filter</button>
+        <button class="btn ghost" onclick={() => ((q = ''), (f = 'all'), pickTag(null))}>Clear search and filter</button>
       </div>
     {/if}
   {/if}
