@@ -78,6 +78,16 @@ describe('Library', () => {
     expect(page.getByRole('button', { name: /^Alpha/ }).elements()).toHaveLength(0);
   });
 
+  it('orders the shelves: fortnight, Installed, Almost done, Backlog, Not installed', async () => {
+    const two = list.map((x) => (x.appid === 2 ? { ...x, playtime2wkMin: 30 } : x));
+    games.set({ games: two, ownedAvailable: true });
+    vi.spyOn(api, 'games').mockResolvedValue({ games: two, ownedAvailable: true });
+    await render(Library);
+    await expect.element(page.getByRole('heading', { name: /^Backlog \d+$/ })).toBeInTheDocument();
+    const order = [...document.querySelectorAll('.shelf h4 > span:first-child')].map((h) => h.textContent!.replace(/\s*\d+$/, '').trim());
+    expect(order).toEqual(['Played this fortnight', 'Installed', 'Almost done', 'Backlog', 'Not installed']);
+  });
+
   it('Backlog and Almost done shelves show only with no search, filter or tag', async () => {
     const shelf = (n: string) => page.getByRole('heading', { name: new RegExp(`^${n} \\d+$`) }).elements().length;
     await render(Library);

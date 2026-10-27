@@ -67,6 +67,8 @@
 
 <style>
   .wrap { position: relative; }
+  /* a long name must not widen the card: no min-content from the text, so every cover keeps the slot's width */
+  .name, .sub { contain: inline-size; }
   .g { display: block; width: 100%; text-align: left; padding: 0; border: 0; background: none; cursor: pointer; transition: transform var(--spring-soft-dur) var(--spring-soft); border-radius: 16px; }
   .g:hover, .g:focus-visible { transform: translateY(-5px) scale(1.02); }
   .name { display: block; margin-top: 8px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

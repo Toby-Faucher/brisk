@@ -172,9 +172,9 @@
   {:else}
     {#if hero}<Hero game={hero} busy={busy === hero.appid} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
     {#if s.fortnight.length && bare}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight />{/if}
-    {#if backlogShelf.length}<Shelf title="Backlog" games={backlogShelf} onpick={pick} />{/if}
-    {#if almostShelf.length}<Shelf title="Almost done" games={almostShelf} onpick={pick} />{/if}
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} />{/if}
+    {#if almostShelf.length}<Shelf title="Almost done" games={almostShelf} onpick={pick} />{/if}
+    {#if backlogShelf.length}<Shelf title="Backlog" games={backlogShelf} onpick={pick} />{/if}
     {#if s.notInstalled.length}<Shelf title="Not installed" games={s.notInstalled} onpick={pick} />{/if}
     {#if !s.installed.length && !s.notInstalled.length}
       <div class="empty"><b>Nothing here</b><p class="lab">{q.trim() ? `No game matches “${q.trim()}”.` : 'Try another filter.'}</p>
