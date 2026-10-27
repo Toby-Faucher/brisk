@@ -23,7 +23,7 @@
       {/each}
     </ul>
   {:else}
-    <div class="empty lab">{f === null ? 'Friends are not available here' : !f.available ? 'Friends list is private' : 'No one online'}</div>
+    <div class="empty lab">{f === null ? 'Friends are not available here' : !f.available ? 'Friends are not available' : 'No one online'}</div>
   {/if}
 </Card>
 

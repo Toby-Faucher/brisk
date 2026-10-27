@@ -24,10 +24,10 @@ describe('FriendsCard', () => {
     expect(document.querySelectorAll('li span.av')[0].textContent).toBe('T');
   });
 
-  it('says so when the list is private or empty', async () => {
+  it('says so when friends are not available or no one is online', async () => {
     reply({ available: false, online: [] });
     const a = await render(FriendsCard);
-    await expect.element(page.getByText('Friends list is private')).toBeInTheDocument();
+    await expect.element(page.getByText('Friends are not available')).toBeInTheDocument();
     a.unmount();
     reply({ available: true, online: [] });
     await render(FriendsCard);

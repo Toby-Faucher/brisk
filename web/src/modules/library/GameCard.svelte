@@ -14,8 +14,8 @@
   const saved = $derived($prefs[game.appid]);
   const tags = $derived(gameTags($notes, game.appid));
   const hasNote = $derived(!!$notes.games[game.appid]?.note);
-  // Your tags first, then the automatic ones; names go into the aria-label, at most 3 symbols are drawn.
-  const all = $derived([...tags, ...smartTags(game)]);
+  // Your tags first, then the automatic ones (not Updated, it has its chip); names go into the aria-label, at most 3 symbols are drawn.
+  const all = $derived([...tags, ...smartTags(game).filter((t) => t.id !== 'auto-updated')]);
   const tagNames = $derived(all.map((t) => t.name).join(', '));
   const size = $derived(fmtSize(game.sizeBytes));
   const played = $derived(game.lastPlayed ? `Played ${fmtAgo(game.lastPlayed * 1000)}` : 'Ready to play');

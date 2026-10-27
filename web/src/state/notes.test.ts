@@ -139,6 +139,21 @@ describe('noteSaver', () => {
     expect(get(notes).games['9'].note).toBe('x'); // the text stays
   });
 
+  it('a refresh after a refused save shows the server version, not the rejected text', async () => {
+    const put = vi.fn(async () => {
+      throw new ApiError('note is too long', 400);
+    });
+    const s = noteSaver({ put, delay: 800 });
+    s.save(8, { note: 'rejected', tags: [] });
+    await s.flush();
+    const spy = vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: { '8': { note: 'server', tags: [] } } });
+    await refreshNotes();
+    spy.mockRestore();
+    notesLoaded.set(false);
+    expect(get(notes).games['8'].note).toBe('server');
+    expect(get(s.status)[8]).toEqual({ st: 'refused', msg: 'note is too long' });
+  });
+
   it('flush sends a pending change at once', async () => {
     const { put, s } = rig();
     s.save(7, { note: 'x', tags: [] });

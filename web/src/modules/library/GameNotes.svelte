@@ -48,7 +48,7 @@
   const mine = $derived($status[appid]);
   const line = $derived(
     $notesLoaded === false ? 'Loading notes…'
-    : $notesLoaded === 'failed' ? 'Could not load notes, retrying'
+    : $notesLoaded === 'failed' ? 'Could not load notes. Will try again when you come back to this tab.'
     : mine?.st === 'saving' ? 'Saving…'
     : mine?.st === 'saved' ? 'Saved'
     : mine?.st === 'failed' ? 'Not saved, will retry'

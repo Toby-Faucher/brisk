@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, pickResume, reconcileOrder, tagCardIds } from './home';
+import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, orderToStore, pickResume, reconcileOrder, tagCardIds } from './home';
 
 const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running });
 
@@ -67,5 +67,17 @@ describe('home', () => {
   it('a saved order keeps the place of tag cards that exist and drops gone ones', () => {
     const cur = ['host', 'tag-a', 'resume'];
     expect(reconcileOrder(['tag-a', 'tag-gone', 'host'], cur)).toEqual(['tag-a', 'host', 'resume']);
+  });
+});
+
+describe('orderToStore', () => {
+  const next = ['host', 'quick'];
+  const saved = ['tag-a', 'host', 'tag-b', 'quick'];
+  it('keeps saved tag-* ids while notes are not loaded', () => {
+    expect(orderToStore(next, saved, false)).toEqual(['host', 'quick', 'tag-a', 'tag-b']);
+    expect(orderToStore(['tag-a', 'host'], saved, false)).toEqual(['tag-a', 'host', 'tag-b']);
+  });
+  it('drops a vanished tag once notes are loaded', () => {
+    expect(orderToStore(next, saved, true)).toEqual(next);
   });
 });

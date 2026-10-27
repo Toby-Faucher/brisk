@@ -123,7 +123,10 @@ export function noteSaver(d: { put?: (appid: number, b: GameNote) => Promise<Gam
       },
       (e) => {
         if (unsaved.get(appid) !== body) return;
-        if (e instanceof ApiError && [400, 409, 413].includes(e.status)) return set(appid, { st: 'refused', msg: e.message });
+        if (e instanceof ApiError && [400, 409, 413].includes(e.status)) {
+          unsaved.delete(appid); // a refresh must not overlay text hostd rejected (the panel keeps its draft)
+          return set(appid, { st: 'refused', msg: e.message });
+        }
         pending.set(appid, body);
         set(appid, { st: 'failed' });
       },

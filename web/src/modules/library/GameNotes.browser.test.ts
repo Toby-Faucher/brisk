@@ -108,7 +108,7 @@ describe('GameNotes', () => {
     notesLoaded.set(false);
     vi.spyOn(api, 'notes').mockRejectedValue(new Error('down'));
     await render(GameNotes, { props: { appid: 620, name: 'Portal 2' } });
-    await expect.element(page.getByText('Could not load notes, retrying')).toBeInTheDocument();
+    await expect.element(page.getByText('Could not load notes. Will try again when you come back to this tab.')).toBeInTheDocument();
     await expect.element(page.getByRole('textbox', { name: 'Note for Portal 2' })).toBeDisabled();
   });
 

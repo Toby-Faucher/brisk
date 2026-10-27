@@ -50,6 +50,14 @@ describe('GameCard', () => {
     expect(page.getByRole('button', { name: /updated since you played/ }).element().textContent).toContain('Updated');
   });
 
+  it('names Updated once: no auto-updated tag in the label or the tag chip', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
+    const label = page.getByRole('button', { name: /updated since you played/ }).element().getAttribute('aria-label')!;
+    expect(label.match(/updated/gi)).toHaveLength(1);
+    expect(label).not.toMatch(/tags:.*Updated/);
+    expect(document.querySelector('.tchip')?.querySelectorAll('.tc').length ?? 0).toBe(1); // Backlog only
+  });
+
   it('shows the Steam update state as a chip and in the label', async () => {
     await render(GameCard, { props: { game: { ...game, installed: true, update: 'running' }, onpick: vi.fn() } });
     const b = page.getByRole('button', { name: /updating…/ });

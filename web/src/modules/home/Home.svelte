@@ -20,7 +20,7 @@
   import AddModule from './AddModule.svelte';
   import TagCard from './TagCard.svelte';
   import Slot from './Slot.svelte';
-  import { reconcileOrder, tagCardIds } from './home';
+  import { orderToStore, reconcileOrder, tagCardIds } from './home';
   import { reorder } from './drag';
 
   const mods = loadModules();
@@ -65,9 +65,10 @@
     drop: (id, next, changed) => {
       said = `${label(id)} card dropped, position ${next.indexOf(id) + 1} of ${next.length}`;
       if (!changed) return;
-      homeOrder.set(next); // a later visit uses it even before hostd answers
+      const order = orderToStore(next, get(homeOrder) ?? [], get(notesLoaded) === true);
+      homeOrder.set(order); // a later visit uses it even before hostd answers
       const n = ++puts; // replies can arrive out of order: only the latest one may set the store
-      api.putLayout(next).then(
+      api.putLayout(order).then(
         (r) => n === puts && homeOrder.set(r.homeOrder),
         () => toast('Could not save the Home layout', { error: true }),
       );
