@@ -1,4 +1,5 @@
-use super::{Entry, cached_with_misses, plain_text};
+use super::store::plain_text;
+use super::{Entry, cached_with_misses};
 use crate::config::Config;
 use crate::steam::steam_get;
 use serde::{Deserialize, Serialize};

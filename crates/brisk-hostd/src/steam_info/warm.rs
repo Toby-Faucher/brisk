@@ -1,6 +1,7 @@
-use super::news::NEWS_TTL_S;
 use super::achievements::HOUR_S;
-use super::{WEEK_S, achievements, answers_fresh, info, news};
+use super::news::NEWS_TTL_S;
+use super::store::WEEK_S;
+use super::{achievements, answers_fresh, info, news};
 use crate::config::Config;
 use crate::http::AppState;
 use std::sync::Arc;
