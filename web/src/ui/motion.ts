@@ -422,7 +422,7 @@ export function cardsIn(els: HTMLElement[], step = 30): () => void {
       translateY: [10, 0],
       scale: [0.96, 1],
       duration: ms('--dur-enter', 420),
-      delay: (_: unknown, i: number) => i * step,
+      delay: (_?: unknown, i = 0) => i * step,
       ease: ease(lib),
       onComplete: () => (live.delete(anim), clean()),
     });
