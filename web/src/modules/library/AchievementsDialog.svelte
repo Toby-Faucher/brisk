@@ -63,7 +63,9 @@
   input { margin-top: 6px; width: min(220px, 100%); font: inherit; font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px; }
   ul { list-style: none; margin: 0; padding: 0 4px 0 0; display: grid; gap: 10px; overflow: auto; overscroll-behavior: contain; min-height: 0; }
   li { display: flex; gap: 12px; align-items: center; }
-  li.locked { opacity: .55; }
+  /* locked: the icon fades and the name goes grey; the text keeps its contrast */
+  li.locked :is(img, .ph) { opacity: .4; filter: grayscale(1); }
+  li.locked b { color: var(--muted); font-weight: 500; }
   img, .ph { width: 44px; height: 44px; flex: none; border-radius: 8px; background: var(--panel); }
   .t { display: grid; min-width: 0; }
   small { color: var(--muted); }

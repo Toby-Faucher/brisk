@@ -13,7 +13,12 @@ const check = (n, ok, x = '') => (ok || fails++, console.log(`${ok ? 'ok  ' : 'F
 const games = Array.from({ length: 139 }, (_, i) => ({ appid: 1000 + i, name: i === 0 ? 'Portal 2' : `Game ${i}`, installed: i < 40, sizeBytes: 1e9, lastPlayed: i < 5 ? 1700000000 - i * 1e5 : null, playtimeMin: i === 4 ? 5 : 90, cover: '', running: i === 0, coop: i === 1, controller: i === 2 ? 'full' : null, achUnlocked: i === 3 ? 9 : null, achTotal: i === 3 ? 10 : null, updated: i === 0, update: i === 1 ? 'needed' : i === 2 ? 'running' : null }));
 const sessions = Array.from({ length: 15 }, (_, i) => ({ appid: 1000, name: 'Portal 2', started: 1700000000000 + i * 1e6, ended: 1700000600000 + i * 1e6, host: 'bawn', preset: 'balanced', codec: 'h264', bitrateKbps: 20000, stats: null, spark: [1, 3, 2, 4, 3] }));
 const series = Array.from({ length: 120 }, (_, i) => [1700000000000 + i * 5000, 9 + Math.sin(i / 4) * 2, 58 + Math.sin(i / 6) * 3, 18 + Math.cos(i / 9) * 4]);
-const info = { available: true, description: 'A test description & more.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '1 Jan, 2020', metacritic: 90, screenshots: [] };
+// screenshots as inline SVG, so the lightbox shows a real image; achievements and news fill the right pane and its modal
+const shot = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="${c}"/></svg>`)}`;
+const shots = ['#345', '#534', '#453'].map(shot);
+const info = { available: true, description: 'A test description & more.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '1 Jan, 2020', metacritic: 90, screenshots: shots, screenshotsFull: shots };
+const achievements = { available: true, unlocked: 3, total: 9, list: Array.from({ length: 9 }, (_, i) => ({ id: `a${i}`, name: `Achievement ${i + 1}`, description: i % 2 ? '' : 'Do the thing.', icon: '', unlockedAt: i < 3 ? 1700000000 + i : null })) };
+const news = { items: [{ title: 'Patch 1.2 notes', url: 'https://news.example.test/1', date: 1700000000, patch: true }, { title: 'Community update', url: 'https://news.example.test/2', date: 1699000000, patch: false }] };
 // every tag color, so the chips' contrast is measured (Game 1 carries them all)
 const colors = ['gray', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
 const notes = { tags: Object.fromEntries(colors.map((c, i) => [`t${i}`, { name: `Tag ${c}`, color: c, symbol: 'star', note: i ? '' : 'A tag note', pinned: i === 0 || i === 3 }])), games: { 1001: { note: 'A game note', tags: colors.map((_, i) => `t${i}`).slice(0, 16) }, 1002: { note: '', tags: ['t0'] } } };
@@ -36,6 +41,9 @@ try {
       : p === '/api/sessions' ? { sessions }
       : p.startsWith('/api/sessions/') ? { session: sessions[0], series }
       : p.endsWith('/info') ? info
+      : p.endsWith('/achievements') ? achievements
+      : p.endsWith('/news') ? news
+      : p.endsWith('/local') ? { screenshots: [], saves: null }
       : {};
     await r.fulfill({ json });
   });
@@ -75,6 +83,11 @@ try {
   await scan('command menu open');
   await page.keyboard.press('Escape');
 
+  await page.getByRole('combobox', { name: 'Sort games' }).click();
+  await page.locator('.dd-menu[role="listbox"]').waitFor();
+  await scan('sort dropdown open');
+  await page.keyboard.press('Escape');
+
   await page.getByRole('button', { name: 'Quit Portal 2' }).first().click();
   await page.getByRole('dialog').waitFor();
   await scan('quit dialog open');
@@ -83,6 +96,17 @@ try {
   await page.getByRole('button', { name: /^Game 1, / }).first().click();
   await page.getByText('Full controller support').waitFor();
   await scan('game detail panel open');
+  await page.getByRole('button', { name: 'Open Game 1 screenshot 2' }).click();
+  await page.getByRole('dialog', { name: 'Screenshot 2 of 3' }).waitFor();
+  await scan('screenshot lightbox open');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'View all 9 achievements' }).click();
+  await page.getByRole('searchbox', { name: 'Search achievements' }).waitFor();
+  await scan('achievements modal open');
+  await page.getByRole('searchbox', { name: 'Search achievements' }).fill('zzz');
+  await page.getByText('No matches').waitFor();
+  await scan('achievements modal, no matches');
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Edit tag Tag teal' }).click();
   await page.getByRole('radiogroup', { name: 'Symbol' }).waitFor();
   await scan('tag editor open');
