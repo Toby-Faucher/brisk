@@ -51,6 +51,15 @@ It exists because the existing web clients felt laggy and clunky. Brisk aims at 
 | `brisk-bridge` | Runs beside Sunshine and speaks QUIC and WebTransport to the browser. |
 | `brisk-hostd` | Host agent: serves the UI and API, auth, the games library, restarting Sunshine. |
 
+## Status
+
+| | |
+|---|---|
+| **Works today** | Streaming from a Sunshine host in Chrome with video, audio, keyboard, mouse and gamepad (with rumble), clips and replay, session history, a game library with search and per-game quality. |
+| **Browsers** | Chrome is the target. Firefox 158+ on desktop connects and streams but is rough (about 100 ms latency, 30-40 fps, no HEVC, no Keyboard Lock). |
+| **In progress** | Steam integration: a click-through game page with store info, achievements, friends online, screenshots, and your own notes and colored tags. See [`docs/plans/2026-10-26-steam-integration.md`](docs/plans/2026-10-26-steam-integration.md). |
+| **Not planned** | Safari, mobile, non-Sunshine hosts, public internet exposure. |
+
 ## Run it
 
 The web UI lives in `web/`:
@@ -77,6 +86,6 @@ Hosting it for real, with the systemd user service and Tailscale, is in [`docs/h
 
 ## Scope
 
-Brisk is a personal project, built around one setup: a Sunshine host, Chrome clients and a Tailscale network. Firefox, Safari, mobile, non-Sunshine hosts and public internet exposure are out of scope for now.
+Brisk is a personal project, built around one setup: a Sunshine host, Chrome clients and a Tailscale network. Safari, mobile, non-Sunshine hosts and public internet exposure are out of scope for now, and Firefox is best effort (see Status).
 
 Licensed under the [MIT License](LICENSE).
