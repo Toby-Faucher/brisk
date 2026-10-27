@@ -10,7 +10,8 @@
     "smoke": "node scripts/ui-smoke.mjs",
     "springs:check": "node scripts/gen-spring-tokens.mjs --check",
     "check": "astro check && svelte-check --tsconfig ./tsconfig.json",
-    "ci": "npm run check && npm test && npm run build",
+    "fmt": "biome check --write .",
+    "ci": "biome check . && npm run check && npm test && npm run build",
     "test:browser": "vitest run --project browser"
   },
   "dependencies": {

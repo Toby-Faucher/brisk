@@ -926,7 +926,7 @@ check are fixed at 8443, so while the live service holds 8443 the smoke prints `
 Use `web/scripts/axe-check.mjs` for the a11y part meanwhile.
 
 ## Dev tooling
-- Commands (in web/): `npm run ci` = `npm run check` + `npm test` + `npm run build` (run it before merging);
+- Commands (in web/): `npm run ci` = `biome check .` + `npm run check` + `npm test` + `npm run build` (run it before merging);
   `npm run check` = `astro check` + `svelte-check` (fails on errors; one known svelte-check warning is left: GhostBar's
   `fileInput` is set by `bind:this` and only read in click handlers, never in the template or an effect, so it does not
   need `$state`; making it `$state` would only add reactivity nothing uses); `npm test` = the node unit project only (fast, no
@@ -936,6 +936,13 @@ Use `web/scripts/axe-check.mjs` for the a11y part meanwhile.
   deps `npm install --before=<date>` where the tree allows it), unless the newer one is a security fix (vitest 5.0.5 and its
   browser packages, fast-uri 3.1.9). Check `npm audit`, `npm ls` and `hasInstallScript` in the lock after a change
   (today only `fsevents`, optional, macOS).
+- Biome (`@biomejs/biome`, config in `web/biome.jsonc`) formats `.ts`, `.json` and `.css` (2 spaces, single quotes, 140
+  columns) and lints `.ts` plus the script block of `.svelte` and `.astro` files. It does not format `.svelte` or `.astro`.
+  It only reads their script block, so a name used only in the template looks unused; the unused-name rules, `useConst` and
+  `useImportType` are off for those files, as Biome's language support page advises. Rules that fight the house style are off
+  with a reason next to each. `npm run fmt` formats and applies the safe fixes; `npm run ci` runs `biome check .` without
+  writing. The spring block in `tokens.css` has a `biome-ignore format` so `springs:check` still matches it. The one
+  formatting-only commit is listed in `.git-blame-ignore-revs` (`git config blame.ignoreRevsFile .git-blame-ignore-revs`).
 - TypeScript is pinned to 6.0.3: TypeScript 7 (the Go port) is out, but `svelte-check` and `@astrojs/check` declare
   `typescript ^5 || ^6`. Retry when they widen. `web/tsconfig.json` extends `astro/tsconfigs/strict` and includes src,
   `scripts/**/*.mjs` and `vitest.config.ts`; vite defines are declared in `src/env.d.ts`. The scripts are included without
