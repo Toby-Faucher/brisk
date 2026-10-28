@@ -17,6 +17,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const CAP: usize = 16 << 20;
+/// An upload chunk is at most 32 MiB; the rest is slack.
+const UPLOAD_CAP: usize = 33 << 20;
 const PROBE_TTL: Duration = Duration::from_secs(3);
 const STOPPING_FOR: Duration = Duration::from_secs(120);
 /// Proxmox takes a few seconds to report a started VM as running; until then the machine is `starting`, not `off`.
@@ -556,10 +558,20 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
             .and_then(|v| v.to_str().ok())
             .map(String::from)
     };
-    let (ct, accept) = (hv(header::CONTENT_TYPE), hv(header::ACCEPT));
-    let Ok(body) = axum::body::to_bytes(body, CAP).await else {
-        return err(StatusCode::PAYLOAD_TOO_LARGE, "request body is over 16 MiB");
+    let (ct, accept, offset) = (hv(header::CONTENT_TYPE), hv(header::ACCEPT), hv("x-offset"));
+    let upload = first == "uploads";
+    let cap = if upload { UPLOAD_CAP } else { CAP };
+    let Ok(body) = axum::body::to_bytes(body, cap).await else {
+        return err(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            if upload {
+                "request body is over 33 MiB"
+            } else {
+                "request body is over 16 MiB"
+            },
+        );
     };
+    let timeout = Duration::from_secs(if upload { 300 } else { 40 });
     let r = tokio::task::spawn_blocking(move || {
         let mut heads = vec![];
         if let Some(c) = &ct {
@@ -568,7 +580,10 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
         if let Some(a) = &accept {
             heads.push(("accept", a.as_str()));
         }
-        call(&e, &method, &pq, &heads, &body, Duration::from_secs(40)).map_err(|f| match f {
+        if let Some(o) = &offset {
+            heads.push(("x-offset", o.as_str()));
+        }
+        call(&e, &method, &pq, &heads, &body, timeout).map_err(|f| match f {
             Fail::Local => (
                 StatusCode::BAD_GATEWAY,
                 "hub cannot use this machine's secret file",
@@ -733,6 +748,19 @@ mod tests {
                 "/api/emulators/dolphin/controls/{kind}",
                 any(|req: Rq<Body>| async move {
                     axum::Json(json!({ "method": req.method().to_string(), "pq": req.uri().to_string() }))
+                }),
+            )
+            .route(
+                "/api/uploads/{id}",
+                any(|axum::extract::Path(id): axum::extract::Path<String>, req: Rq<Body>| async move {
+                    let off = req.headers().get("x-offset").and_then(|v| v.to_str().ok()).map(String::from);
+                    let n = axum::body::to_bytes(req.into_body(), 1 << 26).await.unwrap().len();
+                    let code = match id.as_str() {
+                        "full" => StatusCode::INSUFFICIENT_STORAGE,
+                        "busy" => StatusCode::CONFLICT,
+                        _ => StatusCode::OK,
+                    };
+                    (code, axum::Json(json!({ "body": n, "offset": off })))
                 }),
             )
             .route(
@@ -1161,6 +1189,72 @@ mod tests {
             assert_eq!(st, StatusCode::OK, "{m}");
             assert_eq!(v["pq"], "/api/emulators/dolphin/controls/gamecube");
         }
+    }
+
+    #[tokio::test]
+    async fn proxy_uploads_take_a_chunk_and_pass_answers_through() {
+        let (url, _) = upstream().await;
+        let r = rig(vec![("a", url, None)]);
+        let put = |id: &str, n: usize, off: &str| {
+            let (app, uri, off) = (
+                r.app.clone(),
+                format!("/api/m/a/uploads/{id}"),
+                off.to_string(),
+            );
+            async move {
+                let q = Rq::builder()
+                    .method("PUT")
+                    .uri(uri)
+                    .header("host", "localhost:8443")
+                    .header("x-brisk-secret", HUB_SECRET)
+                    .header("x-offset", off)
+                    .body(Body::from(vec![7u8; n]))
+                    .unwrap();
+                let res = app.oneshot(q).await.unwrap();
+                let st = res.status();
+                let b = axum::body::to_bytes(res.into_body(), 1 << 20)
+                    .await
+                    .unwrap();
+                (st, serde_json::from_slice::<Value>(&b).unwrap_or_default())
+            }
+        };
+        // 20 MiB passes, with its x-offset
+        let (st, v) = put("abc", 20 << 20, "12345").await;
+        assert_eq!(
+            (st, v["body"].as_u64(), v["offset"].as_str()),
+            (StatusCode::OK, Some(20 << 20), Some("12345"))
+        );
+        // a full 32 MiB chunk passes; 34 MiB does not
+        assert_eq!(put("abc", 32 << 20, "0").await.0, StatusCode::OK);
+        assert_eq!(
+            put("abc", 34 << 20, "0").await.0,
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        // 409 and 507 come back as they are
+        assert_eq!(put("busy", 10, "0").await.0, StatusCode::CONFLICT);
+        assert_eq!(
+            put("full", 10, "0").await.0,
+            StatusCode::INSUFFICIENT_STORAGE
+        );
+        // the bare collection path takes the larger cap too
+        let (st, _, _) = send(
+            &r.app,
+            "POST",
+            "/api/m/a/uploads/abc/finish",
+            None,
+            vec![0; 20 << 20],
+        )
+        .await;
+        assert_eq!(st, StatusCode::NOT_FOUND); // upstream has no such route; it got through the cap
+        // other paths keep the 16 MiB cap
+        let (st, _, _) = send(&r.app, "POST", "/api/m/a/echo", None, vec![0; 20 << 20]).await;
+        assert_eq!(st, StatusCode::PAYLOAD_TOO_LARGE);
+        let (st, _, _) = send(&r.app, "PUT", "/api/m/a/uploads/abc/../x", None, vec![]).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            getj(&r.app, "/api/m/a/files/x").await.0,
+            StatusCode::NOT_IMPLEMENTED
+        );
     }
 
     #[tokio::test]

@@ -113,9 +113,9 @@ makes a symlink, which a later scan ignores, so the record is its only registrat
 known, 1 failed (reason on stderr), 2 usage. A system with no emulator is refused. Remote scripts use the upload
 API; the curl recipe is in `docs/hosting-runbook.md`.
 
-## Hub change needed (not done here)
+## Hub change (done in `machines::proxy`)
 
-Today `machines::proxy` buffers the body up to `CAP` (16 MiB), refuses any path whose first segment is `files`,
+Before it, `machines::proxy` buffered the body up to `CAP` (16 MiB), refuses any path whose first segment is `files`,
 forwards only `content-type` and `accept`, and times out after 40 s. Chunks make a streaming proxy unnecessary:
 each PUT is at most 32 MiB, so a bounded buffer is enough. Exact change in `proxy`:
 
