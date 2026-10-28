@@ -83,3 +83,40 @@ to observe the machine, resets the clock. The clock starts when the machine beco
 ## Out of scope for v1
 
 Merged library across machines, per-game preferred machine, file drop through the hub, WoL.
+
+## v2: richer Machines page
+
+Added after the first browser test.
+
+### Hub API additions
+
+- `Machine` gains `url` (the machine's own base URL from machines.json, so the browser can time a direct
+  request to it), `rttMs` (`number | null`: how long the hub's last `/api/host` probe of the machine took, null
+  when it did not answer) and `vm` (`{ cpuPct, memUsedBytes, memTotalBytes } | null`, power machines only, from
+  Proxmox `status/current`: `cpu` is a 0..1 fraction of the VM's vCPUs, `mem`/`maxmem` are bytes; null when
+  the Proxmox call failed).
+- Optional `power.temp_url` in machines.json: a URL that answers `{"cpuTempC": number}` (the Proxmox API has
+  no temperatures; a tiny sensor service on the host can serve k10temp). When set, and the machine's own
+  `host.cpuTempC` is null, the hub fills it from there (short timeout, failure = leave null). The URL must
+  be https, or http to loopback, a private IPv4 (10/8, 172.16/12, 192.168/16) or a tailnet IPv4 (100.64/10).
+- `Power` trait gains `fn stats(&self) -> Result<VmStats, String>` with a default `Err("unsupported")`
+  (existing fakes keep compiling); `VmStats { cpu: f64, mem_used: u64, mem_total: u64 }`.
+- Prefs layout gains `machinesOrder: string[]` beside `homeOrder` (ids cleaned: `[a-z0-9-]{1,32}`, deduped,
+  at most 64). `GET /api/prefs` answers `machinesOrder` too. `PUT /api/prefs/layout` takes
+  `{homeOrder?, machinesOrder?}` (at least one; the other keeps its stored value) and answers both;
+  `DELETE` resets both.
+
+### Web additions
+
+- `Machine` type gains `url`, `rttMs`, `vm`.
+- `pings: Readable<Record<string, PingSample[]>>`, `PingSample = { t: number; direct: number | null; hub: number | null }`
+  (ms; null = lost), last 60 per machine; `startPings(): () => void` (ref-counted) samples every 3 s:
+  `direct` is the browser's own timing of `fetch(`${url}/`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' })`
+  (5 s timeout, null on failure; skipped for `off`/`stopping` machines), `hub` is the polled `rttMs`.
+- `machinesOrder`, `orderedMachines`, `setMachinesOrder(ids)` (persists through `api.putLayout`).
+- `api.forMachine(id)`: `{ games(refresh?), sessions(), host() }` always routed through `/api/m/{id}/...`,
+  independent of the selected machine.
+- UI: `ui/LatencyLayers.svelte` (layered latency chart, props `samples`), `modules/machines/MachineModal.svelte`
+  (3 panes: overview, installed games, game or sessions detail), Machines cards: no GPU row without a GPU
+  temperature, CPU row = temperature else VM load else hidden, drag to reorder (as Home), motion when the
+  selected machine changes.
