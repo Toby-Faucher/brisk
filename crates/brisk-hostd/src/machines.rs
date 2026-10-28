@@ -19,6 +19,8 @@ use std::time::{Duration, Instant};
 const CAP: usize = 16 << 20;
 const PROBE_TTL: Duration = Duration::from_secs(3);
 const STOPPING_FOR: Duration = Duration::from_secs(120);
+/// Proxmox takes a few seconds to report a started VM as running; until then the machine is `starting`, not `off`.
+const STARTING_FOR: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,6 +100,8 @@ pub struct Hub {
     cache: Mutex<HashMap<String, (Instant, Value)>>,
     /// When a shutdown was last requested, for the `stopping` state.
     stopping: Mutex<HashMap<String, Instant>>,
+    /// When a start was last requested, for the `starting` state while Proxmox still says stopped.
+    starting: Mutex<HashMap<String, Instant>>,
 }
 
 /// `Ok(None)`: no file at the default path (single-host mode). A file that is there but bad, or
@@ -126,6 +130,7 @@ impl Hub {
             machines,
             cache: Mutex::default(),
             stopping: Mutex::default(),
+            starting: Mutex::default(),
         }
     }
 
@@ -138,11 +143,19 @@ impl Hub {
     }
 
     fn is_stopping(&self, id: &str) -> bool {
-        self.stopping
+        Self::recent(&self.stopping, id, STOPPING_FOR)
+    }
+
+    fn is_starting(&self, id: &str) -> bool {
+        Self::recent(&self.starting, id, STARTING_FOR)
+    }
+
+    fn recent(marks: &Mutex<HashMap<String, Instant>>, id: &str, within: Duration) -> bool {
+        marks
             .lock()
             .unwrap()
             .get(id)
-            .is_some_and(|t| t.elapsed() < STOPPING_FOR)
+            .is_some_and(|t| t.elapsed() < within)
     }
 
     fn view(e: &Entry, state: &str, host: Option<Value>) -> Value {
@@ -163,7 +176,11 @@ impl Hub {
                 Err(_) => Self::view(e, "unreachable", None),
                 Ok(VmState::Stopped) => {
                     self.stopping.lock().unwrap().remove(&e.cfg.id);
-                    Self::view(e, "off", None)
+                    if self.is_starting(&e.cfg.id) {
+                        Self::view(e, "starting", None)
+                    } else {
+                        Self::view(e, "off", None)
+                    }
                 }
                 Ok(VmState::Running) => {
                     let h = host();
@@ -171,6 +188,7 @@ impl Hub {
                     let state = if self.is_stopping(&e.cfg.id) {
                         "stopping"
                     } else if ready {
+                        self.starting.lock().unwrap().remove(&e.cfg.id);
                         "ready"
                     } else {
                         "starting"
@@ -331,11 +349,16 @@ fn do_power(h: &Hub, e: &Entry, p: &dyn Power, v: Verb) -> Result<(StatusCode, S
         (Verb::Start, VmState::Stopped) => {
             p.start()?;
             h.stopping.lock().unwrap().remove(id);
+            h.starting
+                .lock()
+                .unwrap()
+                .insert(id.clone(), Instant::now());
             (StatusCode::ACCEPTED, "starting".into())
         }
         (Verb::Shutdown, VmState::Stopped) => (StatusCode::OK, "off".into()),
         (Verb::Shutdown, VmState::Running) => {
             p.shutdown()?;
+            h.starting.lock().unwrap().remove(id);
             h.stopping
                 .lock()
                 .unwrap()
@@ -517,6 +540,7 @@ pub fn spawn_idle(h: &Arc<Hub>) {
                 let done = tokio::task::spawn_blocking(move || {
                     let p = e2.power.as_ref().ok_or("no power")?;
                     p.shutdown()?;
+                    h2.starting.lock().unwrap().remove(&e2.cfg.id);
                     h2.stopping
                         .lock()
                         .unwrap()
@@ -1177,6 +1201,18 @@ mod tests {
             (StatusCode::ACCEPTED, Some("starting"))
         );
         assert_eq!(*off.acts.lock().unwrap(), ["start"]);
+        // Proxmox still says stopped for a moment: the list says starting, then off once the wait is over
+        *off.vm.lock().unwrap() = Ok(VmState::Stopped);
+        r.hub.invalidate("off");
+        let (_, v) = getj(&r.app, "/api/machines").await;
+        assert_eq!(state_of(&v, 1), "starting");
+        r.hub.starting.lock().unwrap().insert(
+            "off".into(),
+            Instant::now() - STARTING_FOR - Duration::from_secs(1),
+        );
+        r.hub.invalidate("off");
+        let (_, v) = getj(&r.app, "/api/machines").await;
+        assert_eq!(state_of(&v, 1), "off");
         // shutdown of a running VM: 202, then the list says stopping
         let (st, v) = post_power(&r.app, "run", down).await;
         assert_eq!(
