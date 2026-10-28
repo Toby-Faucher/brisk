@@ -47,8 +47,9 @@ function parseTag(id: string, v: unknown): Tag {
 }
 
 function parseGame(appid: string, v: unknown, tags: Record<string, Tag>): GameNote | null {
-  if (!/^[1-9]\d*$/.test(appid) || Number(appid) > 0xffffffff)
-    bad(`"${appid}" is not a valid appid (a positive whole number up to 4294967295).`);
+  const num = /^(?:steam:)?[1-9]\d*$/.test(appid) && Number(appid.replace('steam:', '')) <= 0xffffffff;
+  if (!num && !/^emu:[a-z0-9]+:[A-Za-z0-9._~-]{1,64}$/.test(appid))
+    bad(`"${appid}" is not a valid game id (a number up to 4294967295, steam:<number> or emu:<emulator>:<id>).`);
   if (!isObj(v)) return bad(`Game ${appid} is not an object.`);
   const note = v.note ?? '';
   const list = v.tags ?? [];

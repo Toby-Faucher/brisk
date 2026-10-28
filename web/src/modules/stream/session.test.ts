@@ -152,12 +152,12 @@ describe('StreamSession', () => {
     expect(f.deps.api.startStream).toHaveBeenCalledWith({ preset: 'fast' });
   });
 
-  it('change_quality_restarts_with_no_appid', async () => {
+  it('change_quality_restarts_with_no_game', async () => {
     const f = fakeDeps();
     f.failAfterFirst.on = false;
     const s = new StreamSession(f.deps);
     await s.connect(LIVE);
-    await s.changeQuality({ preset: 'crisp', appid: 42 });
+    await s.changeQuality({ preset: 'crisp', game: '42' });
     expect(f.deps.api.startStream).toHaveBeenCalledWith({ preset: 'crisp', codec: 'h264' });
     expect(f.transports[0].close).toHaveBeenCalledTimes(1);
     expect((f.deps.open as any).mock.calls[1][0]).toBe('https://h:4433/new');

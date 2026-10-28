@@ -136,12 +136,49 @@ describe('GameCard quit spinner', () => {
     const btn = page.getByRole('button', { name: 'Quit Portal' }).element() as HTMLElement;
     const before = btn.getBoundingClientRect();
     expect(btn.querySelector('[data-testid=quit-spinner]')).toBeNull();
-    quitting.set(new Set([400]));
+    quitting.set(new Set(['400']));
     await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
     expect(btn.getAttribute('aria-busy')).toBe('true');
     expect(btn.getAttribute('aria-label')).toBe('Quitting Portal');
     const after = btn.getBoundingClientRect();
     expect([after.width, after.height]).toEqual([before.width, before.height]);
     quitting.set(new Set());
+  });
+});
+
+describe('GameCard with a new hostd game', () => {
+  const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false };
+  const emu: Game = {
+    ...game,
+    appid: 3907440760,
+    id: 'emu:dolphin:mario-kart-wii',
+    source: 'emu',
+    caps,
+    emulator: 'dolphin',
+    name: 'Mario Kart Wii',
+    installed: true,
+    running: true,
+  };
+
+  it('is keyed by its id, shows Quit, and the spinner follows the id key, not the number', async () => {
+    const { container } = await render(GameCard, { props: { game: emu, onpick: vi.fn() } });
+    expect(container.querySelector('[data-gid="emu:dolphin:mario-kart-wii"]')).not.toBeNull();
+    const btn = page.getByRole('button', { name: 'Quit Mario Kart Wii' }).element() as HTMLElement;
+    quitting.set(new Set(['3907440760']));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(btn.querySelector('[data-testid=quit-spinner]')).toBeNull(); // the old number is not its key
+    quitting.set(new Set(['emu:dolphin:mario-kart-wii']));
+    await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
+    quitting.set(new Set());
+  });
+
+  it('reads its tags from a note kept under the old number until the hub remaps it', async () => {
+    notes.set({
+      tags: { a: { name: 'Party', color: 'teal', symbol: 'users', note: '' } },
+      games: { '3907440760': { note: 'n', tags: ['a'] } },
+    });
+    await render(GameCard, { props: { game: { ...emu, legacyId: '3907440760', running: false }, onpick: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: /tags: Party.*, note/ })).toBeInTheDocument();
+    notes.set({ tags: {}, games: {} });
   });
 });

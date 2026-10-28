@@ -63,6 +63,15 @@ describe('openEntries', () => {
     es[0].run();
     expect(go).toHaveBeenCalledWith('/library?open=1');
   });
+  it('puts an id in the link with the colon encoded, and the link round-trips', () => {
+    const go = vi.fn();
+    const mk = g(3907440760, 'Mario Kart Wii', { id: 'emu:dolphin:mario-kart-wii', source: 'emu' });
+    const es = openEntries([mk, g(620, 'Portal 2', { id: 'steam:620' })], 'mario', go);
+    expect(es[0].id).toBe('open:emu:dolphin:mario-kart-wii');
+    es[0].run();
+    expect(go).toHaveBeenCalledWith('/library?open=emu%3Adolphin%3Amario-kart-wii');
+    expect(new URLSearchParams('open=emu%3Adolphin%3Amario-kart-wii').get('open')).toBe('emu:dolphin:mario-kart-wii');
+  });
   it('is empty without a query and capped otherwise', () => {
     expect(openEntries(games, ' ', vi.fn())).toEqual([]);
     expect(openEntries(games, ' - : ', vi.fn())).toEqual([]); // folds to nothing

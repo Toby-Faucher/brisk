@@ -8,7 +8,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import { api, type ControllerType } from '../../state/api';
   import Card from '../../ui/Card.svelte';
-  import { isEmulatorGame } from '../library/library';
+  import { gameCaps, gameKey } from '../../state/gameId';
   import { padChoices, padView, type PadView } from './controllertest';
   import { Listener, wrongKind } from './emulators/listen';
   import { accepts, ACCEPTS, bind, CONTROL_SETS, controlOf, drawnLabels, padHolder, PAD_BY_INDEX, TYPE_LABEL } from './emulators/mapping';
@@ -183,8 +183,8 @@
 
   async function findTarget() {
     try {
-      const g = (await api.games()).games.find((x) => isEmulatorGame(x) && x.running);
-      target = g ? { appid: g.appid, name: g.name } : null;
+      const g = (await api.games()).games.find((x) => gameCaps(x).controls && x.running);
+      target = g ? { key: gameKey(g), name: g.name } : null;
     } catch {
       target = null;
     }
