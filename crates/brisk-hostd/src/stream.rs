@@ -476,9 +476,19 @@ impl Supervisor {
         steam(&*self.runner, verb, id)
     }
 
-    /// Starts an emulator game from `emu::load` in the graphical session. Blocking.
-    pub fn emulator(&self, entries: &[crate::emu::Entry], id: u32) -> bool {
-        crate::emu::launch(&*self.runner, entries, id, &graphical_env())
+    /// Starts an emulator game from `emu::load` in the graphical session (or finds it already
+    /// running), then focuses its window in the background for up to a minute. Blocking; needs
+    /// a tokio runtime context.
+    pub fn emulator(&self, entries: Vec<crate::emu::Entry>, id: u32) -> bool {
+        let env = graphical_env();
+        if !crate::emu::launch(&*self.runner, &self.proc_dir, &entries, id, &env) {
+            return false;
+        }
+        let r = self.runner.clone();
+        tokio::spawn(async move {
+            crate::emu::focus(r, &entries, id, env, Duration::from_secs(60)).await;
+        });
+        true
     }
 }
 

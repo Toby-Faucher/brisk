@@ -62,7 +62,7 @@ impl AppState {
             files: Files::new(cfg.downloads_dir.clone()),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             notes: NotesStore::load(cfg.data_dir.join("notes.json")),
-            quit: Quitter::new(runner.clone(), cfg.proc_dir.clone()),
+            quit: Quitter::new(runner.clone(), cfg.proc_dir.clone(), cfg.data_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
             warming: AtomicBool::new(false),
@@ -322,7 +322,7 @@ async fn steam_cmd(s: Arc<AppState>, b: &[u8], verb: &'static str) -> Response {
             return err(StatusCode::BAD_REQUEST, "nothing to install for this game");
         }
         let started = tokio::task::spawn_blocking(move || {
-            s2.stream.emulator(&crate::emu::load(&s2.cfg.data_dir), id)
+            s2.stream.emulator(crate::emu::load(&s2.cfg.data_dir), id)
         })
         .await;
         return match started {
