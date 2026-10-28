@@ -1322,7 +1322,7 @@ async fn emulator_id_stream_spawns_dolphin_and_never_steam() {
 async fn emulator_id_has_no_steam_details_and_no_outbound_call() {
     let (base, hits) = mock_steam_hits(vec![]).await;
     let (r, id) = emu_rig(&base);
-    for what in ["info", "achievements", "news"] {
+    for what in ["info", "news"] {
         let (st, v) = r.call("GET", &format!("/api/games/{id}/{what}"), "").await;
         assert_eq!(st, StatusCode::NOT_FOUND, "{what}");
         assert!(v["error"].is_string());
@@ -1443,14 +1443,21 @@ async fn game_paths_take_ids_with_a_colon_encoded_or_not_and_bare_numbers() {
     ] {
         assert_eq!(get_json(&s.cfg, u).await.0, StatusCode::BAD_REQUEST, "{u}");
     }
-    // Steam details never answer for an emulator game, by either id.
+    // Steam details never answer for an emulator game.
+    let (st, v) = get_json(&s.cfg, "/api/games/emu:dolphin:mario-kart-wii/info").await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    assert_eq!(v["error"], "no Steam details for this game");
+    // Its achievements come from RetroAchievements (off here: no key file), by either id.
     for u in [
-        "/api/games/emu:dolphin:mario-kart-wii/info",
+        "/api/games/emu:dolphin:mario-kart-wii/achievements",
         "/api/games/3907440760/achievements",
     ] {
         let (st, v) = get_json(&s.cfg, u).await;
-        assert_eq!(st, StatusCode::NOT_FOUND, "{u}");
-        assert_eq!(v["error"], "no Steam details for this game");
+        assert_eq!(
+            (st, v["state"].as_str()),
+            (StatusCode::OK, Some("off")),
+            "{u}"
+        );
     }
 }
 
