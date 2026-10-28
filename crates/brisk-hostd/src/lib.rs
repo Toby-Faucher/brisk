@@ -26,6 +26,7 @@ pub mod rahash;
 pub mod registry;
 pub mod retroachievements;
 pub mod running;
+pub mod saves;
 pub mod sessions;
 pub mod site;
 pub(crate) mod source;

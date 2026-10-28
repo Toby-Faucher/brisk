@@ -364,3 +364,18 @@ every 30 s per game.
 | (already done) caps | `setcap cap_sys_admin,cap_sys_nice+p ~/.local/opt/sunshine-brisk/bin/sunshine` | KMS capture; sunshine-brisk.sh asks via sudoq only if missing |
 | reboot test | `systemctl reboot` | |
 Everything else (the unit, its enable/start, builds, Sunshine restarts) is toby's own systemd user manager.
+
+## Emulator saves list (Stage 6c)
+
+`GET /api/games/{id}/saves` lists a Dolphin game's save states, Wii save folder and GameCube memory cards. It is
+read-only: no download, no delete, no file contents. The folder is `BRISK_DOLPHIN_USER_DIR` (see `docs/env.md`).
+Symlinks are skipped. The list is capped (100 items; a Wii save folder is counted, 2000 entries at most).
+A game only has saves when its id ends in the 6-character disc id (like `RMCE01`); other ids list nothing.
+
+Checked against Dolphin's source: the user dir rules (`~/.dolphin-emu` if present, else XDG data home),
+`StateSaves/<GameID>.sNN`, the memory card names `GC/MemoryCard{A,B}.<region>[.<blocks>].raw`, the GCI folder
+`GC/<region>/Card A`, and the Wii save path `Wii/title/<hi>/<lo>/data` with hi `00010000` or `00010004`.
+
+Assumed, not seen in the source: 10 save slots, the region folder names (USA, EUR, JPN or JAP), and that a
+disc game's low title id is the first four characters of the disc id in hex. Nothing was run against a real
+Dolphin user dir.

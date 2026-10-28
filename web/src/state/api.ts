@@ -109,6 +109,17 @@ export type GameInfo = {
 };
 /** GET /api/games/{appid}/local: screenshot file names on the host (newest first, at most 60) and a cloud-save summary. */
 export type GameLocal = { screenshots: string[]; saves: { files: number; bytes: number; modified: number /* unix s */ } | null };
+/** GET /api/games/{id}/saves (emulator games with `caps.saves`): read-only. `path` is relative to the emulator's user folder. */
+export type SaveItem = {
+  kind: 'state' | 'memory-card' | 'nand-save';
+  name: string;
+  path: string;
+  size: number;
+  modified: number | null /* unix s */;
+  files?: number;
+  note?: string;
+};
+export type GameSaves = { available: boolean; userDir: string; items: SaveItem[] };
 export type HostInfo = {
   name: string;
   sunshine: 'ready' | 'busy' | 'down';
@@ -482,6 +493,7 @@ export const api = {
   putGameLaunch: (key: string, b: { rev?: string; override: LaunchOverride }) => call<GameLaunch>('PUT', gamePath(key, '/launch'), b),
   resetGameLaunch: (key: string) => call<GameLaunch>('DELETE', gamePath(key, '/launch')),
   gameLocal: (key: string) => call<GameLocal>('GET', gamePath(key, '/local')),
+  gameSaves: (key: string) => call<GameSaves>('GET', gamePath(key, '/saves')),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),

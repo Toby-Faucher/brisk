@@ -3,8 +3,8 @@
   // quick facts, notes and tags) stays put and the right pane scrolls (description, screenshots, the host's screenshots
   // and saves, achievements, news, stream history). Under 760 px it is one scrolling column.
   import { Dialog } from 'bits-ui';
-  import { api, type Game, type GameInfo, type Achievements, type RaAnswer, type News, type GameLocal } from '../../state/api';
-  import { savesLine } from './library';
+  import { api, type Game, type GameInfo, type Achievements, type RaAnswer, type News, type GameLocal, type GameSaves } from '../../state/api';
+  import { savesLine, saveRow } from './library';
   import { gameCaps, gameKey } from '../../state/gameId';
   import { raView, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
   import { toast } from '../../shell/Toasts.svelte';
@@ -185,6 +185,20 @@
   };
   const saves = $derived(savesLine(local?.saves ?? null));
 
+  // Emulator saves and save states (read-only). Only games with caps.saves ask; an old hostd never does.
+  let emuSaves = $state<GameSaves | null>(null);
+  $effect(() => {
+    const id = key;
+    let live = true;
+    emuSaves = null;
+    if (caps.saves)
+      api.gameSaves(id).then(
+        (v) => live && (emuSaves = v),
+        () => {},
+      );
+    return () => (live = false);
+  });
+
 
   // The lightbox: which list and where in it. Store shots use the full-size URL when the server sent one; the host's
   // own reuse their object URL; the shown one and its two neighbours are fetched now if their tiles have not scrolled
@@ -259,6 +273,26 @@
               </div>
             {/if}
             {#if saves}<p class="lab">{saves}</p>{/if}
+          </section>
+        {/if}
+
+        <!-- emulator saves and save states, read-only -->
+        {#if caps.saves && emuSaves}
+          <section class="sec">
+            <h3>Saves</h3>
+            {#if emuSaves.items.length}
+              <ul class="alist saves" aria-label="Saves">
+                {#each emuSaves.items as it (it.path)}
+                  {@const r = saveRow(it)}
+                  <li>
+                    <Icon name={r.icon} size={20} />
+                    <span><b>{r.title}</b><small>{r.detail}</small>{#if r.note}<small>{r.note}</small>{/if}</span>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="lab">Save states and saves show up here after you play.</p>
+            {/if}
           </section>
         {/if}
 
@@ -339,6 +373,7 @@
   .more { padding: 4px 10px; font-size: 12.5px; min-height: 24px; }
   .alist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
   .alist li { display: flex; gap: 10px; align-items: center; }
+  .alist.saves { grid-template-columns: 1fr; }
   .alist li.locked { opacity: .6; }
   .alist img, .alist .ph { width: 40px; height: 40px; flex: none; border-radius: 6px; background: var(--panel); }
   .alist span:not(.ph) { display: grid; min-width: 0; }

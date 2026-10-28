@@ -1,4 +1,4 @@
-import type { Game, GameLocal } from '../../state/api';
+import type { Game, GameLocal, SaveItem } from '../../state/api';
 import { fmtAgo, pickResume } from '../home/home';
 import type { Notes, TagColor } from '../../state/notes';
 import { pick } from '../../state/gameId';
@@ -141,4 +141,19 @@ export function wheelToX(dx: number, dy: number, scrollLeft: number, clientWidth
   if (Math.abs(dy) <= Math.abs(dx)) return null;
   if (dy < 0 ? scrollLeft <= 0 : scrollLeft + clientWidth >= scrollWidth - 1) return null;
   return dy;
+}
+
+const SAVE_ICON = { state: 'replay', 'memory-card': 'clip', 'nand-save': 'host' } as const;
+const fmtBytes = (b: number) =>
+  b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} KB` : b < 1e9 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e9).toFixed(1)} GB`;
+/** One row of the Saves list: icon, title, and a detail line ("Save state, 4.1 MB, 3 d ago"). `now` is unix ms. */
+export function saveRow(i: SaveItem, now = Date.now()) {
+  const what = i.kind === 'state' ? 'Save state' : i.kind === 'memory-card' ? 'Memory card' : 'Wii save';
+  const parts = [
+    what,
+    ...(i.files !== undefined ? [`${i.files} ${i.files === 1 ? 'file' : 'files'}`] : []),
+    fmtBytes(i.size),
+    ...(i.modified ? [fmtAgo(i.modified * 1000, now)] : []),
+  ];
+  return { icon: SAVE_ICON[i.kind], title: i.name, detail: parts.join(', '), note: i.note ?? null };
 }
