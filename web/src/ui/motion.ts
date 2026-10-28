@@ -42,7 +42,8 @@ export const ease = (lib: Pick<Lib, 'cubicBezier'>) => lib.cubicBezier(...easePa
 
 // Running JS tweens: switching to reduced motion mid-flight jumps them to their end state.
 const live = new Set<{ complete(): unknown }>();
-if (typeof window !== 'undefined') matchMedia(REDUCE).addEventListener('change', (e) => e.matches && [...live].forEach((a) => a.complete()));
+if (typeof window !== 'undefined')
+  matchMedia(REDUCE).addEventListener('change', (e) => e.matches && [...live].forEach((a) => a.complete()));
 
 export type Tween = { cancel(): number };
 
@@ -52,7 +53,11 @@ export type Tween = { cancel(): number };
  * or /stream: writes `format(to)` and is done. `cancel()` stops it where it is and returns the value it showed, so a
  * new tween can start from there (rapid updates retarget cleanly).
  */
-export function tweenNumber(el: HTMLElement, to: number, o: { from?: number | null; format?: (v: number) => string; duration?: number; prop?: string } = {}): Tween {
+export function tweenNumber(
+  el: HTMLElement,
+  to: number,
+  o: { from?: number | null; format?: (v: number) => string; duration?: number; prop?: string } = {},
+): Tween {
   const format = o.format ?? String;
   const write = (v: number) => (o.prop ? el.style.setProperty(o.prop, format(v)) : setText(el, format(v)));
   let cur = o.from ?? to;
@@ -63,18 +68,20 @@ export function tweenNumber(el: HTMLElement, to: number, o: { from?: number | nu
   write(cur);
   let anim: { cancel(): unknown; complete(): unknown } | undefined;
   let dead = false;
-  void load('animation', 'easings').then((lib) => {
-    if (dead) return;
-    const obj = { v: cur };
-    const a = lib.animate(obj, {
-      v: to,
-      duration: o.duration ?? ms('--dur-count', 600),
-      ease: ease(lib),
-      onUpdate: () => write((cur = obj.v)),
-      onComplete: () => (live.delete(a), write((cur = to))),
-    });
-    live.add((anim = a));
-  }).catch(() => dead || write((cur = to))); // chunk failed to load: show the new value, never the stale one
+  void load('animation', 'easings')
+    .then((lib) => {
+      if (dead) return;
+      const obj = { v: cur };
+      const a = lib.animate(obj, {
+        v: to,
+        duration: o.duration ?? ms('--dur-count', 600),
+        ease: ease(lib),
+        onUpdate: () => write((cur = obj.v)),
+        onComplete: () => (live.delete(a), write((cur = to))),
+      });
+      live.add((anim = a));
+    })
+    .catch(() => dead || write((cur = to))); // chunk failed to load: show the new value, never the stale one
   return {
     cancel() {
       dead = true;
@@ -171,7 +178,8 @@ let morphing: { t: ViewTransition; untag(): void } | null = null;
 export function morph(name: string, pick: () => HTMLElement | null | undefined, update: () => void): ViewTransition | null {
   skipMorph();
   const old = pick();
-  if (!old || !document.startViewTransition || !motionAllowed() || document.documentElement.hasAttribute('data-astro-transition')) return update(), null;
+  if (!old || !document.startViewTransition || !motionAllowed() || document.documentElement.hasAttribute('data-astro-transition'))
+    return update(), null;
   const tagged: HTMLElement[] = [];
   const tag = (el: HTMLElement | null | undefined) => el && ((el.style.viewTransitionName = name), tagged.push(el));
   const untag = () => {
@@ -214,16 +222,18 @@ export function drawIn(el: SVGGeometryElement) {
   el.setAttribute('stroke-dasharray', '0 1010');
   let a: { cancel(): unknown; complete(): unknown } | undefined;
   let dead = false;
-  void load('svg', 'animation', 'easings').then((lib) => {
-    if (dead) return;
-    const anim = lib.animate(lib.createDrawable(el), {
-      draw: ['0 0', '0 1'],
-      duration: ms('--dur-draw', 700),
-      ease: ease(lib),
-      onComplete: () => (live.delete(anim), clean()),
-    });
-    live.add((a = anim));
-  }).catch(() => dead || clean()); // chunk failed to load: show the full line rather than none
+  void load('svg', 'animation', 'easings')
+    .then((lib) => {
+      if (dead) return;
+      const anim = lib.animate(lib.createDrawable(el), {
+        draw: ['0 0', '0 1'],
+        duration: ms('--dur-draw', 700),
+        ease: ease(lib),
+        onComplete: () => (live.delete(anim), clean()),
+      });
+      live.add((a = anim));
+    })
+    .catch(() => dead || clean()); // chunk failed to load: show the full line rather than none
   return () => {
     dead = true;
     if (a) live.delete(a), a.cancel();
@@ -295,7 +305,8 @@ export function splitIn(h: HTMLElement) {
       fx.className = 'split-fx';
       h.append(fx);
       const easing = cssVar('--ease');
-      for (const [i, w] of splitWords(real.textContent ?? '', fx).entries()) anims.push(w.animate({ translate: ['0 100%', '0 0'] }, { duration: 500, delay: 120 + i * 45, easing, fill: 'backwards' }));
+      for (const [i, w] of splitWords(real.textContent ?? '', fx).entries())
+        anims.push(w.animate({ translate: ['0 100%', '0 0'] }, { duration: 500, delay: 120 + i * 45, easing, fill: 'backwards' }));
       const last = anims.at(-1);
       if (last) last.onfinish = clean;
       else clean();
@@ -340,7 +351,8 @@ export function swapIcon(svg: SVGSVGElement) {
   const settle = (on: boolean) => {
     stopAll();
     path?.setAttribute('d', on ? SPIN_D : home);
-    if (on && !onStreamRoute() && !reducedMotion()) (spin = svg.animate({ rotate: ['0deg', '360deg'] }, { duration: 900, iterations: Infinity, easing: 'linear' })), live.add(handle);
+    if (on && !onStreamRoute() && !reducedMotion())
+      (spin = svg.animate({ rotate: ['0deg', '360deg'] }, { duration: 900, iterations: Infinity, easing: 'linear' })), live.add(handle);
   };
   return {
     to(on: boolean) {
@@ -368,18 +380,25 @@ export function swapIcon(svg: SVGSVGElement) {
 }
 
 /** Svelte attachment: fade an element in once it mounts (native Web Animations, nothing loaded), after `delay` ms. */
-export const fadeIn = (delay = 0) => (el: Element) => {
-  if (!motionAllowed()) return;
-  const a = el.animate({ opacity: [0, 1] }, { duration: ms('--dur-enter', 420), delay, easing: cssVar('--ease'), fill: 'backwards' });
-  return () => a.cancel();
-};
+export const fadeIn =
+  (delay = 0) =>
+  (el: Element) => {
+    if (!motionAllowed()) return;
+    const a = el.animate({ opacity: [0, 1] }, { duration: ms('--dur-enter', 420), delay, easing: cssVar('--ease'), fill: 'backwards' });
+    return () => a.cancel();
+  };
 
 /** Svelte attachment: a result chip pops in when it mounts: opacity + `translate` + `scale` (native, compositor), `delay` ms in. */
-export const popIn = (delay = 0) => (el: Element) => {
-  if (!motionAllowed()) return;
-  const a = el.animate({ opacity: [0, 1], translate: ['0 6px', '0 0'], scale: [0.9, 1] }, { duration: 240, delay, easing: cssVar('--ease'), fill: 'backwards' });
-  return () => a.cancel();
-};
+export const popIn =
+  (delay = 0) =>
+  (el: Element) => {
+    if (!motionAllowed()) return;
+    const a = el.animate(
+      { opacity: [0, 1], translate: ['0 6px', '0 0'], scale: [0.9, 1] },
+      { duration: 240, delay, easing: cssVar('--ease'), fill: 'backwards' },
+    );
+    return () => a.cancel();
+  };
 
 /**
  * Library cards pop in: opacity 0 -> 1 with a 10 px rise and a .96 -> 1 scale (anime.js, one tween, `step` ms apart,
@@ -399,20 +418,22 @@ export function cardsIn(els: HTMLElement[], step = 30): () => void {
   els.forEach((e) => (e.style.opacity = '0'));
   let a: { cancel(): unknown; complete(): unknown } | undefined;
   let dead = false;
-  void load('animation', 'easings').then((lib) => {
-    if (dead) return;
-    if (reducedMotion()) return clean();
-    const anim = lib.animate(els, {
-      opacity: [0, 1],
-      translateY: [10, 0],
-      scale: [0.96, 1],
-      duration: ms('--dur-enter', 420),
-      delay: (_?: unknown, i = 0) => i * step,
-      ease: ease(lib),
-      onComplete: () => (live.delete(anim), clean()),
-    });
-    live.add((a = anim));
-  }).catch(() => dead || clean());
+  void load('animation', 'easings')
+    .then((lib) => {
+      if (dead) return;
+      if (reducedMotion()) return clean();
+      const anim = lib.animate(els, {
+        opacity: [0, 1],
+        translateY: [10, 0],
+        scale: [0.96, 1],
+        duration: ms('--dur-enter', 420),
+        delay: (_?: unknown, i = 0) => i * step,
+        ease: ease(lib),
+        onComplete: () => (live.delete(anim), clean()),
+      });
+      live.add((a = anim));
+    })
+    .catch(() => dead || clean());
   return () => {
     dead = true;
     if (a) live.delete(a), a.cancel();
@@ -430,7 +451,6 @@ export const countUp = (value: number, format: (v: number) => string) => (el: HT
   const t = tweenNumber(el, value, { from: 0, format });
   return () => (t.cancel(), setText(el, format(value)));
 };
-
 
 /**
  * A packet dot travelling along a lane forever (`el` is as wide as the lane with the dot at its right edge, inside an
@@ -454,4 +474,3 @@ export function travel(el: Element, ms: number): (() => void) | null {
   mq.addEventListener('change', onMq);
   return stop;
 }
-

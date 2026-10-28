@@ -68,7 +68,8 @@ The web UI lives in `web/`:
 cd web
 npm ci
 npm run dev      # dev server on 127.0.0.1
-npm run ci       # svelte-check, unit tests, production build
+npm run ci       # biome check, svelte-check, unit tests, production build
+npm run fmt      # format and apply safe lint fixes
 ```
 
 The Rust side builds with the pinned toolchain. Use `cargo test` for the tests, or `cargo build --release` for `brisk-hostd`, `brisk-bridge` and `brisk-probe`. `scripts/check.sh` runs every check (Rust and web) in order.

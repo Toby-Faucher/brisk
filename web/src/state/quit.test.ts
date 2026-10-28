@@ -3,7 +3,25 @@ import { get } from 'svelte/store';
 import type { Game } from './api';
 import { quitFlow, quitItems, type QuitState } from './quit';
 
-const g = (appid: number, name: string, running: boolean): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running });
+const g = (appid: number, name: string, running: boolean): Game => ({
+  appid,
+  name,
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 0,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running,
+});
 
 function rig(answers: (QuitState | Error)[]) {
   const calls: [number, boolean][] = [];
@@ -82,7 +100,10 @@ describe('quit', () => {
     const again = r.flow.confirm();
     await r.answer();
     await again;
-    expect(r.calls).toEqual([[2076580, false], [2076580, true]]);
+    expect(r.calls).toEqual([
+      [2076580, false],
+      [2076580, true],
+    ]);
     expect(r.toast).toHaveBeenLastCalledWith('Closed Pepper Grinder');
   });
 

@@ -1,63 +1,233 @@
-* { box-sizing: border-box; }
-html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
-a { color: inherit; text-decoration: none; }
-button { font: inherit; color: inherit; }
-h1, h2, h3, h4 { margin: 0; font-weight: 600; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-[hidden] { display: none !important; }
-.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.muted { color: var(--muted); }
-.lab { color: var(--muted); font-size: 12.5px; }
-.tag { font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, #fff 8%, transparent); color: var(--muted); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); display: inline-block; flex: 0 0 auto; animation: pulse 2.4s ease-in-out infinite; }
-.dot.busy { --ok: var(--warn); }
-.dot.down, .dot.off { --ok: var(--bad); animation: none; }
-@keyframes pulse { 50% { box-shadow: 0 0 0 6px transparent; } }
-.btn { border: 0; font-weight: 600; cursor: pointer; border-radius: var(--r-ctl); padding: 8px 15px; background: var(--accent); color: var(--accent-fg); transition: transform .18s var(--ease), filter .18s; display: inline-flex; gap: 8px; align-items: center; }
-.btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
-.btn:active { transform: scale(.97); }
-.btn.ghost { background: var(--panel2); color: var(--fg); box-shadow: 0 0 0 1px var(--line) inset; }
-.btn:disabled, .btn[aria-disabled='true'] { opacity: .5; cursor: default; transform: none; filter: none; }
-.glass { background: color-mix(in srgb, #12151b 78%, transparent); backdrop-filter: blur(18px) saturate(1.3); border: 1px solid color-mix(in srgb, #fff 10%, transparent); box-shadow: 0 18px 50px rgba(0, 0, 0, .45); border-radius: 20px; }
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font: inherit;
+  color: inherit;
+}
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+[hidden] {
+  display: none !important;
+}
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.muted {
+  color: var(--muted);
+}
+.lab {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.tag {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 8%, transparent);
+  color: var(--muted);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent);
+  display: inline-block;
+  flex: 0 0 auto;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.dot.busy {
+  --ok: var(--warn);
+}
+.dot.down,
+.dot.off {
+  --ok: var(--bad);
+  animation: none;
+}
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+.btn {
+  border: 0;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--r-ctl);
+  padding: 8px 15px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  transition:
+    transform 0.18s var(--ease),
+    filter 0.18s;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn.ghost {
+  background: var(--panel2);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+.glass {
+  background: color-mix(in srgb, #12151b 78%, transparent);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid color-mix(in srgb, #fff 10%, transparent);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  border-radius: 20px;
+}
 /* Motion: opacity + the independent `translate` property only (never `transform`, which hover owns), no permanent
    will-change, nothing on /stream (docs/ui-notes.md, Motion). All of it sits under no-preference below. */
-html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Settings tab strip */
-@keyframes rise-in { from { opacity: 0; translate: 0 var(--rise); } }
-@keyframes fade-in { from { opacity: 0; } }
-@keyframes enter-rise { from { opacity: 0; translate: 0 var(--rise-enter); } }
-@keyframes rise-scroll { from { opacity: 0; translate: 0 var(--rise-scroll); } }
+html {
+  scroll-padding-top: 64px;
+} /* anchors and focus land below the sticky Settings tab strip */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--rise);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    translate: 0 var(--rise-enter);
+  }
+}
+@keyframes rise-scroll {
+  from {
+    opacity: 0;
+    translate: 0 var(--rise-scroll);
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
-  html:not([data-astro-transition]) { scroll-behavior: smooth; } /* the router's scroll restore must not glide */
-  .page-in { animation: fade-in var(--dur-page) var(--ease) backwards; }
-  .fade-in { animation: fade-in var(--dur-enter) var(--ease) backwards; } /* data landed: set by class, so it starts then */
+  html:not([data-astro-transition]) {
+    scroll-behavior: smooth;
+  } /* the router's scroll restore must not glide */
+  .page-in {
+    animation: fade-in var(--dur-page) var(--ease) backwards;
+  }
+  .fade-in {
+    animation: fade-in var(--dur-enter) var(--ease) backwards;
+  } /* data landed: set by class, so it starts then */
   /* Load entrance (reveal.ts tags what is in the first viewport): time-based, staggered by --i. Declared after the
      scroll rule below via specificity ([data-enter]); its shorthand resets animation-timeline to auto. */
-  .reveal[data-enter], .enter[data-enter] { animation: enter-rise var(--dur-enter) var(--ease) calc(var(--i, 0) * var(--stagger)) backwards; }
+  .reveal[data-enter],
+  .enter[data-enter] {
+    animation: enter-rise var(--dur-enter) var(--ease) calc(var(--i, 0) * var(--stagger)) backwards;
+  }
   /* SSR markup is visible before hydration tags it: hide until reveal.ts has (head script sets/clears the attribute) */
-  html[data-enter-pending] main.page-in :is(.reveal, .enter) { opacity: 0; }
+  html[data-enter-pending] main.page-in :is(.reveal, .enter) {
+    opacity: 0;
+  }
   /* set only after a user action (tab change, list/detail swap), so first load animates once (page-in) */
-  .swap-in { animation: rise-in var(--dur-tab) var(--ease) backwards; }
+  .swap-in {
+    animation: rise-in var(--dur-tab) var(--ease) backwards;
+  }
   /* Bits UI dialogs (command menu .cm, confirms .rs, their .cm-dim overlay): CSS transitions only. They enter from
      @starting-style on the snappy spring and leave faster from data-ending-style; Bits keeps the node mounted until
      getAnimations() on it has finished, then unmounts. Portalled divs, not top layer: no allow-discrete needed. */
-  :is(.cm, .rs) { transition: opacity var(--dur-page) var(--ease), translate var(--spring-snappy-dur) var(--spring-snappy), scale var(--spring-snappy-dur) var(--spring-snappy); }
-  .cm-dim { transition: opacity var(--dur-page) var(--ease); }
-  :is(.cm, .rs, .cm-dim)[data-ending-style] { opacity: 0; transition-duration: var(--dur-exit); transition-timing-function: var(--ease-exit); }
-  :is(.cm, .rs)[data-ending-style] { translate: 0 6px; scale: .98; }
+  :is(.cm, .rs) {
+    transition:
+      opacity var(--dur-page) var(--ease),
+      translate var(--spring-snappy-dur) var(--spring-snappy),
+      scale var(--spring-snappy-dur) var(--spring-snappy);
+  }
+  .cm-dim {
+    transition: opacity var(--dur-page) var(--ease);
+  }
+  :is(.cm, .rs, .cm-dim)[data-ending-style] {
+    opacity: 0;
+    transition-duration: var(--dur-exit);
+    transition-timing-function: var(--ease-exit);
+  }
+  :is(.cm, .rs)[data-ending-style] {
+    translate: 0 6px;
+    scale: 0.98;
+  }
   /* clicks reach the page while the backdrop fades: Bits sets pointer-events inline on the overlay and on <body> (modal)
      until it unmounts */
-  body:has(.cm-dim[data-ending-style]) { pointer-events: auto !important; }
-  .cm-dim[data-ending-style] { pointer-events: none !important; }
+  body:has(.cm-dim[data-ending-style]) {
+    pointer-events: auto !important;
+  }
+  .cm-dim[data-ending-style] {
+    pointer-events: none !important;
+  }
   /* Home module picker (AddModule.svelte): swells from the card by a native FLIP on translate + scale; only its opacity
      is a CSS transition on entry. The exit shrinks back onto the card's box (--mp-t / --mp-s, set inline by Svelte). */
-  .mp { transition: opacity var(--dur-page) var(--ease); }
-  .mp[data-ending-style] { opacity: 0; translate: var(--mp-t, 0 6px); scale: var(--mp-s, .98); transition: opacity var(--dur-page) var(--ease-exit), translate var(--dur-page) var(--ease-exit), scale var(--dur-page) var(--ease-exit); }
+  .mp {
+    transition: opacity var(--dur-page) var(--ease);
+  }
+  .mp[data-ending-style] {
+    opacity: 0;
+    translate: var(--mp-t, 0 6px);
+    scale: var(--mp-s, 0.98);
+    transition:
+      opacity var(--dur-page) var(--ease-exit),
+      translate var(--dur-page) var(--ease-exit),
+      scale var(--dur-page) var(--ease-exit);
+  }
   @starting-style {
-    .mp[data-state='open'] { opacity: 0; }
-    :is(.cm, .rs, .cm-dim)[data-state='open'] { opacity: 0; }
-    .cm[data-state='open'] { translate: 0 -12px; scale: .97; }
-    .rs[data-state='open'] { translate: 0 10px; }
+    .mp[data-state='open'] {
+      opacity: 0;
+    }
+    :is(.cm, .rs, .cm-dim)[data-state='open'] {
+      opacity: 0;
+    }
+    .cm[data-state='open'] {
+      translate: 0 -12px;
+      scale: 0.97;
+    }
+    .rs[data-state='open'] {
+      translate: 0 10px;
+    }
   }
 }
 /* Scroll reveal for cards and headers on a view timeline: nothing runs in JS. Without support (or with reduced
@@ -65,7 +235,13 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     /* longhands on purpose: with all of them set the minifier folds them into `animation: ... view()`, which Chrome drops */
-    .reveal { animation-name: rise-scroll; animation-timing-function: linear; animation-fill-mode: both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
+    .reveal {
+      animation-name: rise-scroll;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
   }
 }
 /* Library view transition (Library.svelte pickFilter(), type `library`; the router's own transitions are untouched): only
@@ -74,31 +250,78 @@ html { scroll-padding-top: 64px; } /* anchors and focus land below the sticky Se
    for the whole transition even with pointer-events: none on ::view-transition (checked in headless Chrome 1248). */
 html:active-view-transition-type(library) {
   view-transition-name: none;
-  &::view-transition { pointer-events: none; }
-  &::view-transition-group(*) { animation-duration: var(--dur-tab); animation-timing-function: var(--ease); }
-  &::view-transition-old(*), &::view-transition-new(*) { animation-duration: var(--dur-tab); }
+  &::view-transition {
+    pointer-events: none;
+  }
+  &::view-transition-group(*) {
+    animation-duration: var(--dur-tab);
+    animation-timing-function: var(--ease);
+  }
+  &::view-transition-old(*),
+  &::view-transition-new(*) {
+    animation-duration: var(--dur-tab);
+  }
 }
 /* Shared-element morph (ui/motion.ts morph(), type `morph`: the History session cover): same rules, the one named
    element glides on the snappy spring and its two snapshots cross-fade quickly, so the sharp new cover shows early. */
 html:active-view-transition-type(morph) {
   view-transition-name: none;
-  &::view-transition { pointer-events: none; }
-  &::view-transition-group(*) { animation-duration: var(--spring-snappy-dur); animation-timing-function: var(--spring-snappy); }
-  &::view-transition-old(*), &::view-transition-new(*) { animation-duration: var(--dur-tab); animation-timing-function: var(--ease); }
+  &::view-transition {
+    pointer-events: none;
+  }
+  &::view-transition-group(*) {
+    animation-duration: var(--spring-snappy-dur);
+    animation-timing-function: var(--spring-snappy);
+  }
+  &::view-transition-old(*),
+  &::view-transition-new(*) {
+    animation-duration: var(--dur-tab);
+    animation-timing-function: var(--ease);
+  }
 }
 /* Motion only; sounds are not affected by this preference. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
   /* a view transition already running when reduced motion switches on ends at once */
-  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 /* One scrollbar for the whole app (Chrome only, so ::-webkit-scrollbar: the standard scrollbar-width/-color
    properties would switch these rules off, so do not set them on scroll containers). A slim pill thumb inset
    from the edge by a transparent border; accent on hover and drag. Hide one deliberately with display: none. */
-*::-webkit-scrollbar { width: 12px; height: 12px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-corner { background: transparent; }
-*::-webkit-scrollbar-thumb { background: color-mix(in srgb, #fff 16%, transparent); border: 4px solid transparent; background-clip: padding-box; border-radius: 999px; min-height: 36px; min-width: 36px; }
-*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent) 55%, transparent); background-clip: padding-box; }
-*::-webkit-scrollbar-thumb:active { background: var(--accent); background-clip: padding-box; }
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, #fff 16%, transparent);
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  min-height: 36px;
+  min-width: 36px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:active {
+  background: var(--accent);
+  background-clip: padding-box;
+}

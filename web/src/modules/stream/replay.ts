@@ -42,7 +42,11 @@ export class Replay {
   lastKeyAt = -Infinity;
 
   /** `seconds` 0 = off: nothing is kept. Keeps N s plus up to KEY_EVERY_MS, from a key frame. */
-  constructor(readonly seconds: number, private cap = REPLAY_CAP_BYTES, private now = () => performance.now()) {}
+  constructor(
+    readonly seconds: number,
+    private cap = REPLAY_CAP_BYTES,
+    private now = () => performance.now(),
+  ) {}
 
   get on(): boolean {
     return this.seconds > 0 && !this.dead;
@@ -148,7 +152,9 @@ const isHevc = (key: Uint8Array) => !codecFromAccessUnit(key)?.startsWith('avc1'
 /** The parameter-set NAL units of a key frame (H.264 SPS/PPS, HEVC VPS/SPS/PPS). They lead the
  *  access unit, so only its first 1 KiB is scanned (an IDR at Crisp is hundreds of KB). */
 function paramSets(au: Uint8Array, hevc: boolean): Uint8Array[] {
-  return nals(au.subarray(0, 1024)).filter((n) => n.length && (hevc ? [32, 33, 34].includes((n[0] >> 1) & 0x3f) : [7, 8].includes(n[0] & 0x1f)));
+  return nals(au.subarray(0, 1024)).filter(
+    (n) => n.length && (hevc ? [32, 33, 34].includes((n[0] >> 1) & 0x3f) : [7, 8].includes(n[0] & 0x1f)),
+  );
 }
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 const sameSets = (a: Uint8Array[], b: Uint8Array[]) => a.length === b.length && a.every((x, i) => sameBytes(x, b[i]));

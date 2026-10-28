@@ -1,13 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { BUTTON_FLAGS, type PadLike } from '../../lib/gamepad';
 import {
-  DEFAULT_DEADZONE, DriftCheck, PollRate, RangeTest, Trail, driftVerdict, mappingRows, padChoices, padView, stickView, suggestDeadzone,
+  DEFAULT_DEADZONE,
+  DriftCheck,
+  PollRate,
+  RangeTest,
+  Trail,
+  driftVerdict,
+  mappingRows,
+  padChoices,
+  padView,
+  stickView,
+  suggestDeadzone,
 } from './controllertest';
 
 function pad(over: Partial<PadLike> = {}, pressed: Record<number, number> = {}, axes = [0, 0, 0, 0]): PadLike {
   return {
-    index: 0, id: '8BitDo Ultimate 2 (STANDARD GAMEPAD Vendor: 2dc8 Product: 6012)', connected: true, mapping: 'standard',
-    buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: (pressed[i] ?? 0) > 0.5, value: pressed[i] ?? 0 })), axes, ...over,
+    index: 0,
+    id: '8BitDo Ultimate 2 (STANDARD GAMEPAD Vendor: 2dc8 Product: 6012)',
+    connected: true,
+    mapping: 'standard',
+    buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: (pressed[i] ?? 0) > 0.5, value: pressed[i] ?? 0 })),
+    axes,
+    ...over,
   };
 }
 

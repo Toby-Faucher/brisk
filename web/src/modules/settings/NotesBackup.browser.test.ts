@@ -6,11 +6,15 @@ import { notes, type Notes } from '../../state/notes';
 import NotesBackup from './NotesBackup.svelte';
 
 const data: Notes = {
-  tags: { coop: { name: 'Co-op night', color: 'teal', symbol: 'users', note: 'Needs 4 pads' }, backlog: { name: 'Backlog', color: 'blue', symbol: 'star', note: '' } },
+  tags: {
+    coop: { name: 'Co-op night', color: 'teal', symbol: 'users', note: 'Needs 4 pads' },
+    backlog: { name: 'Backlog', color: 'blue', symbol: 'star', note: '' },
+  },
   games: { 620: { note: 'Bring snacks', tags: ['coop'] }, 400: { note: '', tags: ['backlog'] } },
 };
 const backup = JSON.stringify({ format: 'brisk-notes', version: 1, exported: '2026-10-27T00:00:00.000Z', ...data });
-const upload = (text: string, name = 'notes.json') => userEvent.upload(page.getByLabelText('Restore from file'), new File([text], name, { type: 'application/json' }));
+const upload = (text: string, name = 'notes.json') =>
+  userEvent.upload(page.getByLabelText('Restore from file'), new File([text], name, { type: 'application/json' }));
 const none: Notes = { tags: {}, games: {} };
 const spies = (live: Notes = none) => ({
   putTag: vi.spyOn(api, 'putTag').mockImplementation(async (_i, t) => t),

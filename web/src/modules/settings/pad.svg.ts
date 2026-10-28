@@ -35,7 +35,13 @@ const LEFT: Seg[] = [
   ['C', -32.5, 19.6, -30.5, 19.2, -28.5, 19.2],
   ['L', 0, 19],
 ];
-export const BODY = d(TOP, LEFT) + ' ' + reverse(TOP, flip(LEFT)).map((s) => s.join(' ')).join(' ') + ' Z';
+export const BODY =
+  d(TOP, LEFT) +
+  ' ' +
+  reverse(TOP, flip(LEFT))
+    .map((s) => s.join(' '))
+    .join(' ') +
+  ' Z';
 
 // Bumper as seen from the front: the band between the top edge and the bumper's lower seam.
 const LB: Seg[] = [...BUMP, ['C', -59.2, -42.8, -59.6, -41.6, -59.7, -40.4], ['C', -50, -44.6, -36, -47.2, -26.4, -49.4]];
@@ -74,7 +80,8 @@ export const TRIGGERS: Box[] = [
 // D-pad: a cross 25.6 mm tip to tip, arms 9.6 mm wide, one path per direction so each lights on its own.
 export const DPAD_C = { x: -20.3, y: 0.7, half: 12.8, arm: 4.8, dish: 3.2 };
 const arm = (ux: number, uy: number) => {
-  const { x, y, half: h, arm: a } = DPAD_C, r = 1.6; // rounded outer corners
+  const { x, y, half: h, arm: a } = DPAD_C,
+    r = 1.6; // rounded outer corners
   const P = (along: number, across: number) => `${(x + ux * along - uy * across).toFixed(2)} ${(y + uy * along + ux * across).toFixed(2)}`;
   return `M${P(a, -a)} L${P(h - r, -a)} Q${P(h, -a)} ${P(h, -a + r)} L${P(h, a - r)} Q${P(h, a)} ${P(h - r, a)} L${P(a, a)} Z`;
 };
@@ -96,7 +103,11 @@ export const EXTRA_CIRCLES: Circle[] = [
   { id: 'pad-star', label: '', x: 10, y: -24.3, r: 3.6 },
 ];
 // Back paddles, seen through the body (dashed): PL behind the left grip, PR behind the right.
-const PL: Seg[] = [['C', -26, 1, -24.6, 8.5, -27.5, 12], ['C', -30, 14.5, -36.5, 13.5, -39, 10.5], ['C', -41.5, 7, -38, 1, -32, 1]];
+const PL: Seg[] = [
+  ['C', -26, 1, -24.6, 8.5, -27.5, 12],
+  ['C', -30, 14.5, -36.5, 13.5, -39, 10.5],
+  ['C', -41.5, 7, -38, 1, -32, 1],
+];
 export const PADDLES: Shape[] = [
   { id: 'pad-pl', label: 'PL', d: d([-32, 1], PL) + ' Z', lx: -32.3, ly: 7.5 },
   { id: 'pad-pr', label: 'PR', d: d([32, 1], flip(PL)) + ' Z', lx: 32.3, ly: 7.5 },

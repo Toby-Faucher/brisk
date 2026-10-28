@@ -2,7 +2,25 @@ import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
 import { fmtAgo, fmtDuration, fmtTemp, fmtUptime, moveItem, orderToStore, pickResume, reconcileOrder, tagCardIds } from './home';
 
-const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({ appid, name: `g${appid}`, installed, sizeBytes: null, lastPlayed, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running });
+const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({
+  appid,
+  name: `g${appid}`,
+  installed,
+  sizeBytes: null,
+  lastPlayed,
+  playtimeMin: 0,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running,
+});
 
 describe('home', () => {
   it('resume_picks_most_recent_played_installed_game', () => {
@@ -34,7 +52,13 @@ describe('home', () => {
     expect(reconcileOrder([], cur)).toEqual(cur);
     expect(reconcileOrder(['recent', 'host'], cur)).toEqual(['recent', 'host', 'resume', 'quick', 'library']);
     // removed ids (gone, agents) are dropped; duplicates count once
-    expect(reconcileOrder(['gone', 'library', 'library', 'agents', 'quick'], cur)).toEqual(['library', 'quick', 'host', 'resume', 'recent']);
+    expect(reconcileOrder(['gone', 'library', 'library', 'agents', 'quick'], cur)).toEqual([
+      'library',
+      'quick',
+      'host',
+      'resume',
+      'recent',
+    ]);
     expect(reconcileOrder(['a', 'b'], [])).toEqual([]);
     expect(reconcileOrder(cur.slice().reverse(), cur)).toEqual(cur.slice().reverse());
   });

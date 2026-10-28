@@ -1,9 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
-import { badgeLabel, cardClick, filterByTag, almostDone, backlog, filterGames, pickRandom, smartTags, fmtFortnight, installLabel, playLabel, savesLine, searchGames, shelves, sortGames, updateLabel, visibleRange, wheelToX } from './library';
+import {
+  badgeLabel,
+  cardClick,
+  filterByTag,
+  almostDone,
+  backlog,
+  filterGames,
+  pickRandom,
+  smartTags,
+  fmtFortnight,
+  installLabel,
+  playLabel,
+  savesLine,
+  searchGames,
+  shelves,
+  sortGames,
+  updateLabel,
+  visibleRange,
+  wheelToX,
+} from './library';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({ appid, name, installed: false, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false, ...o });
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
+  appid,
+  name,
+  installed: false,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 0,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running: false,
+  ...o,
+});
 
 describe('library', () => {
   it('updateLabel_names_the_state', () => {
@@ -13,7 +51,11 @@ describe('library', () => {
   });
 
   it('sortGames_orders_and_default_keeps_input', () => {
-    const list = [g(1, 'banjo', { playtimeMin: 5, lastPlayed: 10 }), g(2, 'Apex', { playtimeMin: 50 }), g(3, 'cave', { playtimeMin: 9, lastPlayed: 99 })];
+    const list = [
+      g(1, 'banjo', { playtimeMin: 5, lastPlayed: 10 }),
+      g(2, 'Apex', { playtimeMin: 50 }),
+      g(3, 'cave', { playtimeMin: 9, lastPlayed: 99 }),
+    ];
     const ids = (s: Parameters<typeof sortGames>[1]) => sortGames(list, s).map((x) => x.appid);
     expect(ids('default')).toEqual([1, 2, 3]);
     expect(ids('az')).toEqual([2, 1, 3]);
@@ -31,7 +73,12 @@ describe('library', () => {
   });
 
   it('search_prefers_word_start', () => {
-    const list = [g(1, 'Hades II', { playtimeMin: 900 }), g(2, 'Shades of Doom', { playtimeMin: 10 }), g(3, 'The Hades Club', { playtimeMin: 50 }), g(4, 'Hadestown', { playtimeMin: 5 })];
+    const list = [
+      g(1, 'Hades II', { playtimeMin: 900 }),
+      g(2, 'Shades of Doom', { playtimeMin: 10 }),
+      g(3, 'The Hades Club', { playtimeMin: 50 }),
+      g(4, 'Hadestown', { playtimeMin: 5 }),
+    ];
     // word starts first (ties by playtime), then plain substrings
     expect(searchGames(list, 'hades').map((x) => x.appid)).toEqual([1, 3, 4, 2]);
     // empty query keeps everything, most played first
@@ -41,7 +88,12 @@ describe('library', () => {
   it('filter_recent_is_played_in_last_30_days', () => {
     const now = 1_800_000_000_000; // ms
     const s = now / 1000; // lastPlayed is unix seconds
-    const list = [g(1, 'a', { lastPlayed: s - 2 * DAY, installed: true }), g(2, 'b', { lastPlayed: s - 31 * DAY }), g(3, 'c'), g(4, 'd', { lastPlayed: s - 29 * DAY })];
+    const list = [
+      g(1, 'a', { lastPlayed: s - 2 * DAY, installed: true }),
+      g(2, 'b', { lastPlayed: s - 31 * DAY }),
+      g(3, 'c'),
+      g(4, 'd', { lastPlayed: s - 29 * DAY }),
+    ];
     expect(filterGames(list, 'recent', now).map((x) => x.appid)).toEqual([1, 4]);
     expect(filterGames(list, 'installed', now).map((x) => x.appid)).toEqual([1]);
     expect(filterGames(list, 'not-installed', now).map((x) => x.appid)).toEqual([2, 3, 4]);
@@ -49,7 +101,12 @@ describe('library', () => {
   });
 
   it('shelves_hero_is_latest_played_installed', () => {
-    const list = [g(1, 'a', { installed: true, lastPlayed: 100 }), g(2, 'b', { lastPlayed: 900 }), g(3, 'c', { installed: true, lastPlayed: 500 }), g(4, 'd', { installed: true })];
+    const list = [
+      g(1, 'a', { installed: true, lastPlayed: 100 }),
+      g(2, 'b', { lastPlayed: 900 }),
+      g(3, 'c', { installed: true, lastPlayed: 500 }),
+      g(4, 'd', { installed: true }),
+    ];
     const s = shelves(list);
     expect(s.hero?.appid).toBe(3);
     expect(s.installed.map((x) => x.appid)).toEqual([1, 3, 4]); // input order kept
@@ -122,16 +179,23 @@ describe('library', () => {
 
   it('savesLine_counts_size_and_age', () => {
     const now = 1_000_000_000_000;
-    expect(savesLine({ files: 14, bytes: 2_100_000, modified: now / 1000 - 3 * DAY }, now)).toBe('Cloud saves: 14 files, 2.1 MB, synced 3 d ago');
+    expect(savesLine({ files: 14, bytes: 2_100_000, modified: now / 1000 - 3 * DAY }, now)).toBe(
+      'Cloud saves: 14 files, 2.1 MB, synced 3 d ago',
+    );
     expect(savesLine({ files: 1, bytes: 400, modified: 0 }, now)).toBe('Cloud saves: 1 file, 1 KB');
-    expect(savesLine({ files: 3, bytes: 5_200_000_000, modified: now / 1000 - 120 }, now)).toBe('Cloud saves: 3 files, 5.2 GB, synced 2 min ago');
+    expect(savesLine({ files: 3, bytes: 5_200_000_000, modified: now / 1000 - 120 }, now)).toBe(
+      'Cloud saves: 3 files, 5.2 GB, synced 2 min ago',
+    );
     expect(savesLine({ files: 0, bytes: 0, modified: 0 }, now)).toBeNull();
     expect(savesLine(null, now)).toBeNull();
   });
 
   it('filterByTag_composes_with_search', () => {
     const list = [g(1, 'Hades II'), g(2, 'Hadestown'), g(3, 'Portal 2')];
-    const n = { tags: { coop: { name: 'Co-op', color: 'teal' as const, symbol: 'users', note: '' } }, games: { '2': { note: '', tags: ['coop'] }, '3': { note: '', tags: ['coop'] } } };
+    const n = {
+      tags: { coop: { name: 'Co-op', color: 'teal' as const, symbol: 'users', note: '' } },
+      games: { '2': { note: '', tags: ['coop'] }, '3': { note: '', tags: ['coop'] } },
+    };
     expect(searchGames(filterByTag(list, n, 'coop'), 'hades').map((x) => x.appid)).toEqual([2]);
     expect(filterByTag(searchGames(list, 'hades'), n, 'coop').map((x) => x.appid)).toEqual([2]);
     expect(filterByTag(searchGames(list, 'hades'), n, null).map((x) => x.appid)).toEqual([1, 2]);
@@ -160,7 +224,12 @@ describe('library', () => {
   });
 
   it('smartTags_orders_backlog_first', () => {
-    expect(tagIds({ coop: true, updated: true, controller: 'full' })).toEqual(['auto-backlog', 'auto-controller', 'auto-coop', 'auto-updated']);
+    expect(tagIds({ coop: true, updated: true, controller: 'full' })).toEqual([
+      'auto-backlog',
+      'auto-controller',
+      'auto-coop',
+      'auto-updated',
+    ]);
   });
 
   it('filterByTag_applies_auto_rule', () => {
@@ -180,9 +249,18 @@ describe('library', () => {
   });
 
   it('shelves_backlog_and_almost_done_order', () => {
-    const list = [g(1, 'b', { playtimeMin: 10 }), g(2, 'a', { playtimeMin: 10 }), g(3, 'c', { playtimeMin: 0 }), g(4, 'd', { playtimeMin: 99 })];
+    const list = [
+      g(1, 'b', { playtimeMin: 10 }),
+      g(2, 'a', { playtimeMin: 10 }),
+      g(3, 'c', { playtimeMin: 0 }),
+      g(4, 'd', { playtimeMin: 99 }),
+    ];
     expect(backlog(list).map((x) => x.appid)).toEqual([3, 2, 1]);
-    const ach = [g(1, 'x', { achUnlocked: 85, achTotal: 100 }), g(2, 'y', { achUnlocked: 99, achTotal: 100 }), g(3, 'z', { achUnlocked: 50, achTotal: 100 })];
+    const ach = [
+      g(1, 'x', { achUnlocked: 85, achTotal: 100 }),
+      g(2, 'y', { achUnlocked: 99, achTotal: 100 }),
+      g(3, 'z', { achUnlocked: 50, achTotal: 100 }),
+    ];
     expect(almostDone(ach).map((x) => x.appid)).toEqual([2, 1]);
   });
 

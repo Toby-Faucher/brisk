@@ -28,10 +28,22 @@ export const RUMBLE_REFRESH_MS = 500;
 
 /// Standard-mapping button index -> Moonlight buttonFlags (6 and 7 are the analog triggers).
 export const BUTTON_FLAGS = [
-  0x1000, 0x2000, 0x4000, 0x8000, // A B X Y
-  0x0100, 0x0200, 0, 0, // LB RB LT RT
-  0x0020, 0x0010, 0x0040, 0x0080, // Back Start L3 R3
-  0x0001, 0x0002, 0x0004, 0x0008, // up down left right
+  0x1000,
+  0x2000,
+  0x4000,
+  0x8000, // A B X Y
+  0x0100,
+  0x0200,
+  0,
+  0, // LB RB LT RT
+  0x0020,
+  0x0010,
+  0x0040,
+  0x0080, // Back Start L3 R3
+  0x0001,
+  0x0002,
+  0x0004,
+  0x0008, // up down left right
   0x0400, // Home / Guide
 ];
 
@@ -66,7 +78,15 @@ export function readPad(g: PadLike): PadState {
   let buttons = 0;
   BUTTON_FLAGS.forEach((f, i) => g.buttons[i]?.pressed && (buttons |= f));
   const a = g.axes;
-  return { buttons, lt: trigger(g.buttons[6]?.value), rt: trigger(g.buttons[7]?.value), lx: axis(a[0]), ly: axis(-num(a[1])), rx: axis(a[2]), ry: axis(-num(a[3])) };
+  return {
+    buttons,
+    lt: trigger(g.buttons[6]?.value),
+    rt: trigger(g.buttons[7]?.value),
+    lx: axis(a[0]),
+    ly: axis(-num(a[1])),
+    rx: axis(a[2]),
+    ry: axis(-num(a[3])),
+  };
 }
 
 export function padFrame(slot: number, s: PadState) {
@@ -82,7 +102,11 @@ export function padFrame(slot: number, s: PadState) {
 export const goneFrame = (slot: number) => Uint8Array.of(2, KIND_GAMEPAD_GONE, slot);
 
 /// `Gamepad.id` without Chrome's "(STANDARD GAMEPAD Vendor: ...)" tail.
-export const padName = (id: string) => id.replace(/\s*\(.*$/, '').replace(/\s*Vendor:.*$/i, '').trim() || 'Controller';
+export const padName = (id: string) =>
+  id
+    .replace(/\s*\(.*$/, '')
+    .replace(/\s*Vendor:.*$/i, '')
+    .trim() || 'Controller';
 
 const same = (a: PadState, b: PadState) => (Object.keys(a) as (keyof PadState)[]).every((k) => a[k] === b[k]);
 const neutral = (s: PadState) => same(s, NEUTRAL);
@@ -98,7 +122,14 @@ export const TRIGGER_STEP = 2;
 function moved(st: PadState, sent: PadState) {
   if (st.buttons !== sent.buttons || (neutral(st) && !neutral(sent))) return true;
   const d = (k: keyof PadState) => Math.abs(st[k] - sent[k]);
-  return d('lx') >= STICK_STEP || d('ly') >= STICK_STEP || d('rx') >= STICK_STEP || d('ry') >= STICK_STEP || d('lt') >= TRIGGER_STEP || d('rt') >= TRIGGER_STEP;
+  return (
+    d('lx') >= STICK_STEP ||
+    d('ly') >= STICK_STEP ||
+    d('rx') >= STICK_STEP ||
+    d('ry') >= STICK_STEP ||
+    d('lt') >= TRIGGER_STEP ||
+    d('rt') >= TRIGGER_STEP
+  );
 }
 
 export class GamepadSender {
@@ -192,12 +223,14 @@ export class GamepadSender {
   private stopRumble(i: number, always = false) {
     if (this.rumbleAt[i] === -Infinity && !always) return;
     this.rumbleAt[i] = -Infinity;
-    this.pad(i)?.vibrationActuator?.reset().catch(() => {});
+    this.pad(i)
+      ?.vibrationActuator?.reset()
+      .catch(() => {});
   }
 
   private pad(i: number) {
     const s = this.slots[i];
-    return s ? (this.getGamepads() ?? []).find((g) => g?.index === s.index) ?? null : null;
+    return s ? ((this.getGamepads() ?? []).find((g) => g?.index === s.index) ?? null) : null;
   }
 
   /// A refused droppable frame leaves `sent` as it was: the next poll tries the newest state.
@@ -271,6 +304,7 @@ export function attachGamepads(s: GamepadSender, { doc, win, raf, caf }: Gamepad
   };
   frame = raf(loop);
   const gone = new AbortController();
+  // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
   const on = (t: EventTarget, type: string, f: (e: any) => void) => t.addEventListener(type, f, { signal: gone.signal });
   on(win, 'blur', () => s.release());
   on(doc, 'visibilitychange', () => doc.visibilityState === 'hidden' && s.release());

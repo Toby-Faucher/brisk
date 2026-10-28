@@ -8,7 +8,9 @@ describe('normalizeHex', () => {
     ['  #1A2b3C ', '#1a2b3c'],
     ['#000', '#000000'],
   ])('accepts %j', (i, o) => expect(normalizeHex(i)).toBe(o));
-  it.each(['', 'abc', '#ab', '#abcd', '#abcde', '#abcdefa', '#ggg', 'red', 'rgb(1,2,3)', '# abc'])('rejects %j', (i) => expect(normalizeHex(i)).toBeNull());
+  it.each(['', 'abc', '#ab', '#abcd', '#abcde', '#abcdefa', '#ggg', 'red', 'rgb(1,2,3)', '# abc'])('rejects %j', (i) =>
+    expect(normalizeHex(i)).toBeNull(),
+  );
 });
 
 describe('defaultColor', () => {
@@ -29,7 +31,9 @@ describe('defaultColor', () => {
 
 describe('onColor', () => {
   // The average of the header gradient is mixed 44% into #0b0d12, so its linear luminance tops out just under 0.3 (pure white: 0.298).
-  it.each(['#60a5fa', '#a78bfa', '#f472b6', '#f87171', '#fb923c', '#000000', '#000080'])('%s reads white', (c) => expect(onColor(c)).toBe('#ffffff'));
+  it.each(['#60a5fa', '#a78bfa', '#f472b6', '#f87171', '#fb923c', '#000000', '#000080'])('%s reads white', (c) =>
+    expect(onColor(c)).toBe('#ffffff'),
+  );
   it.each(['#facc15', '#4ade80', '#2dd4bf', '#ffffff', '#fff', '#ffff00'])('%s reads dark', (c) => expect(onColor(c)).toBe('#0b0d12'));
   it('keeps_every_palette_colour_decided', () => expect(PALETTE.map(onColor).filter((c) => c === '#0b0d12')).toHaveLength(3));
   it('is_case_and_space_tolerant', () => expect(onColor(' #FACC15 ')).toBe(onColor('#facc15')));

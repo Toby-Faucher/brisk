@@ -1,7 +1,14 @@
 import type { Component } from 'svelte';
 import type { TagColor } from '../state/notes';
 
-export type CommandItem = { id: string; label: string; hint?: string; icon?: string; tag?: { color: TagColor; symbol: string }; run: () => void };
+export type CommandItem = {
+  id: string;
+  label: string;
+  hint?: string;
+  icon?: string;
+  tag?: { color: TagColor; symbol: string };
+  run: () => void;
+};
 
 export type ModuleManifest = {
   id: string;
@@ -11,6 +18,7 @@ export type ModuleManifest = {
   order: number;
   soon?: boolean; // greyed "soon" entry: no routes yet
   routes: { path: string; title: string }[];
+  // biome-ignore lint/suspicious/noExplicitAny: each widget has its own props
   widget?: () => Promise<{ default: Component<any> }>;
   commands?: () => CommandItem[];
 };

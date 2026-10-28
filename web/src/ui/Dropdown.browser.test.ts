@@ -4,7 +4,11 @@ import { render } from 'vitest-browser-svelte';
 import Dropdown from './Dropdown.svelte';
 import DropdownInDialog from './DropdownInDialog.fixture.svelte';
 
-const options: [string, string][] = [['default', 'Default order'], ['az', 'A-Z'], ['most', 'Most played']];
+const options: [string, string][] = [
+  ['default', 'Default order'],
+  ['az', 'A-Z'],
+  ['most', 'Most played'],
+];
 
 describe('Dropdown', () => {
   it('a labelled button showing the choice; opens a rounded listbox; keys pick; Escape closes back to the button', async () => {

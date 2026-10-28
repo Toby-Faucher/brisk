@@ -34,7 +34,13 @@ export type NewsItem = { title: string; url: string; date: number; patch: boolea
 /** GET /api/games/{appid}/news; an empty list when Steam had nothing. */
 export type News = { items: NewsItem[] };
 /** One friend who is online or in a game. `name` is text only; `avatar` is an https Steam URL or empty. */
-export type Friend = { name: string; avatar: string; state: 'online' | 'away' | 'busy' | 'snooze'; playing: string | null; appid: number | null };
+export type Friend = {
+  name: string;
+  avatar: string;
+  state: 'online' | 'away' | 'busy' | 'snooze';
+  playing: string | null;
+  appid: number | null;
+};
 /** GET /api/friends. `available` false: the list is private or Steam did not answer. */
 export type Friends = { available: boolean; online: Friend[] };
 /** Store page facts for the detail panel (GET /api/games/{appid}/info). `available` false: the Store had nothing. */
@@ -68,7 +74,15 @@ export type HostInfo = {
 export type Preset = 'fast' | 'balanced' | 'crisp' | 'custom';
 export type Codec = 'h264' | 'hevc';
 /** `codec` defaults to h264 on hostd. */
-export type StreamReq = { preset: Preset; width?: number; height?: number; fps?: number; bitrateKbps?: number; codec?: Codec; appid?: number };
+export type StreamReq = {
+  preset: Preset;
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrateKbps?: number;
+  codec?: Codec;
+  appid?: number;
+};
 export type StreamInfo = {
   state: 'idle' | 'starting' | 'live';
   preset: Preset | null;
@@ -125,7 +139,10 @@ import type { GameNote, Notes, Tag } from './notes';
 import type { Machine } from './machines';
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
   }
 }
@@ -242,7 +259,9 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
     x.open('PUT', route(`/api/files/${encodeURIComponent(f.name)}`));
     for (const [k, v] of Object.entries(auth())) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => progress(e.loaded);
-    x.onload = () => (seen(x.status), x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText)));
+    x.onload = () => (
+      seen(x.status), x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText))
+    );
     x.onerror = () => no(new ApiError('the upload was cut off', 0));
     x.send(f);
   });
@@ -264,7 +283,8 @@ export const api = {
   forMachine,
   /** Hub only, never routed. */
   machines: () => call<{ machines: Machine[] }>('GET', '/api/machines'),
-  power: (id: string, action: 'start' | 'shutdown') => call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
+  power: (id: string, action: 'start' | 'shutdown') =>
+    call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
   host: () => call<HostInfo>('GET', '/api/host'),
   /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
   games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),
@@ -282,10 +302,15 @@ export const api = {
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
-  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('GET', '/api/prefs'),
+  prefs: () =>
+    call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('GET', '/api/prefs'),
   /** Card orders and machine colours (hostd cleans them and answers with what it kept); a bare array is the Home order. An omitted key keeps its value; a colour of null removes that machine's. Reset forgets all. */
   putLayout: (l: string[] | { homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string | null> }) =>
-    call<{ homeOrder: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('PUT', '/api/prefs/layout', Array.isArray(l) ? { homeOrder: l } : l),
+    call<{ homeOrder: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>(
+      'PUT',
+      '/api/prefs/layout',
+      Array.isArray(l) ? { homeOrder: l } : l,
+    ),
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),

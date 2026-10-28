@@ -10,7 +10,8 @@
     "smoke": "node scripts/ui-smoke.mjs",
     "springs:check": "node scripts/gen-spring-tokens.mjs --check",
     "check": "astro check && svelte-check --tsconfig ./tsconfig.json",
-    "ci": "npm run check && npm test && npm run build",
+    "fmt": "biome check --write .",
+    "ci": "biome check . && npm run check && npm test && npm run build",
     "test:browser": "vitest run --project browser"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "@axe-core/playwright": "4.13.0",
+    "@biomejs/biome": "2.5.15",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "26.6.5",
     "@vitest/browser": "5.0.5",

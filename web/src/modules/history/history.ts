@@ -63,7 +63,10 @@ export type ChartRow = { t: number; delay: number; fps: number; mbps: number };
 export const chartRows = (s: SeriesPoint[]): ChartRow[] => s.map(([t, delay, fps, mbps]) => ({ t, delay, fps, mbps }));
 
 /** Min, mean and max of one column, and the t of its max (the charts' text alternative). */
-export function summarize(rows: ChartRow[], k: Exclude<keyof ChartRow, 't'>): { min: number; avg: number; max: number; peakT: number } | null {
+export function summarize(
+  rows: ChartRow[],
+  k: Exclude<keyof ChartRow, 't'>,
+): { min: number; avg: number; max: number; peakT: number } | null {
   if (!rows.length) return null;
   let [min, max, sum, peakT] = [Infinity, -Infinity, 0, 0];
   for (const r of rows) {

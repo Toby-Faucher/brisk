@@ -18,7 +18,8 @@ describe('muxClip', () => {
   it('video_only_clip_is_a_non_empty_mp4', async () => {
     const es = new Uint8Array(readFileSync(join(__dirname, 'fixtures', 'h264.h264')));
     const aud: number[] = []; // access units start at each AUD (NAL type 9)
-    for (let i = 0; i + 4 < es.length && aud.length < 31; i++) if (es[i] === 0 && es[i + 1] === 0 && es[i + 2] === 0 && es[i + 3] === 1 && (es[i + 4] & 0x1f) === 9) aud.push(i);
+    for (let i = 0; i + 4 < es.length && aud.length < 31; i++)
+      if (es[i] === 0 && es[i + 1] === 0 && es[i + 2] === 0 && es[i + 3] === 1 && (es[i + 4] & 0x1f) === 9) aud.push(i);
     const video = aud.slice(0, 30).map((s, k) => ({ data: es.slice(s, aud[k + 1]), key: k === 0, t: k / 60, d: 1 / 60 }));
     const clip: Clip = { kind: 'avc', codec: 'avc1.640014', video, audio: [], seconds: 0.5, bytes: 0 };
     const blob = await muxClip(clip, 320, 180);

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { areaPath, edgePath, lossXs, niceMax, segments, stats, timeX, SPAN_MS, type PingSample, type Pt } from './latency';
 
-const mk = (direct: (number | null)[], hub: (number | null)[] = direct): PingSample[] => direct.map((d, i) => ({ t: i * 3000, direct: d, hub: hub[i] }));
+const mk = (direct: (number | null)[], hub: (number | null)[] = direct): PingSample[] =>
+  direct.map((d, i) => ({ t: i * 3000, direct: d, hub: hub[i] }));
 const pts = (ys: (number | null)[]): Pt[] => ys.map((y, i) => ({ x: i * 10, y }));
 const count = (d: string, ch: string) => d.split(ch).length - 1;
 
@@ -13,7 +14,8 @@ describe('stats', () => {
     const s = stats(mk([10, null, 30, 50]), 'direct');
     expect(s).toMatchObject({ now: 50, min: 10, avg: 30, max: 50, lossPct: 25 });
   });
-  it('lost at the end: now is null', () => expect(stats(mk([10, 20, null]), 'direct')).toMatchObject({ now: null, avg: 15, lossPct: expect.closeTo(33.33, 1) }));
+  it('lost at the end: now is null', () =>
+    expect(stats(mk([10, 20, null]), 'direct')).toMatchObject({ now: null, avg: 15, lossPct: expect.closeTo(33.33, 1) }));
   it('lost at the start', () => expect(stats(mk([null, 20]), 'direct')).toMatchObject({ now: 20, min: 20, lossPct: 50 }));
   it('all null', () => expect(stats(mk([null, null]), 'hub')).toEqual({ now: null, min: null, avg: null, max: null, lossPct: 100 }));
   it('a spike moves max and avg only', () => expect(stats(mk([5, 5, 500, 5]), 'direct')).toMatchObject({ min: 5, max: 500, avg: 128.75 }));
@@ -22,8 +24,23 @@ describe('stats', () => {
 
 describe('niceMax', () => {
   it.each([
-    [0, 10], [-3, 10], [NaN, 10], [1, 10], [10, 10], [10.1, 20], [20, 20], [21, 50], [50, 50], [51, 100], [100, 100],
-    [101, 200], [230, 500], [501, 1000], [1000, 1000], [4800, 5000], [5001, 10000],
+    [0, 10],
+    [-3, 10],
+    [NaN, 10],
+    [1, 10],
+    [10, 10],
+    [10.1, 20],
+    [20, 20],
+    [21, 50],
+    [50, 50],
+    [51, 100],
+    [100, 100],
+    [101, 200],
+    [230, 500],
+    [501, 1000],
+    [1000, 1000],
+    [4800, 5000],
+    [5001, 10000],
   ])('%s -> %s', (i, o) => expect(niceMax(i)).toBe(o));
 });
 

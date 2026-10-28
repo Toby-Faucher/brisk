@@ -8,7 +8,9 @@ const samples = [10, 12, null, 30].map((d, i) => ({ t: i * 3000, direct: d, hub:
 describe('LatencyLayers', () => {
   it('an image with the latest numbers; gaps get a tick; the legend toggles a layer', async () => {
     await render(LatencyLayers, { props: { samples } });
-    await expect.element(page.getByRole('img')).toHaveAttribute('aria-label', 'Latency: you to machine 30 ms, hub to machine 23 ms, over the last 4 pings');
+    await expect
+      .element(page.getByRole('img'))
+      .toHaveAttribute('aria-label', 'Latency: you to machine 30 ms, hub to machine 23 ms, over the last 4 pings');
     expect(document.querySelectorAll('.loss.direct')).toHaveLength(1);
     const btn = page.getByRole('button', { name: 'You → machine' });
     await expect.element(btn).toHaveAttribute('aria-pressed', 'true');
@@ -18,7 +20,10 @@ describe('LatencyLayers', () => {
   });
 
   it('y labels stay inside the svg at card and modal heights', async () => {
-    for (const [width, height] of [[280, 72], [700, 110]]) {
+    for (const [width, height] of [
+      [280, 72],
+      [700, 110],
+    ]) {
       document.body.style.width = `${width}px`;
       const r = await render(LatencyLayers, { props: { samples, height } });
       const box = document.querySelector('svg')!.getBoundingClientRect();

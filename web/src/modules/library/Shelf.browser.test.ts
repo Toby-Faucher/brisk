@@ -4,7 +4,25 @@ import { render } from 'vitest-browser-svelte';
 import type { Game } from '../../state/api';
 import Shelf from './Shelf.svelte';
 
-const g = (appid: number, name: string, cover = ''): Game => ({ appid, name, installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 100, playtime2wkMin: 0, cover, hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false });
+const g = (appid: number, name: string, cover = ''): Game => ({
+  appid,
+  name,
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 100,
+  playtime2wkMin: 0,
+  cover,
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running: false,
+});
 const art = (w: number, h: number) => {
   const c = document.createElement('canvas');
   c.width = w;
@@ -19,7 +37,10 @@ const list = [
   g(4, 'No art'),
   g(5, 'Ori and the Blind Forest: Definitive Edition, a very long name that does not fit', art(300, 300)),
 ];
-const sizes = () => [...document.querySelectorAll('.cover')].map((c) => c.getBoundingClientRect()).map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`);
+const sizes = () =>
+  [...document.querySelectorAll('.cover')]
+    .map((c) => c.getBoundingClientRect())
+    .map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`);
 
 describe('Shelf', () => {
   for (const grid of [false, true]) {

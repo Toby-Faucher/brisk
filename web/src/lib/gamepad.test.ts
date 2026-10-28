@@ -1,7 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ACTIVE_RESEND_MS, STICK_STEP, TRIGGER_STEP, attachGamepads, BUTTON_FLAGS, FrameSplitter, GamepadSender, goneFrame, IDLE_RESEND_MS, KIND_GAMEPAD,
-  KIND_GAMEPAD_GONE, KIND_RUMBLE, MAX_PADS, onBridgeFrame, padFrame, padName, POLL_MS, readPad, RUMBLE_MS, RUMBLE_REFRESH_MS, type PadState,
+  ACTIVE_RESEND_MS,
+  STICK_STEP,
+  TRIGGER_STEP,
+  attachGamepads,
+  BUTTON_FLAGS,
+  FrameSplitter,
+  GamepadSender,
+  goneFrame,
+  IDLE_RESEND_MS,
+  KIND_GAMEPAD,
+  KIND_GAMEPAD_GONE,
+  KIND_RUMBLE,
+  MAX_PADS,
+  onBridgeFrame,
+  padFrame,
+  padName,
+  POLL_MS,
+  readPad,
+  RUMBLE_MS,
+  RUMBLE_REFRESH_MS,
+  type PadState,
 } from './gamepad';
 
 const N: PadState = { buttons: 0, lt: 0, rt: 0, lx: 0, ly: 0, rx: 0, ry: 0 };
@@ -27,7 +46,19 @@ function decode(f: Uint8Array): [number, number, PadState?] {
   expect(f[0]).toBe(f.length - 1);
   if (f[1] === KIND_GAMEPAD_GONE) return [f[1], f[2]];
   const v = new DataView(f.buffer, f.byteOffset);
-  return [f[1], f[2], { buttons: v.getUint16(3, true), lt: f[5], rt: f[6], lx: v.getInt16(7, true), ly: v.getInt16(9, true), rx: v.getInt16(11, true), ry: v.getInt16(13, true) }];
+  return [
+    f[1],
+    f[2],
+    {
+      buttons: v.getUint16(3, true),
+      lt: f[5],
+      rt: f[6],
+      lx: v.getInt16(7, true),
+      ly: v.getInt16(9, true),
+      rx: v.getInt16(11, true),
+      ry: v.getInt16(13, true),
+    },
+  ];
 }
 
 function rig(pads: (Fake | null)[] = [fakePad(0)]) {
@@ -51,8 +82,21 @@ function rig(pads: (Fake | null)[] = [fakePad(0)]) {
 describe('mapping', () => {
   it('maps every standard button to its Moonlight flag', () => {
     const want: Record<number, number> = {
-      0: 0x1000, 1: 0x2000, 2: 0x4000, 3: 0x8000, 4: 0x0100, 5: 0x0200, 8: 0x0020, 9: 0x0010,
-      10: 0x0040, 11: 0x0080, 12: 0x0001, 13: 0x0002, 14: 0x0004, 15: 0x0008, 16: 0x0400,
+      0: 0x1000,
+      1: 0x2000,
+      2: 0x4000,
+      3: 0x8000,
+      4: 0x0100,
+      5: 0x0200,
+      8: 0x0020,
+      9: 0x0010,
+      10: 0x0040,
+      11: 0x0080,
+      12: 0x0001,
+      13: 0x0002,
+      14: 0x0004,
+      15: 0x0008,
+      16: 0x0400,
     };
     for (let i = 0; i < 17; i++) {
       const p = fakePad(0);
@@ -88,7 +132,21 @@ describe('mapping', () => {
 
   it('frames are len, kind, slot, little-endian state', () => {
     expect([...padFrame(1, { buttons: 0x1001, lt: 2, rt: 3, lx: -2, ly: 258, rx: 0, ry: 1 })]).toEqual([
-      14, KIND_GAMEPAD, 1, 0x01, 0x10, 2, 3, 0xfe, 0xff, 0x02, 0x01, 0, 0, 1, 0,
+      14,
+      KIND_GAMEPAD,
+      1,
+      0x01,
+      0x10,
+      2,
+      3,
+      0xfe,
+      0xff,
+      0x02,
+      0x01,
+      0,
+      0,
+      1,
+      0,
     ]);
     expect([...goneFrame(3)]).toEqual([2, KIND_GAMEPAD_GONE, 3]);
   });
@@ -147,14 +205,20 @@ describe('GamepadSender', () => {
     s.poll();
     expect(take().map((f) => f[1])).toEqual([0, 1, 2, 3]);
     expect(onpads).toHaveBeenLastCalledWith([
-      { slot: 0, name: '8BitDo Ultimate 2 Wireless' }, { slot: 1, name: '8BitDo Ultimate 2 Wireless' },
-      { slot: 2, name: '8BitDo Ultimate 2 Wireless' }, { slot: 3, name: '8BitDo Ultimate 2 Wireless' },
+      { slot: 0, name: '8BitDo Ultimate 2 Wireless' },
+      { slot: 1, name: '8BitDo Ultimate 2 Wireless' },
+      { slot: 2, name: '8BitDo Ultimate 2 Wireless' },
+      { slot: 3, name: '8BitDo Ultimate 2 Wireless' },
     ]);
     list.pads = [fakePad(0), null, null, fakePad(3), fakePad(4), fakePad(5)];
     list.pads[0]!.press(0);
     s.poll();
     // Gamepad 2 (slot 1) went: it was neutral, so only the removal; then gamepad 4 takes slot 1.
-    expect(take()).toEqual([[KIND_GAMEPAD_GONE, 1], [KIND_GAMEPAD, 0, { ...N, buttons: 0x1000 }], [KIND_GAMEPAD, 1, N]]);
+    expect(take()).toEqual([
+      [KIND_GAMEPAD_GONE, 1],
+      [KIND_GAMEPAD, 0, { ...N, buttons: 0x1000 }],
+      [KIND_GAMEPAD, 1, N],
+    ]);
     expect(MAX_PADS).toBe(4);
   });
 
@@ -219,7 +283,10 @@ describe('GamepadSender', () => {
     w.full = true;
     list.pads = [];
     s.poll();
-    expect(take(), 'release and removal go anyway').toEqual([[KIND_GAMEPAD, 0, N], [KIND_GAMEPAD_GONE, 0]]);
+    expect(take(), 'release and removal go anyway').toEqual([
+      [KIND_GAMEPAD, 0, N],
+      [KIND_GAMEPAD_GONE, 0],
+    ]);
   });
 
   it('rumble that came before the pad is played when it appears; none while unfocused', () => {
@@ -233,7 +300,10 @@ describe('GamepadSender', () => {
     s.rumble(0, 0x8000, 0, 0, 0);
     expect(p.vibrationActuator.playEffect).toHaveBeenCalledTimes(1);
     s.poll(); // focus back: the newest values play
-    expect(p.vibrationActuator.playEffect).toHaveBeenLastCalledWith('dual-rumble', expect.objectContaining({ strongMagnitude: 0x8000 / 0xffff }));
+    expect(p.vibrationActuator.playEffect).toHaveBeenLastCalledWith(
+      'dual-rumble',
+      expect.objectContaining({ strongMagnitude: 0x8000 / 0xffff }),
+    );
   });
 
   it('skips pads without the standard mapping', () => {
@@ -253,7 +323,10 @@ describe('GamepadSender', () => {
     s.rumble(0, 0xffff, 0, 0, 0);
     s.disconnected(0);
     list.pads = [];
-    expect(take()).toEqual([[KIND_GAMEPAD, 0, N], [KIND_GAMEPAD_GONE, 0]]);
+    expect(take()).toEqual([
+      [KIND_GAMEPAD, 0, N],
+      [KIND_GAMEPAD_GONE, 0],
+    ]);
     expect(p.vibrationActuator.reset).toHaveBeenCalled();
     expect(onpads).toHaveBeenLastCalledWith([]);
     s.poll();
@@ -288,7 +361,10 @@ describe('GamepadSender', () => {
     s.poll();
     take();
     s.detachAll();
-    expect(take()).toEqual([[KIND_GAMEPAD_GONE, 0], [KIND_GAMEPAD_GONE, 1]]);
+    expect(take()).toEqual([
+      [KIND_GAMEPAD_GONE, 0],
+      [KIND_GAMEPAD_GONE, 1],
+    ]);
   });
 
   it('rumble plays dual-rumble with motors scaled to 0..1, refreshes, and stops on 0', () => {
@@ -298,7 +374,12 @@ describe('GamepadSender', () => {
     const play = p.vibrationActuator.playEffect;
     s.rumble(0, 0xffff, 0x8000, 0, 0);
     expect(play).toHaveBeenCalledTimes(1);
-    expect(play).toHaveBeenLastCalledWith('dual-rumble', { duration: RUMBLE_MS, startDelay: 0, strongMagnitude: 1, weakMagnitude: 0x8000 / 0xffff });
+    expect(play).toHaveBeenLastCalledWith('dual-rumble', {
+      duration: RUMBLE_MS,
+      startDelay: 0,
+      strongMagnitude: 1,
+      weakMagnitude: 0x8000 / 0xffff,
+    });
     vi.advanceTimersByTime(RUMBLE_REFRESH_MS - 1);
     s.poll();
     expect(play).toHaveBeenCalledTimes(1);
@@ -320,7 +401,12 @@ describe('GamepadSender', () => {
     s.poll();
     s.rumble(0, 0, 0, 0xffff, 0);
     expect(p.vibrationActuator.playEffect).toHaveBeenLastCalledWith('trigger-rumble', {
-      duration: RUMBLE_MS, startDelay: 0, strongMagnitude: 0, weakMagnitude: 0, leftTrigger: 1, rightTrigger: 0,
+      duration: RUMBLE_MS,
+      startDelay: 0,
+      strongMagnitude: 0,
+      weakMagnitude: 0,
+      leftTrigger: 1,
+      rightTrigger: 0,
     });
     const q = fakePad(0);
     const r = rig([q]);
@@ -336,7 +422,10 @@ describe('bridge frames', () => {
     const { s } = rig([p]);
     s.poll();
     onBridgeFrame(s, Uint8Array.of(KIND_RUMBLE, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0));
-    expect(p.vibrationActuator.playEffect).toHaveBeenLastCalledWith('dual-rumble', expect.objectContaining({ strongMagnitude: 1, weakMagnitude: 0 }));
+    expect(p.vibrationActuator.playEffect).toHaveBeenLastCalledWith(
+      'dual-rumble',
+      expect.objectContaining({ strongMagnitude: 1, weakMagnitude: 0 }),
+    );
     onBridgeFrame(s, Uint8Array.of(KIND_RUMBLE, 0, 1));
     onBridgeFrame(s, Uint8Array.of(0x21, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0));
     expect(p.vibrationActuator.playEffect).toHaveBeenCalledTimes(1);
@@ -359,7 +448,13 @@ describe('attachGamepads', () => {
   afterEach(() => vi.useRealTimers());
 
   function env() {
-    const doc = Object.assign(new EventTarget(), { focused: true, visibilityState: 'visible', hasFocus() { return this.focused; } });
+    const doc = Object.assign(new EventTarget(), {
+      focused: true,
+      visibilityState: 'visible',
+      hasFocus() {
+        return this.focused;
+      },
+    });
     const win = new EventTarget();
     return { doc, win, raf: (f: () => void) => setTimeout(f, 16) as unknown as number, caf: (h: number) => clearTimeout(h) };
   }

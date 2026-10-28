@@ -1,6 +1,6 @@
 # web/scripts
 
-Check scripts for the UI. Run them from `web/`. None are part of `npm run ci` (that is `check` + `test` + `build`).
+Check scripts for the UI. Run them from `web/`. None are part of `npm run ci` (that is `biome check` + `check` + `test` + `build`).
 Most drive headless Chrome with `playwright-core` (`BRISK_CHROMIUM` overrides the browser path) and print PASS/FAIL.
 The "preview" scripts need `npx astro preview --host 127.0.0.1 --port <port> &` running first (build with `npm run build`);
 they mock `/api`, so no hostd is needed. Screenshots go to `$OUT`. Details and results: `docs/ui-notes.md`.

@@ -7,9 +7,17 @@ const scopes: { reverted: boolean; cleanups: (() => void)[] }[] = [];
 vi.mock('animejs/animation', () => ({
   animate: (obj: any, p: any) => {
     const a: Anim = {
-      p, obj, cancelled: false,
-      complete() { obj.v = p.v; p.onUpdate?.(); p.onComplete?.(); },
-      cancel() { a.cancelled = true; },
+      p,
+      obj,
+      cancelled: false,
+      complete() {
+        obj.v = p.v;
+        p.onUpdate?.();
+        p.onComplete?.();
+      },
+      cancel() {
+        a.cancelled = true;
+      },
     };
     anims.push(a);
     return a;
@@ -19,7 +27,19 @@ vi.mock('animejs/svg', () => ({ createDrawable: (el: unknown) => [el] }));
 vi.mock('animejs/easings', () => ({ cubicBezier: (...p: number[]) => Object.assign((t: number) => t, { p }) }));
 vi.mock('animejs/scope', () => ({
   createScope: () => {
-    const s = { reverted: false, cleanups: [] as (() => void)[], add(fn: (s: unknown) => void | (() => void)) { const c = fn(s); if (c) s.cleanups.push(c); return s; }, revert() { s.reverted = true; s.cleanups.forEach((c) => c()); } };
+    const s = {
+      reverted: false,
+      cleanups: [] as (() => void)[],
+      add(fn: (s: unknown) => void | (() => void)) {
+        const c = fn(s);
+        if (c) s.cleanups.push(c);
+        return s;
+      },
+      revert() {
+        s.reverted = true;
+        s.cleanups.forEach((c) => c());
+      },
+    };
     scopes.push(s);
     return s;
   },
@@ -29,10 +49,36 @@ let path = '/';
 let reduce = false;
 const mqListeners: ((e: { matches: boolean }) => void)[] = [];
 const docListeners: [string, () => void][] = [];
-const vars: Record<string, string> = { '--ease': 'cubic-bezier(.2, .8, .2, 1)', '--dur-count': '600ms', '--spring-snappy-dur': '700ms', '--spring-snappy': 'linear(0, 1)' };
-vi.stubGlobal('location', { get pathname() { return path; } });
-vi.stubGlobal('matchMedia', () => ({ get matches() { return reduce; }, addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f), removeEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.splice(mqListeners.indexOf(f), 1) }));
-vi.stubGlobal('document', { documentElement: {}, hidden: false, addEventListener: (t: string, f: () => void) => docListeners.push([t, f]), removeEventListener: (t: string, f: () => void) => docListeners.splice(docListeners.findIndex((x) => x[1] === f), 1), createElement: () => fakeEl(), createTextNode: (text: string) => ({ text }) });
+const vars: Record<string, string> = {
+  '--ease': 'cubic-bezier(.2, .8, .2, 1)',
+  '--dur-count': '600ms',
+  '--spring-snappy-dur': '700ms',
+  '--spring-snappy': 'linear(0, 1)',
+};
+vi.stubGlobal('location', {
+  get pathname() {
+    return path;
+  },
+});
+vi.stubGlobal('matchMedia', () => ({
+  get matches() {
+    return reduce;
+  },
+  addEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.push(f),
+  removeEventListener: (_: string, f: (e: { matches: boolean }) => void) => mqListeners.splice(mqListeners.indexOf(f), 1),
+}));
+vi.stubGlobal('document', {
+  documentElement: {},
+  hidden: false,
+  addEventListener: (t: string, f: () => void) => docListeners.push([t, f]),
+  removeEventListener: (_t: string, f: () => void) =>
+    docListeners.splice(
+      docListeners.findIndex((x) => x[1] === f),
+      1,
+    ),
+  createElement: () => fakeEl(),
+  createTextNode: (text: string) => ({ text }),
+});
 vi.stubGlobal('requestAnimationFrame', (f: () => void) => setTimeout(f, 0));
 vi.stubGlobal('CSSAnimation', class {});
 vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (n: string) => vars[n] ?? '' }));
@@ -43,7 +89,13 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 function el() {
   const text = { nodeType: 3, data: '', nextSibling: null };
   const props: Record<string, string> = {};
-  return { firstChild: text, text, props, style: { setProperty: (k: string, v: string) => (props[k] = v) }, animate: vi.fn(() => ({})) } as any;
+  return {
+    firstChild: text,
+    text,
+    props,
+    style: { setProperty: (k: string, v: string) => (props[k] = v) },
+    animate: vi.fn(() => ({})),
+  } as any;
 }
 const fmt = (v: number) => `${Math.round(v)} °C`;
 
@@ -100,7 +152,8 @@ describe('tweenNumber', () => {
     expect(a.p.v).toBe(63.4);
     expect(a.p.duration).toBe(600);
     expect(a.p.ease.p).toEqual([0.2, 0.8, 0.2, 1]);
-    a.obj.v = 61.7; a.p.onUpdate();
+    a.obj.v = 61.7;
+    a.p.onUpdate();
     expect(e.text.data).toBe('62 °C');
     a.complete();
     expect(e.text.data).toBe('63 °C');
@@ -134,7 +187,8 @@ describe('tweenNumber', () => {
     expect(anims).toHaveLength(0);
     const t = m.tweenNumber(e, 70, { from: 40, format: fmt });
     await flush();
-    anims[0].obj.v = 55; anims[0].p.onUpdate();
+    anims[0].obj.v = 55;
+    anims[0].p.onUpdate();
     expect(t.cancel()).toBe(55);
     expect(anims[0].cancelled).toBe(true);
   });
@@ -149,7 +203,8 @@ describe('count attachment (Svelte re-runs it on each change)', () => {
     off();
     off = m.count(70, fmt)(e)!;
     await flush();
-    anims[0].obj.v = 64; anims[0].p.onUpdate();
+    anims[0].obj.v = 64;
+    anims[0].p.onUpdate();
     off(); // a new poll lands mid-flight
     expect(anims[0].cancelled).toBe(true);
     off = m.count(66, fmt)(e)!;
@@ -209,7 +264,10 @@ describe('glide', () => {
     const e = el();
     m.glide(e, { x: 10, y: 100, w: 200, h: 30 }, { x: 10, y: 140, w: 100, h: 30 });
     const [kf, opt] = e.animate.mock.calls[0];
-    expect(kf).toEqual([{ translate: '0px -40px', scale: '2 1' }, { translate: '0 0', scale: '1 1' }]);
+    expect(kf).toEqual([
+      { translate: '0px -40px', scale: '2 1' },
+      { translate: '0 0', scale: '1 1' },
+    ]);
     expect(Object.keys(kf[0]).sort()).toEqual(['scale', 'translate']);
     expect(opt).toEqual({ duration: 700, easing: 'linear(0, 1)', pseudoElement: undefined });
   });
@@ -239,7 +297,12 @@ describe('count edge values', () => {
 
 function svgEl() {
   const attrs: Record<string, string> = {};
-  return { attrs, setAttribute: (k: string, v: string) => (attrs[k] = v), removeAttribute: (k: string) => delete attrs[k], style: { removeProperty: vi.fn() } } as any;
+  return {
+    attrs,
+    setAttribute: (k: string, v: string) => (attrs[k] = v),
+    removeAttribute: (k: string) => delete attrs[k],
+    style: { removeProperty: vi.fn() },
+  } as any;
 }
 
 describe('drawIn', () => {
@@ -305,7 +368,8 @@ describe('popIn + countUp (result chips)', () => {
     const off = m.countUp(3.46, (v) => `${v.toFixed(1)}%`)(e)!;
     expect(e.text.data).toBe('0.0%');
     await flush();
-    anims[0].obj.v = 1.2; anims[0].p.onUpdate();
+    anims[0].obj.v = 1.2;
+    anims[0].p.onUpdate();
     expect(e.text.data).toBe('1.2%');
     anims[0].complete();
     expect(e.text.data).toBe('3.5%');
@@ -327,7 +391,8 @@ describe('popIn + countUp (result chips)', () => {
     const g = el();
     const off = m.countUp(5, (v) => `${Math.round(v)}%`)(g)!;
     await flush();
-    anims[0].obj.v = 2; anims[0].p.onUpdate();
+    anims[0].obj.v = 2;
+    anims[0].p.onUpdate();
     off();
     expect(anims[0].cancelled).toBe(true);
     expect(g.text.data).toBe('5%');
@@ -336,10 +401,25 @@ describe('popIn + countUp (result chips)', () => {
 
 describe('travel (connection path dot)', () => {
   const dot = () => {
-    const a = { cancelled: false, paused: false, pause() { a.paused = true; }, play() { a.paused = false; }, cancel() { a.cancelled = true; } };
+    const a = {
+      cancelled: false,
+      paused: false,
+      pause() {
+        a.paused = true;
+      },
+      play() {
+        a.paused = false;
+      },
+      cancel() {
+        a.cancelled = true;
+      },
+    };
     return { a, animate: vi.fn(() => a) } as any;
   };
-  afterEach(() => { (document as any).hidden = false; docListeners.length = 0; });
+  afterEach(() => {
+    (document as any).hidden = false;
+    docListeners.length = 0;
+  });
   it('one infinite linear translate loop, nothing else', () => {
     const e = dot();
     const stop = m.travel(e, 1600)!;
@@ -383,9 +463,11 @@ describe('travel (connection path dot)', () => {
 });
 
 describe('glideSwap', () => {
-  const chip = (x: number, w: number) => ({ getBoundingClientRect: () => ({ left: x, top: 0, width: w, height: 20 }), animate: vi.fn() }) as any;
+  const chip = (x: number, w: number) =>
+    ({ getBoundingClientRect: () => ({ left: x, top: 0, width: w, height: 20 }), animate: vi.fn() }) as any;
   it("glides the new selection's ::before from the old one, after the change", () => {
-    const a = chip(0, 40), b = chip(100, 60);
+    const a = chip(0, 40),
+      b = chip(100, 60);
     let sel = a;
     const root = { querySelector: () => sel } as any;
     const change = vi.fn(() => (sel = b));
@@ -415,7 +497,10 @@ describe('ringPulse', () => {
     const e = el();
     expect(m.ringPulse(e)).not.toBeNull();
     const [kf, opt] = e.animate.mock.calls[0];
-    expect(kf).toEqual([{ scale: 1.3, opacity: 0.6 }, { scale: 2.4, opacity: 0 }]);
+    expect(kf).toEqual([
+      { scale: 1.3, opacity: 0.6 },
+      { scale: 2.4, opacity: 0 },
+    ]);
     expect(opt).toMatchObject({ duration: 700 });
     expect(opt.iterations).toBeUndefined(); // no loop
   });
@@ -484,14 +569,36 @@ describe('flipDelta', () => {
 
 function fakePath(d = '') {
   const attrs: Record<string, string> = { d };
-  return { attrs, removed: false, setAttribute: (k: string, v: string) => (attrs[k] = v), getAttribute: (k: string) => attrs[k], remove() { this.removed = true; } } as any;
+  return {
+    attrs,
+    removed: false,
+    setAttribute: (k: string, v: string) => (attrs[k] = v),
+    getAttribute: (k: string) => attrs[k],
+    remove() {
+      this.removed = true;
+    },
+  } as any;
 }
 function iconSvg() {
   const p = fakePath('M7 4.5v15l13-7.5z');
   const anims: any[] = [];
   const svg = {
-    p, anims, querySelector: () => p,
-    animate: vi.fn((kf: any, o: any) => { const a = { kf, o, cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } }; anims.push(a); return a; }),
+    p,
+    anims,
+    querySelector: () => p,
+    animate: vi.fn((kf: any, o: any) => {
+      const a = {
+        kf,
+        o,
+        cancelled: false,
+        onfinish: null as null | (() => void),
+        cancel() {
+          this.cancelled = true;
+        },
+      };
+      anims.push(a);
+      return a;
+    }),
   } as any;
   return svg;
 }
@@ -573,19 +680,45 @@ describe('swapIcon (play <-> spinner)', () => {
 
 function fakeEl() {
   const e: any = {
-    children: [] as any[], attrs: {} as Record<string, string>, removed: false, className: '', textContent: '',
-    setAttribute(k: string, v: string) { e.attrs[k] = v; },
-    append(...x: any[]) { e.children.push(...x); },
-    remove() { e.removed = true; },
-    animate: vi.fn(() => ({ cancelled: false, onfinish: null as null | (() => void), cancel() { this.cancelled = true; } })),
+    children: [] as any[],
+    attrs: {} as Record<string, string>,
+    removed: false,
+    className: '',
+    textContent: '',
+    setAttribute(k: string, v: string) {
+      e.attrs[k] = v;
+    },
+    append(...x: any[]) {
+      e.children.push(...x);
+    },
+    remove() {
+      e.removed = true;
+    },
+    animate: vi.fn(() => ({
+      cancelled: false,
+      onfinish: null as null | (() => void),
+      cancel() {
+        this.cancelled = true;
+      },
+    })),
   };
   return e;
 }
-const frames = async (n = 4) => { for (let i = 0; i < n; i++) await flush(); };
+const frames = async (n = 4) => {
+  for (let i = 0; i < n; i++) await flush();
+};
 /** A hero heading: `entrance` = the hero's CSS animations (their `finished` promises). */
 function titleEl(text = 'Portal 2', entrance: Promise<unknown>[] = []) {
-  const real: any = { textContent: text, style: { opacity: '', removeProperty: vi.fn(() => (real.style.opacity = '')) }, getAttribute: () => '', removeAttribute: vi.fn() };
-  const hero: any = { hasAttribute: () => true, getAnimations: () => entrance.map((finished) => Object.assign(new (globalThis as any).CSSAnimation(), { finished })) };
+  const real: any = {
+    textContent: text,
+    style: { opacity: '', removeProperty: vi.fn(() => (real.style.opacity = '')) },
+    getAttribute: () => '',
+    removeAttribute: vi.fn(),
+  };
+  const hero: any = {
+    hasAttribute: () => true,
+    getAnimations: () => entrance.map((finished) => Object.assign(new (globalThis as any).CSSAnimation(), { finished })),
+  };
   const h: any = { real, firstElementChild: real, appended: [] as any[], append: (x: any) => h.appended.push(x), closest: () => hero };
   return h;
 }
@@ -679,7 +812,15 @@ describe('splitIn (hero title)', () => {
 });
 
 describe('morph (shared-element view transition)', () => {
-  type VT = { o: any; skipped: boolean; end(): void; skipTransition(): void; ready: Promise<void>; updateCallbackDone: Promise<void>; finished: Promise<void> };
+  type VT = {
+    o: any;
+    skipped: boolean;
+    end(): void;
+    skipTransition(): void;
+    ready: Promise<void>;
+    updateCallbackDone: Promise<void>;
+    finished: Promise<void>;
+  };
   const doc = document as any;
   let vts: VT[] = [];
   let astro = false;
@@ -689,7 +830,15 @@ describe('morph (shared-element view transition)', () => {
     doc.documentElement = { hasAttribute: (a: string) => a === 'data-astro-transition' && astro };
     doc.startViewTransition = (o: any) => {
       let end!: () => void;
-      const t: VT = { o, skipped: false, end: () => end(), skipTransition: () => ((t.skipped = true), end()), ready: Promise.resolve(), updateCallbackDone: Promise.resolve(), finished: new Promise<void>((r) => (end = r)) };
+      const t: VT = {
+        o,
+        skipped: false,
+        end: () => end(),
+        skipTransition: () => ((t.skipped = true), end()),
+        ready: Promise.resolve(),
+        updateCallbackDone: Promise.resolve(),
+        finished: new Promise<void>((r) => (end = r)),
+      };
       vts.push(t);
       return t;
     };
@@ -699,14 +848,20 @@ describe('morph (shared-element view transition)', () => {
     const css: Record<string, string> = {};
     return {
       css,
-      style: { set viewTransitionName(v: string) { css.vtn = v; }, removeProperty: (k: string) => k === 'view-transition-name' && delete css.vtn },
+      style: {
+        set viewTransitionName(v: string) {
+          css.vtn = v;
+        },
+        removeProperty: (k: string) => k === 'view-transition-name' && delete css.vtn,
+      },
       getAttribute: (a: string) => (a === 'style' && css.vtn ? `view-transition-name: ${css.vtn}` : null),
       removeAttribute: vi.fn(),
     } as any;
   };
 
   it('names the old element, then only the new one after the update, type morph; names come off at the end', async () => {
-    const a = cover(), b = cover();
+    const a = cover(),
+      b = cover();
     let cur = a;
     const update = vi.fn(() => (cur = b));
     const t = m.morph('sc', () => cur, update)!;
@@ -745,9 +900,18 @@ describe('morph (shared-element view transition)', () => {
   });
 
   it('a second call skips the first and takes its name off at once; the skipped update, run late, names nothing', () => {
-    const a = cover(), b = cover();
-    m.morph('sc', () => a, () => {});
-    m.morph('sc', () => b, () => {});
+    const a = cover(),
+      b = cover();
+    m.morph(
+      'sc',
+      () => a,
+      () => {},
+    );
+    m.morph(
+      'sc',
+      () => b,
+      () => {},
+    );
     expect(vts[0].skipped).toBe(true);
     expect([a.css.vtn, b.css.vtn]).toEqual([undefined, 'sc']); // never two elements with one name
     vts[0].o.update();
@@ -757,18 +921,21 @@ describe('morph (shared-element view transition)', () => {
 
   it('skipMorph (component destroyed) skips it and removes the name', () => {
     const a = cover();
-    m.morph('sc', () => a, () => {});
+    m.morph(
+      'sc',
+      () => a,
+      () => {},
+    );
     m.skipMorph();
     expect(vts[0].skipped).toBe(true);
     expect(a.css.vtn).toBeUndefined();
   });
 });
 
-
 describe('cardsIn (Library cards)', () => {
   const card = () => {
     const st: Record<string, string> = {};
-    const style = new Proxy(st, { get: (t, k) => (k === 'removeProperty' ? (n: string) => delete t[n] : t[k as string] ?? '') });
+    const style = new Proxy(st, { get: (t, k) => (k === 'removeProperty' ? (n: string) => delete t[n] : (t[k as string] ?? '')) });
     return { st, style, getAttribute: () => (Object.keys(st).length ? 'x' : null), removeAttribute: vi.fn() } as any;
   };
   it('hidden at once, then one anime.js tween: opacity, rise and scale, staggered; styles gone at the end', async () => {

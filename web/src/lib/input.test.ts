@@ -1,18 +1,72 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  attach, buttonFrame, CODE_TO_VK, FLUSH_MS, HEARTBEAT_MS, heartbeatFrame, InputSender, keyFrame, KIND_BUTTON, KIND_KEY, KIND_MOVE,
-  KIND_SCROLL, modifiers, moveFrame, scrollFrame, wheelUnits,
+  attach,
+  buttonFrame,
+  CODE_TO_VK,
+  FLUSH_MS,
+  HEARTBEAT_MS,
+  heartbeatFrame,
+  InputSender,
+  keyFrame,
+  KIND_BUTTON,
+  KIND_KEY,
+  KIND_MOVE,
+  KIND_SCROLL,
+  modifiers,
+  moveFrame,
+  scrollFrame,
+  wheelUnits,
 } from './input';
 
 const range = (p: string, n: number, from = 0) => Array.from({ length: n }, (_, i) => `${p}${i + from}`);
 const letters = Array.from({ length: 26 }, (_, i) => `Key${String.fromCharCode(65 + i)}`);
 const REQUIRED = [
-  ...letters, ...range('Digit', 10), ...range('F', 12, 1), ...range('Numpad', 10),
-  'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown',
-  'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
-  'Enter', 'Escape', 'Backspace', 'Tab', 'Space', 'CapsLock', 'Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown',
-  'NumpadMultiply', 'NumpadAdd', 'NumpadSubtract', 'NumpadDecimal', 'NumpadDivide', 'NumpadEnter', 'NumLock',
-  'Semicolon', 'Equal', 'Comma', 'Minus', 'Period', 'Slash', 'Backquote', 'BracketLeft', 'Backslash', 'BracketRight', 'Quote',
+  ...letters,
+  ...range('Digit', 10),
+  ...range('F', 12, 1),
+  ...range('Numpad', 10),
+  'ArrowLeft',
+  'ArrowUp',
+  'ArrowRight',
+  'ArrowDown',
+  'ShiftLeft',
+  'ShiftRight',
+  'ControlLeft',
+  'ControlRight',
+  'AltLeft',
+  'AltRight',
+  'MetaLeft',
+  'MetaRight',
+  'Enter',
+  'Escape',
+  'Backspace',
+  'Tab',
+  'Space',
+  'CapsLock',
+  'Insert',
+  'Delete',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'NumpadMultiply',
+  'NumpadAdd',
+  'NumpadSubtract',
+  'NumpadDecimal',
+  'NumpadDivide',
+  'NumpadEnter',
+  'NumLock',
+  'Semicolon',
+  'Equal',
+  'Comma',
+  'Minus',
+  'Period',
+  'Slash',
+  'Backquote',
+  'BracketLeft',
+  'Backslash',
+  'BracketRight',
+  'Quote',
 ];
 
 describe('CODE_TO_VK', () => {
@@ -286,15 +340,21 @@ describe('attach', () => {
 
   for (const [name, fire] of [
     ['window blur', (x: ReturnType<typeof setup>) => x.win.dispatchEvent(ev('blur'))],
-    ['visibilitychange to hidden', (x: ReturnType<typeof setup>) => {
-      x.doc.visibilityState = 'hidden';
-      x.doc.dispatchEvent(ev('visibilitychange'));
-    }],
+    [
+      'visibilitychange to hidden',
+      (x: ReturnType<typeof setup>) => {
+        x.doc.visibilityState = 'hidden';
+        x.doc.dispatchEvent(ev('visibilitychange'));
+      },
+    ],
     ['pagehide', (x: ReturnType<typeof setup>) => x.win.dispatchEvent(ev('pagehide'))],
-    ['pointer lock loss', (x: ReturnType<typeof setup>) => {
-      x.doc.pointerLockElement = null;
-      x.doc.dispatchEvent(ev('pointerlockchange'));
-    }],
+    [
+      'pointer lock loss',
+      (x: ReturnType<typeof setup>) => {
+        x.doc.pointerLockElement = null;
+        x.doc.dispatchEvent(ev('pointerlockchange'));
+      },
+    ],
   ] as const) {
     it(`releases everything on ${name}`, () => {
       const x = setup();

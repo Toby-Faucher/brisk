@@ -58,7 +58,7 @@ describe('SeriesUploader', () => {
   });
 
   it('keeps unacknowledged points: a failed PUT is re-sent with the next one', async () => {
-    const { puts, run, ts, answerWith } = rig();
+    const { run, ts, answerWith } = rig();
     answerWith(() => Promise.reject(new ApiError('down', 502)));
     await run(UPLOAD_MS);
     expect(ts(0)).toEqual([0, 5, 10, 15, 20, 25]);

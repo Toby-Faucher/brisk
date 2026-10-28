@@ -13,7 +13,12 @@ describe('rank', () => {
     expect(rank('al', [item('Gallery'), item('Alpha')]).map((i) => i.label)).toEqual(['Alpha', 'Gallery']);
   });
   it('rank_empty_query_returns_routes_first', () => {
-    const items = [item('Launch X', 'game:1'), item('Home', 'route:/'), item('Toggle stats', 'cmd:stats'), item('Library', 'route:/library')];
+    const items = [
+      item('Launch X', 'game:1'),
+      item('Home', 'route:/'),
+      item('Toggle stats', 'cmd:stats'),
+      item('Library', 'route:/library'),
+    ];
     expect(rank('', items).map((i) => i.id)).toEqual(['route:/', 'route:/library', 'game:1', 'cmd:stats']);
   });
   it('rank_handles_139_games_under_5ms', () => {
@@ -73,7 +78,8 @@ describe('shortcuts', () => {
     const t = new EventTarget();
     attachShortcuts(t, { open, go });
     const canvas = { tagName: 'CANVAS' };
-    for (const k of ['/', 'g', 'l']) t.dispatchEvent(Object.defineProperties(new Event('keydown'), { key: { value: k }, target: { value: canvas } }));
+    for (const k of ['/', 'g', 'l'])
+      t.dispatchEvent(Object.defineProperties(new Event('keydown'), { key: { value: k }, target: { value: canvas } }));
     expect(open).not.toHaveBeenCalled();
     expect(go).not.toHaveBeenCalled();
   });

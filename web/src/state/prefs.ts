@@ -5,7 +5,15 @@ import { hevcSupported } from '../lib/video';
 import { readyFirst } from '../modules/machines/machines';
 
 /** What hostd keeps per game (camelCase JSON). The custom numbers exist only for `custom`. */
-export type GamePrefs = { preset: Preset; codec: Codec; width?: number; height?: number; fps?: number; bitrateKbps?: number; updated: number };
+export type GamePrefs = {
+  preset: Preset;
+  codec: Codec;
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrateKbps?: number;
+  updated: number;
+};
 export type PrefsMap = Record<string, GamePrefs>;
 /** PUT body: the prefs without `updated`. */
 export type PrefsBody = Omit<GamePrefs, 'updated'>;
@@ -58,7 +66,11 @@ export function prefsFor(appid: number | undefined, map: PrefsMap, defaultPreset
 export async function startGame(
   appid: number | undefined,
   notify: (text: string) => void,
-  d: { startStream: (r: StreamReq) => Promise<StreamInfo>; defaultPreset: () => Preset; hevcOk: () => Promise<boolean> } = { startStream: api.startStream, defaultPreset: () => get(settings).defaultPreset, hevcOk: () => hevcSupported() },
+  d: { startStream: (r: StreamReq) => Promise<StreamInfo>; defaultPreset: () => Preset; hevcOk: () => Promise<boolean> } = {
+    startStream: api.startStream,
+    defaultPreset: () => get(settings).defaultPreset,
+    hevcOk: () => hevcSupported(),
+  },
 ) {
   await readyFirst(); // hub mode: wakes the selected machine first (the overlay shows it)
   const req = prefsFor(appid, get(prefs), d.defaultPreset());
@@ -90,7 +102,11 @@ export function prefsChip(p: GamePrefs): string {
 export const SAVE_DELAY_MS = 1000;
 
 /** Debounced, last-wins save for one game at a time; a change for another game saves the pending one first. */
-export function prefSaver(d: { put: (appid: number, b: PrefsBody) => Promise<GamePrefs>; onSaved: (appid: number, p: GamePrefs) => void; delay?: number }) {
+export function prefSaver(d: {
+  put: (appid: number, b: PrefsBody) => Promise<GamePrefs>;
+  onSaved: (appid: number, p: GamePrefs) => void;
+  delay?: number;
+}) {
   let pending: { appid: number; body: PrefsBody } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const inflight = new Map<number, Promise<void>>();
@@ -101,12 +117,15 @@ export function prefSaver(d: { put: (appid: number, b: PrefsBody) => Promise<Gam
     pending = null;
     if (!p) return;
     // quiet on failure: the next change tries again
-    const job: Promise<void> = d.put(p.appid, p.body).then(
-      (r) => {
-        if (!forgotten.delete(job)) d.onSaved(p.appid, r);
-      },
-      () => void forgotten.delete(job),
-    ).finally(() => inflight.get(p.appid) === job && inflight.delete(p.appid));
+    const job: Promise<void> = d
+      .put(p.appid, p.body)
+      .then(
+        (r) => {
+          if (!forgotten.delete(job)) d.onSaved(p.appid, r);
+        },
+        () => void forgotten.delete(job),
+      )
+      .finally(() => inflight.get(p.appid) === job && inflight.delete(p.appid));
     inflight.set(p.appid, job);
   };
   return {
@@ -133,7 +152,14 @@ export function prefSaver(d: { put: (appid: number, b: PrefsBody) => Promise<Gam
 /** The saver the Stream page uses: writes through to the store once hostd has it. */
 export const saver = prefSaver({ put: api.putPrefs, onSaved: (id, p) => prefs.update((m) => ({ ...m, [id]: p })) });
 
-export async function forgetPrefs(appid: number, d: { del: (id: number) => Promise<void>; cancel: (id: number) => void; settled: (id: number) => Promise<void> } = { del: api.deletePrefs, cancel: saver.cancel, settled: saver.settled }) {
+export async function forgetPrefs(
+  appid: number,
+  d: { del: (id: number) => Promise<void>; cancel: (id: number) => void; settled: (id: number) => Promise<void> } = {
+    del: api.deletePrefs,
+    cancel: saver.cancel,
+    settled: saver.settled,
+  },
+) {
   d.cancel(appid);
   await d.settled(appid); // a PUT still on its way must land before the DELETE, or it would bring the entry back
   await d.del(appid);

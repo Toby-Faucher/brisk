@@ -36,7 +36,14 @@ function parts() {
       }
     },
   });
-  return { stream, blob: () => new Blob(list.map((p) => p.data as BlobPart), { type: 'video/mp4' }) };
+  return {
+    stream,
+    blob: () =>
+      new Blob(
+        list.map((p) => p.data as BlobPart),
+        { type: 'video/mp4' },
+      ),
+  };
 }
 
 /** Muxes `c` (its packets are dropped as they are written, so memory peaks near one clip, not

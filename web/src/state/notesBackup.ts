@@ -8,7 +8,13 @@ const COLORS: TagColor[] = ['gray', 'red', 'orange', 'yellow', 'green', 'teal', 
 export type Backup = { format: 'brisk-notes'; version: 1; exported: string } & Notes;
 
 /** The download: what GET /api/notes returned, with a header. */
-export const buildBackup = (n: Notes, now: Date): Backup => ({ format: 'brisk-notes', version: 1, exported: now.toISOString(), tags: n.tags, games: n.games });
+export const buildBackup = (n: Notes, now: Date): Backup => ({
+  format: 'brisk-notes',
+  version: 1,
+  exported: now.toISOString(),
+  tags: n.tags,
+  games: n.games,
+});
 
 // hostd's limits (notes.rs): text lengths count Unicode characters, trailing whitespace not counted
 // the server counts text without trailing whitespace, but the whole text must fit its body limit (16 KiB tag, 64 KiB game)
@@ -41,7 +47,8 @@ function parseTag(id: string, v: unknown): Tag {
 }
 
 function parseGame(appid: string, v: unknown, tags: Record<string, Tag>): GameNote | null {
-  if (!/^[1-9]\d*$/.test(appid) || Number(appid) > 0xffffffff) bad(`"${appid}" is not a valid appid (a positive whole number up to 4294967295).`);
+  if (!/^[1-9]\d*$/.test(appid) || Number(appid) > 0xffffffff)
+    bad(`"${appid}" is not a valid appid (a positive whole number up to 4294967295).`);
   if (!isObj(v)) return bad(`Game ${appid} is not an object.`);
   const note = v.note ?? '';
   const list = v.tags ?? [];
@@ -55,7 +62,9 @@ function parseGame(appid: string, v: unknown, tags: Record<string, Tag>): GameNo
 }
 
 /** Checks a backup file strictly; the first problem found is the error. Unknown fields are ignored. */
-export function parseBackup(text: string): { ok: true; tags: Record<string, Tag>; games: Record<string, GameNote> } | { ok: false; error: string } {
+export function parseBackup(
+  text: string,
+): { ok: true; tags: Record<string, Tag>; games: Record<string, GameNote> } | { ok: false; error: string } {
   try {
     if (text.length > MAX_BACKUP_BYTES) bad('That file is bigger than 2 MiB.');
     let j: unknown;
@@ -90,7 +99,8 @@ export function parseBackup(text: string): { ok: true; tags: Record<string, Tag>
 }
 
 /** `brisk-notes-YYYY-MM-DD.json`, with the local date. */
-export const backupName = (d: Date) => `brisk-notes-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+export const backupName = (d: Date) =>
+  `brisk-notes-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
 
 /**
  * How many games in the file replace a game that is already here, and a refusal when the result would pass hostd's

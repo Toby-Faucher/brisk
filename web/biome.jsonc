@@ -1,0 +1,68 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**/*.ts",
+      "**/*.json",
+      "**/*.css",
+      "**/*.svelte",
+      "**/*.astro",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/dist.*",
+      "!**/.astro",
+      "!package-lock.json"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 140 },
+  "javascript": { "formatter": { "quoteStyle": "single" } },
+  "css": { "formatter": { "quoteStyle": "single" } },
+  "linter": {
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        // house style: `if ((x = f()))`, `++n % k` and similar dense one-liners are on purpose
+        "noAssignInExpressions": "off",
+        // `xs.forEach((x) => x.close())` returning a value from an arrow is harmless
+        "useIterableCallbackReturn": "off",
+        // `() => void | (() => void)` is the usual type for a setup that may return a cleanup
+        "noConfusingVoidType": "off",
+        // tsc strict types a bare `let r;` from its later assignments
+        "noImplicitAnyLet": "off"
+      },
+      "complexity": {
+        // house style: `(a = 1), (b = 2)` in short arrow bodies and test setup
+        "noCommaOperator": "off",
+        // the few `!important`s are `[hidden]` and reduced motion, which must win
+        "noImportantStyles": "off"
+      },
+      "style": {
+        // `!` after a lookup the code has just checked; tsc strict already covers the rest
+        "noNonNullAssertion": "off",
+        // `'0x' + n.toString(16)` reads fine; a template there is not clearer
+        "useTemplate": "off"
+      }
+    }
+  },
+  "assist": { "enabled": false },
+  "overrides": [
+    {
+      // Biome only sees the script block of these files (no html.experimentalFullSupportEnabled), so names used only in
+      // the template look unused. Rule list from https://biomejs.dev/internals/language-support/
+      "includes": ["**/*.svelte", "**/*.astro"],
+      "formatter": { "enabled": false },
+      "linter": {
+        "rules": {
+          "style": { "useConst": "off", "useImportType": "off" },
+          "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off", "noUnusedFunctionParameters": "off" }
+        }
+      }
+    },
+    {
+      // test fakes stand in for DOM and WebCodecs objects with only the few fields a test needs
+      "includes": ["**/*.test.ts"],
+      "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
+    }
+  ]
+}

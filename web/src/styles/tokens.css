@@ -22,7 +22,7 @@
   --c-hist: #fb923c;
   --font: 'Geist Variable', system-ui, sans-serif;
   --mono: 'Geist Mono Variable', ui-monospace, monospace;
-  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --dur-page: 200ms;
   --dur-tab: 180ms;
   --rise: 8px;
@@ -33,17 +33,33 @@
   --dur-count: 600ms; /* number tweens (motion.ts tweenNumber) */
   --dur-draw: 700ms; /* chart lines drawing in (motion.ts drawIn) */
   --dur-exit: 140ms; /* dialogs, menus and tips leaving: quicker than they came */
-  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --r-card: 22px;
   --r-ctl: 12px;
   color-scheme: dark;
 }
-:root[data-accent='indigo'] { --accent: #818cf8; --accent-fg: #0d1030; }
-:root[data-accent='pink'] { --accent: #f472b6; --accent-fg: #2a0a1a; }
-:root[data-accent='orange'] { --accent: #fb923c; --accent-fg: #2b1204; }
-:root[data-accent='lime'] { --accent: #a3e635; --accent-fg: #142004; }
-:root[data-accent='sky'] { --accent: #60a5fa; --accent-fg: #07162b; }
+:root[data-accent='indigo'] {
+  --accent: #818cf8;
+  --accent-fg: #0d1030;
+}
+:root[data-accent='pink'] {
+  --accent: #f472b6;
+  --accent-fg: #2a0a1a;
+}
+:root[data-accent='orange'] {
+  --accent: #fb923c;
+  --accent-fg: #2b1204;
+}
+:root[data-accent='lime'] {
+  --accent: #a3e635;
+  --accent-fg: #142004;
+}
+:root[data-accent='sky'] {
+  --accent: #60a5fa;
+  --accent-fg: #07162b;
+}
 
+/* biome-ignore format: generated block, gen-spring-tokens.mjs --check compares it byte for byte */
 /* BEGIN generated springs: node web/scripts/gen-spring-tokens.mjs (do not edit by hand) */
 :root {
   /* hover lifts: quick, no overshoot; stiffness 400, damping 40, zeta 1.00, overshoot 0.0%, 90% at 195 ms, capped at 450 ms (settles in 700) */

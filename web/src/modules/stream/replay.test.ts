@@ -36,7 +36,7 @@ function oggPackets(b: Uint8Array): Uint8Array[] {
       const len = b[o + 27 + s];
       for (let k = 0; k < len; k++) cur.push(b[p + k]);
       p += len;
-      if (len < 255) (out.push(Uint8Array.from(cur)), (cur = []));
+      if (len < 255) out.push(Uint8Array.from(cur)), (cur = []);
     }
     o = p;
   }
@@ -49,7 +49,8 @@ function feed(r: Replay, aus: { data: Uint8Array; key: boolean }[], opus: Uint8A
   let k = 0;
   for (let i = 0; i < aus.length; i++) {
     const at = i * FRAME_MS;
-    for (; k < opus.length && k * 5 <= at; k++) if (!skip.has(k)) r.audio({ seq: k & 0xffff, ts48: (4800 + k * OPUS_FRAMES) >>> 0, opus: opus[k] }, k * 5 + 1);
+    for (; k < opus.length && k * 5 <= at; k++)
+      if (!skip.has(k)) r.audio({ seq: k & 0xffff, ts48: (4800 + k * OPUS_FRAMES) >>> 0, opus: opus[k] }, k * 5 + 1);
     r.video(aus[i].data, aus[i].key, BigInt(Math.round((at - 7) * 1e6)), at);
   }
   return (aus.length - 1) * FRAME_MS;
@@ -160,7 +161,8 @@ describe('Replay ring', () => {
 });
 
 describe('selectClip', () => {
-  const ring = (aus: { data: Uint8Array; key: boolean }[]) => aus.map((f, i) => ({ data: f.data, key: f.key, ns: (i * FRAME_MS - 7) * 1e6, at: i * FRAME_MS }));
+  const ring = (aus: { data: Uint8Array; key: boolean }[]) =>
+    aus.map((f, i) => ({ data: f.data, key: f.key, ns: (i * FRAME_MS - 7) * 1e6, at: i * FRAME_MS }));
 
   it('last_key_frame_at_or_before_now_minus_n', () => {
     expect(selectClip(ring(h264.slice(0, 180)), [], 1.5 * 1000)!.video.length).toBe(120); // keys at 0, 1, 2 s: picks 1 s
@@ -185,7 +187,10 @@ describe('selectClip', () => {
     const v = ring(h264.slice(0, 120));
     // RTP ts wraps mid-clip; packets 100..139 lost (200 ms); 2 reordered.
     const base = 0xffffffff - 100 * OPUS_FRAMES;
-    const a = opus.slice(0, 400).map((p, k) => ({ data: p, ts: (base + k * OPUS_FRAMES) >>> 0, at: k * 5 + 1 })).filter((_, k) => k < 100 || k >= 140);
+    const a = opus
+      .slice(0, 400)
+      .map((p, k) => ({ data: p, ts: (base + k * OPUS_FRAMES) >>> 0, at: k * 5 + 1 }))
+      .filter((_, k) => k < 100 || k >= 140);
     [a[50], a[51]] = [a[51], a[50]];
     const c = selectClip(v, a, -1e9)!;
     expect(c.audio.length).toBe(400);
@@ -199,7 +204,11 @@ describe('selectClip', () => {
 const ff = existsSync('/usr/bin/ffprobe') && existsSync('/usr/bin/ffmpeg');
 describe.skipIf(!ff)('muxClip (ffprobe / ffmpeg)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'brisk-clip-'));
-  for (const [name, aus, w, h] of [['h264', h264.slice(0, 180), 320, 180], ['high', high, 320, 180], ['hevc', hevc, 320, 180]] as const) {
+  for (const [name, aus, w, h] of [
+    ['h264', h264.slice(0, 180), 320, 180],
+    ['high', high, 320, 180],
+    ['hevc', hevc, 320, 180],
+  ] as const) {
     it(`${name}_with_opus_probes_and_decodes_clean`, async () => {
       const r = new Replay(60);
       const now = feed(r, aus, opus, new Set([300, 301, 302]));
@@ -227,13 +236,15 @@ describe.skipIf(!ff)('muxClip (ffprobe / ffmpeg)', () => {
         for (let k = 0; k < nSps; k++) o += 2 + ((b[o] << 8) | b[o + 1]);
         const nPps = b[o++];
         for (let k = 0; k < nPps; k++) o += 2 + ((b[o] << 8) | b[o + 1]);
-        expect(o + 4).toBeLessThanOrEqual((mp4[Buffer.from(mp4).indexOf('avcC') - 2] << 8 | mp4[Buffer.from(mp4).indexOf('avcC') - 1]) - 8);
+        expect(o + 4).toBeLessThanOrEqual(
+          ((mp4[Buffer.from(mp4).indexOf('avcC') - 2] << 8) | mp4[Buffer.from(mp4).indexOf('avcC') - 1]) - 8,
+        );
         expect([b[o] & 0xfc, b[o] & 3, b[o + 1] & 0xf8, b[o + 1] & 7, b[o + 2] & 0xf8, b[o + 2] & 7]).toEqual([0xfc, 1, 0xf8, 0, 0xf8, 0]); // 4:2:0, 8-bit
         expect(vs.profile).toBe('High');
       }
       // pre-skip 120 in dOps
       const i = Buffer.from(mp4).indexOf('dOps');
-      expect(mp4[i + 6] << 8 | mp4[i + 7]).toBe(120);
+      expect((mp4[i + 6] << 8) | mp4[i + 7]).toBe(120);
     });
   }
 });

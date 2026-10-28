@@ -6,7 +6,8 @@ import { gameNoteSaver, notes, notesLoaded, type GameNote, type Tag } from '../.
 import GameNotes from './GameNotes.svelte';
 
 const coop: Tag = { name: 'Co-op night', color: 'teal', symbol: 'users', note: 'Needs 4 controllers' };
-const echo = () => vi.spyOn(api, 'putGameNote').mockImplementation(async (_id: number, b: GameNote) => ({ note: b.note.trimEnd(), tags: b.tags }));
+const echo = () =>
+  vi.spyOn(api, 'putGameNote').mockImplementation(async (_id: number, b: GameNote) => ({ note: b.note.trimEnd(), tags: b.tags }));
 
 beforeEach(() => notesLoaded.set(true));
 afterEach(async () => {

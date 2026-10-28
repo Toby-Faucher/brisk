@@ -39,9 +39,11 @@ export function gamesHeader(games: Game[]): string {
 }
 
 /** Last played (unix seconds) as a short date, or "Never". */
-export const fmtPlayed = (s: number | null) => (s ? new Date(s * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never');
+export const fmtPlayed = (s: number | null) =>
+  s ? new Date(s * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never';
 
-export const fmtPlaytime = (min: number) => (min < 1 ? 'Not played yet' : min < 60 ? `${min} min` : `${(min / 60).toFixed(min < 600 ? 1 : 0)} h`);
+export const fmtPlaytime = (min: number) =>
+  min < 1 ? 'Not played yet' : min < 60 ? `${min} min` : `${(min / 60).toFixed(min < 600 ? 1 : 0)} h`;
 
 /** The remembered sort, or Name when storage is blocked or holds nonsense. */
 export function loadSort(): SortKey {

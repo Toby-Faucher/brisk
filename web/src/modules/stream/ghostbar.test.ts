@@ -48,7 +48,12 @@ describe('holdEsc', () => {
 describe('advancedReq', () => {
   it('turns the Advanced panel into a custom StreamReq with its codec', () => {
     expect(advancedReq({ res: '2560x1440', fps: 120, bitrateKbps: 30000, codec: 'hevc' })).toEqual({
-      preset: 'custom', width: 2560, height: 1440, fps: 120, bitrateKbps: 30000, codec: 'hevc',
+      preset: 'custom',
+      width: 2560,
+      height: 1440,
+      fps: 120,
+      bitrateKbps: 30000,
+      codec: 'hevc',
     });
     expect(advancedReq({ res: '1920x1080', fps: 60, bitrateKbps: 20000, codec: 'h264' }).codec).toBe('h264');
   });

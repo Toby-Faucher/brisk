@@ -7,10 +7,50 @@ import { api, type SessionRec, type Game, type GameInfo, type Achievements, type
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
 
-const game: Game = { appid: 620, name: 'Portal 2', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, running: false };
+const game: Game = {
+  appid: 620,
+  name: 'Portal 2',
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 0,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  running: false,
+};
 const off: Game = { ...game, appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 };
-const info: GameInfo = { available: true, description: 'Think with portals & friends.', genres: ['Action', 'Puzzle'], controller: 'full', singleplayer: true, coop: true, remotePlayTogether: true, release: '18 Apr, 2011', metacritic: 95, screenshots: [] };
-const none: GameInfo = { available: false, description: '', genres: [], controller: null, singleplayer: false, coop: false, remotePlayTogether: false, release: null, metacritic: null, screenshots: [] };
+const info: GameInfo = {
+  available: true,
+  description: 'Think with portals & friends.',
+  genres: ['Action', 'Puzzle'],
+  controller: 'full',
+  singleplayer: true,
+  coop: true,
+  remotePlayTogether: true,
+  release: '18 Apr, 2011',
+  metacritic: 95,
+  screenshots: [],
+};
+const none: GameInfo = {
+  available: false,
+  description: '',
+  genres: [],
+  controller: null,
+  singleplayer: false,
+  coop: false,
+  remotePlayTogether: false,
+  release: null,
+  metacritic: null,
+  screenshots: [],
+};
 
 const ach: Achievements = {
   available: true,
@@ -38,7 +78,10 @@ beforeEach(() => {
   vi.spyOn(api, 'notes').mockResolvedValue({ tags: {}, games: {} });
 });
 
-const local: GameLocal = { screenshots: ['b.png', 'a.jpg'], saves: { files: 14, bytes: 2_100_000, modified: Math.floor(Date.now() / 1000) - 3 * 86_400 } };
+const local: GameLocal = {
+  screenshots: ['b.png', 'a.jpg'],
+  saves: { files: 14, bytes: 2_100_000, modified: Math.floor(Date.now() / 1000) - 3 * 86_400 },
+};
 // a fetch-made object URL, as api.screenshot returns
 const blobUrl = () => URL.createObjectURL(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
 
@@ -131,7 +174,7 @@ describe('GameDetail refresh guards', () => {
 describe('GameDetail refresh across games', () => {
   afterEach(() => vi.useRealTimers());
 
-  it("the cooldown of game A does not carry over to game B", async () => {
+  it('the cooldown of game A does not carry over to game B', async () => {
     const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const r = await render(GameDetail, { props: props(game) });
     await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
@@ -217,7 +260,12 @@ describe('GameDetail', () => {
     await expect.element(a).toHaveAttribute('rel', 'noopener noreferrer');
     await expect.element(a).toHaveAttribute('target', '_blank');
     await expect.element(page.getByText('No link <b>x</b>')).toBeInTheDocument();
-    expect(page.getByRole('link').elements().filter((e) => e.textContent?.includes('No link'))).toHaveLength(0);
+    expect(
+      page
+        .getByRole('link')
+        .elements()
+        .filter((e) => e.textContent?.includes('No link')),
+    ).toHaveLength(0);
   });
 
   it('shows 3 of 5 unlocked with a progress bar and the list', async () => {
@@ -315,20 +363,30 @@ describe('GameDetail', () => {
     await expect.poll(() => shot.mock.calls.length).toBe(2);
     expect(shot).toHaveBeenCalledWith(620, 'b.png');
     expect(shot).toHaveBeenCalledWith(620, 'a.jpg');
-    expect(page.getByRole('img').elements().every((e) => (e as HTMLImageElement).src.startsWith('blob:'))).toBe(true);
+    expect(
+      page
+        .getByRole('img')
+        .elements()
+        .every((e) => (e as HTMLImageElement).src.startsWith('blob:')),
+    ).toBe(true);
     await expect.element(page.getByText('Cloud saves: 14 files, 2.1 MB, synced 3 d ago')).toBeInTheDocument();
   });
 
   it('a failed screenshot tile offers Retry, and the retry loads it', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
     vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['b.png'], saves: null });
-    const shot = vi.spyOn(api, 'screenshot').mockRejectedValueOnce(new Error('down')).mockImplementation(async () => blobUrl());
+    const shot = vi
+      .spyOn(api, 'screenshot')
+      .mockRejectedValueOnce(new Error('down'))
+      .mockImplementation(async () => blobUrl());
     await render(GameDetail, { props: props(game) });
     const retry = page.getByRole('button', { name: 'Retry loading screenshot 1' });
     await expect.element(retry).toBeInTheDocument();
     await userEvent.click(retry);
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Open Portal 2 screenshot 1 from this PC');
-    await expect.element(page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' })).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    await expect
+      .element(page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' }))
+      .toHaveAttribute('src', expect.stringMatching(/^blob:/));
     expect(shot).toHaveBeenCalledTimes(2);
     expect(page.getByRole('button', { name: 'Retry loading screenshot 1' }).elements()).toHaveLength(0);
   });
@@ -346,7 +404,9 @@ describe('GameDetail', () => {
     const p = props(game);
     const r = await render(GameDetail, { props: p });
     await expect.poll(() => made.length).toBe(2);
-    await expect.element(page.getByRole('img', { name: 'Portal 2 screenshot 2 from this PC' })).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    await expect
+      .element(page.getByRole('img', { name: 'Portal 2 screenshot 2 from this PC' }))
+      .toHaveAttribute('src', expect.stringMatching(/^blob:/));
     await userEvent.keyboard('{Escape}');
     await expect.poll(() => p.onclose.mock.calls.length).toBe(1);
     r.unmount(); // what the Library does on onclose
@@ -363,7 +423,15 @@ describe('GameDetail', () => {
 
   it('shows the line and Use Balanced calls putPrefs with the saved codec', async () => {
     const now = Date.now();
-    const rec = (n: number): SessionRec => ({ appid: 620, name: 'Portal 2', started: now - n * 86_400_000, ended: now - n * 86_400_000 + 3_600_000, host: 'h', preset: 'crisp', stats: { sent: 1000, dropped: 50 } as SessionRec['stats'] });
+    const rec = (n: number): SessionRec => ({
+      appid: 620,
+      name: 'Portal 2',
+      started: now - n * 86_400_000,
+      ended: now - n * 86_400_000 + 3_600_000,
+      host: 'h',
+      preset: 'crisp',
+      stats: { sent: 1000, dropped: 50 } as SessionRec['stats'],
+    });
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [rec(3), rec(4), rec(5), { ...rec(6), stats: null }] });
     const saved = { preset: 'balanced', codec: 'hevc', updated: 1 } as const;
@@ -371,7 +439,9 @@ describe('GameDetail', () => {
     prefs.set({ 620: { preset: 'crisp', codec: 'hevc', updated: 0 } });
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByText('Streamed 4 times · 4 h · last 3 d ago · usually Crisp')).toBeInTheDocument();
-    await expect.element(page.getByText(/Streaming was rough in 3 of the last 4 sessions \(dropped frames or a failed check\)\. Try Balanced\?/)).toBeInTheDocument();
+    await expect
+      .element(page.getByText(/Streaming was rough in 3 of the last 4 sessions \(dropped frames or a failed check\)\. Try Balanced\?/))
+      .toBeInTheDocument();
     expect(put).not.toHaveBeenCalled();
     await userEvent.click(page.getByRole('button', { name: 'Use Balanced' }));
     expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'hevc' });
@@ -387,7 +457,16 @@ describe('GameDetail', () => {
     expect(page.getByRole('button', { name: /Use / }).elements()).toHaveLength(0);
   });
 
-  const mk = (n: number, o: Partial<SessionRec> = {}): SessionRec => ({ appid: 620, name: 'Portal 2', started: 1_000_000 - n, ended: 1_000_000 - n + 60_000, host: 'h', preset: 'crisp', stats: { sent: 1000, dropped: 50 } as SessionRec['stats'], ...o });
+  const mk = (n: number, o: Partial<SessionRec> = {}): SessionRec => ({
+    appid: 620,
+    name: 'Portal 2',
+    started: 1_000_000 - n,
+    ended: 1_000_000 - n + 60_000,
+    host: 'h',
+    preset: 'crisp',
+    stats: { sent: 1000, dropped: 50 } as SessionRec['stats'],
+    ...o,
+  });
   const three = [mk(1), mk(2), mk(3)];
   const sugg = () => page.getByRole('button', { name: 'Use Balanced' });
 
@@ -498,7 +577,13 @@ describe('GameDetail', () => {
     list: [
       { id: 'A', name: 'First Steps', description: 'Take a step.', icon: '', unlockedAt: 1700000100 },
       { id: 'B', name: 'Pokémon Master', description: 'Catch them.', icon: '', unlockedAt: 1700000200 },
-      ...Array.from({ length: 7 }, (_, i) => ({ id: `L${i}`, name: `Locked ${i}`, description: i === 0 ? 'Find the café' : '', icon: '', unlockedAt: null })),
+      ...Array.from({ length: 7 }, (_, i) => ({
+        id: `L${i}`,
+        name: `Locked ${i}`,
+        description: i === 0 ? 'Find the café' : '',
+        icon: '',
+        unlockedAt: null,
+      })),
     ],
   };
   const achDialog = () => page.getByRole('dialog', { name: 'Portal 2 achievements' });
@@ -513,7 +598,13 @@ describe('GameDetail', () => {
     const items = () => achDialog().getByRole('listitem').elements();
     expect(items()).toHaveLength(9);
     expect(items().filter((li) => li.classList.contains('locked'))).toHaveLength(7);
-    await expect.element(achDialog().getByText(/^Unlocked /).first()).toBeInTheDocument();
+    await expect
+      .element(
+        achDialog()
+          .getByText(/^Unlocked /)
+          .first(),
+      )
+      .toBeInTheDocument();
     const search = achDialog().getByRole('searchbox', { name: 'Search achievements' });
     await userEvent.fill(search, 'pokemon');
     await expect.poll(() => items().map((li) => li.querySelector('b')?.textContent)).toEqual(['Pokémon Master']);
@@ -531,7 +622,9 @@ describe('GameDetail', () => {
 
   it('a patch news item has a separate badge with space before it', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [{ title: 'Big update', url: 'https://n.example.test/a', date: 2, patch: true }] });
+    vi.spyOn(api, 'gameNews').mockResolvedValue({
+      items: [{ title: 'Big update', url: 'https://n.example.test/a', date: 2, patch: true }],
+    });
     await render(GameDetail, { props: props(game) });
     const a = page.getByRole('link', { name: 'Big update' });
     await expect.element(a).toBeInTheDocument();
@@ -574,7 +667,15 @@ describe('GameDetail', () => {
   });
 
   // Tiles never scroll into view here (a stub observer), so every fetch comes from the lightbox.
-  const noObserver = () => vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} unobserve() {} });
+  const noObserver = () =>
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
   const ten: GameLocal = { screenshots: Array.from({ length: 10 }, (_, i) => `s${i + 1}.png`), saves: null };
 
   it('a local screenshot fetches only itself and its neighbours, then the next one on a step', async () => {
@@ -600,7 +701,10 @@ describe('GameDetail', () => {
     try {
       vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
       vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['only.png'], saves: null });
-      const shot = vi.spyOn(api, 'screenshot').mockRejectedValueOnce(new Error('gone')).mockImplementation(async () => blobUrl());
+      const shot = vi
+        .spyOn(api, 'screenshot')
+        .mockRejectedValueOnce(new Error('gone'))
+        .mockImplementation(async () => blobUrl());
       await render(GameDetail, { props: props(game) });
       const open = page.getByRole('button', { name: 'Open Portal 2 screenshot 1 from this PC' });
       await userEvent.click(open);

@@ -147,21 +147,27 @@ export async function selectMachine(id: string): Promise<void> {
 const orderW = writable<string[]>([]);
 /** The saved card order (ids); machines not in it follow in server order (see orderedMachines). */
 export const machinesOrder: Readable<string[]> = { subscribe: orderW.subscribe };
-export const orderedMachines: Readable<Machine[]> = derived([machinesW, orderW], ([$m, $o]) => [...$o.flatMap((id) => $m.find((m) => m.id === id) ?? []), ...$m.filter((m) => !$o.includes(m.id))]);
+export const orderedMachines: Readable<Machine[]> = derived([machinesW, orderW], ([$m, $o]) => [
+  ...$o.flatMap((id) => $m.find((m) => m.id === id) ?? []),
+  ...$m.filter((m) => !$o.includes(m.id)),
+]);
 
 const colorsW = writable<Record<string, string>>({});
 /** Saved machine colours (`#rrggbb`), from the same prefs fetch as the order. */
 export const machineColors: Readable<Record<string, string>> = { subscribe: colorsW.subscribe };
 /** Every machine's colour: the saved one, else the palette colour for its position in server order. */
-export const machineHue: Readable<Record<string, string>> = derived([machinesW, colorsW], ([$m, $c]) => Object.fromEntries($m.map((m, i) => [m.id, $c[m.id] ?? defaultColor(i)])));
+export const machineHue: Readable<Record<string, string>> = derived([machinesW, colorsW], ([$m, $c]) =>
+  Object.fromEntries($m.map((m, i) => [m.id, $c[m.id] ?? defaultColor(i)])),
+);
 
 /** Normalizes what the server sent; absent or bad entries are dropped. */
 function cleanColors(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
-  if (raw && typeof raw === 'object') for (const [id, v] of Object.entries(raw)) {
-    const hex = typeof v === 'string' ? normalizeHex(v) : null;
-    if (hex) out[id] = hex;
-  }
+  if (raw && typeof raw === 'object')
+    for (const [id, v] of Object.entries(raw)) {
+      const hex = typeof v === 'string' ? normalizeHex(v) : null;
+      if (hex) out[id] = hex;
+    }
   return out;
 }
 

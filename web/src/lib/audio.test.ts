@@ -1,16 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CAPACITY_FRAMES, DEADBAND_FRAMES, FADE_FRAMES, MAX_DECODER_RESTARTS, PACKET_FRAMES, PAUSE_FRAMES, Playout,
-  Restarts, TARGET_FRAMES, UNDERRUN_LOG, concealment, driftStep, parseAudioHeader, seqDelta,
+  CAPACITY_FRAMES,
+  DEADBAND_FRAMES,
+  FADE_FRAMES,
+  MAX_DECODER_RESTARTS,
+  PACKET_FRAMES,
+  PAUSE_FRAMES,
+  Playout,
+  Restarts,
+  TARGET_FRAMES,
+  UNDERRUN_LOG,
+  concealment,
+  driftStep,
+  parseAudioHeader,
+  seqDelta,
 } from './audio';
 
 const QUANTUM = 128;
 
 /// One 5 ms stereo packet: left = `v`, right = -`v`.
-const pkt = (v: number, n = PACKET_FRAMES): [Float32Array, Float32Array] => [
-  new Float32Array(n).fill(v),
-  new Float32Array(n).fill(-v),
-];
+const pkt = (v: number, n = PACKET_FRAMES): [Float32Array, Float32Array] => [new Float32Array(n).fill(v), new Float32Array(n).fill(-v)];
 
 const pull = (p: Playout, n = QUANTUM) => {
   const l = new Float32Array(n);
@@ -128,7 +137,7 @@ describe('Playout', () => {
   });
 
   it('a long starvation that ends with a seq gap is loss, so an underrun', () => {
-    let { p, seq } = playing();
+    const { p, seq } = playing();
     for (let i = 0; i < (2 * PAUSE_FRAMES) / QUANTUM; i++) pull(p);
     p.push(seq + 5, ...pkt(0.5));
     expect(p.stats).toMatchObject({ underruns: 1, lost: 5, pauses: 0 });

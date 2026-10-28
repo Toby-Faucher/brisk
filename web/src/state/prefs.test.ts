@@ -21,7 +21,15 @@ describe('prefsFor', () => {
   });
   it('carries the custom fields only for custom', () => {
     const c = P({ preset: 'custom', codec: 'h264', width: 2560, height: 1440, fps: 120, bitrateKbps: 50000 });
-    expect(prefsFor(1, { '1': c }, 'fast')).toEqual({ preset: 'custom', codec: 'h264', width: 2560, height: 1440, fps: 120, bitrateKbps: 50000, appid: 1 });
+    expect(prefsFor(1, { '1': c }, 'fast')).toEqual({
+      preset: 'custom',
+      codec: 'h264',
+      width: 2560,
+      height: 1440,
+      fps: 120,
+      bitrateKbps: 50000,
+      appid: 1,
+    });
     expect(prefsFor(1, { '1': P({ width: 5 }) }, 'fast')).not.toHaveProperty('width');
   });
   it('without an appid (Desktop) never looks anything up', () => {
@@ -154,7 +162,7 @@ describe('startGame (Library, Resume card, Stream Start)', () => {
     const notify = vi.fn();
     return { startStream, notify, d: { startStream, defaultPreset: () => 'fast' as const, hevcOk: async () => hevc } };
   };
-  it('starts with that game\'s saved quality, else the default preset', async () => {
+  it("starts with that game's saved quality, else the default preset", async () => {
     prefs.set({ '10': P({ preset: 'crisp', codec: 'hevc' }) });
     const { startStream, notify, d } = rig();
     await startGame(10, notify, d);

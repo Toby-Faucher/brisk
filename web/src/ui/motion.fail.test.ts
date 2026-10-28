@@ -33,7 +33,17 @@ describe('chunk load failure', () => {
     expect(text.data).toBe('3.6%');
   });
   it('splitIn: an error while building the copy leaves the real title visible (this document cannot create elements)', async () => {
-    const real = { textContent: 'Portal 2', style: { opacity: '', removeProperty() { real.style.opacity = ''; } }, getAttribute: () => '', removeAttribute() {} } as any;
+    const real = {
+      textContent: 'Portal 2',
+      style: {
+        opacity: '',
+        removeProperty() {
+          real.style.opacity = '';
+        },
+      },
+      getAttribute: () => '',
+      removeAttribute() {},
+    } as any;
     const h = { firstElementChild: real, closest: () => null } as any;
     m.splitIn(h);
     expect(real.style.opacity).toBe('0');
@@ -42,7 +52,11 @@ describe('chunk load failure', () => {
   });
   it('drawIn shows the full line', async () => {
     const attrs: Record<string, string> = {};
-    const p = { setAttribute: (k: string, v: string) => (attrs[k] = v), removeAttribute: (k: string) => delete attrs[k], style: { removeProperty: () => {} } } as any;
+    const p = {
+      setAttribute: (k: string, v: string) => (attrs[k] = v),
+      removeAttribute: (k: string) => delete attrs[k],
+      style: { removeProperty: () => {} },
+    } as any;
     m.drawIn(p);
     expect(attrs['stroke-dasharray']).toBe('0 1010');
     await settle();

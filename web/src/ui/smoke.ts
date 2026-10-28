@@ -5,7 +5,7 @@ type GLish = { getExtension(name: string): unknown };
 /** The canvas's WebGL2 context if it can run the smoke (float render targets included), else null = CSS fallback. */
 export function smokeGL<T extends GLish>(canvas: { getContext(id: string, opts?: object): unknown }): T | null {
   const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'low-power' }) as T | null;
-  return gl && gl.getExtension('EXT_color_buffer_float') ? gl : null;
+  return gl?.getExtension('EXT_color_buffer_float') ? gl : null;
 }
 
 /** Shaders are off on the Stream route (no WebGL context next to video decode) or when the setting says so. */
@@ -42,14 +42,20 @@ export function runSmoke(cv: HTMLCanvasElement, gl: WebGL2RenderingContext, acce
   const loc = gl.getAttribLocation(pr, 'p');
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  const uR = gl.getUniformLocation(pr, 'R'), uT = gl.getUniformLocation(pr, 'T'), uA = gl.getUniformLocation(pr, 'A');
+  const uR = gl.getUniformLocation(pr, 'R'),
+    uT = gl.getUniformLocation(pr, 'T'),
+    uA = gl.getUniformLocation(pr, 'A');
 
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const seed = Math.random() * 50;
-  let active = false, raf = 0, last = 0, drawn = false;
+  let active = false,
+    raf = 0,
+    last = 0,
+    drawn = false;
 
   function draw(ts: number) {
-    const w = Math.max(2, Math.round(cv.clientWidth * SCALE)), h = Math.max(2, Math.round(cv.clientHeight * SCALE));
+    const w = Math.max(2, Math.round(cv.clientWidth * SCALE)),
+      h = Math.max(2, Math.round(cv.clientHeight * SCALE));
     if (cv.width !== w || cv.height !== h) {
       cv.width = w;
       cv.height = h;
