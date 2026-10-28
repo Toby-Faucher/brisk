@@ -750,6 +750,16 @@ mod tests {
                     axum::Json(json!({ "method": req.method().to_string(), "pq": req.uri().to_string() }))
                 }),
             )
+            .route("/api/games/{id}/screenshots", any(|req: Rq<Body>| async move {
+                    let (m, uri) = (req.method().to_string(), req.uri().to_string());
+ let _ = axum::body::to_bytes(req.into_body(), 1 << 24).await;
+ axum::Json(json!({ "method": m, "pq": uri }))
+                }))
+            .route("/api/games/{id}/screenshots/{name}", any(|req: Rq<Body>| async move {
+                    let (m, uri) = (req.method().to_string(), req.uri().to_string());
+ let _ = axum::body::to_bytes(req.into_body(), 1 << 24).await;
+ axum::Json(json!({ "method": m, "pq": uri }))
+                }))
             .route(
                 "/api/uploads/{id}",
                 any(|axum::extract::Path(id): axum::extract::Path<String>, req: Rq<Body>| async move {
