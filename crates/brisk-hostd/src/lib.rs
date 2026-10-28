@@ -9,6 +9,7 @@ pub mod files;
 pub mod host;
 pub mod http;
 pub mod idle;
+pub mod launch;
 pub mod machines;
 pub mod notes;
 pub mod notify;
