@@ -107,19 +107,130 @@ impl Md5 {
 const BASE_HEADER: u64 = 0x2440;
 const APPLOADER_HEADER: u64 = 0x20;
 const MAX_HEADER: u64 = 1024 * 1024;
+const WII_SECTOR: u64 = 0x8000;
+const WII_DISC_SIZE: u64 = 143432 * 2 * WII_SECTOR; // what Dolphin reports for WBFS
+const WBFS_TABLE_OFF: u64 = 0x100; // after the disc header copy, in disc 0's info sector
 
 fn be32(b: &[u8]) -> u64 {
     u64::from(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
 }
 
-fn read_at(f: &mut File, len: u64, off: u64, n: u64) -> Result<Vec<u8>, Error> {
-    if off.checked_add(n).is_none_or(|end| end > len) {
-        return Err(Error::Truncated);
+/// The raw disc image as Dolphin's `Volume::Read(.., PARTITION_NONE)` presents it: a plain
+/// ISO, or a WBFS file decoded through its block map. Nothing is decrypted.
+enum Disc {
+    Iso(File, u64),
+    Wbfs {
+        f: File,
+        shift: u32,
+        table: Vec<u16>,
+    },
+}
+
+impl Disc {
+    fn open(path: &Path) -> Result<Disc, Error> {
+        let mut f = File::open(path)?;
+        let len = f.metadata()?.len();
+        let mut h = [0u8; 0x0D];
+        if f.read_exact(&mut h).is_err() || &h[..4] != b"WBFS" {
+            return Ok(Disc::Iso(f, len));
+        }
+        let (hd_shift, shift) = (u32::from(h[8]), u32::from(h[9]));
+        // Dolphin: file size must equal sector count << HD shift; WBFS sector >= one Wii sector.
+        if !(9..=24).contains(&hd_shift) || !(15..=30).contains(&shift) {
+            return Err(Error::Invalid("WBFS sector shift out of range"));
+        }
+        if be32(&h[4..]) << hd_shift != len {
+            return Err(Error::Invalid("WBFS size does not match its header"));
+        }
+        if h[0x0C] == 0 {
+            return Err(Error::Invalid("WBFS disc slot 0 is empty"));
+        }
+        let blocks = WII_DISC_SIZE.div_ceil(1 << shift);
+        let at = (1u64 << hd_shift) + WBFS_TABLE_OFF;
+        if at + blocks * 2 > len {
+            return Err(Error::Truncated);
+        }
+        let mut raw = vec![0u8; blocks as usize * 2];
+        f.seek(SeekFrom::Start(at))?;
+        f.read_exact(&mut raw)?;
+        let table = raw
+            .chunks(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
+        Ok(Disc::Wbfs { f, shift, table })
     }
-    f.seek(SeekFrom::Start(off))?;
-    let mut v = vec![0; n as usize];
-    f.read_exact(&mut v)?;
-    Ok(v)
+
+    fn size(&self) -> u64 {
+        match self {
+            Disc::Iso(_, len) => *len,
+            Disc::Wbfs { .. } => WII_DISC_SIZE,
+        }
+    }
+
+    /// Exactly `n` bytes at `off`, or `Truncated`. Callers keep `n` small.
+    fn read_at(&mut self, off: u64, n: u64) -> Result<Vec<u8>, Error> {
+        if off.checked_add(n).is_none_or(|end| end > self.size()) {
+            return Err(Error::Truncated);
+        }
+        let mut out = vec![0; n as usize];
+        match self {
+            Disc::Iso(f, _) => {
+                f.seek(SeekFrom::Start(off))?;
+                f.read_exact(&mut out)?;
+            }
+            Disc::Wbfs { f, shift, table } => {
+                let (mut pos, mut done) = (off, 0usize);
+                while done < out.len() {
+                    let inner = pos & ((1 << *shift) - 1);
+                    let take = ((1u64 << *shift) - inner).min((out.len() - done) as u64) as usize;
+                    let sector = *table
+                        .get((pos >> *shift) as usize)
+                        .ok_or(Error::Truncated)?;
+                    // Like Dolphin, an unmapped block (0) reads from the start of the WBFS file.
+                    let at = (u64::from(sector) << *shift) + inner;
+                    f.seek(SeekFrom::Start(at))?;
+                    f.read_exact(&mut out[done..done + take])
+                        .map_err(|_| Error::Truncated)?;
+                    done += take;
+                    pos += take as u64;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Hash `size` bytes at `off` in bounded chunks.
+    fn hash_range(&mut self, md5: &mut Md5, off: u64, size: u64) -> Result<(), Error> {
+        let mut done = 0;
+        while done < size {
+            let n = (size - done).min(1 << 20);
+            md5.update(&self.read_at(off + done, n)?);
+            done += n;
+        }
+        Ok(())
+    }
+}
+
+/// rcheevos `rc_hash_nintendo_disc_partition`: `shift` is 0 for GameCube, 2 for a Wii partition.
+fn hash_partition(d: &mut Disc, md5: &mut Md5, part: u64, shift: u32) -> Result<(), Error> {
+    let sizes = d.read_at(part + BASE_HEADER + 0x14, 8)?;
+    let header_size =
+        (BASE_HEADER + APPLOADER_HEADER + be32(&sizes) + be32(&sizes[4..])).min(MAX_HEADER);
+    let header = d.read_at(part, header_size)?;
+    md5.update(&header);
+    let dol = be32(&header[0x420..]) << shift;
+
+    let table = d.read_at(part + dol, 0xD8)?;
+    for ix in 0..18 {
+        let (off, size) = (
+            be32(&table[ix * 4..]) << shift,
+            be32(&table[0x90 + ix * 4..]) << shift,
+        );
+        if size != 0 {
+            d.hash_range(md5, part + off, size)?;
+        }
+    }
+    Ok(())
 }
 
 /// RA hash (MD5 hex) of a plain GameCube ISO/GCM, as rcheevos computes it for console 16.
@@ -128,34 +239,55 @@ pub fn ra_hash_gamecube_iso(path: &Path) -> Result<String, Error> {
     if id.system != System::GameCube || id.container != discid::Container::Iso {
         return Err(Error::Invalid("not a plain GameCube disc image"));
     }
-    let mut f = File::open(path)?;
-    let len = f.metadata()?.len();
+    let mut d = Disc::open(path)?;
     let mut md5 = Md5::new();
+    hash_partition(&mut d, &mut md5, 0, 0)?;
+    Ok(md5.finish_hex())
+}
 
-    let sizes = read_at(&mut f, len, BASE_HEADER + 0x14, 8)?;
-    let header_size =
-        (BASE_HEADER + APPLOADER_HEADER + be32(&sizes) + be32(&sizes[4..])).min(MAX_HEADER);
-    let header = read_at(&mut f, len, 0, header_size)?;
-    md5.update(&header);
-    let dol = be32(&header[0x420..]);
+/// RA hash (MD5 hex) of a Wii disc in an ISO or WBFS file, as rcheevos computes it for console
+/// 19. Follows `rc_hash_wii_disc` as written, including that the partition data offset read at
+/// +0x2B8 is used as an absolute disc offset. Not yet compared with a real disc's hash.
+pub fn ra_hash_wii(path: &Path) -> Result<String, Error> {
+    use discid::Container::{Iso, Wbfs};
+    let id = discid::identify(path)?;
+    if id.system != System::Wii || !matches!(id.container, Iso | Wbfs) {
+        return Err(Error::Invalid("not an ISO or WBFS Wii disc image"));
+    }
+    let mut d = Disc::open(path)?;
+    let mut md5 = Md5::new();
+    let encrypted = d.read_at(0x61, 1)?[0] == 0;
+    md5.update(&d.read_at(0, 0x80)?);
+    md5.update(&d.read_at(0x4E000, 4)?);
 
-    let table = read_at(&mut f, len, dol, 0xD8)?;
-    for ix in 0..18 {
-        let (off, size) = (be32(&table[ix * 4..]), be32(&table[0x90 + ix * 4..]));
-        if size == 0 {
-            continue;
+    let info = d.read_at(0x40000, 32)?;
+    let info: Vec<u64> = info.chunks(4).map(be32).collect();
+    let total: u64 = info.iter().step_by(2).sum();
+    if total == 0 || total > 16 {
+        return Err(Error::Invalid("Wii partition count out of range"));
+    }
+    let mut parts = Vec::new();
+    for g in info.chunks(2) {
+        let raw = d.read_at(g[1] << 2, g[0] * 8)?;
+        parts.extend(raw.chunks(8).map(|e| (be32(e) << 2, be32(&e[4..]))));
+    }
+    for (base, kind) in parts {
+        if kind == 1 {
+            continue; // update partition
         }
-        if off.checked_add(size).is_none_or(|end| end > len) {
-            return Err(Error::Truncated);
-        }
-        f.seek(SeekFrom::Start(off))?;
-        let mut left = size;
-        let mut chunk = vec![0; left.min(1 << 20) as usize];
-        while left > 0 {
-            let n = left.min(chunk.len() as u64) as usize;
-            f.read_exact(&mut chunk[..n])?;
-            md5.update(&chunk[..n]);
-            left -= n as u64;
+        let t = d.read_at(base + 0x2A4, 8)?;
+        let (tmd_size, tmd_off) = (be32(&t).min(WII_SECTOR - 0x400), be32(&t[4..]) << 2);
+        md5.update(&d.read_at(base + tmd_off, tmd_size)?);
+
+        let p = d.read_at(base + 0x2B8, 8)?;
+        let (part_off, part_size) = (be32(&p) << 2, be32(&p[4..]) << 2);
+        if encrypted {
+            // Raw bytes: skip each cluster's 0x400-byte hash block, take 0x7C00.
+            for ix in 0..(part_size / WII_SECTOR).min(1024) {
+                md5.update(&d.read_at(part_off + ix * WII_SECTOR + 0x400, 0x7C00)?);
+            }
+        } else {
+            hash_partition(&mut d, &mut md5, part_off, 2)?;
         }
     }
     Ok(md5.finish_hex())
@@ -282,5 +414,133 @@ mod tests {
         let p = write("wii", &wii);
         assert!(ra_hash_gamecube_iso(&p).is_err());
         std::fs::remove_file(p).ok();
+    }
+
+    // ---- Wii ----
+
+    const WII_LEN: usize = 0x70000;
+
+    /// Wii disc, encrypted flag set (byte 0x61 = 0): one data partition (type 0) and one update
+    /// partition (type 1). Partition 0 at 0x50000: TMD (6 bytes) at +0x400, cluster data offset
+    /// 0x60000 (absolute, as rcheevos reads it), size 2 clusters. Filler is a byte pattern.
+    fn wii_image() -> Vec<u8> {
+        let mut img: Vec<u8> = (0..WII_LEN).map(|i| (i * 31 + i / 251) as u8).collect();
+        put(&mut img, 0, b"RTESTA");
+        put(&mut img, 0x18, &[0x5D, 0x1C, 0x9E, 0xA3]);
+        img[0x61] = 0;
+        // Partition info: group 0 has 2 partitions, table at 0x40020.
+        put(&mut img, 0x40000, &2u32.to_be_bytes());
+        put(&mut img, 0x40004, &(0x40020u32 >> 2).to_be_bytes());
+        for g in 1..4 {
+            put(&mut img, 0x40000 + g * 8, &[0; 8]);
+        }
+        put(&mut img, 0x40020, &(0x50000u32 >> 2).to_be_bytes());
+        put(&mut img, 0x40024, &0u32.to_be_bytes());
+        put(&mut img, 0x40028, &(0x58000u32 >> 2).to_be_bytes()); // update partition: skipped
+        put(&mut img, 0x4002C, &1u32.to_be_bytes());
+        put(&mut img, 0x50000 + 0x2A4, &6u32.to_be_bytes());
+        put(&mut img, 0x50000 + 0x2A8, &(0x400u32 >> 2).to_be_bytes());
+        put(&mut img, 0x50000 + 0x2B8, &(0x60000u32 >> 2).to_be_bytes());
+        put(&mut img, 0x50000 + 0x2BC, &(0x10000u32 >> 2).to_be_bytes());
+        img
+    }
+
+    fn wii_expected(img: &[u8]) -> String {
+        let mut want = Vec::new();
+        want.extend_from_slice(&img[..0x80]);
+        want.extend_from_slice(&img[0x4E000..0x4E004]);
+        want.extend_from_slice(&img[0x50400..0x50406]); // TMD of partition 0 only
+        want.extend_from_slice(&img[0x60400..0x60400 + 0x7C00]);
+        want.extend_from_slice(&img[0x68400..0x68400 + 0x7C00]);
+        md5hex(&want)
+    }
+
+    /// Wrap a disc image in WBFS: 512-byte HD sectors, 64 KiB WBFS sectors, block i stored in
+    /// sector 5 + (6 - i) so the block map is actually exercised.
+    fn wbfs_wrap(disc: &[u8]) -> Vec<u8> {
+        let blocks = disc.len() / 0x10000;
+        let mut f = vec![0u8; (5 + blocks) * 0x10000];
+        put(&mut f, 0, b"WBFS");
+        let sectors = (f.len() >> 9) as u32;
+        put(&mut f, 4, &sectors.to_be_bytes());
+        f[8] = 9;
+        f[9] = 16;
+        f[0x0C] = 1;
+        put(&mut f, 0x200, &disc[..0x100]);
+        for i in 0..blocks {
+            let sector = 5 + (blocks - 1 - i);
+            put(&mut f, 0x300 + i * 2, &(sector as u16).to_be_bytes());
+            put(
+                &mut f,
+                sector * 0x10000,
+                &disc[i * 0x10000..(i + 1) * 0x10000],
+            );
+        }
+        f
+    }
+
+    #[test]
+    fn wii_hash_iso_and_wbfs_match_by_hand() {
+        let img = wii_image();
+        let want = wii_expected(&img);
+        let p = write("wii-iso", &img);
+        assert_eq!(ra_hash_wii(&p).unwrap(), want);
+        let w = write("wii-wbfs", &wbfs_wrap(&img));
+        assert_eq!(ra_hash_wii(&w).unwrap(), want);
+        std::fs::remove_file(p).ok();
+        std::fs::remove_file(w).ok();
+    }
+
+    #[test]
+    fn wii_rejects_truncated_and_hostile() {
+        let img = wii_image();
+        let wb = wbfs_wrap(&img);
+        let mut cases: Vec<(&str, Vec<u8>)> = vec![
+            ("iso-short", img[..0x68000].to_vec()),
+            ("iso-tiny", img[..0x70].to_vec()),
+            ("wbfs-short", wb[..wb.len() - 0x10000].to_vec()),
+            ("wbfs-tiny", wb[..0x210].to_vec()),
+        ];
+        let mut bad = img.clone();
+        put(&mut bad, 0x40000, &[0; 4]); // no partitions
+        cases.push(("nopart", bad));
+        let mut bad = img.clone();
+        put(&mut bad, 0x40000, &17u32.to_be_bytes()); // too many
+        cases.push(("manypart", bad));
+        let mut bad = img.clone();
+        put(&mut bad, 0x40020, &u32::MAX.to_be_bytes()); // partition far past the end
+        cases.push(("farpart", bad));
+        let mut bad = img.clone();
+        put(&mut bad, 0x50000 + 0x2BC, &u32::MAX.to_be_bytes()); // size is capped at 1024 clusters
+        cases.push(("bigsize", bad));
+        let mut bad = wb.clone();
+        bad[9] = 40; // absurd WBFS shift
+        cases.push(("wbfs-shift", bad));
+        let mut bad = wb.clone();
+        put(&mut bad, 4, &1u32.to_be_bytes()); // size mismatch
+        cases.push(("wbfs-size", bad));
+        let mut bad = wb.clone();
+        put(&mut bad, 0x300, &u16::MAX.to_be_bytes()); // block map points past the file
+        cases.push(("wbfs-map", bad));
+        for (n, data) in cases {
+            let p = write(n, &data);
+            assert!(ra_hash_wii(&p).is_err(), "{n}");
+            std::fs::remove_file(p).ok();
+        }
+    }
+
+    /// Golden check against a real disc. Run by hand:
+    /// `BRISK_RA_WII_FILE=/path/game.wbfs BRISK_RA_WII_HASH=<hash from dolphin-tool verify -a rchash>
+    /// cargo test -p brisk-hostd rahash -- --ignored`.
+    #[test]
+    #[ignore = "needs a real Wii disc file and its golden hash"]
+    fn wii_real_file_matches_golden() {
+        let (Ok(file), Ok(want)) = (
+            std::env::var("BRISK_RA_WII_FILE"),
+            std::env::var("BRISK_RA_WII_HASH"),
+        ) else {
+            panic!("set BRISK_RA_WII_FILE and BRISK_RA_WII_HASH");
+        };
+        assert_eq!(ra_hash_wii(Path::new(&file)).unwrap(), want);
     }
 }
