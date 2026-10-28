@@ -1543,7 +1543,16 @@ async fn guard(State(s): State<Arc<AppState>>, req: Request, next: Next) -> Resp
             hd.contains_key("x-brisk-csrf"),
         );
     let mut r = if host_ok && auth_ok {
-        next.run(req).await
+        if s.hub.is_some() && hub_has_no(req.uri().path()) {
+            (
+                StatusCode::CONFLICT,
+                [(header::CONTENT_TYPE, "application/json")],
+                r#"{"error":"pick a machine"}"#,
+            )
+                .into_response()
+        } else {
+            next.run(req).await
+        }
     } else {
         StatusCode::FORBIDDEN.into_response()
     };
@@ -1552,6 +1561,17 @@ async fn guard(State(s): State<Arc<AppState>>, req: Request, next: Next) -> Resp
         header::HeaderValue::from_static("nosniff"),
     );
     r
+}
+
+/// A hub has no Steam, library or emulators of its own; those live on the machines behind `/api/m/`.
+/// `/api/ids/remap`, prefs, notes and the rest stay the hub's.
+fn hub_has_no(path: &str) -> bool {
+    let seg = path.strip_prefix("/api/").unwrap_or("");
+    let seg = seg.split('/').next().unwrap_or("");
+    matches!(
+        seg,
+        "games" | "friends" | "launch" | "library" | "uploads" | "art" | "emulators"
+    )
 }
 
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
