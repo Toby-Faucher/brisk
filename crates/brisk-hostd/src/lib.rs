@@ -15,6 +15,7 @@ pub mod notes;
 pub mod notify;
 pub mod power;
 pub mod prefs;
+pub mod rahash;
 pub mod running;
 pub mod sessions;
 pub mod site;
