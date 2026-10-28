@@ -550,7 +550,11 @@ impl Quitter {
             eprintln!("info: game {appid} still running after closing its windows; SIGTERM");
         }
         self.signal(appid, Sig::Term).await;
-        let wait = if force || lone { BRIEF } else { self.wait };
+        let wait = if force || (lone && !emu) {
+            BRIEF
+        } else {
+            self.wait
+        };
         if self.gone_within(appid, wait).await {
             return Ok(Quit::Closed);
         }
