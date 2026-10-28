@@ -12,6 +12,7 @@
 
 use crate::game::{Caps, Game, GameId, Source};
 use crate::host::Runner;
+use crate::launchstore::{command_for, plain, read_file};
 use crate::registry;
 use crate::running::{Proc, procs};
 use serde::{Deserialize, Serialize};
@@ -247,6 +248,20 @@ pub fn launch(
     id: &GameId,
     env: &[(String, String)],
 ) -> bool {
+    launch_with(runner, proc, recs, id, env, None)
+}
+
+/// `launch` with the launch options in `launch_json` (`data_dir/launch.json`) wrapped around the
+/// emulator command. Options that are not valid at this moment are not applied (and the log says
+/// why): a game always starts.
+pub fn launch_with(
+    runner: &dyn Runner,
+    proc: &Path,
+    recs: &[Record],
+    id: &GameId,
+    env: &[(String, String)],
+    launch_json: Option<&Path>,
+) -> bool {
     let Some(r) = find(recs, id) else {
         return false;
     };
@@ -261,8 +276,37 @@ pub fn launch(
         return true;
     }
     // The path is a separate argument, never parsed by a shell.
-    let args: Vec<&str> = e.args.iter().copied().chain([file]).collect();
-    runner.spawn(e.cmd, &args, env)
+    let base: Vec<String> = std::iter::once(e.cmd)
+        .chain(e.args.iter().copied())
+        .chain([file])
+        .map(String::from)
+        .collect();
+    let cmd = match launch_json {
+        Some(p) => {
+            let (c, note) = command_for(&read_file(p), id.as_str(), &base);
+            if let Some(n) = note {
+                eprintln!("warn: {n}; starting {} without them", r.name);
+            }
+            c
+        }
+        None => plain(&base),
+    };
+    let args: Vec<&str> = cmd.args.iter().map(String::as_str).collect();
+    let all: Vec<(String, String)> = env.iter().cloned().chain(cmd.env).collect();
+    let wrapped = cmd.program != e.cmd;
+    if runner.spawn(&cmd.program, &args, &all) {
+        return true;
+    }
+    // A wrapper that is not installed must not stop the game.
+    if wrapped {
+        eprintln!(
+            "warn: could not start {} through {}; starting it plain",
+            r.name, cmd.program
+        );
+        let args: Vec<&str> = base[1..].iter().map(String::as_str).collect();
+        return runner.spawn(e.cmd, &args, env);
+    }
+    false
 }
 
 #[cfg(test)]
@@ -436,6 +480,99 @@ mod tests {
             run.log(),
             vec![format!("spawn dolphin-emu -b -e {}", f.display())]
         );
+        std::fs::remove_file(f).ok();
+    }
+
+    /// Records the whole spawn, env included.
+    #[derive(Default)]
+    struct Spawns(
+        Mutex<Vec<(String, Vec<String>, Vec<(String, String)>)>>,
+        Mutex<Vec<String>>, // programs that fail to start
+    );
+    impl Runner for Spawns {
+        fn run(&self, _: &str, _: &[&str]) -> Option<String> {
+            None
+        }
+        fn spawn(&self, p: &str, a: &[&str], e: &[(String, String)]) -> bool {
+            let a = a.iter().map(|x| x.to_string()).collect();
+            if self.1.lock().unwrap().iter().any(|x| x == p) {
+                return false;
+            }
+            self.0.lock().unwrap().push((p.into(), a, e.to_vec()));
+            true
+        }
+    }
+
+    #[test]
+    fn launch_options_wrap_the_emulator_and_invalid_ones_are_dropped() {
+        let f = iso("lo");
+        let r = rec("MKW", "dolphin", &f);
+        let none = fake_proc(&[]);
+        let d = tempfile::tempdir().unwrap();
+        let lj = d.path().join("launch.json");
+        let go = |json: Option<&str>| {
+            match json {
+                Some(j) => std::fs::write(&lj, j).unwrap(),
+                None => drop(std::fs::remove_file(&lj)),
+            }
+            let run = Spawns::default();
+            let env = [("BRISK_X".to_string(), "1".to_string())];
+            assert!(launch_with(
+                &run,
+                none.path(),
+                std::slice::from_ref(&r),
+                &r.id,
+                &env,
+                Some(&lj)
+            ));
+            let v = run.0.lock().unwrap().remove(0);
+            v
+        };
+        let file = f.to_str().unwrap().to_string();
+        let ok = r#"{"allowCustomCommands":true,"defaults":{"wrappers":["mangohud","gamemode"],
+            "env":{"DXVK_HUD":"fps"},"custom":["mytool"]}}"#;
+        let (p, a, e) = go(Some(ok));
+        assert_eq!(p, "gamemoderun");
+        assert_eq!(
+            a,
+            [
+                "mangohud",
+                "mytool",
+                "dolphin-emu",
+                "-b",
+                "-e",
+                file.as_str()
+            ]
+        );
+        assert_eq!(e.len(), 2, "caller env and option env");
+        // custom commands switched off later: no options at all, and it still starts
+        let off = ok.replace("true", "false");
+        let (p, a, e) = go(Some(&off));
+        assert_eq!(
+            (p.as_str(), a),
+            (
+                "dolphin-emu",
+                ["-b", "-e", file.as_str()].map(String::from).to_vec()
+            )
+        );
+        assert_eq!(e, [("BRISK_X".to_string(), "1".to_string())]);
+        // a wrapper that is not installed: plain launch as the second spawn
+        let run = Spawns::default();
+        run.1.lock().unwrap().push("gamemoderun".into());
+        std::fs::write(&lj, ok).unwrap();
+        assert!(launch_with(
+            &run,
+            none.path(),
+            std::slice::from_ref(&r),
+            &r.id,
+            &[],
+            Some(&lj)
+        ));
+        assert_eq!(run.0.lock().unwrap()[0].0, "dolphin-emu");
+        // no file, corrupt file: plain
+        for j in [None, Some("{bad")] {
+            assert_eq!(go(j).0, "dolphin-emu");
+        }
         std::fs::remove_file(f).ok();
     }
 

@@ -90,7 +90,14 @@ impl GameSource for EmuSource {
         id: &GameId,
         env: &[(String, String)],
     ) -> bool {
-        emu::launch(runner, proc, &emu::load(data_dir), id, env)
+        emu::launch_with(
+            runner,
+            proc,
+            &emu::load(data_dir),
+            id,
+            env,
+            Some(&data_dir.join("launch.json")),
+        )
     }
     fn install(&self, _: &dyn Runner, _: &GameId) -> Option<bool> {
         None
