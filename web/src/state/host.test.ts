@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setRoute } from './api';
 import { pollHost } from './host';
+
+setRoute(null); // a single host: machines.ts holds scoped calls until the route is known
 
 afterEach(() => {
   vi.useRealTimers();

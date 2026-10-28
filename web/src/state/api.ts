@@ -217,9 +217,15 @@ function auth(headers: Record<string, string> = {}): Record<string, string> {
 }
 
 let prefix: string | null = null;
-/** machines.ts sets this to the selected machine's id while a hub is detected (null: single-host, paths untouched). */
-export function setRoute(machineId: string | null) {
+let openGate: (() => void) | null = null;
+let gate: Promise<void> = Promise.resolve();
+/** machines.ts sets this to the selected machine's id while a hub is detected (null: single-host, paths untouched).
+ *  `known` false (hub not probed yet, or no machine chosen yet) holds machine-scoped calls until it is true, so they
+ *  never reach the hub's own hostd, which has no Steam. Open by default, so a page without machines.ts is a single host. */
+export function setRoute(machineId: string | null, known = true) {
   prefix = machineId;
+  if (known) openGate?.(), (openGate = null);
+  else if (!openGate) gate = new Promise((r) => (openGate = r));
 }
 
 /** Machine-scoped paths go through the hub's `/api/m/{id}/`; prefs, notes and machines stay on the hub itself. */
@@ -245,6 +251,7 @@ function apiError(status: number, statusText: string, body: string): ApiError {
 }
 
 async function send(path: string, init: RequestInit): Promise<Response> {
+  if (openGate && SCOPED.test(path)) await gate; // only while closed: an open gate adds no tick
   const r = await fetch(route(path), init);
   seen(r.status);
   if (!r.ok) throw apiError(r.status, r.statusText, await r.text().catch(() => ''));
