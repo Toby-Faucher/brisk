@@ -26,6 +26,10 @@ export type Game = {
   coop: boolean;
   /** Emulator games only (e.g. 'dolphin'): these have no art, so the cover is a title card with this badge. */
   emulator?: string;
+  /** Stage 1 fields (a hostd that has them): the id to use in URLs, who owns the game, and what the UI may offer. */
+  id?: string;
+  source?: 'steam' | 'emu';
+  caps?: { launchOptions?: boolean };
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
@@ -160,6 +164,28 @@ import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
 import type { Machine } from './machines';
+
+/** Launch options (docs/hosting-runbook.md, "Launch options"). Wrappers are 'mangohud', 'gamemode' or {gamescope: {args}}. */
+export type LaunchWrapper = 'mangohud' | 'gamemode' | { gamescope: { args: string[] } };
+export type LaunchOpts = { wrappers: LaunchWrapper[]; env: Record<string, string>; custom: string[] | null; extra_args: string[] };
+/** A per-game override: a missing or null field inherits the default. `custom: []` clears an inherited command. */
+export type LaunchOverride = {
+  wrappers?: LaunchWrapper[] | null;
+  env?: Record<string, string> | null;
+  custom?: string[] | null;
+  extra_args?: string[] | null;
+};
+export type LaunchDefaults = { rev: string; allowCustomCommands: boolean; options: LaunchOpts; envAllowed: string[] };
+export type GameLaunch = {
+  id: string;
+  rev: string;
+  override: LaunchOverride | null;
+  effective: LaunchOpts;
+  problems: string[];
+  allowCustomCommands: boolean;
+  /** Steam games only: the line to paste into the game's Launch Options in Steam. */
+  steamLine: string | null;
+};
 
 export class ApiError extends Error {
   constructor(
@@ -328,6 +354,14 @@ export const api = {
   emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
   putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),
   resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
+  launchDefaults: () => call<LaunchDefaults>('GET', '/api/launch/defaults'),
+  putLaunchDefaults: (b: { rev?: string; allowCustomCommands: boolean; options: LaunchOpts }) =>
+    call<LaunchDefaults>('PUT', '/api/launch/defaults', b),
+  /** `id` is the game's Stage 1 id (`steam:620`); an old hostd also takes the bare number. */
+  gameLaunch: (id: string) => call<GameLaunch>('GET', `/api/games/${encodeURIComponent(id)}/launch`),
+  putGameLaunch: (id: string, b: { rev?: string; override: LaunchOverride }) =>
+    call<GameLaunch>('PUT', `/api/games/${encodeURIComponent(id)}/launch`, b),
+  resetGameLaunch: (id: string) => call<GameLaunch>('DELETE', `/api/games/${encodeURIComponent(id)}/launch`),
   gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),
