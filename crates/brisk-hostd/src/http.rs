@@ -1,7 +1,7 @@
 use crate::auth::{Hosts, tailnet_ok};
 use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
-use crate::controls::{Controls, CtlError};
+use crate::controls::{Controls, CtlError, Kind as PadKind};
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::machines::{self, Hub};
@@ -36,7 +36,7 @@ pub struct AppState {
     pub prefs: Prefs,
     /// Your notes and tags (`data_dir/notes.json`); private text, never logged.
     pub notes: NotesStore,
-    /// Dolphin's `WiimoteNew.ini` (controller editor).
+    /// Dolphin's config directory (controller editor).
     pub controls: Controls,
     pub hosts: Hosts,
     /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
@@ -706,20 +706,23 @@ async fn game_note_put(
     }
 }
 
-/// The Dolphin entry behind `appid`, if it has a controller editor; and whether any Dolphin runs
-/// (the config file is shared, so any running Dolphin owns it).
+/// The editor needs a Dolphin entry in `emulators.json`; and whether any Dolphin runs (the config
+/// files are shared, so any running Dolphin owns them).
 #[allow(clippy::result_large_err)]
-fn controls_gate(s: &AppState, appid: u32) -> Result<bool, Response> {
+fn controls_gate(s: &AppState, kind: &str) -> Result<(PadKind, bool), Response> {
+    let Some(kind) = PadKind::parse(kind) else {
+        return Err(err(StatusCode::NOT_FOUND, "no such controller type"));
+    };
     let entries = crate::emu::load(&s.cfg.data_dir);
-    let has = |e: &crate::emu::Entry| crate::emu::spec(&e.emulator).is_some_and(|c| c.controls);
-    if !crate::emu::is_emu_id(appid) || !entries.iter().any(|e| e.id() == appid && has(e)) {
-        return Err(err(StatusCode::NOT_FOUND, "no controls for this game"));
+    if !crate::emu::has_dolphin(&entries) {
+        return Err(err(StatusCode::NOT_FOUND, "no controls on this machine"));
     }
     let ps = crate::running::procs(&s.cfg.proc_dir);
-    Ok(entries
+    let running = entries
         .iter()
-        .filter(|e| has(e))
-        .any(|e| !crate::emu::pids(&ps, e).is_empty()))
+        .filter(|e| e.emulator == "dolphin")
+        .any(|e| !crate::emu::pids(&ps, e).is_empty());
+    Ok((kind, running))
 }
 
 fn controls_reply(r: Result<crate::controls::View, CtlError>) -> Response {
@@ -735,31 +738,31 @@ fn controls_reply(r: Result<crate::controls::View, CtlError>) -> Response {
     }
 }
 
-async fn controls_get(State(s): State<Arc<AppState>>, UrlPath(appid): UrlPath<u32>) -> Response {
-    match controls_gate(&s, appid) {
-        Ok(run) => controls_reply(s.controls.get(run)),
+async fn controls_get(State(s): State<Arc<AppState>>, UrlPath(kind): UrlPath<String>) -> Response {
+    match controls_gate(&s, &kind) {
+        Ok((k, run)) => controls_reply(s.controls.get(k, run)),
         Err(r) => r,
     }
 }
 
 async fn controls_put(
     State(s): State<Arc<AppState>>,
-    UrlPath(appid): UrlPath<u32>,
+    UrlPath(kind): UrlPath<String>,
     b: axum::body::Bytes,
 ) -> Response {
-    match controls_gate(&s, appid) {
-        Ok(run) => controls_reply(s.controls.put(&b, run)),
+    match controls_gate(&s, &kind) {
+        Ok((k, run)) => controls_reply(s.controls.put(k, &b, run)),
         Err(r) => r,
     }
 }
 
 async fn controls_reset(
     State(s): State<Arc<AppState>>,
-    UrlPath(appid): UrlPath<u32>,
+    UrlPath(kind): UrlPath<String>,
     _b: axum::body::Bytes,
 ) -> Response {
-    match controls_gate(&s, appid) {
-        Ok(run) => controls_reply(s.controls.reset(run)),
+    match controls_gate(&s, &kind) {
+        Ok((k, run)) => controls_reply(s.controls.reset(k, run)),
         Err(r) => r,
     }
 }
@@ -775,13 +778,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{appid}/local", get(game_local))
         .route("/games/{appid}/screenshots/{name}", get(game_screenshot))
         .route(
-            "/games/{appid}/controls",
+            "/emulators/dolphin/controls/{kind}",
             get(controls_get)
                 .put(controls_put)
                 .layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route(
-            "/games/{appid}/controls/reset",
+            "/emulators/dolphin/controls/{kind}/reset",
             post(controls_reset).layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route("/friends", get(friends))

@@ -42,8 +42,6 @@ pub struct Spec {
     pub cmd: &'static str,
     args: &'static [&'static str],
     pub class: &'static str,
-    /// Has a controller editor (`controls.rs`).
-    pub controls: bool,
 }
 
 pub fn spec(emulator: &str) -> Option<Spec> {
@@ -52,7 +50,6 @@ pub fn spec(emulator: &str) -> Option<Spec> {
         cmd: "dolphin-emu",
         args: &["-b", "-e"],
         class: "dolphin-emu",
-        controls: true,
     })
 }
 
@@ -65,6 +62,11 @@ pub(crate) fn pids(ps: &[Proc], e: &Entry) -> HashSet<u32> {
         .filter(|p| p.comm == s.cmd && p.argv.iter().any(|a| a == file))
         .map(|p| p.pid)
         .collect()
+}
+
+/// Does the machine have a Dolphin entry (so the controller editor applies)?
+pub fn has_dolphin(entries: &[Entry]) -> bool {
+    entries.iter().any(|e| e.emulator == "dolphin")
 }
 
 pub fn is_emu_id(id: u32) -> bool {
