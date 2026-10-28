@@ -119,8 +119,12 @@ async fn main() -> std::process::ExitCode {
     state.uploads.clean_old();
     if state.cfg.scan_on_start {
         let cfg = state.cfg.clone();
+        let art = state.art.clone();
         tokio::task::spawn_blocking(move || match brisk_hostd::ingest::scan_library(&cfg) {
-            Ok(r) => eprintln!("scan: {} new games", r.merged.added.len()),
+            Ok(r) => {
+                eprintln!("scan: {} new games", r.merged.added.len());
+                art.trigger_new(&cfg, &r.merged.added);
+            }
             Err(e) => eprintln!("warning: startup scan: {e}"),
         });
     }

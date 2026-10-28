@@ -455,7 +455,7 @@ pub fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
 }
 
 /// Atomic private write: temp file (0600, created fresh) then rename.
-fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let dir = path.parent().ok_or(Error::BadInput("path"))?;
     std::fs::DirBuilder::new()
@@ -501,7 +501,7 @@ fn image_ext(b: &[u8]) -> Option<&'static str> {
     }
 }
 
-const EXTS: [&str; 3] = ["png", "jpg", "webp"];
+pub(crate) const EXTS: [&str; 3] = ["png", "jpg", "webp"];
 
 /// Downloads `url` once to `dest` + the extension its bytes call for (`dest` is a path under
 /// data_dir/art without extension, e.g. `art_dir(..)/grid`). If any such file exists it is
