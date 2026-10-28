@@ -24,10 +24,10 @@ const g = (appid: number, name: string, running: boolean): Game => ({
 });
 
 function rig(answers: (QuitState | Error)[]) {
-  const calls: [number, boolean][] = [];
+  const calls: [string, boolean][] = [];
   const pending: (() => void)[] = [];
-  const quit = vi.fn((appid: number, force: boolean) => {
-    calls.push([appid, force]);
+  const quit = vi.fn((key: string, force: boolean) => {
+    calls.push([key, force]);
     const a = answers.shift()!;
     return new Promise<{ state: QuitState }>((ok, no) => pending.push(() => (a instanceof Error ? no(a) : ok({ state: a }))));
   });
@@ -55,7 +55,7 @@ describe('quit', () => {
     r.flow.request(PG);
     const done = r.flow.confirm();
     expect(get(r.flow.ask)).toBeNull(); // the dialog closes at once
-    expect(r.calls).toEqual([[2076580, false]]);
+    expect(r.calls).toEqual([['2076580', false]]);
     await r.answer();
     await done;
   });
@@ -64,12 +64,12 @@ describe('quit', () => {
     const r = rig(['closed']);
     r.flow.request(PG);
     const done = r.flow.confirm();
-    expect(get(r.flow.busy).has(PG.appid)).toBe(true);
+    expect(get(r.flow.busy).has('2076580')).toBe(true);
     r.flow.request(PG); // a second click while busy opens no second confirm
     expect(get(r.flow.ask)).toBeNull();
     await r.answer();
     await done;
-    expect(get(r.flow.busy).has(PG.appid)).toBe(false);
+    expect(get(r.flow.busy).has('2076580')).toBe(false);
     expect(r.calls).toHaveLength(1);
   });
 
@@ -101,8 +101,8 @@ describe('quit', () => {
     await r.answer();
     await again;
     expect(r.calls).toEqual([
-      [2076580, false],
-      [2076580, true],
+      ['2076580', false],
+      ['2076580', true],
     ]);
     expect(r.toast).toHaveBeenLastCalledWith('Closed Pepper Grinder');
   });

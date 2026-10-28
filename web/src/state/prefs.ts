@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 import { api, type Codec, type Preset, type StreamInfo, type StreamReq } from './api';
 import { settings } from './settings';
+import { gameKey, pick, without, type GameRef } from './gameId';
 import { hevcSupported } from '../lib/video';
 import { readyFirst } from '../modules/machines/machines';
 
@@ -52,19 +53,20 @@ export function watchPrefs(win: EventTarget = window): () => void {
   return () => win.removeEventListener('focus', onFocus);
 }
 
-/** The one place that decides how a game starts: its saved quality, else the default preset on h264. No appid = the Desktop: defaults, no lookup. */
-export function prefsFor(appid: number | undefined, map: PrefsMap, defaultPreset: Preset): StreamReq {
-  const p = appid === undefined ? undefined : map[appid];
-  if (appid === undefined) return { preset: defaultPreset, codec: 'h264' };
-  if (!p) return { preset: defaultPreset, codec: 'h264', appid };
-  const req: StreamReq = { preset: p.preset, codec: p.codec, appid };
+/** The one place that decides how a game starts: its saved quality, else the default preset on h264. No game = the Desktop: defaults, no lookup. */
+export function prefsFor(game: GameRef | string | undefined, map: PrefsMap, defaultPreset: Preset): StreamReq {
+  if (game === undefined) return { preset: defaultPreset, codec: 'h264' };
+  const key = typeof game === 'string' ? game : gameKey(game);
+  const p = pick(map, game);
+  if (!p) return { preset: defaultPreset, codec: 'h264', game: key };
+  const req: StreamReq = { preset: p.preset, codec: p.codec, game: key };
   if (p.preset === 'custom') for (const k of ['width', 'height', 'fps', 'bitrateKbps'] as const) if (p[k] !== undefined) req[k] = p[k];
   return req;
 }
 
 /** Start a stream (Library click, Resume card, Stream Start). Deps are injectable for tests. */
 export async function startGame(
-  appid: number | undefined,
+  game: GameRef | string | undefined,
   notify: (text: string) => void,
   d: { startStream: (r: StreamReq) => Promise<StreamInfo>; defaultPreset: () => Preset; hevcOk: () => Promise<boolean> } = {
     startStream: api.startStream,
@@ -73,7 +75,7 @@ export async function startGame(
   },
 ) {
   await readyFirst(); // hub mode: wakes the selected machine first (the overlay shows it)
-  const req = prefsFor(appid, get(prefs), d.defaultPreset());
+  const req = prefsFor(game, get(prefs), d.defaultPreset());
   // Only this start falls back; the saved entry stays for a browser that can decode it.
   if (req.codec === 'hevc' && !(await d.hevcOk())) {
     req.codec = 'h264';
@@ -103,13 +105,13 @@ export const SAVE_DELAY_MS = 1000;
 
 /** Debounced, last-wins save for one game at a time; a change for another game saves the pending one first. */
 export function prefSaver(d: {
-  put: (appid: number, b: PrefsBody) => Promise<GamePrefs>;
-  onSaved: (appid: number, p: GamePrefs) => void;
+  put: (key: string, b: PrefsBody) => Promise<GamePrefs>;
+  onSaved: (key: string, p: GamePrefs) => void;
   delay?: number;
 }) {
-  let pending: { appid: number; body: PrefsBody } | null = null;
+  let pending: { key: string; body: PrefsBody } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const inflight = new Map<number, Promise<void>>();
+  const inflight = new Map<string, Promise<void>>();
   const forgotten = new Set<Promise<void>>(); // PUTs whose game was forgotten meanwhile: their answer is dropped
   const flush = () => {
     clearTimeout(timer);
@@ -118,53 +120,50 @@ export function prefSaver(d: {
     if (!p) return;
     // quiet on failure: the next change tries again
     const job: Promise<void> = d
-      .put(p.appid, p.body)
+      .put(p.key, p.body)
       .then(
         (r) => {
-          if (!forgotten.delete(job)) d.onSaved(p.appid, r);
+          if (!forgotten.delete(job)) d.onSaved(p.key, r);
         },
         () => void forgotten.delete(job),
       )
-      .finally(() => inflight.get(p.appid) === job && inflight.delete(p.appid));
-    inflight.set(p.appid, job);
+      .finally(() => inflight.get(p.key) === job && inflight.delete(p.key));
+    inflight.set(p.key, job);
   };
   return {
-    save(appid: number, body: PrefsBody) {
-      if (pending && pending.appid !== appid) flush();
-      pending = { appid, body };
+    save(key: string, body: PrefsBody) {
+      if (pending && pending.key !== key) flush();
+      pending = { key, body };
       clearTimeout(timer);
       timer = setTimeout(flush, d.delay ?? SAVE_DELAY_MS);
     },
     flush,
-    /** `appid` was forgotten: drop its pending save and ignore the answer of one in flight. */
-    cancel(appid: number) {
-      const j = inflight.get(appid);
+    /** `key` was forgotten: drop its pending save and ignore the answer of one in flight. */
+    cancel(key: string) {
+      const j = inflight.get(key);
       if (j) forgotten.add(j);
-      if (pending?.appid !== appid) return;
+      if (pending?.key !== key) return;
       clearTimeout(timer);
       pending = null;
     },
-    /** Resolves once the save of `appid` that is in flight (if any) is over. */
-    settled: (appid: number) => inflight.get(appid) ?? Promise.resolve(),
+    /** Resolves once the save of `key` that is in flight (if any) is over. */
+    settled: (key: string) => inflight.get(key) ?? Promise.resolve(),
   };
 }
 
 /** The saver the Stream page uses: writes through to the store once hostd has it. */
-export const saver = prefSaver({ put: api.putPrefs, onSaved: (id, p) => prefs.update((m) => ({ ...m, [id]: p })) });
+export const saver = prefSaver({ put: api.putPrefs, onSaved: (id, p) => prefs.update((m) => ({ ...without(m, id), [id]: p })) });
 
 export async function forgetPrefs(
-  appid: number,
-  d: { del: (id: number) => Promise<void>; cancel: (id: number) => void; settled: (id: number) => Promise<void> } = {
+  key: string,
+  d: { del: (id: string) => Promise<void>; cancel: (id: string) => void; settled: (id: string) => Promise<void> } = {
     del: api.deletePrefs,
     cancel: saver.cancel,
     settled: saver.settled,
   },
 ) {
-  d.cancel(appid);
-  await d.settled(appid); // a PUT still on its way must land before the DELETE, or it would bring the entry back
-  await d.del(appid);
-  prefs.update((m) => {
-    const { [appid]: _, ...rest } = m;
-    return rest;
-  });
+  d.cancel(key);
+  await d.settled(key); // a PUT still on its way must land before the DELETE, or it would bring the entry back
+  await d.del(key);
+  prefs.update((m) => without(m, key));
 }

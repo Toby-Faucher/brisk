@@ -11,8 +11,6 @@ import {
   smartTags,
   fmtFortnight,
   installLabel,
-  isEmulatorGame,
-  canRemove,
   playLabel,
   savesLine,
   searchGames,
@@ -270,24 +268,5 @@ describe('library', () => {
     const many = Array.from({ length: 50 }, (_, i) => g(i + 1, `g${i}`, { playtimeMin: i % 10 }));
     expect(backlog(many)).toHaveLength(40);
     expect(backlog(many)[0].playtimeMin).toBe(0);
-  });
-});
-
-describe('isEmulatorGame', () => {
-  it('is true from 0xE0000000 up and false for Steam appids', () => {
-    expect(isEmulatorGame({ appid: 0xe0000000 })).toBe(true);
-    expect(isEmulatorGame({ appid: 0xe0000001 })).toBe(true);
-    expect(isEmulatorGame({ appid: 0xdfffffff })).toBe(false);
-    expect(isEmulatorGame({ appid: 730 })).toBe(false);
-  });
-});
-
-describe('canRemove', () => {
-  it('is for emulator games on a hostd that has string ids', () => {
-    expect(canRemove({ id: 'emu:dolphin:RMCE01', source: 'emu', emulator: 'dolphin' })).toBe(true);
-    expect(canRemove({ id: 'steam:620', source: 'steam' })).toBe(false);
-    expect(canRemove({ id: 'emu:dolphin:RMCE01', emulator: 'dolphin' })).toBe(true);
-    expect(canRemove({ emulator: 'dolphin' })).toBe(false);
-    expect(canRemove({})).toBe(false);
   });
 });

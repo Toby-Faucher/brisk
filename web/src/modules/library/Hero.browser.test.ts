@@ -56,7 +56,7 @@ describe('Hero quit spinner', () => {
     });
     const btn = container.querySelector('button[aria-label="Quit Portal 2"]') as HTMLElement;
     const before = btn.getBoundingClientRect();
-    quitting.set(new Set([620]));
+    quitting.set(new Set(['620']));
     await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
     expect(btn.getAttribute('aria-busy')).toBe('true');
     expect(btn.getAttribute('aria-label')).toBe('Quitting Portal 2');

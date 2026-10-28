@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { api, ApiError } from './api';
+import { pick, without, type GameRef } from './gameId';
 
 /** The colors hostd accepts (notes.rs COLORS). */
 export type TagColor = 'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink';
@@ -7,7 +8,7 @@ export type TagColor = 'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'teal' |
 export type Tag = { name: string; color: TagColor; symbol: string; note: string; pinned?: boolean };
 /** One game's note and tag ids. Text only: never HTML. */
 export type GameNote = { note: string; tags: string[] };
-/** GET /api/notes: tags by id, games by appid. */
+/** GET /api/notes: tags by id, games by id (`steam:620`); a hub that is still old keys them by number. Read with `pick`. */
 export type Notes = { tags: Record<string, Tag>; games: Record<string, GameNote> };
 
 /** Symbol and border colors, 6:1 or more on the dark panels (tokens.css; the app has no light theme). */
@@ -52,30 +53,30 @@ export function newTagId(): string {
 }
 
 /** The game's tags in their order, skipping ids that are not (or no longer) tags. */
-export function gameTags(map: Notes, appid: number): (Tag & { id: string })[] {
-  return (map.games[appid]?.tags ?? []).flatMap((id) => (map.tags[id] ? [{ ...map.tags[id], id }] : []));
+export function gameTags(map: Notes, game: GameRef | string): (Tag & { id: string })[] {
+  return (pick(map.games, game)?.tags ?? []).flatMap((id) => (map.tags[id] ? [{ ...map.tags[id], id }] : []));
 }
 
 /** How many games carry tag `id`. */
 export const tagUses = (map: Notes, id: string) => Object.values(map.games).filter((g) => g.tags.includes(id)).length;
 
-/** `map` with game `appid` set to `g`, or removed when `g` is empty (as hostd does). */
-export function withGame(map: Notes, appid: number, g: GameNote): Notes {
-  const { [appid]: _, ...games } = map.games;
-  return { ...map, games: g.note.trim() || g.tags.length ? { ...games, [appid]: g } : games };
+/** `map` with the game at `key` set to `g`, or removed when `g` is empty (as hostd does). Other forms of its key go. */
+export function withGame(map: Notes, key: string, g: GameNote): Notes {
+  const games = without(map.games, key);
+  return { ...map, games: g.note.trim() || g.tags.length ? { ...games, [key]: g } : games };
 }
 
 /** `map` without tag `id`, taken off every game too (as hostd does). */
 export function withoutTag(map: Notes, id: string): Notes {
   const { [id]: _, ...tags } = map.tags;
   let n: Notes = { ...map, tags };
-  for (const [appid, g] of Object.entries(map.games))
-    if (g.tags.includes(id)) n = withGame(n, Number(appid), { ...g, tags: g.tags.filter((t) => t !== id) });
+  for (const [key, g] of Object.entries(map.games))
+    if (g.tags.includes(id)) n = withGame(n, key, { ...g, tags: g.tags.filter((t) => t !== id) });
   return n;
 }
 
 // Games with a change not yet confirmed by hostd: a refresh keeps the local version of those.
-const unsaved = new Map<number, GameNote>();
+const unsaved = new Map<string, GameNote>();
 
 let fetchedAt = -Infinity;
 let inflight: Promise<void> | null = null;
@@ -118,34 +119,34 @@ export type SaveState = { st: 'saving' | 'saved' | 'failed' | 'refused'; msg?: s
  * the latest change. A failed PUT keeps its change for the next `save` or `retry` (on focus); a refused one is not
  * retried. Every game with a change is kept; PUTs go one at a time, in order.
  */
-export function noteSaver(d: { put?: (appid: number, b: GameNote) => Promise<GameNote>; delay?: number } = {}) {
-  const put = d.put ?? ((a: number, b: GameNote) => api.putGameNote(a, b));
-  const status = writable<Record<number, SaveState>>({});
-  const set = (appid: number, s: SaveState | null) =>
+export function noteSaver(d: { put?: (key: string, b: GameNote) => Promise<GameNote>; delay?: number } = {}) {
+  const put = d.put ?? ((a: string, b: GameNote) => api.putGameNote(a, b));
+  const status = writable<Record<string, SaveState>>({});
+  const set = (key: string, s: SaveState | null) =>
     status.update((m) => {
-      const { [appid]: _, ...rest } = m;
-      return s ? { ...rest, [appid]: s } : rest;
+      const { [key]: _, ...rest } = m;
+      return s ? { ...rest, [key]: s } : rest;
     });
-  const pending = new Map<number, GameNote>();
+  const pending = new Map<string, GameNote>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let chain: Promise<void> = Promise.resolve();
 
-  const send = (appid: number, body: GameNote) =>
-    put(appid, body).then(
+  const send = (key: string, body: GameNote) =>
+    put(key, body).then(
       (r) => {
-        if (unsaved.get(appid) !== body) return; // a newer change exists; its answer reconciles
-        unsaved.delete(appid);
-        notes.update((n) => withGame(n, appid, r));
-        set(appid, { st: 'saved' });
+        if (unsaved.get(key) !== body) return; // a newer change exists; its answer reconciles
+        unsaved.delete(key);
+        notes.update((n) => withGame(n, key, r));
+        set(key, { st: 'saved' });
       },
       (e) => {
-        if (unsaved.get(appid) !== body) return;
+        if (unsaved.get(key) !== body) return;
         if (e instanceof ApiError && [400, 409, 413].includes(e.status)) {
-          unsaved.delete(appid); // a refresh must not overlay text hostd rejected (the panel keeps its draft)
-          return set(appid, { st: 'refused', msg: e.message });
+          unsaved.delete(key); // a refresh must not overlay text hostd rejected (the panel keeps its draft)
+          return set(key, { st: 'refused', msg: e.message });
         }
-        pending.set(appid, body);
-        set(appid, { st: 'failed' });
+        pending.set(key, body);
+        set(key, { st: 'failed' });
       },
     );
 
@@ -154,20 +155,20 @@ export function noteSaver(d: { put?: (appid: number, b: GameNote) => Promise<Gam
     if (!pending.size) return chain;
     const batch = [...pending];
     pending.clear();
-    for (const [appid] of batch) set(appid, { st: 'saving' });
+    for (const [key] of batch) set(key, { st: 'saving' });
     chain = chain.then(async () => {
-      for (const [appid, body] of batch) await send(appid, body);
+      for (const [key, body] of batch) await send(key, body);
     });
     return chain;
   };
 
   return {
     status,
-    save(appid: number, body: GameNote) {
-      pending.set(appid, body);
-      unsaved.set(appid, body);
-      notes.update((n) => withGame(n, appid, body));
-      set(appid, null);
+    save(key: string, body: GameNote) {
+      pending.set(key, body);
+      unsaved.set(key, body);
+      notes.update((n) => withGame(n, key, body));
+      set(key, null);
       clearTimeout(timer);
       timer = setTimeout(flush, d.delay ?? NOTE_SAVE_MS);
     },

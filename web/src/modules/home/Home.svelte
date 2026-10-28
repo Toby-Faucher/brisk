@@ -5,6 +5,7 @@
   import { toast } from '../../shell/Toasts.svelte';
   import { api } from '../../state/api';
   import { watchGames } from '../../state/games';
+  import { watchRemap } from '../../state/remap';
   import { notes, notesLoaded, refreshNotes, watchNotes } from '../../state/notes';
   import { homeOrder, refreshPrefs } from '../../state/prefs';
   import { ACCENT_HEX, settings } from '../../state/settings';
@@ -53,7 +54,8 @@
     // enter() is idempotent: it tags what is on screen and not yet tagged, so widgets later than the cap rise too
     void Promise.all([w, n]).then(() => void (ready && tick().then(enter)));
     const offGames = watchGames();
-    return () => (clearTimeout(cap), off(), offGames());
+    const offRemap = watchRemap();
+    return () => (clearTimeout(cap), off(), offGames(), offRemap());
   });
 
   const drag = reorder({

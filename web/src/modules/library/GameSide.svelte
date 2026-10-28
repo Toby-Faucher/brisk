@@ -8,7 +8,8 @@
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { hue } from './Cover.svelte';
-  import { badgeLabel, canRemove, installLabel, playLabel, smartTags } from './library';
+  import { gameCaps, gameKey } from '../../state/gameId';
+  import { badgeLabel, installLabel, playLabel, smartTags } from './library';
   import RemoveGame from './RemoveGame.svelte';
   import GameNotes from './GameNotes.svelte';
   import TagChip from './TagChip.svelte';
@@ -19,7 +20,7 @@
   let logoLoaded = $state('');
   const logoOk = $derived(!!game.logo && logoLoaded === game.logo);
   const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
-  const q = $derived($quitting.has(game.appid));
+  const q = $derived($quitting.has(gameKey(game)));
   const facts = $derived(info && info !== 'none' ? info : null);
 </script>
 
@@ -32,7 +33,7 @@
 
 {#if game.installed && game.update}<p class="upd" role="note">Steam still has to update this game. Starting it now may wait for the download.</p>{/if}
 <div class="acts">
-  {#if game.installed}
+  {#if game.installed || !gameCaps(game).install}
     <button class="btn" aria-disabled={busy} onclick={() => onplay(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
   {:else}
     <button class="btn" aria-disabled={busy} onclick={() => oninstall(game)}><Icon name="dl" size={14} /> {busy ? 'Asking Steam…' : installLabel(game)}</button>
@@ -40,7 +41,7 @@
   {#if game.running}
     <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
   {/if}
-  {#if canRemove(game)}<RemoveGame {game} onremoved={() => onremoved?.()} />{/if}
+  {#if !gameCaps(game).install}<RemoveGame {game} onremoved={() => onremoved?.()} />{/if}
   <Dialog.Close class="btn ghost close">Close</Dialog.Close>
 </div>
 
@@ -66,7 +67,7 @@
 {/if}
 
 <!-- your note and tags (keyed: a fresh draft per game) -->
-{#key game.appid}<GameNotes appid={game.appid} name={game.name} />{/key}
+{#key gameKey(game)}<GameNotes {game} />{/key}
 {#if smartTags(game).length}
   <section class="sec" aria-label="Automatic tags">
     <h3>Automatic tags</h3>

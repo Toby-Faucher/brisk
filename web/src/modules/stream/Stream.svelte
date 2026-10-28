@@ -6,6 +6,7 @@
   import { host } from '../../state/host';
   import { ACCENT_HEX, settings } from '../../state/settings';
   import { games, watchGames } from '../../state/games';
+  import { findGame, pick, rowKey } from '../../state/gameId';
   import { forgetPrefs, prefs, saver, savedBody, startGame, watchPrefs } from '../../state/prefs';
   import { onCommand } from '../../state/commands';
   import Smoke from '../../ui/Smoke.svelte';
@@ -67,7 +68,7 @@
   let statsOn = $state(false);
   let preset = $state<StreamInfo['preset']>(null);
   let codec = $state<StreamInfo['codec']>(null);
-  let appid = $state<number | null>(null); // the live game, null for the Desktop
+  let appid = $state<string | null>(null); // the live game, null for the Desktop
   let captured = $state(false);
   let starting = $state(false);
   let hold = $state<Hold>({ progress: 0, fired: false });
@@ -87,7 +88,7 @@
     }
     if (!info) return; // left the page while waiting
     if (info.state !== 'live') return void (page = 'idle');
-    appid = info.appid;
+    appid = rowKey(info);
     preset = info.preset;
     codec = info.codec;
     page = 'session';
@@ -99,7 +100,7 @@
     try {
       const info = await startGame(undefined, toast); // the Desktop: no saved quality
       if (destroyed) return; // left the page during the POST: the session is closed anyway
-      appid = info.appid;
+      appid = rowKey(info);
       preset = info.preset;
       codec = info.codec;
       page = 'session';
@@ -121,10 +122,10 @@
     if (appid !== null && get(phase) !== 'failed') saver.save(appid, savedBody(r, liveCodec));
   }
 
-  const gameName = $derived($games?.games.find((g) => g.appid === appid)?.name ?? 'this game');
-  const savedFor = $derived(appid !== null && $prefs[appid] ? gameName : null);
+  const gameName = $derived(findGame($games?.games ?? [], appid)?.name ?? 'this game');
+  const savedFor = $derived(appid !== null && pick($prefs, findGame($games?.games ?? [], appid) ?? appid) ? gameName : null);
 
-  const gameOrNull = () => (appid === null ? null : ($games?.games.find((g) => g.appid === appid)?.name ?? `app-${appid}`));
+  const gameOrNull = () => (appid === null ? null : (findGame($games?.games ?? [], appid)?.name ?? `app-${appid}`));
 
   async function shot() {
     const c = $canvasEl;

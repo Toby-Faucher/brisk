@@ -1,6 +1,7 @@
 import type { Game, GameLocal } from '../../state/api';
 import { fmtAgo, pickResume } from '../home/home';
 import type { Notes, TagColor } from '../../state/notes';
+import { pick } from '../../state/gameId';
 
 export type Filter = 'all' | 'installed' | 'not-installed' | 'recent';
 
@@ -48,7 +49,7 @@ export function filterByTag(games: Game[], notes: Notes, tagId: string | null): 
   const smart = SMART_TAGS.find((t) => t.id === tagId);
   if (smart) return games.filter(smart.test);
   if (!notes.tags[tagId]) return [];
-  return games.filter((g) => notes.games[g.appid]?.tags.includes(tagId));
+  return games.filter((g) => pick(notes.games, g)?.tags.includes(tagId));
 }
 
 /** 'default' keeps the incoming order (search relevance, then most played); the others are stable sorts of a copy. */
@@ -123,11 +124,6 @@ export function savesLine(s: GameLocal['saves'], now = Date.now()): string | nul
 }
 export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
 /** A game still running on the host is resumed (streamed as is), not launched again. */
-/** Emulator games get ids from 0xE0000000 up (hostd keeps them away from Steam appids). */
-export const isEmulatorGame = (g: Pick<Game, 'appid'>) => g.appid >= 0xe0000000;
-
-/** Remove from library applies to emulator games on a hostd with the Stage 1 ids (an older one has no remove route). */
-export const canRemove = (g: Pick<Game, 'id' | 'source' | 'emulator'>) => !!g.id && (g.source ? g.source === 'emu' : !!g.emulator);
 
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
 export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));

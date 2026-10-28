@@ -3,6 +3,7 @@
   // delete-file option. Notes, tags and playtime stay too, and come back if the game is added again.
   import { Dialog } from 'bits-ui';
   import { api, type Game } from '../../state/api';
+  import { gameKey } from '../../state/gameId';
   import { refreshGames } from '../../state/games';
   import { toast } from '../../shell/Toasts.svelte';
 
@@ -12,11 +13,11 @@
   let failed = $state('');
 
   async function remove() {
-    if (busy || !game.id) return;
+    if (busy) return;
     busy = true;
     failed = '';
     try {
-      await api.removeGame(game.id);
+      await api.removeGame(gameKey(game));
     } catch (e) {
       failed = `Could not remove it: ${(e as Error).message}`;
       busy = false;
