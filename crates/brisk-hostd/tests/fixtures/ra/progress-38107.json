@@ -1,0 +1,5 @@
+{"ID":38107,"Title":"Mario Kart Wii","ConsoleID":19,"ForumTopicID":1,"Flags":null,"ImageIcon":"/Images/1.png","Publisher":"","Developer":"","Genre":"","Released":"2008-04-10 00:00:00","ConsoleName":"Wii","ParentGameID":null,"NumDistinctPlayers":10,"NumAchievements":2,
+ "Achievements":{
+  "22":{"ID":22,"NumAwarded":3,"NumAwardedHardcore":2,"Title":"Second","Description":"Do the second thing","Points":5,"TrueRatio":6,"Author":"x","DateModified":"2023-08-08 00:36:59","DateCreated":"2012-11-02 00:03:12","BadgeName":"250337","DisplayOrder":2,"MemAddr":"abc","type":"progression"},
+  "21":{"ID":21,"NumAwarded":9,"NumAwardedHardcore":4,"Title":"First","Description":"Do the first thing","Points":3,"TrueRatio":3,"Author":"x","DateModified":"2023-08-08 00:36:59","DateCreated":"2012-11-02 00:03:12","BadgeName":"250336","DisplayOrder":1,"MemAddr":"abc","type":"progression","DateEarned":"2026-03-12 17:47:29","DateEarnedHardcore":"2026-03-12 17:47:29"}},
+ "NumAwardedToUser":1,"NumAwardedToUserHardcore":1,"UserCompletion":"50.00%","UserCompletionHardcore":"50.00%"}

@@ -20,6 +20,7 @@ pub mod power;
 pub mod prefs;
 pub mod registry;
 pub mod rahash;
+pub mod retroachievements;
 pub mod running;
 pub mod sessions;
 pub mod site;
