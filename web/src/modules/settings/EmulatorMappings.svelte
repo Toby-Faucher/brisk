@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Emulator mappings (Settings, Controller tab): what the pad buttons do in Dolphin. Two ways, one mapping: click a
+  // Emulator mappings (Settings > Emulators > Dolphin > Controllers): what the pad buttons do in Dolphin. Two ways, one mapping: click a
   // button on the pad drawing and pick its game function, or press "Change" on a game control and press a pad button.
   // Spec: docs/plans/2026-10-28-emulator-controls-v2.md, section 1.
   import { onMount, tick } from 'svelte';
@@ -16,7 +16,7 @@
   import PadDiagram from './PadDiagram.svelte';
   import { PAD_LABEL, type PadName } from './pad.svg';
 
-  /** Changes each time the page is opened at #controller/dolphin: scroll here and focus the heading. */
+  /** Changes each time the page is opened at #emulators/dolphin: scroll here and focus the heading. */
   let { focusKey = 0 }: { focusKey?: number } = $props();
 
   const TYPES: ControllerType[] = ['classic', 'gamecube'];
@@ -364,10 +364,18 @@
       {/if}
     </Card>
   </section>
+{:else}
+  <section class="em" aria-labelledby="em-h">
+    <Card cols={2} class="emcard">
+      <h4 id="em-h">Emulator mappings</h4>
+      <p class="none">No Dolphin was found on this machine, so there is nothing to map yet. Install Dolphin on the host and this page fills in.</p>
+    </Card>
+  </section>
 {/if}
 
 <style>
   .em { margin-top: 14px; }
+  .none { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
   .em :global(.emcard) { max-width: 1000px; }
   .em :global(.emcard:hover) { transform: none; }
   h5 { margin: 0; font-size: 15px; font-weight: 600; }

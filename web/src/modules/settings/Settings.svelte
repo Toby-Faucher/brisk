@@ -12,9 +12,9 @@
   import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
-  import EmulatorMappings from './EmulatorMappings.svelte';
+  import Emulators from './Emulators.svelte';
   import NotesBackup from './NotesBackup.svelte';
-  import { TABS, TAB_KEY, hashFor, initialTab, parseHash, subOf, type Tab } from './tabs';
+  import { TABS, TAB_KEY, emulatorHash, emulatorRoute, hashFor, initialTab, parseHash, redirectOf, subOf, type Tab } from './tabs';
 
   const PRESETS: Exclude<Preset, 'custom'>[] = ['fast', 'balanced', 'crisp'];
   const set = (p: Partial<Settings>) => settings.update((s) => ({ ...s, ...p }));
@@ -36,7 +36,7 @@
       () => toast('Could not reset the Home layout', { error: true }),
     );
 
-  const LABEL: Record<Tab, string> = { general: 'General', streaming: 'Streaming', controller: 'Controller', about: 'About' };
+  const LABEL: Record<Tab, string> = { general: 'General', streaming: 'Streaming', controller: 'Controller', emulators: 'Emulators', about: 'About' };
   const SHORTCUTS = [['Ctrl+K', 'Command menu'], ['/', 'Search'], ['g h', 'Go to Home'], ['g l', 'Go to Library'], ['g s', 'Go to Stream'], ['Hold Esc', 'Release the keyboard on the stream'], ['Ctrl+Alt+S', 'Screenshot (on the stream)'], ['Ctrl+Alt+R', 'Save replay (on the stream)']];
   const DOCS = ['docs/ui-notes.md', 'docs/ui-design.md', 'docs/controller-notes.md'];
   const commit = typeof __BRISK_COMMIT__ === 'string' ? __BRISK_COMMIT__ : 'unknown';
@@ -47,7 +47,19 @@
   let ind = $state({ x: 0, w: 0 });
   let live = $state(false);
   let quality: HTMLElement | undefined = $state();
-  let dolphinKey = $state(0); // bumped by every #controller/dolphin visit: the card scrolls itself into view
+  let route = $state(emulatorRoute(''));
+  let emuKey = $state(0); // bumped by every deep link to an emulator: its card scrolls itself into view
+  // Reads the hash: old links are rewritten first, then the Emulators route and the focus key follow it.
+  function sync() {
+    const r = redirectOf(location.hash);
+    if (r) history.replaceState(history.state, '', r);
+    route = emulatorRoute(location.hash);
+    if (parseHash(location.hash) === 'emulators' && subOf(location.hash)) emuKey++;
+  }
+  function pick(emu: string, section: string) {
+    route = { emu, section };
+    history.replaceState(history.state, '', emulatorHash(emu, section));
+  }
   function show(t: Tab) {
     tab = t;
     live = true;
@@ -62,12 +74,12 @@
   onMount(() => {
     let stored: string | null = null;
     try { stored = localStorage.getItem(TAB_KEY); } catch {}
+    sync();
     tab = initialTab(location.hash, stored);
-    if (subOf(location.hash) === 'dolphin' && tab === 'controller') dolphinKey++;
     const onHash = () => {
+      sync();
       const t = parseHash(location.hash);
       if (!t) return;
-      if (t === 'controller' && subOf(location.hash) === 'dolphin') dolphinKey++;
       (tab = t, live = true);
     };
     window.addEventListener('hashchange', onHash);
@@ -147,7 +159,14 @@
     </Tabs.Content>
 
     <Tabs.Content value="controller">
-      {#if tab === 'controller'}<ControllerTest /><EmulatorMappings focusKey={dolphinKey} />{/if}
+      {#if tab === 'controller'}
+        <ControllerTest />
+        <p class="note moved">Emulator button mappings moved to <a class="link" href="#emulators/dolphin/controllers">Emulators</a>.</p>
+      {/if}
+    </Tabs.Content>
+
+    <Tabs.Content value="emulators">
+      {#if tab === 'emulators'}<Emulators emu={route.emu} section={route.section} focusKey={emuKey} onpick={pick} />{/if}
     </Tabs.Content>
 
     <Tabs.Content value="about">
@@ -185,6 +204,7 @@
   .sw[aria-checked='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }
   .opt { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
   .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  .moved { margin-top: 14px; }
   .opt input { accent-color: var(--accent); width: 18px; height: 18px; }
   .chips { isolation: isolate; } /* the gliding fill passes under the other chips */
   .fchip { position: relative; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; text-transform: capitalize; transition: color .2s var(--ease); }

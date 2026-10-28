@@ -362,10 +362,11 @@ describe('EmulatorMappings: dead zone, reset, restart', () => {
 });
 
 describe('EmulatorMappings: states', () => {
-  it('a 404 hides the card', async () => {
+  it('a 404 shows a short "no Dolphin" message instead of the card', async () => {
     vi.mocked(api.emulatorControls).mockRejectedValue(new ApiError('no controls on this machine', 404));
     await render(EmulatorMappings);
-    await expect.poll(() => document.querySelector('section')).toBeNull();
+    await expect.element(page.getByText(/No Dolphin was found on this machine/)).toBeInTheDocument();
+    expect(document.querySelector('.pad')).toBeNull();
   });
 
   it('shows the load error with Try again', async () => {

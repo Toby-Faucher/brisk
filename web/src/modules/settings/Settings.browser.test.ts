@@ -14,6 +14,8 @@ describe('Settings tabs', () => {
     const steps: [string, string, string][] = [
       ['{ArrowRight}', 'Streaming', '#streaming'],
       ['{ArrowRight}', 'Controller', '#controller'],
+      ['{ArrowRight}', 'Emulators', '#emulators'],
+      ['{ArrowLeft}', 'Controller', '#controller'],
       ['{ArrowLeft}', 'Streaming', '#streaming'],
       ['{End}', 'About', '#about'],
       ['{Home}', 'General', '#general'],
@@ -26,15 +28,49 @@ describe('Settings tabs', () => {
     }
   });
 
-  it('the Controller tab shows the Emulator mappings card, and #controller/dolphin opens it', async () => {
+  const mock = async () => {
     const { api } = await import('../../state/api');
     const fx = (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-get.json')).default;
-    vi.spyOn(api, 'emulatorControls').mockResolvedValue(fx as never);
+    return vi.spyOn(api, 'emulatorControls').mockResolvedValue(fx as never);
+  };
+
+  it('the Controller tab keeps the tester and points to Emulators, with no mapping card', async () => {
+    history.replaceState(null, '', '#controller');
+    await render(Settings);
+    await expect.element(page.getByRole('link', { name: 'Emulators' })).toHaveAttribute('href', '#emulators/dolphin/controllers');
+    expect(page.getByRole('heading', { name: 'Emulator mappings' }).elements()).toHaveLength(0);
+  });
+
+  it('#emulators/dolphin/controllers opens the pickers and the mappings card, and focuses it', async () => {
+    await mock();
+    history.replaceState(null, '', '#emulators/dolphin/controllers');
+    await render(Settings);
+    await expect.element(page.getByRole('tab', { name: 'Emulators' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('tab', { name: 'Dolphin' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('tab', { name: 'Controllers' })).toHaveAttribute('aria-selected', 'true');
+    expect(page.getByRole('tab', { name: 'Launch options' }).elements()).toHaveLength(0); // planned sections stay hidden
+    await expect.element(page.getByRole('heading', { name: 'Emulator mappings' })).toBeInTheDocument();
+    await expect.poll(() => document.activeElement?.id).toBe('em-h');
+    vi.restoreAllMocks();
+  });
+
+  it('the old #controller/dolphin link is rewritten and opens the Emulators tab', async () => {
+    await mock();
     history.replaceState(null, '', '#controller/dolphin');
     await render(Settings);
+    expect(location.hash).toBe('#emulators/dolphin/controllers');
+    await expect.element(page.getByRole('tab', { name: 'Emulators' })).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('heading', { name: 'Emulator mappings' })).toBeInTheDocument();
-    await expect.element(page.getByRole('tab', { name: 'Controller' })).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(() => document.activeElement?.id).toBe('em-h');
+    vi.restoreAllMocks();
+  });
+
+  it('bare #emulators shows Dolphin Controllers; a 404 shows the empty message', async () => {
+    const { api, ApiError } = await import('../../state/api');
+    vi.spyOn(api, 'emulatorControls').mockRejectedValue(new ApiError('no dolphin', 404));
+    history.replaceState(null, '', '#emulators');
+    await render(Settings);
+    await expect.element(page.getByRole('tab', { name: 'Controllers' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByText(/No Dolphin was found/)).toBeInTheDocument();
     vi.restoreAllMocks();
   });
 });
