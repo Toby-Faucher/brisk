@@ -13,6 +13,7 @@
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
   import Emulators from './Emulators.svelte';
+  import LaunchTab from './LaunchTab.svelte';
   import NotesBackup from './NotesBackup.svelte';
   import { TABS, TAB_KEY, emulatorHash, emulatorRoute, hashFor, initialTab, parseHash, redirectOf, subOf, type Tab } from './tabs';
 
@@ -36,7 +37,7 @@
       () => toast('Could not reset the Home layout', { error: true }),
     );
 
-  const LABEL: Record<Tab, string> = { general: 'General', streaming: 'Streaming', controller: 'Controller', emulators: 'Emulators', about: 'About' };
+  const LABEL: Record<Tab, string> = { general: 'General', streaming: 'Streaming', controller: 'Controller', emulators: 'Emulators', launch: 'Launch', about: 'About' };
   const SHORTCUTS = [['Ctrl+K', 'Command menu'], ['/', 'Search'], ['g h', 'Go to Home'], ['g l', 'Go to Library'], ['g s', 'Go to Stream'], ['Hold Esc', 'Release the keyboard on the stream'], ['Ctrl+Alt+S', 'Screenshot (on the stream)'], ['Ctrl+Alt+R', 'Save replay (on the stream)']];
   const DOCS = ['docs/ui-notes.md', 'docs/ui-design.md', 'docs/controller-notes.md'];
   const commit = typeof __BRISK_COMMIT__ === 'string' ? __BRISK_COMMIT__ : 'unknown';
@@ -167,6 +168,10 @@
 
     <Tabs.Content value="emulators">
       {#if tab === 'emulators'}<Emulators emu={route.emu} section={route.section} focusKey={emuKey} onpick={pick} />{/if}
+    </Tabs.Content>
+
+    <Tabs.Content value="launch">
+      {#if tab === 'launch'}<LaunchTab />{/if}
     </Tabs.Content>
 
     <Tabs.Content value="about">

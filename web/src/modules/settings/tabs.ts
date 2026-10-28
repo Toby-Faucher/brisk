@@ -1,6 +1,6 @@
 import { emulatorOf, sectionOf } from './emulators/registry';
 
-export const TABS = ['general', 'streaming', 'controller', 'emulators', 'about'] as const;
+export const TABS = ['general', 'streaming', 'controller', 'emulators', 'launch', 'about'] as const;
 export type Tab = (typeof TABS)[number];
 export const TAB_KEY = 'brisk.settingsTab';
 

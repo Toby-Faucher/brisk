@@ -6,9 +6,9 @@ describe('emulator registry', () => {
     expect(new Set(EMULATORS.map((e) => e.id)).size).toBe(EMULATORS.length);
     for (const e of EMULATORS) expect(shownSections(e).length).toBeGreaterThan(0);
   });
-  it('Dolphin shows Controllers only; planned sections are kept out', () => {
+  it('Dolphin shows Controllers and Launch options; planned sections are kept out', () => {
     const d = emulatorOf('dolphin');
-    expect(shownSections(d).map((s) => s.id)).toEqual(['controllers']);
+    expect(shownSections(d).map((s) => s.id)).toEqual(['controllers', 'launch']);
     expect(d.sections.some((s) => s.planned)).toBe(true);
   });
   it('unknown ids and planned sections fall back to the first entry', () => {
