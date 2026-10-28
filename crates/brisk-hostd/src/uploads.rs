@@ -361,7 +361,8 @@ fn place_and_register(
     std::fs::File::open(part)
         .and_then(|f| f.sync_all())
         .map_err(io_fail)?;
-    let id = crate::discid::identify(part).map_err(|e| {
+    let ext = Path::new(name).extension().and_then(|e| e.to_str());
+    let id = crate::discid::identify_as(part, ext).map_err(|e| {
         fail(
             StatusCode::UNPROCESSABLE_ENTITY,
             &format!("not a usable game file: {e}"),

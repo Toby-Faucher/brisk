@@ -26,6 +26,12 @@ const S: [u32; 64] = [
     21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
 ];
 
+/// K[i] = floor(2^32 * abs(sin(i + 1))), as in RFC 1321; computed once.
+fn k_table() -> &'static [u32; 64] {
+    static K: std::sync::OnceLock<[u32; 64]> = std::sync::OnceLock::new();
+    K.get_or_init(|| std::array::from_fn(|i| ((i as f64 + 1.0).sin().abs() * 4294967296.0) as u32))
+}
+
 impl Default for Md5 {
     fn default() -> Self {
         Self::new()
@@ -60,8 +66,7 @@ impl Md5 {
                 2 => (b ^ c ^ d, (3 * i + 5) % 16),
                 _ => (c ^ (b | !d), (7 * i) % 16),
             };
-            // K[i] = floor(2^32 * abs(sin(i + 1))), as in RFC 1321.
-            let k = ((i as f64 + 1.0).sin().abs() * 4294967296.0) as u32;
+            let k = k_table()[i];
             let t = a.wrapping_add(f).wrapping_add(k).wrapping_add(m[g]);
             a = d;
             d = c;
@@ -128,7 +133,7 @@ enum Disc {
 
 impl Disc {
     fn open(path: &Path) -> Result<Disc, Error> {
-        let mut f = File::open(path)?;
+        let mut f = discid::open_regular(path)?;
         let len = f.metadata()?.len();
         let mut h = [0u8; 0x0D];
         if f.read_exact(&mut h).is_err() || &h[..4] != b"WBFS" {

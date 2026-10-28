@@ -834,3 +834,15 @@ async fn abort_works_on_a_busy_upload() {
     assert_eq!(d, StatusCode::NO_CONTENT);
     assert_eq!(p.0, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_headerless_rom_goes_to_its_system_folder() {
+    let r = rig();
+    let id = r.upload("game.sfc", &vec![7u8; 2048], 1024).await;
+    let (st, f) = r
+        .call("POST", &format!("/api/uploads/{id}/finish"), Value::Null)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{f}");
+    assert_eq!(f["system"], "snes");
+    assert!(r.games.join("snes/game.sfc").is_file());
+}

@@ -144,18 +144,37 @@ fn unknown() -> Identity {
     }
 }
 
-/// Identify `path`. Refuses anything but a regular file (checked on the opened handle).
-pub fn identify(path: &Path) -> Result<Identity, Error> {
-    let mut f = File::open(path)?;
-    let len = f.metadata()?.len();
+/// Opens a regular file for reading. A FIFO or device is refused before the open, and the open
+/// itself cannot block (O_NONBLOCK; the handle is checked again in case the path was swapped).
+pub(crate) fn open_regular(path: &Path) -> Result<File, Error> {
+    use std::os::unix::fs::OpenOptionsExt;
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(Error::NotRegularFile);
+    }
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
     if !f.metadata()?.is_file() {
         return Err(Error::NotRegularFile);
     }
+    Ok(f)
+}
+
+/// Identify `path`. Refuses anything but a regular file.
+pub fn identify(path: &Path) -> Result<Identity, Error> {
+    identify_as(path, None)
+}
+
+/// `identify`, taking the extension for the header-less cartridge fallback from `ext` instead of
+/// the path (an upload sits in a `.part` file until it is placed).
+pub fn identify_as(path: &Path, ext: Option<&str>) -> Result<Identity, Error> {
+    let mut f = open_regular(path)?;
+    let len = f.metadata()?.len();
     let mut head = Vec::new();
     (&mut f).take(READ_LEN).read_to_end(&mut head)?;
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
+    let ext = ext
+        .or_else(|| path.extension().and_then(|e| e.to_str()))
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
 
@@ -353,6 +372,23 @@ impl Sha1 {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_fifo_is_refused_without_blocking_and_the_extension_can_be_given() {
+        use std::os::unix::ffi::OsStrExt;
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("x.iso");
+        let c = std::ffi::CString::new(p.as_os_str().as_bytes()).unwrap();
+        // SAFETY: c is a valid NUL-terminated path for the whole call.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(matches!(identify(&p), Err(Error::NotRegularFile)));
+        assert!(matches!(open_regular(&p), Err(Error::NotRegularFile)));
+        // a header-less SNES dump named .part: the extension comes from the caller
+        let q = d.path().join("a.part");
+        std::fs::write(&q, vec![1u8; 2048]).unwrap();
+        assert_eq!(identify(&q).unwrap().system, System::Unknown);
+        assert_eq!(identify_as(&q, Some("SFC")).unwrap().system, System::SNES);
+    }
 
     fn disc(id: &[u8; 6], wii: bool, title: &str) -> Vec<u8> {
         let mut h = vec![0u8; 0x60];
