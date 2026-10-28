@@ -31,7 +31,7 @@ describe('api', () => {
     const { m } = stubPage('http://localhost:8443/');
     m.set('brisk.secret', 'sek');
     const f = stubFetch(204);
-    await api.launch(570);
+    await api.launch('570');
     await api.games().catch(() => {});
     const [postUrl, post] = f.mock.calls[0] as unknown as [string, RequestInit];
     const [getUrl, getInit] = f.mock.calls[1] as unknown as [string, RequestInit];
@@ -54,7 +54,7 @@ describe('api', () => {
     expect(local.get('brisk.secret')).toBe('abc123');
     m.clear(); // a new tab opened from a bookmark of the bare URL
     const f = stubFetch(204);
-    await api.launch(1);
+    await api.launch('1');
     expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-brisk-secret']).toBe('abc123');
   });
 

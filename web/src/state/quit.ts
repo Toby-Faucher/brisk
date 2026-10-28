@@ -1,11 +1,12 @@
 import { get, writable } from 'svelte/store';
 import type { Game } from './api';
+import { gameKey } from './gameId';
 import type { CommandItem } from '../shell/registry';
 
 export type QuitState = 'closed' | 'still-running';
 export type ToastOpts = { error?: boolean; ms?: number; action?: { label: string; run: () => void } };
 export type QuitDeps = {
-  quit: (appid: number, force: boolean) => Promise<{ state: QuitState }>;
+  quit: (key: string, force: boolean) => Promise<{ state: QuitState }>;
   refresh: () => Promise<unknown>;
   toast: (text: string, opts?: ToastOpts) => void;
 };
@@ -16,10 +17,10 @@ export type Ask = { game: Game; force: boolean };
 /** Quit a running game: confirm, busy while hostd works (up to ~25 s), then a toast and a games refresh. */
 export function quitFlow(deps: QuitDeps) {
   const ask = writable<Ask | null>(null);
-  const busy = writable<ReadonlySet<number>>(new Set());
+  const busy = writable<ReadonlySet<string>>(new Set());
   /** Games whose last quit answered still-running: Ctrl+K offers Force quit for them. */
-  const stuck = writable<ReadonlySet<number>>(new Set());
-  const mark = (store: typeof busy, id: number, on: boolean) =>
+  const stuck = writable<ReadonlySet<string>>(new Set());
+  const mark = (store: typeof busy, id: string, on: boolean) =>
     store.update((s) => {
       const n = new Set(s);
       if (on) n.add(id);
@@ -28,18 +29,18 @@ export function quitFlow(deps: QuitDeps) {
     });
 
   function request(game: Game, force = false) {
-    if (!get(busy).has(game.appid)) ask.set({ game, force });
+    if (!get(busy).has(gameKey(game))) ask.set({ game, force });
   }
 
   async function confirm() {
     const a = get(ask);
     ask.set(null);
-    if (!a || get(busy).has(a.game.appid)) return;
+    if (!a || get(busy).has(gameKey(a.game))) return;
     const { game, force } = a;
-    mark(busy, game.appid, true);
+    mark(busy, gameKey(game), true);
     try {
-      const r = await deps.quit(game.appid, force);
-      mark(stuck, game.appid, r.state === 'still-running');
+      const r = await deps.quit(gameKey(game), force);
+      mark(stuck, gameKey(game), r.state === 'still-running');
       if (r.state === 'closed') deps.toast(`Closed ${game.name}`);
       else
         deps.toast(`Still running: ${game.name} (try Force quit)`, {
@@ -52,7 +53,7 @@ export function quitFlow(deps: QuitDeps) {
       if (err.status === 409 && err.message === 'already quitting') deps.toast(`Already closing ${game.name}…`);
       else deps.toast(`Could not quit ${game.name}: ${err.message}`, { error: true });
     } finally {
-      mark(busy, game.appid, false);
+      mark(busy, gameKey(game), false);
       await deps.refresh();
     }
   }
@@ -61,12 +62,12 @@ export function quitFlow(deps: QuitDeps) {
 }
 
 /** Command menu entries for games running on the host: Quit, plus Force quit after a quit left one running. */
-export const quitItems = (games: Game[], stuck: ReadonlySet<number>, request: (g: Game, force: boolean) => void): CommandItem[] =>
+export const quitItems = (games: Game[], stuck: ReadonlySet<string>, request: (g: Game, force: boolean) => void): CommandItem[] =>
   games
     .filter((g) => g.running)
     .flatMap((g) => [
-      { id: `quit:${g.appid}`, label: `Quit ${g.name}`, icon: 'power', run: () => request(g, false) },
-      ...(stuck.has(g.appid)
-        ? [{ id: `forcequit:${g.appid}`, label: `Force quit ${g.name}`, icon: 'power', run: () => request(g, true) }]
+      { id: `quit:${gameKey(g)}`, label: `Quit ${g.name}`, icon: 'power', run: () => request(g, false) },
+      ...(stuck.has(gameKey(g))
+        ? [{ id: `forcequit:${gameKey(g)}`, label: `Force quit ${g.name}`, icon: 'power', run: () => request(g, true) }]
         : []),
     ]);
