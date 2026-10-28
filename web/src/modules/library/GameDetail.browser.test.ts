@@ -1039,6 +1039,13 @@ describe('GameDetail RetroAchievements', () => {
       await expect.element(page.getByText(text)).toBeInTheDocument();
     });
 
+  it('title-matched answer shows the plain note; hash-matched does not', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue({ ...raOk, matched: 'title' });
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/^Matched by title; your file's hash isn't/)).toBeInTheDocument();
+    spy.mockResolvedValue({ ...raOk, matched: 'hash' });
+  });
+
   it('hides the panel for off', async () => {
     const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue({ state: 'off' });
     await render(GameDetail, { props: props(wii) });

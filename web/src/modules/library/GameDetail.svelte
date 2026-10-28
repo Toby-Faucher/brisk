@@ -6,7 +6,7 @@
   import { api, type Game, type GameInfo, type Achievements, type RaAnswer, type News, type GameLocal, type GameSaves } from '../../state/api';
   import { savesLine, saveRow } from './library';
   import { gameCaps, gameKey } from '../../state/gameId';
-  import { raView, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
+  import { raView, TITLE_NOTE, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
@@ -330,6 +330,7 @@
             <div class="h"><h3>Achievements</h3>{#if ach.list.length > PREVIEW}<button class="btn ghost more" aria-haspopup="dialog" aria-label="View all {ach.list.length} achievements" onclick={() => (allAch = true)}>View all</button>{/if}</div>
             {#if ach.source === 'retroachievements'}
               <p class="lab ra">{ach.unlocked} of {ach.total} unlocked, {ach.pointsUnlocked ?? 0} of {ach.pointsTotal ?? 0} points · <a href={ach.url} target="_blank" rel="noopener noreferrer">RetroAchievements</a> {@render raBtn()}</p>
+              {#if ach.matched === 'title'}<p class="lab" role="note">{TITLE_NOTE}</p>{/if}
             {/if}
             <ul class="alist">
               {#each ach.list.slice(0, PREVIEW) as a (a.id)}

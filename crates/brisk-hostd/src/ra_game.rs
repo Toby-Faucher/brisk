@@ -9,7 +9,8 @@ use crate::discid::{self, Container, System};
 use crate::game::Game;
 use crate::rahash;
 use crate::retroachievements::{
-    self as ra, Achievement, CONSOLE_GAMECUBE, CONSOLE_WII, GameProgress, RaConfig, RaError,
+    self as ra, Achievement, CONSOLE_GAMECUBE, CONSOLE_WII, GameProgress, Matched, RaConfig,
+    RaError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -169,11 +170,12 @@ fn ach_json(a: &Achievement) -> Value {
 
 /// Steam's `Achievements` shape (`available`, `unlocked`, `total`, `list` of `id name description
 /// icon unlockedAt`) plus `state`, `source`, points and hardcore.
-pub fn ok_json(p: &GameProgress) -> Value {
+pub fn ok_json(p: &GameProgress, how: Matched) -> Value {
     let un = |a: &&Achievement| a.unlocked.is_some();
     json!({
         "state": "ok",
         "source": "retroachievements",
+        "matched": if how == Matched::Title { "title" } else { "hash" },
         "available": true,
         "unlocked": p.achievements.iter().filter(un).count(),
         "total": p.achievements.len(),
@@ -209,7 +211,7 @@ pub fn err_json(e: &RaError) -> Value {
 }
 
 /// The route body for one emulator game. `fresh`: drop the cached progress first.
-pub async fn state_json(cfg: &Config, file: &Path, fresh: bool) -> Value {
+pub async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool) -> Value {
     let rc = cfg.ra();
     if !rc.key_file.is_file() {
         return json!({ "state": "off" });
@@ -217,8 +219,8 @@ pub async fn state_json(cfg: &Config, file: &Path, fresh: bool) -> Value {
     match hash_blocking(cfg, file).await {
         Err(HashErr::Unsupported(reason)) => json!({ "state": "unsupported", "reason": reason }),
         Err(HashErr::Failed(_)) => json!({ "state": "error" }),
-        Ok(h) => match ra::progress_for_opts(&rc, h.console, &h.hash, fresh).await {
-            Ok(p) => ok_json(&p),
+        Ok(h) => match ra::progress_for_names(&rc, h.console, &h.hash, names, fresh).await {
+            Ok((p, how)) => ok_json(&p, how),
             Err(RaError::NotFound) => {
                 json!({ "state": "not-found", "reason": not_found_reason(h.console) })
             }

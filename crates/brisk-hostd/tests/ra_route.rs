@@ -166,6 +166,7 @@ async fn ok_has_the_steam_shape_plus_ra_fields() {
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(v["state"], "ok");
     assert_eq!(v["source"], "retroachievements");
+    assert_eq!(v["matched"], "hash");
     assert_eq!(
         (
             v["available"].clone(),
@@ -229,7 +230,7 @@ async fn states_off_unsupported_not_found_and_upstream_errors() {
     let (base, _) = mock(vec![(
         "API_GetGameList.php",
         200,
-        list("ffffffffffffffffffffffffffffffff"),
+        list("ffffffffffffffffffffffffffffffff").replace("GC Game", "Other Game"),
     )])
     .await;
     let mut r = r0;
@@ -318,4 +319,79 @@ async fn caps_need_a_ra_system_and_the_key_file() {
     assert!(caps(&rig("http://x", Some(GOOD), "wii")));
     assert!(!caps(&rig("http://x", None, "wii")));
     assert!(!caps(&rig("http://x", Some(GOOD), "nes")));
+}
+
+/// Real-shaped list entries (ID, Title, ConsoleID, NumAchievements, Hashes).
+fn entry(id: u64, title: &str, hash: &str) -> String {
+    format!(
+        r#"{{"Title":"{title}","ID":{id},"ConsoleID":16,"ConsoleName":"GameCube","NumAchievements":2,"Hashes":["{hash}"]}}"#
+    )
+}
+
+const OTHER: &str = "ffffffffffffffffffffffffffffffff";
+
+async fn matched_log(entries: Vec<String>) -> (serde_json::Value, Log) {
+    let mut r = rig("http://127.0.0.1:1", Some(GOOD), "gamecube");
+    let (base, log) = mock(vec![
+        (
+            "API_GetGameList.php",
+            200,
+            format!("[{}]", entries.join(",")),
+        ),
+        ("API_GetGameInfoAndUserProgress.php", 200, progress()),
+    ])
+    .await;
+    r.cfg.ra_base = base;
+    (json(&app(&r.cfg), URI).await, log)
+}
+
+async fn matched(entries: Vec<String>) -> serde_json::Value {
+    matched_log(entries).await.0
+}
+
+#[tokio::test]
+async fn title_fallback_when_the_hash_is_unlisted() {
+    // exact match after normalising case, region tag and punctuation
+    let v = matched(vec![
+        entry(1, "gc game: (USA)", OTHER),
+        entry(2, "Another", OTHER),
+    ])
+    .await;
+    assert_eq!(
+        (v["state"].as_str(), v["matched"].as_str()),
+        (Some("ok"), Some("title"))
+    );
+    // no match
+    let v = matched(vec![entry(1, "Different Game", OTHER)]).await;
+    assert_eq!(v["state"], "not-found");
+    assert!(v["reason"].as_str().unwrap().contains("hash"));
+    // ambiguous: two games normalise to the name
+    let v = matched(vec![
+        entry(1, "GC Game", OTHER),
+        entry(2, "GC Game (Europe)", OTHER),
+    ])
+    .await;
+    assert_eq!(v["state"], "not-found");
+    // a subset is a different game, and the library name may carry a file tag
+    let v = matched(vec![
+        entry(1, "GC Game", OTHER),
+        entry(2, "GC Game [Subset - X]", OTHER),
+    ])
+    .await;
+    assert_eq!(v["matched"], "title");
+    let v = matched(vec![entry(2, "GC Game [Subset - X]", OTHER)]).await;
+    assert_eq!(v["state"], "not-found");
+}
+
+#[tokio::test]
+async fn hash_match_beats_a_title_match() {
+    let r0 = rig("http://127.0.0.1:1", Some(GOOD), "gamecube");
+    let h = hash_of(&r0);
+    let (v, log) = matched_log(vec![entry(1, "GC Game", OTHER), entry(777, "Renamed", &h)]).await;
+    assert_eq!(
+        (v["state"].as_str(), v["matched"].as_str()),
+        (Some("ok"), Some("hash"))
+    );
+    let log = log.lock().unwrap();
+    assert!(log.iter().any(|l| l.contains("g=777")) && !log.iter().any(|l| l.contains("g=1 ")));
 }
