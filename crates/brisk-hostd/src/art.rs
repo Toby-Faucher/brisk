@@ -540,7 +540,7 @@ fn emu_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
             "not supported: art is for emulator games",
         ));
     }
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     if crate::emu::find(&recs, &id).is_none() {
         return Err(err(StatusCode::NOT_FOUND, "unknown game"));
     }
@@ -622,7 +622,7 @@ pub async fn answer(
 }
 
 fn start(s: &Arc<AppState>, id: &GameId) {
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     if let Some(r) = crate::emu::find(&recs, id) {
         s.art.spawn(
             s.cfg.clone(),

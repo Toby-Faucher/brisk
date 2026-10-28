@@ -9,10 +9,12 @@ use crate::files;
 use crate::game::GameId;
 use crate::registry;
 use std::fs::File;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// Extensions a scan or an upload looks at.
 pub const EXTS: &[&str] = &[
@@ -177,22 +179,77 @@ pub struct Merged {
     pub removed: usize,
 }
 
-fn same_path(a: &Path, b: &Path) -> bool {
-    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+/// Canonical paths, each looked up once (a scan compares every record with every file).
+struct Canon<'a> {
+    f: &'a dyn Fn(&Path) -> Option<PathBuf>,
+    seen: HashMap<PathBuf, Option<Rc<Path>>>,
+}
+
+impl<'a> Canon<'a> {
+    fn new(f: &'a dyn Fn(&Path) -> Option<PathBuf>) -> Self {
+        Canon {
+            f,
+            seen: HashMap::new(),
+        }
+    }
+    fn get(&mut self, p: &Path) -> Option<Rc<Path>> {
+        if let Some(c) = self.seen.get(p) {
+            return c.clone();
+        }
+        let c = (self.f)(p).map(Rc::from);
+        self.seen.insert(p.to_path_buf(), c.clone());
+        c
+    }
+}
+
+fn real_canon(p: &Path) -> Option<PathBuf> {
+    p.canonicalize().ok()
 }
 
 /// Adds what is new. Same path under another id: that record keeps its id and gains the new one
 /// as an alias. Same id (or alias) at another path: a duplicate, not added.
 pub fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
+    merge_with(recs, found, source, &mut Canon::new(&real_canon))
+}
+
+fn merge_with(recs: &mut Vec<Record>, found: &[Found], source: &str, c: &mut Canon) -> Merged {
     let mut m = Merged::default();
+    // Lookups by id and by path (as written and as resolved), built once: the first record wins.
+    #[derive(Default)]
+    struct Index {
+        ids: HashSet<String>,
+        raw: HashMap<PathBuf, usize>,
+        real: HashMap<Rc<Path>, usize>,
+    }
+    impl Index {
+        fn add(&mut self, i: usize, r: &Record, c: &mut Canon) {
+            self.ids.insert(r.id.to_string());
+            self.ids.extend(r.aliases.iter().map(|a| a.to_string()));
+            self.raw.entry(r.file.clone()).or_insert(i);
+            if let Some(x) = c.get(&r.file) {
+                self.real.entry(x).or_insert(i);
+            }
+        }
+    }
+    let mut ix = Index::default();
+    for (i, r) in recs.iter().enumerate() {
+        ix.add(i, r, c);
+    }
     for f in found {
         let Some(new) = record(&f.path, &f.id, source) else {
             m.unplayable += 1;
             continue;
         };
-        let id_taken = recs.iter().any(|r| r.is(&new.id));
-        if let Some(r) = recs.iter_mut().find(|r| same_path(&r.file, &new.file)) {
+        let id_taken = ix.ids.contains(&new.id.to_string());
+        let hit = ix
+            .raw
+            .get(&new.file)
+            .or_else(|| c.get(&new.file).and_then(|x| ix.real.get(&x)))
+            .copied();
+        if let Some(i) = hit {
+            let r = &mut recs[i];
             if !id_taken {
+                ix.ids.insert(new.id.to_string());
                 r.aliases.push(new.id);
                 m.aliased += 1;
             } else {
@@ -205,6 +262,7 @@ pub fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
             m.duplicates += 1;
         } else {
             m.added.push(new.id.clone());
+            ix.add(recs.len(), &new, c);
             recs.push(new);
         }
     }
@@ -242,9 +300,29 @@ pub fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     }
 }
 
-fn tombed(t: &Tomb, f: &Found, source: &str) -> bool {
-    same_path(&t.path, &f.path)
-        || record(&f.path, &f.id, source).is_some_and(|r| r.id.to_string() == t.id)
+/// What a file or a removed entry can be recognised by: its path, its real path, its game id.
+#[derive(Default)]
+struct Keys {
+    raw: HashSet<PathBuf>,
+    real: HashSet<Rc<Path>>,
+    ids: HashSet<String>,
+}
+
+impl Keys {
+    fn add(&mut self, path: &Path, id: Option<String>, c: &mut Canon) {
+        self.raw.insert(path.to_path_buf());
+        self.real.extend(c.get(path));
+        self.ids.extend(id);
+    }
+    fn hits(&self, path: &Path, id: Option<String>, c: &mut Canon) -> bool {
+        self.raw.contains(path)
+            || c.get(path).is_some_and(|r| self.real.contains(&r))
+            || id.is_some_and(|i| self.ids.contains(&i))
+    }
+}
+
+fn found_id(f: &Found, source: &str) -> Option<String> {
+    record(&f.path, &f.id, source).map(|r| r.id.to_string())
 }
 
 /// `merge` with the removed list (call under `update`). `respect`: a scan skips removed games
@@ -257,14 +335,33 @@ pub fn register(
     source: &str,
     respect: bool,
 ) -> Merged {
+    register_with(data_dir, recs, found, source, respect, &mut Canon::new(&real_canon))
+}
+
+fn register_with(
+    data_dir: &Path,
+    recs: &mut Vec<Record>,
+    found: Vec<Found>,
+    source: &str,
+    respect: bool,
+    c: &mut Canon,
+) -> Merged {
     let mut tombs = tombs_load(data_dir);
+    let mut gone = Keys::default();
+    for t in &tombs {
+        gone.add(&t.path, Some(t.id.clone()), c);
+    }
     let (skip, keep): (Vec<_>, Vec<_>) = found
         .into_iter()
-        .partition(|f| respect && tombs.iter().any(|t| tombed(t, f, source)));
-    let mut m = merge(recs, &keep, source);
+        .partition(|f| respect && gone.hits(&f.path, found_id(f, source), c));
+    let mut m = merge_with(recs, &keep, source, c);
     m.removed = skip.len();
     let n = tombs.len();
-    tombs.retain(|t| !keep.iter().any(|f| tombed(t, f, source)));
+    let mut kept = Keys::default();
+    for f in &keep {
+        kept.add(&f.path, found_id(f, source), c);
+    }
+    tombs.retain(|t| !kept.hits(&t.path, Some(t.id.clone()), c));
     if tombs.len() != n {
         tombs_save(data_dir, tombs);
     }

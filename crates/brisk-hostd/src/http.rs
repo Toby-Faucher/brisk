@@ -63,6 +63,8 @@ pub struct AppState {
     pub ra_refresh: Mutex<std::collections::HashMap<String, std::time::Instant>>,
     /// Art and details lookups for emulator games (`art.rs`).
     pub art: Arc<crate::art::Art>,
+    /// library.json as last read, keyed by its size and modified time (`records`).
+    lib: Mutex<Option<((u64, std::time::SystemTime), Arc<Vec<crate::emu::Record>>)>>,
 }
 
 #[derive(Default)]
@@ -99,15 +101,32 @@ impl AppState {
             hub: None,
             ra_refresh: Mutex::default(),
             art: Arc::new(crate::art::Art::default()),
+            lib: Mutex::default(),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
     }
 
+    /// The library, re-read only when library.json changed (a stat per call, no parse).
+    pub fn records(&self) -> Arc<Vec<crate::emu::Record>> {
+        let key = std::fs::metadata(self.cfg.data_dir.join(crate::emu::LIBRARY_FILE))
+            .and_then(|m| Ok((m.len(), m.modified()?)))
+            .ok();
+        let mut c = self.lib.lock().unwrap();
+        if let (Some(k), Some((ck, r))) = (key, c.as_ref())
+            && k == *ck
+        {
+            return r.clone();
+        }
+        let r = Arc::new(crate::emu::load(&self.cfg.data_dir));
+        *c = key.map(|k| (k, r.clone()));
+        r
+    }
+
     /// An id as a request writes it (`steam:620`, or a bare number) as a GameId: a bare number
     /// in the old emulator range needs this machine's library to say which game it was.
     pub fn parse_id(&self, raw: &str) -> Option<GameId> {
-        let recs = crate::emu::load(&self.cfg.data_dir);
+        let recs = self.records();
         crate::emu::resolve(&recs, raw)
     }
 
@@ -218,7 +237,7 @@ async fn game_achievements(
 /// RetroAchievements progress for an emulator game, always a 200 whose `state` says what the
 /// panel should show (see `ra_game`). `refresh` skips the 5 minute cache, at most once per 30 s a game.
 async fn emu_achievements(s: &AppState, g: &Game, refresh: bool) -> Response {
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     let Some(r) = crate::emu::find(&recs, &g.id) else {
         return err(StatusCode::NOT_FOUND, "unknown game");
     };
@@ -246,7 +265,7 @@ async fn game_ra_hash(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Stri
         Ok(g) => g,
         Err(r) => return r,
     };
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     let Some(r) = crate::emu::find(&recs, &g.id) else {
         return err(StatusCode::NOT_FOUND, "no disc hash for this game");
     };
@@ -305,7 +324,7 @@ async fn game_saves(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String
     if !g.caps.saves {
         return err(StatusCode::NOT_FOUND, "no saves for this game");
     }
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     let (disc, system) = (
         crate::emu::find(&recs, &g.id).and_then(crate::emu::disc_id_of),
         g.system.clone().unwrap_or_default(),
@@ -893,7 +912,7 @@ fn controls_gate(s: &AppState, kind: &str) -> Result<(PadKind, bool), Response> 
     let Some(kind) = PadKind::parse(kind) else {
         return Err(err(StatusCode::NOT_FOUND, "no such controller type"));
     };
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     let mut editable = recs
         .iter()
         .filter(|r| crate::emu::caps(&r.emulator).controls)
@@ -958,7 +977,7 @@ impl Drop for ScanSlot<'_> {
 
 /// The cards for `ids`, as `/api/games` would show them.
 fn cards(s: &AppState, ids: &[GameId]) -> Vec<Game> {
-    let recs = crate::emu::load(&s.cfg.data_dir);
+    let recs = s.records();
     crate::emu::games(&recs, &s.cfg.proc_dir, &s.cfg.data_dir)
         .into_iter()
         .filter(|g| ids.contains(&g.id))
@@ -1029,9 +1048,12 @@ async fn game_remove(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Strin
             "not supported: only emulator games can be removed",
         );
     }
-    match crate::ingest::forget(&s.cfg.data_dir, &id) {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &e),
+    // forget waits for the library lock, which a long scan holds
+    let dir = s.cfg.data_dir.clone();
+    match tokio::task::spawn_blocking(move || crate::ingest::forget(&dir, &id)).await {
+        Ok(Ok(_)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => err(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "remove task failed"),
     }
 }
 

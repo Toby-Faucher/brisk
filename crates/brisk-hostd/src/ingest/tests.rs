@@ -1,4 +1,5 @@
 use super::*;
+use crate::discid::Container;
 use std::os::unix::fs::symlink;
 
 pub(crate) fn disc(id: &[u8; 6], wii: bool, title: &str) -> Vec<u8> {
@@ -354,4 +355,46 @@ fn move_copies_when_hard_links_are_refused_but_retries_a_name_clash() {
     let p2 = place(&src2, &dir, "a.iso", Mode::Move).unwrap();
     assert_eq!(p2, dir.join("a (1).iso"));
     assert_eq!(std::fs::read(&p).unwrap(), b"data");
+}
+
+#[test]
+fn a_big_rescan_canonicalizes_each_path_once() {
+    use std::cell::Cell;
+    let n = 3000;
+    let calls = Cell::new(0usize);
+    let f = |p: &Path| {
+        calls.set(calls.get() + 1);
+        Some(p.to_path_buf())
+    };
+    let mk = || -> Vec<Found> {
+        (0..n)
+            .map(|i| Found {
+                path: format!("/g/wii/{i}.iso").into(),
+                id: Identity {
+                    system: System::Wii,
+                    game_id: Some(format!("A{i:05}")),
+                    title: Some(format!("T{i}")),
+                    region: None,
+                    container: Container::Iso,
+                    hash: None,
+                },
+            })
+            .collect()
+    };
+    let d = tempfile::tempdir().unwrap();
+    let tombs: Vec<Tomb> = (0..n)
+        .map(|i| Tomb {
+            path: format!("/old/{i}.iso").into(),
+            id: format!("emu:dolphin:Z{i:05}"),
+        })
+        .collect();
+    tombs_save(d.path(), tombs);
+    let mut recs = vec![];
+    let mut canon = Canon::new(&f);
+    let m = register_with(d.path(), &mut recs, mk(), "scan", true, &mut canon);
+    assert_eq!(m.added.len(), n);
+    // a second pass: every file is known now
+    let m = register_with(d.path(), &mut recs, mk(), "scan", true, &mut canon);
+    assert_eq!((m.added.len(), m.duplicates), (0, n));
+    assert!(calls.get() <= 2 * n, "{} canonicalize calls", calls.get());
 }
