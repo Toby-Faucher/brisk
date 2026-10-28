@@ -202,6 +202,7 @@ pub fn load(data_dir: &Path) -> Vec<Record> {
 pub fn caps(emulator: &str) -> Caps {
     Caps {
         controls: registry::get(emulator).is_some_and(|e| !e.controller.is_empty()),
+        launch_options: true,
         ..Caps::default()
     }
 }
