@@ -243,6 +243,8 @@
   .apps li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .apps span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sel { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); }
+  /* the drag handle sits in the card's top-right corner (28 px at 8 px): keep the label clear of it */
+  .hub .sel { margin-right: 28px; }
   /* Spotlight: the selected card is lit, the others rest dimmed (their content, not .actions, so Use/Start stay full contrast) */
   @media (prefers-reduced-motion: no-preference) {
     .hub :global(.card) { transition: transform var(--spring-soft-dur) var(--spring-soft), scale .3s cubic-bezier(.2, .8, .2, 1), box-shadow .25s, border-color .3s cubic-bezier(.2, .8, .2, 1); }
