@@ -271,6 +271,11 @@ gamescope wrappers (gamescope takes only `-W -H -w -h -r -f -b --fsr`), environm
 list, extra arguments, and your own command. Your own command stays off until Settings has Allow custom
 commands switched on. Nothing goes through a shell; every entry is one argument.
 
+Anyone who can log in to brisk can already control the machine through the stream, so the custom command switch
+is a catch against mistakes, not a security boundary. Extra arguments are not behind the switch: they are
+appended to the game or emulator command as given. `MANGOHUD_CONFIG` is not in the variable list on purpose,
+because MangoHud's config can carry an `exec=` key that runs a command.
+
 **Emulator games** need nothing: brisk wraps the emulator command itself on Play.
 
 **Steam games** are set once per game. In Steam, open the game's Properties, General, Launch Options and paste

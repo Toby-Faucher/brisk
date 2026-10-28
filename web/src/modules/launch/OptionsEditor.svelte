@@ -99,6 +99,7 @@
     {#if onallow}
       <label class="chk allow"><input type="checkbox" role="switch" checked={allow} onchange={(e) => onallow(e.currentTarget.checked)} />Allow custom commands</label>
     {/if}
+    {#if onallow}<p class="note">Anyone who can log in to brisk can already control this machine through the stream, so this switch is a catch against mistakes, not a security boundary.</p>{/if}
     <p class="note">{allow ? 'A command runs on this machine as you.' : 'A command runs on this machine as you, so it stays off until you allow it.'}{#if onallow && allow} Turning the switch off clears the saved command.{/if}</p>
     {#if allow}
       <fieldset class="body" disabled={locked('custom')}>

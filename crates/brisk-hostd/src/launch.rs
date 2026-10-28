@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 
 pub const ENV_ALLOWED: &[&str] = &[
     "MANGOHUD",
-    "MANGOHUD_CONFIG",
     "DXVK_HUD",
     "DXVK_ASYNC",
     "PROTON_NO_ESYNC",
@@ -284,6 +283,8 @@ mod tests {
             ("mesa_glthread", "true", true),
             ("DXVK_HUD", "", true),
             ("DXVK_HUD", &ok, true),
+            // MangoHud's config has an exec= key that runs a command, so it would bypass the custom switch.
+            ("MANGOHUD_CONFIG", "fps", false),
             ("LD_PRELOAD", "/x.so", false),
             ("LD_LIBRARY_PATH", "/x", false),
             ("PATH", "/x", false),
