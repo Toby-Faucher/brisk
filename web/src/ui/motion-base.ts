@@ -74,3 +74,18 @@ export function glide(el: Element, from: Box, to: Box, o: { pseudo?: string; eas
     { duration: ms('--spring-snappy-dur', 400), easing: o.easing ?? (cssVar('--spring-snappy') || cssVar('--ease')), pseudoElement: o.pseudo },
   );
 }
+
+const lastText = new WeakMap<Element, string>();
+
+/**
+ * Svelte attachment for a text that changes after load (Machines uptime, Sunshine state, host pill name): `<dd {@attach fadeOnChange(v)}>{v}</dd>`.
+ * Svelte writes the text; on a later change the element only fades in from .35 (opacity, native, nothing loaded), so nothing
+ * moves and nothing is announced. The first value, an unchanged value and reduced motion do nothing.
+ */
+export const fadeOnChange = (value: string) => (el: Element) => {
+  const was = lastText.get(el);
+  lastText.set(el, value);
+  if (was === undefined || was === value || onStreamRoute() || reducedMotion()) return; // the host pill is on /stream too: silent there
+  const a = el.animate({ opacity: [0.35, 1] }, { duration: 360, easing: cssVar('--ease') });
+  return () => a.cancel();
+};

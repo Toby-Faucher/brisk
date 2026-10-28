@@ -12,6 +12,9 @@ pub struct PowerCfg {
     /// Minutes with nothing happening before the hub shuts the machine down; absent = never.
     #[serde(default)]
     pub idle_shutdown_min: Option<u64>,
+    /// URL answering `{"cpuTempC": number}` (Proxmox has no temperatures); checked in machines.rs.
+    #[serde(default)]
+    pub temp_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -35,12 +38,23 @@ pub enum VmState {
     Stopped,
 }
 
+/// VM load from Proxmox `status/current`: `cpu` is a 0..1 fraction, memory is in bytes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VmStats {
+    pub cpu: f64,
+    pub mem_used: u64,
+    pub mem_total: u64,
+}
+
 pub trait Power: Send + Sync {
     fn status(&self) -> Result<VmState, String>;
     /// Returns once Proxmox accepted the request, not when the guest is up.
     fn start(&self) -> Result<(), String>;
     /// ACPI shutdown (never a hard stop).
     fn shutdown(&self) -> Result<(), String>;
+    fn stats(&self) -> Result<VmStats, String> {
+        Err("unsupported".into())
+    }
 }
 
 pub fn proxmox(cfg: &ProxmoxCfg) -> Arc<dyn Power> {
@@ -53,13 +67,25 @@ struct Proxmox {
 
 impl Power for Proxmox {
     fn status(&self) -> Result<VmState, String> {
-        let body = self.call(false, "status/current")?;
-        let v: serde_json::Value =
-            serde_json::from_slice(&body).map_err(|_| "response is not JSON")?;
-        match v["data"]["status"].as_str() {
+        match self.current()?["status"].as_str() {
             Some("running") => Ok(VmState::Running),
             Some("stopped") => Ok(VmState::Stopped),
             _ => Err("unexpected VM status".into()),
+        }
+    }
+
+    fn stats(&self) -> Result<VmStats, String> {
+        let d = self.current()?;
+        let cpu = d["cpu"].as_f64().filter(|c| c.is_finite() && *c >= 0.0);
+        let (used, total) = (d["mem"].as_f64(), d["maxmem"].as_f64());
+        let bytes = |f: Option<f64>| f.filter(|f| f.is_finite() && *f >= 0.0).map(|f| f as u64);
+        match (cpu, bytes(used), bytes(total)) {
+            (Some(cpu), Some(mem_used), Some(mem_total)) => Ok(VmStats {
+                cpu,
+                mem_used,
+                mem_total,
+            }),
+            _ => Err("unexpected VM stats".into()),
         }
     }
 
@@ -81,6 +107,14 @@ impl Power for Proxmox {
 }
 
 impl Proxmox {
+    /// The `data` object of `status/current`.
+    fn current(&self) -> Result<serde_json::Value, String> {
+        let body = self.call(false, "status/current")?;
+        let mut v: serde_json::Value =
+            serde_json::from_slice(&body).map_err(|_| "response is not JSON")?;
+        Ok(v["data"].take())
+    }
+
     /// The URL of `suffix` under this VM; every part is validated, so it cannot change shape.
     fn url(&self, suffix: &str) -> Result<String, String> {
         let c = &self.cfg;
@@ -269,6 +303,35 @@ mod tests {
                 l[0].2.as_deref(),
                 Some(format!("PVEAPIToken=hub@pve!power={SECRET}").as_str())
             );
+        }
+    }
+
+    #[test]
+    fn stats_parses_and_rejects_bad_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let (api, log) = fake(|_, _| {
+            (
+                200,
+                r#"{"data":{"status":"running","cpu":0.256,"mem":1024,"maxmem":4096}}"#.into(),
+            )
+        });
+        assert_eq!(
+            proxmox(&cfg(&dir, &api)).stats(),
+            Ok(VmStats {
+                cpu: 0.256,
+                mem_used: 1024,
+                mem_total: 4096
+            })
+        );
+        assert_eq!(log.lock().unwrap()[0].1, format!("{BASE}/status/current"));
+        for body in [
+            r#"{"data":{"status":"stopped"}}"#,
+            r#"{"data":{"cpu":-1,"mem":1,"maxmem":2}}"#,
+            r#"{"data":{"cpu":0.1,"mem":-5,"maxmem":2}}"#,
+            r#"{"data":{"cpu":"x","mem":1,"maxmem":2}}"#,
+        ] {
+            let (api, _) = fake(move |_, _| (200, body.into()));
+            assert!(proxmox(&cfg(&dir, &api)).stats().is_err(), "{body}");
         }
     }
 

@@ -250,7 +250,18 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
 
 const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
 
+/** Calls for one machine through the hub, whichever machine is selected. */
+function forMachine(id: string) {
+  const base = `/api/m/${encodeURIComponent(id)}`; // not in SCOPED, so route() leaves it alone
+  return {
+    games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `${base}/games${q(refresh)}`),
+    sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', `${base}/sessions`),
+    host: () => call<HostInfo>('GET', `${base}/host`),
+  };
+}
+
 export const api = {
+  forMachine,
   /** Hub only, never routed. */
   machines: () => call<{ machines: Machine[] }>('GET', '/api/machines'),
   power: (id: string, action: 'start' | 'shutdown') => call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
@@ -271,9 +282,10 @@ export const api = {
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
-  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[] }>('GET', '/api/prefs'),
-  /** Home card order (hostd cleans it and answers with what it kept); reset forgets it. */
-  putLayout: (homeOrder: string[]) => call<{ homeOrder: string[] }>('PUT', '/api/prefs/layout', { homeOrder }),
+  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[] }>('GET', '/api/prefs'),
+  /** Card orders (hostd cleans them and answers with what it kept); a bare array is the Home order. The omitted one keeps its value. Reset forgets both. */
+  putLayout: (l: string[] | { homeOrder?: string[]; machinesOrder?: string[] }) =>
+    call<{ homeOrder: string[]; machinesOrder?: string[] }>('PUT', '/api/prefs/layout', Array.isArray(l) ? { homeOrder: l } : l),
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),

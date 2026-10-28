@@ -3,7 +3,7 @@ import { ApiError, type HostInfo } from '../../state/api';
 import { get } from 'svelte/store';
 import { afterEach, vi } from 'vitest';
 import { applyAccent, bindAccent } from '../settings/accent';
-import { dotState, elapsedS, machinesFrom, powerWhy, restartError, STATE_LABEL } from './machines';
+import { dotState, elapsedS, machinesFrom, powerWhy, restartError, statRows, STATE_LABEL } from './machines';
 
 const info: HostInfo = { name: 'bawn', sunshine: 'ready', uptimeS: 5, cpuTempC: null, gpuTempC: null, path: null, relay: null };
 
@@ -33,6 +33,17 @@ describe('machines', () => {
     expect(powerWhy('ready')).toBeNull();
     expect(elapsedS(1000, 4500)).toBe(3);
     expect(elapsedS(5000, 4500)).toBe(0);
+  });
+  it('statRows_single_host_keeps_fixed_lines', () => {
+    expect(statRows(info, null, false).map((r) => [r.label, r.text])).toEqual([['GPU', '–'], ['CPU', '–']]);
+  });
+  it('statRows_hub_shows_only_what_exists', () => {
+    const vm = { cpuPct: 41.6, memUsedBytes: 8 * 1024 ** 3, memTotalBytes: 16 * 1024 ** 3 };
+    expect(statRows(info, null, true)).toEqual([]);
+    expect(statRows({ gpuTempC: 60.4, cpuTempC: null }, null, true).map((r) => [r.label, r.text])).toEqual([['GPU', '60 °C']]);
+    expect(statRows({ gpuTempC: null, cpuTempC: 50 }, vm, true).map((r) => [r.label, r.text])).toEqual([['CPU', '50 °C'], ['RAM', '8.0 GB / 16.0 GB']]);
+    expect(statRows(info, vm, true).map((r) => [r.label, r.text])).toEqual([['CPU load', '42 %'], ['RAM', '8.0 GB / 16.0 GB']]);
+    expect(statRows(info, { ...vm, memTotalBytes: 0 }, true)[1].text).toBe('–');
   });
   it('accent_change_updates_css_variable', async () => {
     const mem = new Map<string, string>();

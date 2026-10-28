@@ -269,7 +269,10 @@ async fn home_order_put_get_delete_and_survives_restart() {
         )
         .await;
     assert_eq!(st, StatusCode::OK);
-    assert_eq!(body, json!({"homeOrder":["recent","host","library"]}));
+    assert_eq!(
+        body,
+        json!({"homeOrder":["recent","host","library"],"machinesOrder":[]})
+    );
     assert_eq!(t.home().await, json!(["recent", "host", "library"]));
     // per-game prefs are untouched by it and still work next to it
     assert_eq!(
@@ -320,4 +323,34 @@ async fn home_order_rejects_bad_bodies_and_needs_the_secret() {
         assert_eq!(st, StatusCode::FORBIDDEN, "{m}");
     }
     assert!(!t.file().exists());
+}
+
+#[tokio::test]
+async fn machines_order_partial_put_empty_put_and_delete() {
+    let t = t();
+    let put = |b: Value| t.call("PUT", "/api/prefs/layout", true, Some(b));
+    let (st, body) = put(json!({"machinesOrder":["vm-1","Bad","vm-1","pc"]})).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, json!({"homeOrder":[],"machinesOrder":["vm-1","pc"]}));
+    let (_, body) = put(json!({"homeOrder":["host"]})).await;
+    assert_eq!(
+        body,
+        json!({"homeOrder":["host"],"machinesOrder":["vm-1","pc"]})
+    );
+    let got = t.call("GET", "/api/prefs", true, None).await.1;
+    assert_eq!(got["machinesOrder"], json!(["vm-1", "pc"]));
+    assert_eq!(put(json!({})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        put(json!({"machinesOrder":"x"})).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        t.call("DELETE", "/api/prefs/layout", true, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let got = t.call("GET", "/api/prefs", true, None).await.1;
+    assert_eq!(
+        (&got["homeOrder"], &got["machinesOrder"]),
+        (&json!([]), &json!([]))
+    );
 }

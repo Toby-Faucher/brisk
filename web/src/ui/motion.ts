@@ -374,21 +374,6 @@ export const fadeIn = (delay = 0) => (el: Element) => {
   return () => a.cancel();
 };
 
-const lastText = new WeakMap<Element, string>();
-
-/**
- * Svelte attachment for a text that changes after load (Machines uptime, Sunshine state): `<dd {@attach fadeOnChange(v)}>{v}</dd>`.
- * Svelte writes the text; on a later change the element only fades in from .35 (opacity, native, nothing loaded), so nothing
- * moves and nothing is announced. The first value, an unchanged value and reduced motion do nothing.
- */
-export const fadeOnChange = (value: string) => (el: Element) => {
-  const was = lastText.get(el);
-  lastText.set(el, value);
-  if (was === undefined || was === value || !motionAllowed()) return;
-  const a = el.animate({ opacity: [0.35, 1] }, { duration: 360, easing: cssVar('--ease') });
-  return () => a.cancel();
-};
-
 /** Svelte attachment: a result chip pops in when it mounts: opacity + `translate` + `scale` (native, compositor), `delay` ms in. */
 export const popIn = (delay = 0) => (el: Element) => {
   if (!motionAllowed()) return;

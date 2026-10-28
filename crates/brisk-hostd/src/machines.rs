@@ -4,7 +4,7 @@
 
 use crate::http::AppState;
 use crate::idle::{IdleWatch, Observed};
-use crate::power::{Power, PowerCfg, ProxmoxCfg, VmState};
+use crate::power::{Power, PowerCfg, ProxmoxCfg, VmState, VmStats};
 use axum::body::Body;
 use axum::extract::{Path as UrlPath, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
@@ -60,6 +60,34 @@ fn url_ok(u: &str) -> Result<(), &'static str> {
     }
 }
 
+/// `power.temp_url`: https, or http only to loopback, a private IPv4 or a tailnet IPv4; no userinfo.
+fn temp_url_ok(u: &str) -> Result<(), &'static str> {
+    use std::net::Ipv4Addr;
+    const MSG: &str =
+        "temp_url must be https (http only for loopback, private or tailnet addresses)";
+    let uri: ureq::http::Uri = u.parse().map_err(|_| MSG)?;
+    let (Some(auth), Some(host)) = (uri.authority(), uri.host()) else {
+        return Err(MSG);
+    };
+    if auth.as_str().contains('@') {
+        return Err("temp_url must not contain userinfo");
+    }
+    match uri.scheme_str() {
+        Some("https") => Ok(()),
+        Some("http") => {
+            let ok = match host.parse::<Ipv4Addr>() {
+                Ok(ip) => {
+                    let o = ip.octets();
+                    ip.is_loopback() || ip.is_private() || (o[0] == 100 && o[1] & 0xC0 == 0x40)
+                }
+                Err(_) => matches!(host, "localhost" | "[::1]"),
+            };
+            if ok { Ok(()) } else { Err(MSG) }
+        }
+        _ => Err(MSG),
+    }
+}
+
 /// machines.json text to validated machines; errors name the machine, never a secret.
 pub fn parse(text: &str) -> Result<Vec<MachineCfg>, String> {
     let f: File = serde_json::from_str(text).map_err(|e| format!("not valid: {e}"))?;
@@ -81,6 +109,9 @@ pub fn parse(text: &str) -> Result<Vec<MachineCfg>, String> {
             return Err(format!("machine id {id:?} is used twice"));
         }
         url_ok(&m.url).map_err(|e| format!("machine {id}: {e}"))?;
+        if let Some(t) = m.power.as_ref().and_then(|p| p.temp_url.as_deref()) {
+            temp_url_ok(t).map_err(|e| format!("machine {id}: {e}"))?;
+        }
         if m.power.as_ref().and_then(|p| p.idle_shutdown_min) == Some(0) {
             return Err(format!(
                 "machine {id}: idle_shutdown_min must be at least 1"
@@ -159,18 +190,49 @@ impl Hub {
     }
 
     fn view(e: &Entry, state: &str, host: Option<Value>) -> Value {
+        Self::view_with(e, state, host, None, None)
+    }
+
+    fn view_with(
+        e: &Entry,
+        state: &str,
+        host: Option<Value>,
+        rtt_ms: Option<u64>,
+        vm: Option<VmStats>,
+    ) -> Value {
         let sunshine = host.as_ref().and_then(|h| h.get("sunshine")).cloned();
-        json!({ "id": e.cfg.id, "name": e.cfg.name, "state": state,
-                "canPower": e.power.is_some(), "sunshine": sunshine, "host": host })
+        let vm = vm.map(|s| {
+            json!({ "cpuPct": (s.cpu * 1000.0).round() / 10.0,
+                    "memUsedBytes": s.mem_used, "memTotalBytes": s.mem_total })
+        });
+        json!({ "id": e.cfg.id, "name": e.cfg.name, "state": state, "url": e.cfg.url,
+                "canPower": e.power.is_some(), "sunshine": sunshine, "host": host,
+                "rttMs": rtt_ms, "vm": vm })
     }
 
     /// Blocking: one state probe (Proxmox, then the machine's /api/host).
     fn probe(&self, e: &Entry) -> Value {
-        let host = || get_json(e, "host");
+        // The machine's /api/host and how long it took; the temperature fills a missing cpuTempC.
+        let host = || {
+            let t = Instant::now();
+            let mut h = get_json(e, "host");
+            let rtt = h.is_some().then(|| t.elapsed().as_millis() as u64);
+            if let Some(Value::Object(o)) = &mut h
+                && o.get("cpuTempC").is_none_or(Value::is_null)
+                && let Some(c) = e
+                    .cfg
+                    .power
+                    .as_ref()
+                    .and_then(|p| fetch_temp(p.temp_url.as_deref()?))
+            {
+                o.insert("cpuTempC".into(), json!(c));
+            }
+            (h, rtt)
+        };
         match &e.power {
             None => match host() {
-                Some(h) => Self::view(e, "ready", Some(h)),
-                None => Self::view(e, "unreachable", None),
+                (Some(h), rtt) => Self::view_with(e, "ready", Some(h), rtt, None),
+                (None, _) => Self::view(e, "unreachable", None),
             },
             Some(p) => match p.status() {
                 Err(_) => Self::view(e, "unreachable", None),
@@ -183,7 +245,7 @@ impl Hub {
                     }
                 }
                 Ok(VmState::Running) => {
-                    let h = host();
+                    let (h, rtt) = host();
                     let ready = h.as_ref().and_then(|h| h["sunshine"].as_str()) == Some("ready");
                     let state = if self.is_stopping(&e.cfg.id) {
                         "stopping"
@@ -193,7 +255,7 @@ impl Hub {
                     } else {
                         "starting"
                     };
-                    Self::view(e, state, h)
+                    Self::view_with(e, state, h, rtt, p.stats().ok())
                 }
             },
         }
@@ -292,6 +354,32 @@ fn get_json(e: &Entry, path: &str) -> Option<Value> {
         return None;
     }
     serde_json::from_slice(&up.body).ok()
+}
+
+/// `{"cpuTempC": n}` from the configured sensor URL, 2 s at most; any failure is `None`.
+fn fetch_temp(url: &str) -> Option<f64> {
+    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+    let tls = TlsConfig::builder()
+        .provider(TlsProvider::Rustls)
+        .root_certs(RootCerts::PlatformVerifier)
+        .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
+        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .tls_config(tls)
+        .proxy(None)
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
+        .into();
+    let mut r = agent.get(url).call().ok()?;
+    let body = r
+        .body_mut()
+        .with_config()
+        .limit(1 << 16)
+        .read_to_vec()
+        .ok()?;
+    let v: Value = serde_json::from_slice(&body).ok()?;
+    v["cpuTempC"].as_f64().filter(|c| (0.0..=150.0).contains(c))
 }
 
 fn err(code: StatusCode, msg: &str) -> Response {
@@ -578,6 +666,7 @@ mod tests {
         stream: &'static str,
         running: bool,
         update: Option<&'static str>,
+        temp: Option<f64>,
     }
 
     /// A fake hostd on an ephemeral port; returns its URL and the world it reports.
@@ -588,13 +677,15 @@ mod tests {
             stream: "idle",
             running: false,
             update: None,
+            temp: None,
         }));
         let (w1, w2, w3) = (w.clone(), w.clone(), w.clone());
         let app = axum::Router::new()
             .route(
                 "/api/host",
                 get(move || async move {
-                    json!({ "name": "up", "sunshine": w1.lock().unwrap().sunshine }).to_string()
+                    let w = w1.lock().unwrap();
+                    json!({ "name": "up", "sunshine": w.sunshine, "cpuTempC": w.temp }).to_string()
                 }),
             )
             .route(
@@ -651,6 +742,7 @@ mod tests {
     struct Fake {
         vm: Mutex<Result<VmState, String>>,
         status_calls: AtomicUsize,
+        stats: Option<VmStats>,
         fail_action: Option<&'static str>,
         acts: Mutex<Vec<&'static str>>,
     }
@@ -659,6 +751,11 @@ mod tests {
             Arc::new(Fake {
                 vm: Mutex::new(Ok(vm)),
                 status_calls: AtomicUsize::new(0),
+                stats: Some(VmStats {
+                    cpu: 0.256,
+                    mem_used: 2048,
+                    mem_total: 8192,
+                }),
                 fail_action: None,
                 acts: Mutex::default(),
             })
@@ -668,6 +765,9 @@ mod tests {
         fn status(&self) -> Result<VmState, String> {
             self.status_calls.fetch_add(1, Ordering::SeqCst);
             self.vm.lock().unwrap().clone()
+        }
+        fn stats(&self) -> Result<VmStats, String> {
+            self.stats.ok_or_else(|| "no stats".into())
         }
         fn start(&self) -> Result<(), String> {
             self.act("start")
@@ -698,6 +798,11 @@ mod tests {
 
     /// `machines`: (id, url, fake power). The hub's secret files hold MACHINE_SECRET.
     fn rig(machines: Vec<(&str, String, Option<Arc<Fake>>)>) -> Rig {
+        rig_t(machines, None)
+    }
+
+    /// Like `rig`, with `power.temp_url` set on every machine that has power.
+    fn rig_t(machines: Vec<(&str, String, Option<Arc<Fake>>)>, temp: Option<String>) -> Rig {
         let d = tempfile::tempdir().unwrap();
         let sf = d.path().join("secret");
         std::fs::write(&sf, format!("{MACHINE_SECRET}\n")).unwrap();
@@ -710,7 +815,8 @@ mod tests {
                 if let Some(p) = p {
                     powers.insert(id.to_string(), p.clone());
                     m["power"] = json!({ "proxmox": { "api": "https://pve.example.invalid:8006",
-                        "node": "n", "vmid": 1, "token_id": "u@pve!t", "token_file": "/nonexistent" } });
+                        "node": "n", "vmid": 1, "token_id": "u@pve!t", "token_file": "/nonexistent" },
+                        "temp_url": temp });
                 }
                 m
             })
@@ -842,6 +948,37 @@ mod tests {
                 "idle_shutdown_min",
             ),
         ];
+        let temp = |u: &str| {
+            one(&format!(
+                r#","power":{{"proxmox":{{"api":"https://p.invalid","node":"n","vmid":1,"token_id":"t","token_file":"/t"}},"temp_url":"{u}"}}"#
+            ))
+        };
+        for (u, want) in [
+            ("http://h.invalid/t", "temp_url must be"),
+            ("http://8.8.8.8/t", "temp_url must be"),
+            ("http://100.128.0.1/t", "temp_url must be"),
+            ("http://172.32.0.1/t", "temp_url must be"),
+            ("ftp://10.0.0.1/t", "temp_url must be"),
+            ("/t", "temp_url must be"),
+            ("https://u:p@h.invalid/t", "userinfo"),
+            ("http://u@10.0.0.1/t", "userinfo"),
+        ] {
+            let e = parse(&temp(u)).expect_err(u);
+            assert!(e.contains(want) && e.starts_with("machine a:"), "{u}: {e}");
+        }
+        for u in [
+            "https://h.invalid/t",
+            "http://127.0.0.1:9/t",
+            "http://localhost:9/t",
+            "http://10.1.2.3/t",
+            "http://172.16.0.1/t",
+            "http://192.168.1.1:8080/t",
+            "http://100.64.0.1/t",
+            "http://100.127.255.254/t",
+        ] {
+            let m = parse(&temp(u)).expect(u);
+            assert_eq!(m[0].power.as_ref().unwrap().temp_url.as_deref(), Some(u));
+        }
         for (text, want) in bad {
             let e = parse(text).expect_err(text);
             assert!(e.contains(want), "{text}: {e}");
@@ -1126,6 +1263,20 @@ mod tests {
             (Some("ready"), Some("up"))
         );
         assert!(m[1]["host"].is_null() && m[1]["sunshine"].is_null() && m[2]["host"].is_null());
+        assert_eq!(
+            m[0]["url"].as_str(),
+            Some(r.hub.machines[0].cfg.url.as_str())
+        );
+        // rttMs: a number when /api/host answered, null otherwise; vm only for a running VM.
+        let rtt = |i: usize| m[i]["rttMs"].as_u64();
+        assert!(rtt(0).is_some() && rtt(4).is_some());
+        assert!([1, 2, 3, 5].iter().all(|&i| m[i]["rttMs"].is_null()));
+        assert_eq!(
+            m[4]["vm"],
+            json!({ "cpuPct": 25.6, "memUsedBytes": 2048, "memTotalBytes": 8192 })
+        );
+        assert!(m[0]["vm"].is_null() && m[2]["vm"].is_null() && m[5]["vm"].is_null());
+        assert!(m[3]["vm"].is_object() && m[3]["rttMs"].is_null());
         // Running but Sunshine not ready is still starting.
         drop(world);
         let (url2, w2) = upstream().await;
@@ -1136,6 +1287,70 @@ mod tests {
             (state_of(&v, 0), v["machines"][0]["sunshine"].as_str()),
             ("starting", Some("down"))
         );
+    }
+
+    #[tokio::test]
+    async fn vm_is_null_when_stats_fail() {
+        let (url, _) = upstream().await;
+        let p = Arc::new(Fake {
+            stats: None,
+            ..Arc::into_inner(Fake::new(VmState::Running)).unwrap()
+        });
+        let r = rig(vec![("a", url, Some(p))]);
+        let (_, v) = getj(&r.app, "/api/machines").await;
+        assert_eq!(state_of(&v, 0), "ready");
+        assert!(v["machines"][0]["vm"].is_null());
+    }
+
+    /// A temp sensor on loopback answering `body` at /t.
+    async fn temp_server(body: &'static str) -> String {
+        let app = axum::Router::new().route("/t", axum::routing::get(move || async move { body }));
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/t", l.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        url
+    }
+
+    #[tokio::test]
+    async fn temp_url_fills_only_a_missing_cpu_temp() {
+        let temp_of = |v: &Value| v["machines"][0]["host"]["cpuTempC"].clone();
+        for (body, want) in [
+            (r#"{"cpuTempC": 61.5}"#, json!(61.5)),
+            (r#"{"cpuTempC": 151}"#, Value::Null),
+            (r#"{"cpuTempC": -1}"#, Value::Null),
+            (r#"{"cpuTempC": "hot"}"#, Value::Null),
+            ("nope", Value::Null),
+        ] {
+            let (url, _) = upstream().await;
+            let r = rig_t(
+                vec![("a", url, Some(Fake::new(VmState::Running)))],
+                Some(temp_server(body).await),
+            );
+            assert_eq!(
+                temp_of(&getj(&r.app, "/api/machines").await.1),
+                want,
+                "{body}"
+            );
+        }
+        // The machine's own reading wins.
+        let (url, w) = upstream().await;
+        w.lock().unwrap().temp = Some(40.0);
+        let r = rig_t(
+            vec![("a", url, Some(Fake::new(VmState::Running)))],
+            Some(temp_server(r#"{"cpuTempC": 61.5}"#).await),
+        );
+        assert_eq!(temp_of(&getj(&r.app, "/api/machines").await.1), json!(40.0));
+        // Unreachable sensor: left null; a host that did not answer gets nothing.
+        let (url, _) = upstream().await;
+        let r = rig_t(
+            vec![
+                ("a", url, Some(Fake::new(VmState::Running))),
+                ("b", dead_url().await, Some(Fake::new(VmState::Running))),
+            ],
+            Some(dead_url().await),
+        );
+        let (_, v) = getj(&r.app, "/api/machines").await;
+        assert!(temp_of(&v).is_null() && v["machines"][1]["host"].is_null());
     }
 
     #[tokio::test]
@@ -1264,6 +1479,7 @@ mod tests {
             stream: "live",
             running: true,
             update: Some("running"),
+            temp: None,
         };
         assert_eq!(
             see(&e).await,

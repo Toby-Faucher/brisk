@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { flushSync, onMount, tick } from 'svelte';
   import { enter } from '../../shell/reveal';
   import { Dialog } from 'bits-ui';
   import { api, type HostInfo, type StreamInfo } from '../../state/api';
@@ -9,13 +9,17 @@
   import { host as hostStore, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
+  import LatencyLayers from '../../ui/LatencyLayers.svelte';
   import Icon from '../../ui/Icon.svelte';
   import StatusDot from '../../ui/StatusDot.svelte';
   import ConnPath from './ConnPath.svelte';
-  import { count, fadeOnChange } from '../../ui/motion';
-  import { DASH, fmtTemp, fmtUptime } from '../home/home';
-  import { hub, machines as hubMachines, selected, selectMachine, powerMachine } from '../../state/machines';
-  import { machinesFrom, restartError, dotState, powerWhy, STATE_LABEL } from './machines';
+  import MachineModal from './MachineModal.svelte';
+  import Slot from '../home/Slot.svelte';
+  import { box, count, cssVar, fadeOnChange, glide, motionAllowed, ms } from '../../ui/motion';
+  import { DASH, fmtUptime, reconcileOrder } from '../home/home';
+  import { reorder } from '../home/drag';
+  import { hub, orderedMachines, pings, startPings, selected, selectMachine, setMachinesOrder, powerMachine } from '../../state/machines';
+  import { machinesFrom, restartError, dotState, powerWhy, statRows, STATE_LABEL, type Vm } from './machines';
 
   const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
   let stream = $state<StreamInfo | null>(null);
@@ -23,10 +27,17 @@
   let busy = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  type Entry = { id: string; name: string; state: Machine['state']; canPower: boolean; info: HostInfo | null };
+  type Entry = { id: string; name: string; state: Machine['state']; canPower: boolean; info: HostInfo | null; vm: Vm | null };
   const hubOn = $derived($hub === true);
   // single-host mode keeps today's one card from the host store
-  const machines = $derived<Entry[]>(hubOn ? $hubMachines.map((m) => ({ id: m.id, name: m.name, state: m.state, canPower: m.canPower, info: m.host })) : ($hostStore ? machinesFrom($hostStore) : []).map((m) => ({ id: m.id, name: m.info.name, state: 'ready', canPower: false, info: m.info })));
+  // while a card is being dragged (or just dropped) `local` is the order on screen; the store catches up on the drop
+  let local: string[] | null = $state(null);
+  const ordered = $derived.by(() => {
+    if (!local) return $orderedMachines;
+    const ids = reconcileOrder(local, $orderedMachines.map((m) => m.id));
+    return ids.map((id) => $orderedMachines.find((m) => m.id === id)!);
+  });
+  const machines = $derived<Entry[]>(hubOn ? ordered.map((m) => ({ id: m.id, name: m.name, state: m.state, canPower: m.canPower, info: m.host, vm: m.vm })) : ($hostStore ? machinesFrom($hostStore) : []).map((m) => ({ id: m.id, name: m.info.name, state: 'ready', canPower: false, info: m.info, vm: null })));
   let shutting = $state<Entry | null>(null);
   const failed = (what: string, e: unknown) => toast(`Could not ${what}: ${(e as Error).message}`, { error: true });
   const start = (m: Entry) => powerMachine(m.id, 'start').catch((e) => failed(`start ${m.name}`, e));
@@ -43,12 +54,61 @@
 
   const running = $derived(($games?.games ?? []).filter((g) => g.running));
 
+  let grid: HTMLElement | undefined = $state();
+  let ring: HTMLElement | undefined = $state();
+  let modal = $state<{ id: string; origin: DOMRect } | null>(null);
+  let opener: HTMLElement | null = null;
+  let said = $state('');
+  async function openModal(e: MouseEvent, id: string) {
+    opener = e.currentTarget as HTMLElement;
+    modal = { id, origin: opener.closest('.card')!.getBoundingClientRect() };
+  }
+  const closeModal = () => (modal = null, void tick().then(() => opener?.focus()));
+
+  const drag = reorder({
+    order: () => machines.map((m) => m.id),
+    set: (next) => {
+      local = next;
+      flushSync();
+    },
+    drop: (id, next, changed) => {
+      said = `${machines.find((m) => m.id === id)?.name} card dropped, position ${next.indexOf(id) + 1} of ${next.length}`;
+      if (!changed) return void (local = null);
+      setMachinesOrder(next).catch(() => toast('Could not save the machine order', { error: true })).finally(() => (local = null));
+    },
+  });
+
+  // The Selected ring is one overlay (cards clip their overflow) that glides to the newly selected card; the new card
+  // lifts on the settle spring and the old one settles. Not on first placement, and instant under reduced motion.
+  let was: string | null = null;
+  function place() {
+    const id = hubOn ? $selected : null;
+    const card = id && grid?.querySelector<HTMLElement>(`[data-card="${id}"]`);
+    if (!ring || !card) return;
+    const from = ring.hidden ? null : box(ring);
+    Object.assign(ring.style, { left: `${card.offsetLeft}px`, top: `${card.offsetTop}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
+    ring.hidden = false;
+    if (was && was !== id) {
+      if (from) glide(ring, from, box(ring));
+      if (motionAllowed()) {
+        const opts = { duration: ms('--spring-settle-dur', 900), easing: cssVar('--spring-settle') || 'ease-out' };
+        card.animate([{ translate: '0 -10px' }, { translate: '0 0' }], opts);
+        grid?.querySelector(`[data-card="${was}"]`)?.animate([{ scale: '1.02' }, { scale: '1' }], opts);
+      }
+    }
+    was = id;
+  }
+  $effect(() => void [machines, $selected, hubOn, place()]);
+
   onMount(() => {
     const unwatch = watchGames();
+    const stopPings = startPings();
+    const ro = new ResizeObserver(place);
+    if (grid) ro.observe(grid);
     const load = () => api.stream().then((s) => (stream = s), () => (stream = null));
     void load();
     const id = setInterval(() => !document.hidden && void load(), 10_000);
-    return () => (clearInterval(id), clearTimeout(timer), unwatch()); // HostPill keeps $host fresh
+    return () => (clearInterval(id), clearTimeout(timer), unwatch(), stopPings(), ro.disconnect()); // HostPill keeps $host fresh
   });
 
   async function restart() {
@@ -68,12 +128,36 @@
 </script>
 
 <div class="top reveal"><h2>Machines</h2></div>
-<div class="grid">
+{#if hubOn}
+  <span id="grip-hint" hidden>Space picks the card up, arrow keys move it, Space or Enter drops it, Escape puts it back.</span>
+  <!-- one polite line per drop, as on Home -->
+  <span class="sr" role="status">{said}</span>
+{/if}
+<div class="grid" bind:this={grid} {@attach hubOn ? drag : undefined}>
+  {#if hubOn}<span class="ring" bind:this={ring} aria-hidden="true" hidden></span>{/if}
   {#each machines as m (m.id)}
+    {#if hubOn}
+      <Slot id={m.id} label={m.name}>{@render card(m)}</Slot>
+    {:else}
+      {@render card(m)}
+    {/if}
+  {:else}
+    <Card cols={2}>
+      <h4><Icon name="host" color="var(--c-host)" size={16} /> Machines</h4>
+      <div class="big">{DASH}</div>
+      <div class="lab">Machine status is not available here. Brisk could not reach the host agent.</div>
+    </Card>
+  {/each}
+</div>
+{#if modal}<MachineModal machineId={modal.id} origin={modal.origin} onclose={closeModal} />{/if}
+
+{#snippet card(m: Entry)}
     {@const i = m.info}
     {@const here = !hubOn || m.id === $selected}
     {@const why = powerWhy(m.state)}
     <Card cols={2} rows={2}>
+      <!-- stretched primary button: the whole card opens the details; the real buttons sit above it -->
+      {#if hubOn}<button type="button" class="fill" aria-label="Open {m.name} details" onclick={(e) => openModal(e, m.id)}></button>{/if}
       <h4><Icon name="host" color="var(--c-host)" size={16} /> {m.name} <StatusDot state={i ? dotState({ state: m.state, sunshine: i.sunshine }) : dotState({ state: m.state, sunshine: null })} />{#if hubOn && here}<span class="sel">Selected</span>{/if}</h4>
       {#if hubOn && !i}
         <div class="big">{STATE_LABEL[m.state]}</div>
@@ -82,12 +166,13 @@
       {@const big = i.sunshine === 'down' ? 'Sunshine is down' : 'Online'}
       {@const up = fmtUptime(i.uptimeS)}
       <div class="big" {@attach fadeOnChange(big)}>{big}</div>
-      <ConnPath path={i.path} />
+      {#if hubOn}<LatencyLayers samples={$pings[m.id] ?? []} height={72} />{:else}<ConnPath path={i.path} />{/if}
       <dl>
         <dt>Sunshine</dt><dd {@attach fadeOnChange(SUN[i.sunshine])}>{SUN[i.sunshine]}</dd>
         <dt>Uptime</dt><dd {@attach fadeOnChange(up)}>{up}</dd>
-        <dt>GPU</dt><dd {@attach count(i.gpuTempC, fmtTemp)}>{fmtTemp(i.gpuTempC)}</dd>
-        <dt>CPU</dt><dd {@attach count(i.cpuTempC, fmtTemp)}>{fmtTemp(i.cpuTempC)}</dd>
+        {#each statRows(i, m.vm, hubOn) as r (r.label)}
+          <dt>{r.label}</dt><dd {@attach r.n == null ? undefined : count(r.n, r.fmt)}>{r.text}</dd>
+        {/each}
         <dt>Network</dt><dd>{i.path === 'relay' ? `Relay${i.relay ? ` · ${i.relay}` : ''}` : i.path === 'direct' ? 'Direct' : DASH}</dd>
         <dt>Running</dt><dd>{here ? (app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)) : DASH}</dd>
       </dl>
@@ -127,14 +212,8 @@
         {#if !hubOn}<button class="btn ghost" disabled title="Not in v1">Wake-on-LAN · later</button>{/if}
       </div>
     </Card>
-  {:else}
-    <Card cols={2}>
-      <h4><Icon name="host" color="var(--c-host)" size={16} /> Machines</h4>
-      <div class="big">{DASH}</div>
-      <div class="lab">Machine status is not available here. Brisk could not reach the host agent.</div>
-    </Card>
-  {/each}
-</div>
+{/snippet}
+
 <Dialog.Root bind:open={() => !!shutting, (v) => !v && (shutting = null)}>
   <Dialog.Portal>
     <Dialog.Overlay class="cm-dim" />
@@ -152,7 +231,19 @@
 <style>
   .top { padding: 0 2px 14px; border-bottom: 1px solid var(--line); }
   h2 { font-size: 18px; letter-spacing: -.02em; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding-top: 16px; }
+  /* position: the cards' offsets (drag.ts hit tests, the ring) are relative to the grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding-top: 16px; position: relative; }
+  /* the Selected ring: one overlay glided by place(); above the cards, below a lifted one, hidden while one is held */
+  .ring { position: absolute; z-index: 1; pointer-events: none; border: 2px solid var(--accent); border-radius: var(--r-card); box-sizing: border-box; transition: opacity .2s; }
+  .grid:has(:global([data-lifted])) .ring { opacity: 0; }
+  /* real buttons above the stretched .fill button */
+  .actions, .apps li { position: relative; z-index: 1; }
+  /* drag.ts marks, as on Home (Home.svelte) */
+  .grid :global([data-lifted]) { z-index: 3; scale: 1.03; background: var(--panel); box-shadow: 0 18px 40px rgba(0, 0, 0, .45); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  .grid :global([data-landing]) { z-index: 2; background: var(--panel); }
+  .grid :global([data-lifted]:hover) { transform: none; }
+  .grid:global([data-sorted]) :global([data-enter]) { animation: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .big { font-size: 30px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ letter-spacing: -.03em; margin: 6px 0 14px; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0; }
   dt { color: var(--muted); font-size: 13px; }

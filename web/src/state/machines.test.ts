@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 
-type M = { id: string; state: string };
-const mk = (id: string, state = 'ready') => ({ id, name: id, state, canPower: true, sunshine: null, host: null });
+type M = { id: string; state: string; rttMs?: number | null };
+const mk = (id: string, state = 'ready') => ({ id, name: id, state, canPower: true, sunshine: null, host: null, url: `http://${id}.test:8443`, rttMs: 5, vm: null });
 
 /** Fresh module graph per test (the stores are module state), a stubbed hub and in-memory localStorage. */
 async function setup(opts: { list?: M[]; stored?: string; machinesStatus?: number } = {}) {
@@ -11,11 +11,21 @@ async function setup(opts: { list?: M[]; stored?: string; machinesStatus?: numbe
   vi.stubGlobal('localStorage', { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v), removeItem: (k: string) => void local.delete(k) });
   vi.stubGlobal('sessionStorage', { getItem: () => null, setItem() {} });
   vi.stubGlobal('location', { href: 'http://localhost/' });
-  const state = { list: opts.list ?? [mk('a'), mk('b')], status: opts.machinesStatus ?? 200, fail: false };
+  const state = { list: opts.list ?? [mk('a'), mk('b')], status: opts.machinesStatus ?? 200, fail: false, order: [] as string[], putFail: false, ping: 'ok' as 'ok' | 'fail' | 'hang', pingMs: 20 };
   const f = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/machines') {
       if (state.fail) throw new TypeError('network');
       return new Response(JSON.stringify(state.status === 200 ? { machines: state.list } : { error: 'nope' }), { status: state.status });
+    }
+    if (url === '/api/prefs') return new Response(JSON.stringify({ prefs: {}, machinesOrder: state.order }), { status: 200 });
+    if (url === '/api/prefs/layout') return state.putFail ? new Response('{"error":"nope"}', { status: 500 }) : new Response(JSON.stringify({ homeOrder: [], machinesOrder: JSON.parse(init!.body as string).machinesOrder.filter((i: string) => i !== 'bad') }), { status: 200 });
+    if (url.startsWith('http')) {
+      if (state.ping === 'fail') throw new TypeError('network');
+      await new Promise<void>((ok, no) => {
+        init?.signal?.addEventListener('abort', () => no(new DOMException('aborted', 'AbortError')));
+        if (state.ping === 'ok') setTimeout(ok, state.pingMs);
+      });
+      return new Response(null, { status: 200 });
     }
     if (url.endsWith('/power')) return new Response('{"state":"starting"}', { status: 202 });
     return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
@@ -177,7 +187,7 @@ describe('ensureReady', () => {
 
   it('fails_when_proxmox_refuses', async () => {
     const { m, f } = await setup({ list: [mk('a', 'off')] });
-    f.mockImplementation(async (url: string) => (String(url).endsWith('/power') ? new Response('{"error":"proxmox said no"}', { status: 502 }) : new Response('{"machines":[{"id":"a","name":"a","state":"off","canPower":true,"sunshine":null,"host":null}]}')));
+    f.mockImplementation(async (url: string) => (String(url).endsWith('/power') ? new Response('{"error":"proxmox said no"}', { status: 502 }) : new Response('{"machines":[{"id":"a","name":"a","state":"off","canPower":true,"sunshine":null,"host":null,"url":"http://a.test","rttMs":null,"vm":null}]}')));
     await expect(m.ensureReady('a')).rejects.toMatchObject({ message: 'proxmox said no' });
     expect(get(m.wake)).toMatchObject({ phase: 'failed', error: 'proxmox said no' });
   });
@@ -220,5 +230,190 @@ describe('actions', () => {
     const { m, f } = await setup();
     f.mockImplementationOnce(async () => new Response('{"error":"no power control"}', { status: 409 }));
     await expect(m.powerMachine('a', 'shutdown')).rejects.toMatchObject({ status: 409, message: 'no power control' });
+  });
+});
+
+describe('machine order', () => {
+  it('sorts_by_the_saved_order_and_appends_unknown_machines', async () => {
+    const { m, state } = await setup({ list: [mk('a'), mk('b'), mk('c'), mk('d')] });
+    state.order = ['c', 'gone', 'a'];
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(get(m.machinesOrder)).toEqual(['c', 'gone', 'a']);
+    expect(get(m.orderedMachines).map((x) => x.id)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('keeps_server_order_without_a_saved_one', async () => {
+    const { m } = await setup();
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(get(m.orderedMachines).map((x) => x.id)).toEqual(['a', 'b']);
+  });
+
+  it('saves_optimistically_and_takes_the_cleaned_answer', async () => {
+    const { m, f } = await setup();
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const p = m.setMachinesOrder(['b', 'bad', 'a']);
+    expect(get(m.machinesOrder)).toEqual(['b', 'bad', 'a']);
+    await p;
+    expect(get(m.machinesOrder)).toEqual(['b', 'a']);
+    const put = f.mock.calls.find((c) => c[0] === '/api/prefs/layout')!;
+    expect((put[1] as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ machinesOrder: ['b', 'bad', 'a'] });
+  });
+
+  it('reverts_and_rethrows_on_failure', async () => {
+    const { m, state } = await setup();
+    state.order = ['a', 'b'];
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    state.putFail = true;
+    await expect(m.setMachinesOrder(['b', 'a'])).rejects.toMatchObject({ status: 500 });
+    expect(get(m.machinesOrder)).toEqual(['a', 'b']);
+  });
+});
+
+describe('forMachine', () => {
+  it('always_goes_through_the_hub_path_whatever_is_selected', async () => {
+    const { m, a, f } = await setup();
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    m.selected.set('b');
+    await a.api.forMachine('a').games(true);
+    expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/games?refresh=1');
+    await a.api.forMachine('a').sessions();
+    expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/sessions');
+    await a.api.forMachine('a').host();
+    expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/host');
+  });
+
+  it('works_without_a_hub_route_and_503_is_not_denied', async () => {
+    const { a, f } = await setup();
+    await a.api.forMachine('x y').host();
+    expect(f.mock.calls.at(-1)![0]).toBe('/api/m/x%20y/host');
+    f.mockImplementationOnce(async () => new Response('{"error":"machine is off"}', { status: 503 }));
+    await expect(a.api.forMachine('a').games()).rejects.toMatchObject({ status: 503, message: 'machine is off' });
+    expect(get(a.denied)).toBe(false);
+  });
+});
+
+describe('pings', () => {
+  function stubDoc() {
+    const l = new Set<() => void>();
+    const doc = { hidden: false, addEventListener: (_: string, f: () => void) => l.add(f), removeEventListener: (_: string, f: () => void) => l.delete(f) };
+    vi.stubGlobal('document', doc);
+    return { doc, fire: () => l.forEach((f) => f()), l };
+  }
+  const direct = (f: ReturnType<typeof vi.fn>) => f.mock.calls.filter((c) => String(c[0]).startsWith('http'));
+
+  it('samples_every_3s_with_direct_timing_and_the_hub_rtt', async () => {
+    stubDoc();
+    const { m, f } = await setup({ list: [mk('a'), mk('b', 'starting')] });
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const stop = m.startPings();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(get(m.pings).a).toEqual([{ t: expect.any(Number), direct: 20, hub: 5 }]);
+    const [url, init] = direct(f)[0] as [string, RequestInit];
+    expect(url).toBe('http://a.test:8443/');
+    expect(init).toMatchObject({ method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(get(m.pings).a).toHaveLength(2);
+    expect(get(m.pings).b).toHaveLength(2);
+    stop();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(get(m.pings).a).toHaveLength(2);
+  });
+
+  it('is_ref_counted', async () => {
+    const { l } = stubDoc();
+    const { m } = await setup();
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const s1 = m.startPings();
+    const s2 = m.startPings();
+    expect(l.size).toBe(1);
+    s1();
+    s1();
+    await vi.advanceTimersByTimeAsync(3_100);
+    expect(get(m.pings).a.length).toBeGreaterThan(1);
+    s2();
+    expect(l.size).toBe(0);
+  });
+
+  it('times_out_after_5s_and_failures_give_null_without_overlap', async () => {
+    stubDoc();
+    const { m, f, state } = await setup({ list: [mk('a')] });
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    state.ping = 'hang';
+    const stop = m.startPings();
+    await vi.advanceTimersByTimeAsync(3_100);
+    expect(direct(f)).toHaveLength(1); // the 3 s tick skips: still in flight
+    expect(get(m.pings).a ?? []).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(get(m.pings).a).toEqual([{ t: expect.any(Number), direct: null, hub: 5 }]);
+    state.ping = 'fail';
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(get(m.pings).a.at(-1)).toMatchObject({ direct: null });
+    stop();
+  });
+
+  it('off_stopping_and_unreachable_machines_get_null_samples_without_a_request', async () => {
+    stubDoc();
+    const { m, f } = await setup({ list: [mk('a', 'off'), mk('b', 'stopping'), mk('c', 'unreachable')] });
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const stop = m.startPings();
+    await vi.advanceTimersByTimeAsync(100);
+    for (const id of ['a', 'b', 'c']) expect(get(m.pings)[id]).toEqual([{ t: expect.any(Number), direct: null, hub: null }]);
+    expect(direct(f)).toHaveLength(0);
+    stop();
+  });
+
+  it('keeps_60_samples_and_drops_vanished_machines', async () => {
+    stubDoc();
+    const { m, state } = await setup();
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const stop = m.startPings();
+    await vi.advanceTimersByTimeAsync(3_000 * 70);
+    expect(get(m.pings).a).toHaveLength(60);
+    state.list = [mk('a')];
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(Object.keys(get(m.pings))).toEqual(['a']);
+    stop();
+  });
+
+  it('pauses_while_hidden_and_resumes_at_once', async () => {
+    const { doc, fire } = stubDoc();
+    const { m } = await setup({ list: [mk('a')] });
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const stop = m.startPings();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(get(m.pings).a).toHaveLength(1);
+    doc.hidden = true;
+    fire();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(get(m.pings).a).toHaveLength(1);
+    doc.hidden = false;
+    fire();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(get(m.pings).a).toHaveLength(2);
+    stop();
+  });
+
+  it('does_nothing_without_a_hub', async () => {
+    stubDoc();
+    const { m, f } = await setup({ machinesStatus: 404 });
+    m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    const stop = m.startPings();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(get(m.pings)).toEqual({});
+    expect(direct(f)).toHaveLength(0);
+    stop();
   });
 });

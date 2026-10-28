@@ -1,6 +1,7 @@
 //! Per-game quality in `data_dir/prefs.json` (`{"<appid>": Entry}`): written whole to a 0600 temp
 //! file and renamed over the old one, read tolerantly (a missing or corrupt file is just empty).
-//! The Home card order rides along under `"layout": {"v": 1, "homeOrder": [...]}` (absent when unset).
+//! The Home card order and the Machines page order ride along under
+//! `"layout": {"v": 1, "homeOrder": [...], "machinesOrder": [...]}` (each key absent when empty).
 
 use crate::sessions::now_ms;
 use crate::stream::{Codec, Preset};
@@ -15,11 +16,21 @@ pub const MAX_ENTRIES: usize = 500;
 /// Home cards are a handful; the caps only bound what a client can make hostd store.
 pub const HOME_MAX: usize = 32;
 pub const HOME_ID_MAX: usize = 32;
+pub const MACHINES_MAX: usize = 64;
 const LAYOUT_KEY: &str = "layout";
 const LAYOUT_V: u64 = 1;
 
 /// Keeps the ids that are 1..=HOME_ID_MAX of `a-z 0-9 -`, first occurrence only, at most HOME_MAX.
 pub fn clean_home_order(ids: Vec<String>) -> Vec<String> {
+    clean_ids(ids, HOME_MAX)
+}
+
+/// Same rules as `clean_home_order`, at most MACHINES_MAX ids.
+pub fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
+    clean_ids(ids, MACHINES_MAX)
+}
+
+fn clean_ids(ids: Vec<String>, max: usize) -> Vec<String> {
     let ok = |s: &str| {
         (1..=HOME_ID_MAX).contains(&s.len())
             && s.bytes()
@@ -27,7 +38,7 @@ pub fn clean_home_order(ids: Vec<String>) -> Vec<String> {
     };
     let mut out: Vec<String> = Vec::new();
     for id in ids {
-        if out.len() == HOME_MAX {
+        if out.len() == max {
             break;
         }
         if ok(&id) && !out.contains(&id) {
@@ -41,6 +52,7 @@ pub fn clean_home_order(ids: Vec<String>) -> Vec<String> {
 struct Inner {
     map: BTreeMap<u32, Entry>,
     home: Vec<String>,
+    machines: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -72,12 +84,18 @@ impl Prefs {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         // another version (or garbage) reads as no saved order
-        let home = raw
+        let layout = raw
             .remove(LAYOUT_KEY)
-            .filter(|l| l["v"].as_u64() == Some(LAYOUT_V))
-            .and_then(|l| serde_json::from_value::<Vec<String>>(l["homeOrder"].clone()).ok())
-            .map(clean_home_order)
-            .unwrap_or_default();
+            .filter(|l| l["v"].as_u64() == Some(LAYOUT_V));
+        let list = |key: &str, clean: fn(Vec<String>) -> Vec<String>| {
+            layout
+                .as_ref()
+                .and_then(|l| serde_json::from_value::<Vec<String>>(l[key].clone()).ok())
+                .map(clean)
+                .unwrap_or_default()
+        };
+        let home = list("homeOrder", clean_home_order);
+        let machines = list("machinesOrder", clean_machines_order);
         let mut map: BTreeMap<u32, Entry> = raw
             .into_iter()
             .filter_map(|(k, v)| Some((k.parse().ok()?, serde_json::from_value(v).ok()?)))
@@ -85,7 +103,11 @@ impl Prefs {
         evict(&mut map);
         Prefs {
             path,
-            inner: Mutex::new(Inner { map, home }),
+            inner: Mutex::new(Inner {
+                map,
+                home,
+                machines,
+            }),
         }
     }
 
@@ -97,12 +119,26 @@ impl Prefs {
         self.inner.lock().unwrap().home.clone()
     }
 
-    /// Cleans `ids` (clean_home_order), stores and writes them; empty clears the saved order.
-    pub fn set_home_order(&self, ids: Vec<String>) -> Vec<String> {
+    pub fn machines_order(&self) -> Vec<String> {
+        self.inner.lock().unwrap().machines.clone()
+    }
+
+    /// Cleans, stores and writes the lists that are `Some` (the other keeps its value); an empty
+    /// list clears that order. Returns (home, machines) as stored.
+    pub fn set_layout(
+        &self,
+        home: Option<Vec<String>>,
+        machines: Option<Vec<String>>,
+    ) -> (Vec<String>, Vec<String>) {
         let mut m = self.inner.lock().unwrap();
-        m.home = clean_home_order(ids);
+        if let Some(h) = home {
+            m.home = clean_home_order(h);
+        }
+        if let Some(x) = machines {
+            m.machines = clean_machines_order(x);
+        }
         self.save(&m);
-        m.home.clone()
+        (m.home.clone(), m.machines.clone())
     }
 
     /// Stores `e` with its `updated` as given and writes the file.
@@ -135,8 +171,15 @@ impl Prefs {
     fn save(&self, m: &Inner) {
         let write = || -> std::io::Result<()> {
             let mut doc = serde_json::to_value(&m.map)?;
-            if !m.home.is_empty() {
-                doc[LAYOUT_KEY] = serde_json::json!({ "v": LAYOUT_V, "homeOrder": m.home });
+            if !m.home.is_empty() || !m.machines.is_empty() {
+                let mut l = serde_json::json!({ "v": LAYOUT_V });
+                if !m.home.is_empty() {
+                    l["homeOrder"] = m.home.clone().into();
+                }
+                if !m.machines.is_empty() {
+                    l["machinesOrder"] = m.machines.clone().into();
+                }
+                doc[LAYOUT_KEY] = l;
             }
             let dir = self.path.parent().unwrap_or(std::path::Path::new("."));
             std::fs::create_dir_all(dir)?;
@@ -241,11 +284,88 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("prefs.json");
         let prefs = Prefs::load(p.clone());
-        assert_eq!(prefs.set_home_order(v(&["b", "a", "b"])), v(&["b", "a"]));
+        assert_eq!(
+            prefs.set_layout(Some(v(&["b", "a", "b"])), None).0,
+            v(&["b", "a"])
+        );
         assert_eq!(Prefs::load(p.clone()).home_order(), v(&["b", "a"]));
-        prefs.set_home_order(vec![]);
+        prefs.set_layout(Some(vec![]), None);
         let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
         assert!(raw.get("layout").is_none(), "{raw}");
         assert!(Prefs::load(p).home_order().is_empty());
+    }
+
+    #[test]
+    fn clean_machines_order_rules_and_cap() {
+        let long = "a".repeat(HOME_ID_MAX + 1);
+        assert_eq!(
+            clean_machines_order(v(&["", "Up", "a b", &long, "vm-1", "x", "vm-1"])),
+            v(&["vm-1", "x"])
+        );
+        let got = clean_machines_order((0..MACHINES_MAX + 5).map(|i| format!("m{i}")).collect());
+        assert_eq!(got.len(), MACHINES_MAX);
+    }
+
+    #[test]
+    fn machines_order_roundtrips_and_partial_set_keeps_the_other() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("prefs.json");
+        let prefs = Prefs::load(p.clone());
+        prefs.set_layout(Some(v(&["h"])), Some(v(&["b", "a", "b", "BAD"])));
+        let l = Prefs::load(p.clone());
+        assert_eq!(
+            (l.home_order(), l.machines_order()),
+            (v(&["h"]), v(&["b", "a"]))
+        );
+        let (h, m) = prefs.set_layout(None, Some(v(&["z"])));
+        assert_eq!((h, m), (v(&["h"]), v(&["z"])));
+        let (h, m) = prefs.set_layout(Some(vec![]), None);
+        assert_eq!((h, m), (vec![], v(&["z"])));
+        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        assert_eq!(
+            raw["layout"],
+            serde_json::json!({"v":1,"machinesOrder":["z"]})
+        );
+        prefs.set_layout(None, Some(vec![]));
+        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        assert!(raw.get("layout").is_none(), "{raw}");
+    }
+
+    #[test]
+    fn old_and_corrupt_layouts_read_without_panic() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("prefs.json");
+        for (raw, home, machines) in [
+            (r#"{"layout":{"v":1,"homeOrder":["a"]}}"#, v(&["a"]), v(&[])),
+            (
+                r#"{"layout":{"v":1,"machinesOrder":["m","m"]}}"#,
+                v(&[]),
+                v(&["m"]),
+            ),
+            (
+                r#"{"layout":{"v":1,"homeOrder":["a"],"machinesOrder":7}}"#,
+                v(&["a"]),
+                v(&[]),
+            ),
+            (
+                r#"{"layout":{"v":2,"machinesOrder":["m"]}}"#,
+                v(&[]),
+                v(&[]),
+            ),
+            (
+                r#"{"layout":{"v":1,"machinesOrder":[1,null]}}"#,
+                v(&[]),
+                v(&[]),
+            ),
+            ("not json {", v(&[]), v(&[])),
+        ] {
+            std::fs::write(&p, raw).unwrap();
+            let l = Prefs::load(p.clone());
+            assert_eq!(
+                (l.home_order(), l.machines_order()),
+                (home, machines),
+                "{raw}"
+            );
+        }
     }
 }

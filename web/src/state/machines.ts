@@ -2,7 +2,22 @@ import { derived, get, writable, type Readable, type Writable } from 'svelte/sto
 import { api, setRoute, type HostInfo } from './api';
 
 export type MachineState = 'off' | 'starting' | 'stopping' | 'ready' | 'unreachable';
-export type Machine = { id: string; name: string; state: MachineState; canPower: boolean; sunshine: 'ready' | 'busy' | 'down' | null; host: HostInfo | null };
+export type Machine = {
+  id: string;
+  name: string;
+  state: MachineState;
+  canPower: boolean;
+  sunshine: 'ready' | 'busy' | 'down' | null;
+  host: HostInfo | null;
+  /** The machine's own base URL, which the browser times directly. */
+  url: string;
+  /** How long the hub's last /api/host probe took (ms); null when it did not answer. */
+  rttMs: number | null;
+  /** Proxmox VM load (power machines only); cpuPct is a percentage, 0..100, as sent by the hub; null when the call failed. */
+  vm: { cpuPct: number; memUsedBytes: number; memTotalBytes: number } | null;
+};
+/** One latency sample (ms, null = lost): the browser's own timing and the hub's. */
+export type PingSample = { t: number; direct: number | null; hub: number | null };
 /** Progress of waking a machine; null when nothing is being woken. */
 export type Wake = { id: string; phase: 'starting' | 'waiting' | 'failed'; since: number /* Date.now() */; error?: string } | null;
 
@@ -52,6 +67,7 @@ async function refresh(): Promise<void> {
     if (list.length && !list.some((m) => m.id === get(sel))) selected.set(list[0].id);
     machinesW.set(list);
     hubW.set(true);
+    loadOrder();
   } catch (e) {
     if ((e as { status?: number }).status === 404) hubW.set(false);
     else if (get(hubW) === null) throw e; // not probed yet: let the caller retry
@@ -125,4 +141,98 @@ export function ensureReady(id: string): Promise<void> {
 export async function selectMachine(id: string): Promise<void> {
   selected.set(id);
   if (get(machinesW).find((m) => m.id === id)?.state === 'off') await ensureReady(id);
+}
+
+const orderW = writable<string[]>([]);
+/** The saved card order (ids); machines not in it follow in server order (see orderedMachines). */
+export const machinesOrder: Readable<string[]> = { subscribe: orderW.subscribe };
+export const orderedMachines: Readable<Machine[]> = derived([machinesW, orderW], ([$m, $o]) => [...$o.flatMap((id) => $m.find((m) => m.id === id) ?? []), ...$m.filter((m) => !$o.includes(m.id))]);
+
+// Loaded once, on hub detection, with its own GET /api/prefs (keeps this module free of prefs.ts).
+let orderLoaded = false;
+function loadOrder() {
+  if (orderLoaded) return;
+  orderLoaded = true;
+  api.prefs().then((r) => orderW.set(r.machinesOrder ?? []), () => (orderLoaded = false));
+}
+
+/** Optimistic; hostd cleans the ids and its answer wins. A failure restores the old order and rethrows. */
+export async function setMachinesOrder(ids: string[]): Promise<void> {
+  const prev = get(orderW);
+  orderW.set(ids);
+  try {
+    orderW.set((await api.putLayout({ machinesOrder: ids })).machinesOrder ?? ids);
+  } catch (e) {
+    orderW.set(prev);
+    throw e;
+  }
+}
+
+const PING_EVERY = 3_000;
+const PING_TIMEOUT = 5_000;
+const PING_KEEP = 60;
+const pingsW = writable<Record<string, PingSample[]>>({});
+/** Last 60 samples per machine, oldest first. */
+export const pings: Readable<Record<string, PingSample[]>> = { subscribe: pingsW.subscribe };
+
+/** Browser-to-machine time in ms; null on any failure. The opaque no-cors answer counts as success. */
+async function directPing(url: string): Promise<number | null> {
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), PING_TIMEOUT);
+  const t0 = performance.now();
+  try {
+    await fetch(`${url}/`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: ac.signal });
+    return performance.now() - t0;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+const pinging = new Set<string>();
+const addSample = (id: string, s: PingSample) => pingsW.update((p) => ({ ...p, [id]: [...(p[id] ?? []), s].slice(-PING_KEEP) }));
+
+function pingTick() {
+  if (get(hubW) !== true) return;
+  const list = get(machinesW);
+  pingsW.update((p) => Object.fromEntries(Object.entries(p).filter(([id]) => list.some((m) => m.id === id))));
+  const t = Date.now();
+  for (const m of list) {
+    if (m.state !== 'ready' && m.state !== 'starting') addSample(m.id, { t, direct: null, hub: null });
+    else if (!pinging.has(m.id)) {
+      pinging.add(m.id);
+      void directPing(m.url).then((direct) => {
+        pinging.delete(m.id);
+        const now = get(machinesW).find((x) => x.id === m.id);
+        if (now) addSample(m.id, { t, direct, hub: now.rttMs });
+      });
+    }
+  }
+}
+
+let pingUsers = 0;
+let pingTimer: ReturnType<typeof setInterval> | undefined;
+function pingRun() {
+  clearInterval(pingTimer);
+  if (document.hidden) return; // paused until visible again
+  pingTick();
+  pingTimer = setInterval(pingTick, PING_EVERY);
+}
+
+/** Sample latency every 3 s while a hub is known and the page is visible. Ref-counted like startMachines. */
+export function startPings(): () => void {
+  if (pingUsers++ === 0) {
+    document.addEventListener('visibilitychange', pingRun);
+    pingRun();
+  }
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    if (--pingUsers === 0) {
+      document.removeEventListener('visibilitychange', pingRun);
+      clearInterval(pingTimer);
+    }
+  };
 }

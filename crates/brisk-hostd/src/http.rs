@@ -509,31 +509,42 @@ async fn file_put(
 }
 
 async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(serde_json::json!({ "prefs": s.prefs.all(), "homeOrder": s.prefs.home_order() }))
-        .into_response()
+    axum::Json(serde_json::json!({
+        "prefs": s.prefs.all(),
+        "homeOrder": s.prefs.home_order(),
+        "machinesOrder": s.prefs.machines_order(),
+    }))
+    .into_response()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LayoutBody {
-    home_order: Vec<String>,
+    home_order: Option<Vec<String>>,
+    machines_order: Option<Vec<String>>,
 }
 
-/// The Home card order: not an array of strings is a 400; bad, duplicate and surplus ids are
-/// dropped (prefs::clean_home_order) and the stored order is returned.
+/// The Home card and Machines page orders: at least one, each an array of strings (else 400);
+/// bad, duplicate and surplus ids are dropped (prefs::clean_ids), the one not sent keeps its
+/// value, and both stored lists are returned.
 async fn layout_put(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
     match parse::<LayoutBody>(&b) {
+        Ok(b) if b.home_order.is_none() && b.machines_order.is_none() => err(
+            StatusCode::BAD_REQUEST,
+            "homeOrder or machinesOrder required",
+        ),
         Ok(b) => {
-            axum::Json(serde_json::json!({ "homeOrder": s.prefs.set_home_order(b.home_order) }))
+            let (home, machines) = s.prefs.set_layout(b.home_order, b.machines_order);
+            axum::Json(serde_json::json!({ "homeOrder": home, "machinesOrder": machines }))
                 .into_response()
         }
         Err(r) => r,
     }
 }
 
-/// Reset layout: forget the saved order (Home falls back to its default).
+/// Reset layout: forget both saved orders (Home and Machines fall back to their defaults).
 async fn layout_delete(State(s): State<Arc<AppState>>) -> Response {
-    s.prefs.set_home_order(vec![]);
+    s.prefs.set_layout(Some(vec![]), Some(vec![]));
     StatusCode::NO_CONTENT.into_response()
 }
 
