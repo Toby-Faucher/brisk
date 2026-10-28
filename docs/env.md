@@ -27,6 +27,7 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_SECRET_FILE` | Where the persistent secret lives (created once, 0600). | `~/.config/brisk/secret` | `hostd/src/main.rs` |
 | `BRISK_DOWNLOADS_DIR` | Directory for files dropped onto the Stream page (`files.rs`). | `~/Downloads/brisk` | `hostd/src/config.rs` `downloads_dir` |
 | `BRISK_DOLPHIN_DIR` | Dolphin's config directory; the controller editor reads and rewrites `WiimoteNew.ini`, `GCPadNew.ini` and `Dolphin.ini` there (`controls.rs`). | `${XDG_CONFIG_HOME:-~/.config}/dolphin-emu` | `hostd/src/config.rs` `dolphin_dir` |
+| `BRISK_PLAYTIME_POLL_S` | How often hostd checks which emulator games run, to count playtime into `playtime.json` (seconds, at least 5). | `15` | `hostd/src/config.rs`, `playtime.rs` |
 | `BRISK_SPAWN_SCOPE` | `1` starts spawned programs (Steam launches) in their own `systemd-run --user --scope`. Set by `deploy/brisk-hostd.service`. | unset | `hostd/src/host.rs` |
 | `BRISK_TAP_SOCK` | Unix socket where Sunshine's tap sends encoded frames. | `$XDG_RUNTIME_DIR/brisk/tap.sock` | `brisk-client/src/tap.rs` (used by `brisk-bridge` and `brisk-probe`) |
 

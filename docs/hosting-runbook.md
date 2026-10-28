@@ -77,6 +77,9 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
   laptop is no longer on bawn's clipboard afterwards.
 - The journal never holds the secret (hostd prints the page line without it under systemd); use
   `scripts/brisk-service.sh link` for the link.
+- Emulator playtime: hostd checks the running emulators every 15 s and writes `playtime.json` in the data
+  dir (at most once a minute while a game runs). Restarting hostd loses at most that minute; time while
+  hostd is down is not counted. Delete the file to reset all emulator playtime.
 - Status / logs: `scripts/brisk-service.sh status`, `scripts/brisk-service.sh logs -f`.
 - A new link (another browser): `scripts/brisk-service.sh link`. To rotate the secret: remove
   `~/.config/brisk/secret`, `systemctl --user restart brisk-hostd.service`, open the new link.
