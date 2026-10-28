@@ -550,7 +550,7 @@ async fn image_route_checks_auth_ids_and_kinds() {
         ),
         (
             "/api/games/emu%3Adolphin%3A%2E%2E/art/cover",
-            StatusCode::BAD_REQUEST,
+            StatusCode::NOT_FOUND,
         ),
         ("/api/games/620/art/cover", StatusCode::BAD_REQUEST),
         ("/api/games/steam%3A620/art/cover", StatusCode::BAD_REQUEST),
