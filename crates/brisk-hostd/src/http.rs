@@ -33,6 +33,11 @@ pub struct AppState {
     pub stream: Supervisor,
     pub clip: Arc<Clipboard>,
     pub files: Files,
+    /// Resumable uploads into the games folder (`uploads.rs`).
+    pub uploads: crate::uploads::Uploads,
+    /// One games-folder scan at a time, at least `scan_gap` apart.
+    pub scan_gate: Mutex<ScanGate>,
+    pub scan_gap: std::time::Duration,
     pub quit: Quitter,
     pub prefs: Prefs,
     /// Your notes and tags (`data_dir/notes.json`); private text, never logged.
@@ -52,6 +57,12 @@ pub struct AppState {
     pub hub: Option<Arc<Hub>>,
 }
 
+#[derive(Default)]
+pub struct ScanGate {
+    running: bool,
+    last: Option<std::time::Instant>,
+}
+
 impl AppState {
     pub fn new(cfg: Config) -> Self {
         Self::with_host(cfg, Arc::new(RealRunner), Arc::new(SystemClock::default()))
@@ -64,6 +75,9 @@ impl AppState {
             games: Mutex::new(None),
             clip: Arc::new(Clipboard::new(Arc::new(WlBackend::default()))),
             files: Files::new(cfg.downloads_dir.clone()),
+            uploads: crate::uploads::Uploads::new(cfg.games_dir.clone()),
+            scan_gate: Mutex::default(),
+            scan_gap: std::time::Duration::from_secs(5),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             notes: NotesStore::load(cfg.data_dir.join("notes.json")),
             controls: Controls::new(cfg.dolphin_dir.clone()),
@@ -847,11 +861,155 @@ async fn controls_reset(
     }
 }
 
+/// Frees the scan slot however the request ends.
+struct ScanSlot<'a>(&'a Mutex<ScanGate>);
+impl Drop for ScanSlot<'_> {
+    fn drop(&mut self) {
+        self.0.lock().unwrap().running = false;
+    }
+}
+
+/// The cards for `ids`, as `/api/games` would show them.
+fn cards(s: &AppState, ids: &[GameId]) -> Vec<Game> {
+    let recs = crate::emu::load(&s.cfg.data_dir);
+    crate::emu::games(&recs, &s.cfg.proc_dir, &s.cfg.data_dir)
+        .into_iter()
+        .filter(|g| ids.contains(&g.id))
+        .collect()
+}
+
+/// POST /api/library/scan: registers the games found in the games folder.
+async fn library_scan(State(s): State<Arc<AppState>>) -> Response {
+    {
+        let mut g = s.scan_gate.lock().unwrap();
+        if g.running {
+            return err(StatusCode::CONFLICT, "a scan is already running");
+        }
+        if let Some(t) = g.last.filter(|t| t.elapsed() < s.scan_gap) {
+            let wait = (s.scan_gap - t.elapsed()).as_secs() + 1;
+            let mut r = err(StatusCode::TOO_MANY_REQUESTS, "scanned a moment ago");
+            r.headers_mut()
+                .insert(header::RETRY_AFTER, header::HeaderValue::from(wait));
+            return r;
+        }
+        g.running = true;
+        g.last = Some(std::time::Instant::now());
+    }
+    let _slot = ScanSlot(&s.scan_gate);
+    let cfg = s.cfg.clone();
+    match tokio::task::spawn_blocking(move || crate::ingest::scan_library(&cfg)).await {
+        Ok(Ok(r)) => axum::Json(serde_json::json!({
+            "scanned": r.scan.scanned,
+            "added": cards(&s, &r.merged.added),
+            "aliased": r.merged.aliased,
+            "duplicates": r.merged.duplicates,
+            "unplayable": r.merged.unplayable,
+            "unknown": r.scan.unknown,
+            "broken": r.scan.broken,
+            "truncated": r.scan.truncated,
+        }))
+        .into_response(),
+        Ok(Err(e)) => err(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "scan task failed"),
+    }
+}
+
+/// DELETE /api/games/{id}: forgets an emulator game's record; the file stays.
+async fn game_remove(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
+    let Some(id) = s.parse_id(&raw) else {
+        // a bare old number this library no longer knows was forgotten already
+        return if !raw.is_empty() && raw.bytes().all(|b| b.is_ascii_digit()) {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            err(StatusCode::BAD_REQUEST, "bad game id")
+        };
+    };
+    if id.source() != crate::game::Source::Emu {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "not supported: only emulator games can be removed",
+        );
+    }
+    match crate::ingest::forget(&s.cfg.data_dir, &id) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &e),
+    }
+}
+
+fn up_reply(r: Result<serde_json::Value, crate::uploads::Fail>, ok: StatusCode) -> Response {
+    match r {
+        Ok(v) => (ok, axum::Json(v)).into_response(),
+        Err((c, v)) => (c, axum::Json(v)).into_response(),
+    }
+}
+
+async fn upload_create(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
+    #[derive(Deserialize)]
+    struct B {
+        name: String,
+        size: u64,
+    }
+    match parse::<B>(&b) {
+        Ok(b) => up_reply(s.uploads.create(&b.name, b.size), StatusCode::CREATED),
+        Err(r) => r,
+    }
+}
+
+async fn upload_status(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> Response {
+    up_reply(s.uploads.status(&id), StatusCode::OK)
+}
+
+async fn upload_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<String>,
+    req: Request,
+) -> Response {
+    let h = req.headers();
+    let len = h
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok()?.parse().ok());
+    let off = h
+        .get("x-offset")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    up_reply(
+        s.uploads
+            .put(&id, off.as_deref(), len, req.into_body())
+            .await,
+        StatusCode::OK,
+    )
+}
+
+async fn upload_abort(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> Response {
+    s.uploads.abort(&id);
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn upload_finish(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> Response {
+    match s.uploads.finish(&s.cfg.data_dir, &id).await {
+        Ok(f) => {
+            let game = f
+                .game
+                .as_ref()
+                .and_then(|g| cards(&s, std::slice::from_ref(g)).pop());
+            axum::Json(serde_json::json!({
+                "system": f.system,
+                "registered": f.game.is_some(),
+                "duplicate": f.duplicate,
+                "game": game,
+            }))
+            .into_response()
+        }
+        Err((c, v)) => (c, axum::Json(v)).into_response(),
+    }
+}
+
 /// Mount API routes on `api` below; everything else falls through to the static site (site.rs).
 /// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/games", get(games))
+        .route("/games/{id}", axum::routing::delete(game_remove))
         .route("/games/{id}/info", get(game_info))
         .route("/games/{id}/achievements", get(game_achievements))
         .route("/games/{id}/news", get(game_news))
@@ -867,6 +1025,19 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/emulators/dolphin/controls/{kind}/reset",
             post(controls_reset).layer(DefaultBodyLimit::max(4 << 10)),
         )
+        .route("/library/scan", post(library_scan))
+        .route(
+            "/uploads",
+            post(upload_create).layer(DefaultBodyLimit::max(4 << 10)),
+        )
+        .route(
+            "/uploads/{id}",
+            get(upload_status)
+                .delete(upload_abort)
+                // the raw body is not limited by axum; Uploads::put counts the bytes (32 MiB)
+                .put(upload_put),
+        )
+        .route("/uploads/{id}/finish", post(upload_finish))
         .route("/friends", get(friends))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))

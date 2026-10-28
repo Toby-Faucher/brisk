@@ -229,6 +229,40 @@ Before rebuilding, tag the running image for rollback: `docker tag brisk-hub:loc
 - Machine shuts down while you are away from the keyboard but connected: the hub only counts a live
   stream as activity; raise `idle_shutdown_min` or remove it.
 
+## Adding games
+
+Games live in `~/Games/<system>/` on each machine (`BRISK_GAMES_DIR` changes it). The system comes from the
+file header, never the name. Three ways in; all end in a library card:
+
+- Library page, "Add game": resumable upload to the chosen machine. Only free space limits the size; 5 GB stay free.
+- Copy files into the folder any way you like (scp, a share), then press "Scan games folder" or
+  `POST /api/library/scan`. `BRISK_SCAN_ON_START=1` also scans when hostd starts.
+- On the machine: `brisk-hostd add <file> [--move|--copy|--link]` (no server needed).
+
+Only Wii and GameCube have an emulator today. Other systems are stored in their folder but get no card yet.
+"Remove" in a game's menu forgets the card and keeps the file; a scan finds it again.
+The games VM's `~/roms` keeps working as it is. To fold it in later: `ln -s ~/roms ~/Games/wii`.
+
+Upload from a script (`$HOST` is the machine's hostd address, `$SECRET` its `x-brisk-secret`; placeholders,
+fill them in your shell, never commit them). Chunks are at most 32 MiB and must go in order:
+
+```sh
+f=game.iso; size=$(stat -c %s "$f")
+id=$(curl -s -H "x-brisk-secret: $SECRET" -H 'content-type: application/json' \
+  -d "{\"name\":\"$f\",\"size\":$size}" "$HOST/api/uploads" | jq -r .id)
+off=0
+while [ "$off" -lt "$size" ]; do
+  dd if="$f" bs=1M skip=$((off/1048576)) count=32 2>/dev/null | \
+    curl -sf -X PUT -H "x-brisk-secret: $SECRET" -H "x-offset: $off" --data-binary @- "$HOST/api/uploads/$id" >/dev/null \
+    || { off=$(curl -s -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id" | jq -r .offset); continue; }
+  off=$(curl -s -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id" | jq -r .offset)
+done
+curl -s -X POST -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id/finish"
+```
+
+If a PUT fails, the loop asks `GET /api/uploads/$id` for the offset and carries on from there. Details and
+error codes: `docs/plans/2026-10-28-stage2-upload.md`. Through the hub this needs the hub change in that file.
+
 ## Dolphin on the games VM
 Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolphin-emu -b -e <file>` on the host.
 

@@ -72,8 +72,9 @@ All routes sit behind the usual auth (`x-brisk-secret`, or an allowed tailnet lo
   past `size` (413). Written frame by frame, never buffered.
 - A chunk counts only when its whole body arrived. If the connection drops, the offset does not move and the
   half-written bytes are cut off at the next PUT. One PUT at a time per upload (409 `busy`).
-- Free space is checked before every chunk (at most every 32 MiB, which is inside the 64 MiB rule) and again
-  after every 64 MiB written within a request: `free - remaining < 5 GB` -> 507. The upload stays open.
+- Free space is checked before every chunk, so at most 32 MiB apart (tighter than a check every 64 MiB, and
+  a chunk is smaller than 64 MiB, so a check inside a chunk would never fire): `free - remaining < 5 GB`
+  -> 507. The upload stays open.
 
 `GET /api/uploads/{id}` -> `{id, name, offset, size, state}`; `state` is `open` or `busy` (a chunk is arriving).
 A client that lost its connection calls this and carries on from `offset`. 404 for an unknown id.

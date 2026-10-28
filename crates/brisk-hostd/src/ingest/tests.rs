@@ -32,7 +32,13 @@ fn put(root: &Path, rel: &str, bytes: &[u8]) -> PathBuf {
 fn names(s: &Scan, root: &Path) -> Vec<String> {
     s.found
         .iter()
-        .map(|f| f.path.strip_prefix(root).unwrap().to_string_lossy().into_owned())
+        .map(|f| {
+            f.path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect()
 }
 
@@ -57,8 +63,14 @@ fn scan_trusts_the_header_and_skips_the_rest() {
     let s = scan(r);
     assert_eq!(names(&s, r), ["a/b/c/deep.iso", "liar.gba", "wii/mk.iso"]);
     let liar = &s.found[1].id;
-    assert_eq!((liar.system, liar.game_id.as_deref()), (System::GameCube, Some("GALE01")));
-    assert_eq!((s.unknown, s.broken, s.scanned, s.truncated), (1, 1, 5, false));
+    assert_eq!(
+        (liar.system, liar.game_id.as_deref()),
+        (System::GameCube, Some("GALE01"))
+    );
+    assert_eq!(
+        (s.unknown, s.broken, s.scanned, s.truncated),
+        (1, 1, 5, false)
+    );
 }
 
 #[test]
@@ -92,7 +104,10 @@ fn scan_stops_at_the_entry_cap() {
 
 fn found(path: &Path, bytes: &[u8]) -> Found {
     std::fs::write(path, bytes).unwrap();
-    Found { path: path.into(), id: discid::identify(path).unwrap() }
+    Found {
+        path: path.into(),
+        id: discid::identify(path).unwrap(),
+    }
 }
 
 #[test]
@@ -104,7 +119,10 @@ fn merge_dedupes_by_id_and_path_and_aliases_old_slugs() {
     let m = merge(&mut recs, std::slice::from_ref(&a), "scan");
     assert_eq!(m.added.len(), 1);
     assert_eq!(recs[0].id.as_str(), "emu:dolphin:RMCE01");
-    assert_eq!((recs[0].name.as_str(), recs[0].system.as_deref()), ("Mario Kart Wii", Some("wii")));
+    assert_eq!(
+        (recs[0].name.as_str(), recs[0].system.as_deref()),
+        ("Mario Kart Wii", Some("wii"))
+    );
     // same file again, and the same disc at another path
     let b = found(&d.path().join("copy.iso"), &mk);
     let m = merge(&mut recs, &[a, b], "scan");
@@ -112,16 +130,40 @@ fn merge_dedupes_by_id_and_path_and_aliases_old_slugs() {
 
     // an older slug record for the same path keeps its id and gains the new one
     let p = d.path().join("old.iso");
-    let mut old = record(&found(&p, &disc(b"GALE01", false, "Melee")).path, &discid::identify(&p).unwrap(), "manual").unwrap();
+    let mut old = record(
+        &found(&p, &disc(b"GALE01", false, "Melee")).path,
+        &discid::identify(&p).unwrap(),
+        "manual",
+    )
+    .unwrap();
     old.id = GameId::emu("dolphin", "melee").unwrap();
     let mut recs = vec![old];
-    let m = merge(&mut recs, &[Found { path: p.clone(), id: discid::identify(&p).unwrap() }], "scan");
+    let m = merge(
+        &mut recs,
+        &[Found {
+            path: p.clone(),
+            id: discid::identify(&p).unwrap(),
+        }],
+        "scan",
+    );
     assert_eq!((m.added.len(), m.aliased, recs.len()), (0, 1, 1));
     assert_eq!(recs[0].id.as_str(), "emu:dolphin:melee");
     assert_eq!(recs[0].aliases[0].as_str(), "emu:dolphin:GALE01");
-    assert_eq!(crate::emu::resolve(&recs, "emu:dolphin:GALE01").unwrap().as_str(), "emu:dolphin:melee");
+    assert_eq!(
+        crate::emu::resolve(&recs, "emu:dolphin:GALE01")
+            .unwrap()
+            .as_str(),
+        "emu:dolphin:melee"
+    );
     // and a second pass changes nothing
-    let m = merge(&mut recs, &[Found { path: p.clone(), id: discid::identify(&p).unwrap() }], "scan");
+    let m = merge(
+        &mut recs,
+        &[Found {
+            path: p.clone(),
+            id: discid::identify(&p).unwrap(),
+        }],
+        "scan",
+    );
     assert_eq!((m.aliased, m.duplicates), (0, 1));
     assert_eq!(recs[0].aliases.len(), 1);
 }
@@ -131,7 +173,10 @@ fn same_file_through_a_symlink_is_one_game() {
     let d = tempfile::tempdir().unwrap();
     let a = found(&d.path().join("a.iso"), &disc(b"RMCE01", true, "M"));
     symlink(d.path(), d.path().join("lnk")).unwrap();
-    let via = Found { path: d.path().join("lnk/a.iso"), id: a.id.clone() };
+    let via = Found {
+        path: d.path().join("lnk/a.iso"),
+        id: a.id.clone(),
+    };
     let mut recs = vec![];
     merge(&mut recs, &[a, via], "scan");
     assert_eq!(recs.len(), 1);
@@ -164,7 +209,11 @@ fn args(a: &[&str]) -> Vec<String> {
 fn add_dry_paths() {
     let d = tempfile::tempdir().unwrap();
     let c = cfg(d.path());
-    let wii = put(d.path(), "in/Mario.iso", &disc(b"RMCE01", true, "Mario Kart Wii"));
+    let wii = put(
+        d.path(),
+        "in/Mario.iso",
+        &disc(b"RMCE01", true, "Mario Kart Wii"),
+    );
     let code = |a: &[&str]| add_cmd(&c, &args(a));
     assert_eq!(code(&[]).0, 2);
     assert_eq!(code(&["--bogus", "x"]).0, 2);
@@ -172,9 +221,17 @@ fn add_dry_paths() {
     assert_eq!(code(&["--move", "--copy", wii.to_str().unwrap()]).0, 2);
     assert_eq!(code(&["/nonexistent.iso"]).0, 1);
     let junk = put(d.path(), "in/junk.iso", &[0u8; 64]);
-    assert!(code(&[junk.to_str().unwrap()]).1.contains("not a game file"));
+    assert!(
+        code(&[junk.to_str().unwrap()])
+            .1
+            .contains("not a game file")
+    );
     let cart = put(d.path(), "in/g.gba", &gba("X"));
-    assert!(code(&[cart.to_str().unwrap()]).1.contains("no emulator for gba"));
+    assert!(
+        code(&[cart.to_str().unwrap()])
+            .1
+            .contains("no emulator for gba")
+    );
     assert!(!c.data_dir.join("library.json").exists());
 
     // in place
@@ -202,9 +259,15 @@ fn add_move_copy_link_put_the_file_in_the_system_folder() {
     assert!(c.games_dir.join("gamecube/l.iso").is_symlink());
     let recs = emu::load(&c.data_dir);
     assert_eq!(recs.len(), 3);
-    let copy = recs.iter().find(|r| r.id.as_str().ends_with("RMCE01")).unwrap();
+    let copy = recs
+        .iter()
+        .find(|r| r.id.as_str().ends_with("RMCE01"))
+        .unwrap();
     assert_eq!(copy.file, c.games_dir.join("wii/a (1).iso"));
-    assert_eq!(std::fs::read(c.games_dir.join("wii/a.iso")).unwrap(), b"other");
+    assert_eq!(
+        std::fs::read(c.games_dir.join("wii/a.iso")).unwrap(),
+        b"other"
+    );
 }
 
 #[test]
@@ -215,7 +278,10 @@ fn a_damaged_library_is_never_overwritten() {
     std::fs::write(c.data_dir.join("library.json"), "{oops").unwrap();
     let a = put(d.path(), "in/a.iso", &disc(b"RMCE01", true, "A"));
     assert_eq!(add_cmd(&c, &args(&[a.to_str().unwrap()])).0, 1);
-    assert_eq!(std::fs::read_to_string(c.data_dir.join("library.json")).unwrap(), "{oops");
+    assert_eq!(
+        std::fs::read_to_string(c.data_dir.join("library.json")).unwrap(),
+        "{oops"
+    );
 }
 
 #[test]

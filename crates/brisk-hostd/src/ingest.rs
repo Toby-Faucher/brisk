@@ -73,7 +73,11 @@ struct Walk {
 }
 
 fn walk(dir: &Path, depth: usize, w: &mut Walk) {
-    let mut es: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().flatten().collect();
+    let mut es: Vec<_> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .collect();
     es.sort_by_key(|e| e.file_name());
     for e in es {
         if w.seen >= MAX_ENTRIES {
@@ -142,7 +146,11 @@ pub fn record(path: &Path, i: &Identity, source: &str) -> Option<Record> {
         path.file_stem()
             .map_or_else(String::new, |s| s.to_string_lossy().into_owned())
     };
-    let name = i.title.clone().filter(|t| !t.is_empty()).unwrap_or_else(stem);
+    let name = i
+        .title
+        .clone()
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(stem);
     Some(Record {
         id,
         emulator: e.id.into(),
@@ -168,8 +176,7 @@ pub struct Merged {
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
-    a == b
-        || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Adds what is new. Same path under another id: that record keeps its id and gains the new one
@@ -251,7 +258,8 @@ pub fn update<R>(
     let (changed, r) = f(&mut recs);
     if changed {
         let p = data_dir.join(emu::LIBRARY_FILE);
-        emu::write_atomic(&p, &emu::library_json(&recs)).map_err(|e| format!("library save: {e}"))?;
+        emu::write_atomic(&p, &emu::library_json(&recs))
+            .map_err(|e| format!("library save: {e}"))?;
     }
     Ok(r)
 }
@@ -367,7 +375,10 @@ pub fn add_cmd(cfg: &Config, args: &[String]) -> (i32, String) {
         return (1, format!("{file}: not a game file brisk recognises"));
     }
     if emulator_for(id.system).is_none() {
-        return (1, format!("{file}: no emulator for {} yet", folder(id.system)));
+        return (
+            1,
+            format!("{file}: no emulator for {} yet", folder(id.system)),
+        );
     }
     let path = match mode {
         None => src,

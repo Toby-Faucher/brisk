@@ -17,6 +17,8 @@
 //!   BRISK_TLS_DIR          bridge certificate directory (default ~/.config/brisk/tls)
 //!   BRISK_DATA_DIR         sessions, prefs and caches (default ~/.local/share/brisk)
 //!   BRISK_DOWNLOADS_DIR    file drop target (default ~/Downloads/brisk)
+//!   BRISK_GAMES_DIR        games folder, one sub-folder per system (default ~/Games)
+//!   BRISK_SCAN_ON_START    `1` scans the games folder at startup
 //!   BRISK_STEAM_DIR        Steam install (default ~/.local/share/Steam)
 //!   BRISK_STEAM_KEY_FILE   Steam API key file (default ~/.config/brisk/steam-api-key)
 //!   BRISK_STEAM_API_BASE   Steam Web API base URL (default https://api.steampowered.com)
@@ -34,6 +36,18 @@ use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::process::ExitCode {
+    // `brisk-hostd add <file> [--move|--copy|--link]` registers a local file and exits.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "add") {
+        let (code, msg) =
+            brisk_hostd::ingest::add_cmd(&Config::from_env("web/dist".into()), &args[1..]);
+        if code == 0 {
+            println!("{msg}");
+        } else {
+            eprintln!("{msg}");
+        }
+        return std::process::ExitCode::from(code as u8);
+    }
     let dist = std::env::args_os()
         .nth(1)
         .or_else(|| std::env::var_os("BRISK_DIST"))
@@ -102,6 +116,14 @@ async fn main() -> std::process::ExitCode {
             .map_or(0, |d| d.as_secs()),
     ));
     state.files.clean_partials();
+    state.uploads.clean_old();
+    if state.cfg.scan_on_start {
+        let cfg = state.cfg.clone();
+        tokio::task::spawn_blocking(move || match brisk_hostd::ingest::scan_library(&cfg) {
+            Ok(r) => eprintln!("scan: {} new games", r.merged.added.len()),
+            Err(e) => eprintln!("warning: startup scan: {e}"),
+        });
+    }
     let app = router(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
     // systemd (Type=notify): READY only once the router answers on the socket, then the watchdog.
     // Manual runs (no NOTIFY_SOCKET) skip all of it.
