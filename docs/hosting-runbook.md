@@ -263,6 +263,32 @@ curl -s -X POST -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id/finish"
 If a PUT fails, the loop asks `GET /api/uploads/$id` for the offset and carries on from there. Details and
 error codes: `docs/plans/2026-10-28-stage2-upload.md`. Through the hub this needs the hub change in that file.
 
+## Art and details
+
+Emulator games get cover, hero, logo and icon art from SteamGridDB, looked up once and kept on the machine.
+
+Setup, on each machine that has emulator games:
+
+- Put a free SteamGridDB API key in `~/.config/brisk/steamgriddb-api-key`, one line with only the key, mode 600 (`chmod 600`). Or point `BRISK_SGDB_KEY_FILE` at another file. No restart is needed. Without the file, games keep the title card and Settings says "Art needs a SteamGridDB key on the machine".
+- `BRISK_GAMETDB_XML_URL` is optional. When set to a plain `wiitdb.xml` URL, Wii and GameCube games also get year, publisher, developer and languages, and GameTDB's title is used for the search. Unset is fine. The GameTDB database address is not settled yet, so nothing sets it.
+
+How it runs:
+
+- A new game (scan or upload finish) is looked up once, in the background, one game at a time with a pause between calls. There is no timer and `/api/games` never starts a lookup.
+- The title comes from the disc header stored in the library record. Tags such as `(USA)`, a `Disc 1` suffix and a trailing `Wii` or `GameCube` are dropped before the search.
+- One clear match is taken and its art is fetched. An unsure match fetches nothing: up to three candidates wait in Settings > Emulators > Dolphin > Art and details, where you pick one or press None of these. A None answer is remembered.
+- Game panel: Find art, or Choose different art, clears the match and searches again (once per 30 seconds per game).
+
+Where things are, under the machine's data dir (`~/.local/share/brisk` by default):
+
+- `art/<emu_dolphin_ID>/` holds `match.json`, `nomatch`, `cover|hero|logo|icon.png|jpg|webp`, `meta.json`, `done.json`.
+- `art/pending.json` is the confirm queue (at most 50 games, 3 candidates each).
+- Files are mode 600. Removing a game from the Library keeps its art, so adding it back needs no new lookup.
+
+To clear: delete `art/<emu_dolphin_ID>/` for one game, or press Choose different art. Delete `art/` to forget everything. Credits (SteamGridDB, GameTDB) show in the game panel.
+
+Checked against loopback mocks only. Assumed, not seen against the real service: the SteamGridDB response shapes, the image host names (`cdn2.steamgriddb.com` and friends, see `docs/research/sgdb-notes.md`), the lack of a rate limit, and the GameTDB database address. Nothing was seen rendered in a browser.
+
 ## Dolphin on the games VM
 Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolphin-emu -b -e <file>` on the host.
 
