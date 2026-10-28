@@ -8,7 +8,7 @@ export const EMULATORS: EmulatorEntry[] = [
     name: 'Dolphin',
     sections: [
       { id: 'controllers', name: 'Controllers' },
-      { id: 'launch', name: 'Launch options', planned: true },
+      { id: 'launch', name: 'Launch options' },
       { id: 'folders', name: 'Games folders' },
       { id: 'metadata', name: 'Metadata', planned: true },
     ],

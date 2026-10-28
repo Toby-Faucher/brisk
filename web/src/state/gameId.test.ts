@@ -44,7 +44,8 @@ describe('gameCaps', () => {
     expect(gameCaps({ appid: 0xe0000000 }).controls).toBe(true); // the old range alone
     expect(gameCaps({ appid: 0xdfffffff }).controls).toBe(false);
     expect(gameCaps({ appid: 5, emulator: 'dolphin' }).controls).toBe(true); // the field alone
-    expect(gameCaps(oldPortal).launchOptions).toBe(false);
+    expect(gameCaps(oldPortal).launchOptions).toBe(false); // an old hostd has no launch routes
+    expect(gameCaps(oldMk).launchOptions).toBe(false);
   });
 });
 

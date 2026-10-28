@@ -59,6 +59,22 @@ describe('a hub with one old and one new machine', () => {
     expect(t.last().url).toBe('/api/m/newbox/games/steam%3A620/local');
   });
 
+  it('launch options: numeric path on the old machine, id path on the new one', async () => {
+    const t = await setup();
+    t.setRoute('oldbox');
+    await t.api.games();
+    await t.api.gameLaunch('steam:620');
+    expect(t.last()).toMatchObject({ url: '/api/m/oldbox/games/620/launch', method: 'GET' });
+    await t.api.putGameLaunch('620', { override: { env: {} } });
+    expect(t.last()).toMatchObject({ url: '/api/m/oldbox/games/620/launch', method: 'PUT' });
+    t.setRoute('newbox');
+    await t.api.games();
+    await t.api.gameLaunch('620');
+    expect(t.last().url).toBe('/api/m/newbox/games/steam%3A620/launch');
+    await t.api.resetGameLaunch('emu:dolphin:mario-kart-wii');
+    expect(t.last()).toMatchObject({ url: '/api/m/newbox/games/emu%3Adolphin%3Amario-kart-wii/launch', method: 'DELETE' });
+  });
+
   it('turns a Steam key of the other form into the machine form', async () => {
     const t = await setup();
     t.setRoute('oldbox');

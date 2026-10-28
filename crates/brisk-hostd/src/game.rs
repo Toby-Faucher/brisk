@@ -170,7 +170,7 @@ pub const STEAM_CAPS: Caps = Caps {
     install: true,
     controls: false,
     achievements: true,
-    launch_options: false,
+    launch_options: true,
     saves: false,
     screenshots: true,
 };

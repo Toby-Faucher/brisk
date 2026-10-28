@@ -2,11 +2,12 @@
   // Settings > Emulators: pick an emulator, then one of its sections. What each section shows is listed in VIEW.
   import type { Component } from 'svelte';
   import { Tabs } from 'bits-ui';
+  import EmulatorLaunch from './EmulatorLaunch.svelte';
   import EmulatorMappings from './EmulatorMappings.svelte';
   import Folders from './Folders.svelte';
   import { EMULATORS, emulatorOf, sectionOf, shownSections } from './emulators/registry';
 
-  const VIEW: Record<string, Record<string, Component<{ focusKey?: number }>>> = { dolphin: { controllers: EmulatorMappings, folders: Folders } };
+  const VIEW: Record<string, Record<string, Component<{ focusKey?: number }>>> = { dolphin: { controllers: EmulatorMappings, launch: EmulatorLaunch, folders: Folders } };
   let { emu, section, focusKey = 0, onpick }: { emu: string; section: string; focusKey?: number; onpick: (emu: string, section: string) => void } = $props();
   const e = $derived(emulatorOf(emu));
   const sec = $derived(sectionOf(e, section).id);

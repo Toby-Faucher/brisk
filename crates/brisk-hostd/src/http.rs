@@ -5,6 +5,8 @@ use crate::controls::{Controls, CtlError, Kind as PadKind};
 use crate::files::Files;
 use crate::game::{Game, GameId};
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::launch::{LaunchOptions, LaunchOverride};
+use crate::launchstore::{self, LaunchStore, StoreError};
 use crate::machines::{self, Hub};
 use crate::notes::{GameNote, NotesError, NotesStore, Tag};
 use crate::prefs::{Entry, Prefs};
@@ -42,6 +44,8 @@ pub struct AppState {
     pub prefs: Prefs,
     /// Your notes and tags (`data_dir/notes.json`); private text, never logged.
     pub notes: NotesStore,
+    /// Launch option defaults and per-game overrides (`data_dir/launch.json`).
+    pub launch: LaunchStore,
     /// Dolphin's config directory (controller editor).
     pub controls: Controls,
     pub hosts: Hosts,
@@ -80,6 +84,7 @@ impl AppState {
             scan_gap: std::time::Duration::from_secs(5),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             notes: NotesStore::load(cfg.data_dir.join("notes.json")),
+            launch: LaunchStore::load(cfg.data_dir.join("launch.json")),
             controls: Controls::new(cfg.dolphin_dir.clone()),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone(), cfg.data_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
@@ -1013,6 +1018,164 @@ async fn upload_finish(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<Stri
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DefaultsPut {
+    rev: Option<String>,
+    allow_custom_commands: bool,
+    options: LaunchOptions,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OverridePut {
+    rev: Option<String>,
+    #[serde(rename = "override")]
+    over: LaunchOverride,
+}
+
+fn defaults_view(d: &launchstore::Data) -> serde_json::Value {
+    serde_json::json!({
+        "rev": launchstore::defaults_rev(d),
+        "allowCustomCommands": d.allow_custom_commands,
+        "options": d.defaults,
+        "envAllowed": crate::launch::ENV_ALLOWED,
+    })
+}
+
+/// The paste string for a Steam game's launch option; the program is where this hostd runs from.
+fn steam_line(id: &GameId) -> Option<String> {
+    id.steam_appid()?;
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "brisk-hostd".into());
+    let exe = if exe
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b"/._-+".contains(&b))
+    {
+        exe
+    } else {
+        format!("'{}'", exe.replace('\'', "'\\''"))
+    };
+    Some(format!("{exe} wrap {id} -- %command%"))
+}
+
+fn game_launch_view(d: &launchstore::Data, id: &GameId) -> serde_json::Value {
+    let eff = d.effective(id.as_str());
+    let problems: Vec<String> = match crate::launch::validate(&eff, d.allow_custom_commands) {
+        Ok(_) => vec![],
+        Err(p) => p.iter().map(launchstore::describe).collect(),
+    };
+    serde_json::json!({
+        "id": id,
+        "rev": launchstore::game_rev(d, id.as_str()),
+        "override": d.games.get(id.as_str()),
+        "effective": eff,
+        "problems": problems,
+        "allowCustomCommands": d.allow_custom_commands,
+        "steamLine": steam_line(id),
+    })
+}
+
+fn launch_reply(
+    r: Result<launchstore::Data, StoreError>,
+    view: impl Fn(&launchstore::Data) -> serde_json::Value,
+) -> Response {
+    match r {
+        Ok(d) => axum::Json(view(&d)).into_response(),
+        Err(StoreError::Bad(p)) => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ "error": "these launch options are not allowed", "problems": p })),
+        )
+            .into_response(),
+        Err(StoreError::Changed) => (
+            StatusCode::CONFLICT,
+            axum::Json(serde_json::json!({ "error": "changed elsewhere" })),
+        )
+            .into_response(),
+        Err(StoreError::Full) => err(StatusCode::CONFLICT, "too many games have launch overrides"),
+        Err(StoreError::Io) => err(StatusCode::INTERNAL_SERVER_ERROR, "could not save launch options"),
+    }
+}
+
+/// A conflict also carries the current state, so the page can show what changed.
+fn with_current(r: Response, cur: serde_json::Value) -> Response {
+    if r.status() != StatusCode::CONFLICT || cur.is_null() {
+        return r;
+    }
+    (
+        StatusCode::CONFLICT,
+        axum::Json(serde_json::json!({ "error": "changed elsewhere", "current": cur })),
+    )
+        .into_response()
+}
+
+async fn launch_defaults_get(State(s): State<Arc<AppState>>) -> Response {
+    axum::Json(defaults_view(&s.launch.all())).into_response()
+}
+
+async fn launch_defaults_put(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
+    let p = match parse::<DefaultsPut>(&b) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let r = launch_reply(
+        s.launch
+            .put_defaults(p.rev.as_deref(), p.allow_custom_commands, p.options),
+        defaults_view,
+    );
+    with_current(r, defaults_view(&s.launch.all()))
+}
+
+#[allow(clippy::result_large_err)]
+fn launch_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
+    s.parse_id(raw)
+        .ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad game id"))
+}
+
+async fn game_launch_get(
+    State(s): State<Arc<AppState>>,
+    UrlPath(raw): UrlPath<String>,
+) -> Response {
+    match launch_id(&s, &raw) {
+        Ok(id) => axum::Json(game_launch_view(&s.launch.all(), &id)).into_response(),
+        Err(r) => r,
+    }
+}
+
+async fn game_launch_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(raw): UrlPath<String>,
+    b: axum::body::Bytes,
+) -> Response {
+    let id = match launch_id(&s, &raw) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    let p = match parse::<OverridePut>(&b) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let r = launch_reply(
+        s.launch.put_game(id.as_str(), p.rev.as_deref(), p.over),
+        |d| game_launch_view(d, &id),
+    );
+    with_current(r, game_launch_view(&s.launch.all(), &id))
+}
+
+async fn game_launch_delete(
+    State(s): State<Arc<AppState>>,
+    UrlPath(raw): UrlPath<String>,
+) -> Response {
+    match launch_id(&s, &raw) {
+        Ok(id) => launch_reply(s.launch.delete_game(id.as_str()), |d| {
+            game_launch_view(d, &id)
+        }),
+        Err(r) => r,
+    }
+}
+
 /// Mount API routes on `api` below; everything else falls through to the static site (site.rs).
 /// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
@@ -1020,6 +1183,19 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games", get(games))
         .route("/games/{id}", axum::routing::delete(game_remove))
         .route("/games/{id}/info", get(game_info))
+        .route(
+            "/games/{id}/launch",
+            get(game_launch_get)
+                .put(game_launch_put)
+                .delete(game_launch_delete)
+                .layer(DefaultBodyLimit::max(4 << 10)),
+        )
+        .route(
+            "/launch/defaults",
+            get(launch_defaults_get)
+                .put(launch_defaults_put)
+                .layer(DefaultBodyLimit::max(4 << 10)),
+        )
         .route("/games/{id}/achievements", get(game_achievements))
         .route("/games/{id}/news", get(game_news))
         .route("/games/{id}/local", get(game_local))

@@ -13,6 +13,7 @@
   import Lightbox from './Lightbox.svelte';
   import AchievementsDialog from './AchievementsDialog.svelte';
   import ControlsSummary from './ControlsSummary.svelte';
+  import GameLaunch from '../launch/GameLaunch.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -192,6 +193,8 @@
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>
         <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no Dolphin -->
         {#if caps.controls}{#key key}<ControlsSummary />{/key}{/if}
+        <!-- Steam and emulator games: wrappers, environment and arguments, per field default or override -->
+        {#if caps.launchOptions}{#key key}<GameLaunch {game} />{/key}{/if}
         <!-- store description and screenshots -->
         <section class="sec" aria-busy={info === null}>
           {#if info === null}

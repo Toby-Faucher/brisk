@@ -15,6 +15,8 @@ describe('Settings tabs', () => {
       ['{ArrowRight}', 'Streaming', '#streaming'],
       ['{ArrowRight}', 'Controller', '#controller'],
       ['{ArrowRight}', 'Emulators', '#emulators'],
+      ['{ArrowRight}', 'Launch', '#launch'],
+      ['{ArrowLeft}', 'Emulators', '#emulators'],
       ['{ArrowLeft}', 'Controller', '#controller'],
       ['{ArrowLeft}', 'Streaming', '#streaming'],
       ['{End}', 'About', '#about'],
@@ -56,7 +58,8 @@ describe('Settings tabs', () => {
     await expect.element(page.getByRole('tab', { name: 'Emulators' })).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('tab', { name: 'Dolphin' })).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('tab', { name: 'Controllers' })).toHaveAttribute('aria-selected', 'true');
-    expect(page.getByRole('tab', { name: 'Launch options' }).elements()).toHaveLength(0); // planned sections stay hidden
+    await expect.element(page.getByRole('tab', { name: 'Launch options' })).toBeInTheDocument();
+    expect(page.getByRole('tab', { name: 'Metadata' }).elements()).toHaveLength(0); // planned sections stay hidden
     await expect.element(page.getByRole('heading', { name: 'Emulator mappings' })).toBeInTheDocument();
     await expect.poll(() => document.activeElement?.id).toBe('em-h');
     vi.restoreAllMocks();

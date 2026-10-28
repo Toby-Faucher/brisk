@@ -113,6 +113,7 @@ describe('route', () => {
   it('scopes the emulator controls path to the selected machine', async () => {
     const { route, setRoute } = await import('./api');
     setRoute('m1');
+    for (const p of ['/api/launch/defaults', '/api/games/steam%3A620/launch']) expect(route(p)).toBe(`/api/m/m1/${p.slice(5)}`);
     expect(route('/api/emulators/dolphin/controls/classic')).toBe('/api/m/m1/emulators/dolphin/controls/classic');
     expect(route('/api/prefs')).toBe('/api/prefs');
     setRoute(null);

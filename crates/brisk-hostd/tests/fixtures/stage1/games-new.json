@@ -9,7 +9,7 @@
         "install": true,
         "controls": false,
         "achievements": true,
-        "launchOptions": false,
+        "launchOptions": true,
         "saves": false,
         "screenshots": true
       },
@@ -39,7 +39,7 @@
         "install": false,
         "controls": true,
         "achievements": false,
-        "launchOptions": false,
+        "launchOptions": true,
         "saves": false,
         "screenshots": false
       },

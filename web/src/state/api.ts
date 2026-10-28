@@ -210,6 +210,28 @@ export type ScanResult = {
   truncated: boolean;
 };
 
+/** Launch options (docs/hosting-runbook.md, "Launch options"). Wrappers are 'mangohud', 'gamemode' or {gamescope: {args}}. */
+export type LaunchWrapper = 'mangohud' | 'gamemode' | { gamescope: { args: string[] } };
+export type LaunchOpts = { wrappers: LaunchWrapper[]; env: Record<string, string>; custom: string[] | null; extra_args: string[] };
+/** A per-game override: a missing or null field inherits the default. `custom: []` clears an inherited command. */
+export type LaunchOverride = {
+  wrappers?: LaunchWrapper[] | null;
+  env?: Record<string, string> | null;
+  custom?: string[] | null;
+  extra_args?: string[] | null;
+};
+export type LaunchDefaults = { rev: string; allowCustomCommands: boolean; options: LaunchOpts; envAllowed: string[] };
+export type GameLaunch = {
+  id: string;
+  rev: string;
+  override: LaunchOverride | null;
+  effective: LaunchOpts;
+  problems: string[];
+  allowCustomCommands: boolean;
+  /** Steam games only: the line to paste into the game's Launch Options in Steam. */
+  steamLine: string | null;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -426,6 +448,12 @@ export const api = {
   emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
   putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),
   resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
+  launchDefaults: () => call<LaunchDefaults>('GET', '/api/launch/defaults'),
+  putLaunchDefaults: (b: { rev?: string; allowCustomCommands: boolean; options: LaunchOpts }) =>
+    call<LaunchDefaults>('PUT', '/api/launch/defaults', b),
+  gameLaunch: (key: string) => call<GameLaunch>('GET', gamePath(key, '/launch')),
+  putGameLaunch: (key: string, b: { rev?: string; override: LaunchOverride }) => call<GameLaunch>('PUT', gamePath(key, '/launch'), b),
+  resetGameLaunch: (key: string) => call<GameLaunch>('DELETE', gamePath(key, '/launch')),
   gameLocal: (key: string) => call<GameLocal>('GET', gamePath(key, '/local')),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),

@@ -12,6 +12,8 @@ pub mod host;
 pub mod http;
 pub mod idle;
 pub mod ingest;
+pub mod launch;
+pub mod launchstore;
 pub mod machines;
 pub mod migrate;
 pub mod notes;
@@ -28,3 +30,4 @@ pub mod steam;
 pub mod steam_info; // pub for tests
 pub mod stream;
 pub mod uploads;
+pub mod wrap;
