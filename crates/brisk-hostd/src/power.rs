@@ -80,9 +80,10 @@ impl Power for Proxmox {
         let (used, total) = (d["mem"].as_f64(), d["maxmem"].as_f64());
         let bytes = |f: Option<f64>| f.filter(|f| f.is_finite() && *f >= 0.0).map(|f| f as u64);
         match (cpu, bytes(used), bytes(total)) {
+            // A VM with pinned memory (GPU passthrough) reports host-side use that can pass maxmem.
             (Some(cpu), Some(mem_used), Some(mem_total)) => Ok(VmStats {
                 cpu,
-                mem_used,
+                mem_used: mem_used.min(mem_total),
                 mem_total,
             }),
             _ => Err("unexpected VM stats".into()),
@@ -324,6 +325,13 @@ mod tests {
             })
         );
         assert_eq!(log.lock().unwrap()[0].1, format!("{BASE}/status/current"));
+        let (api, _) = fake(|_, _| {
+            (
+                200,
+                r#"{"data":{"status":"running","cpu":0.1,"mem":5000,"maxmem":4096}}"#.into(),
+            )
+        });
+        assert_eq!(proxmox(&cfg(&dir, &api)).stats().unwrap().mem_used, 4096);
         for body in [
             r#"{"data":{"status":"stopped"}}"#,
             r#"{"data":{"cpu":-1,"mem":1,"maxmem":2}}"#,
