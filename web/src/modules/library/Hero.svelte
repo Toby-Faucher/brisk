@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Game } from '../../state/api';
   import { prefs, prefsChip } from '../../state/prefs';
-  import Icon from '../../ui/Icon.svelte';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
@@ -35,7 +35,7 @@
       <button class="btn ghost" aria-haspopup="dialog" onclick={() => ondetails(game)} aria-label="Details for {game.name}">Details</button>
       {#if game.running}
         {@const q = $quitting.has(game.appid)}
-        <button class="btn ghost" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={14} /> {q ? 'Quitting…' : 'Quit'}</button>
+        <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
       {/if}
     </div>
   </div>

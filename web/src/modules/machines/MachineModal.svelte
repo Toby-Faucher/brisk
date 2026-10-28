@@ -5,6 +5,7 @@
   import { api, type Game, type SessionRec } from '../../state/api';
   import { ensureReady, machineHue, machines, pings, setMachineColor, powerMachine, selected, selectMachine, startPings, wake } from '../../state/machines';
   import { startGame } from '../../state/prefs';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { toast } from '../../shell/Toasts.svelte';
   import Dropdown from '../../ui/Dropdown.svelte';
@@ -284,7 +285,7 @@
               <button class="btn" aria-disabled={playing} onclick={() => !playing && void play(game)}>{playing ? 'Starting…' : here ? 'Play here' : `Play on ${m?.name ?? 'this machine'}`}</button>
               {#if game.running && here}
                 {@const qd = $quitting.has(game.appid)}
-                <button class="btn ghost" aria-disabled={qd} onclick={() => !qd && askQuit(game)}>{qd ? 'Quitting…' : 'Quit'}</button>
+                <button class="btn ghost" aria-disabled={qd} aria-busy={qd} onclick={() => !qd && askQuit(game)}><QuitLabel busy={qd} label="Quit" /></button>
               {/if}
             </div>
           {:else}

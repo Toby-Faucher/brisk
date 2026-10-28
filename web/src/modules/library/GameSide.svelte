@@ -3,6 +3,7 @@
   // progress, automatic tags, and your note and tags. GameDetail owns the data and the scrolling side.
   import { Dialog } from 'bits-ui';
   import type { Game, GameInfo, Achievements } from '../../state/api';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
@@ -36,7 +37,7 @@
     <button class="btn" aria-disabled={busy} onclick={() => oninstall(game)}><Icon name="dl" size={14} /> {busy ? 'Asking Steam…' : installLabel(game)}</button>
   {/if}
   {#if game.running}
-    <button class="btn ghost" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={14} /> {q ? 'Quitting…' : 'Quit'}</button>
+    <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
   {/if}
   <Dialog.Close class="btn ghost close">Close</Dialog.Close>
 </div>

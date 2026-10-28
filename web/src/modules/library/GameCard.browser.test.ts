@@ -5,6 +5,7 @@ import { navigate } from 'astro:transitions/client';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 import { notes } from '../../state/notes';
+import { quitting } from '../../shell/QuitDialog.svelte';
 
 const game: Game = {
   appid: 400,
@@ -126,5 +127,21 @@ describe('GameCard lift', () => {
     expect(getComputedStyle(wrap).transform).toBe('none');
     await userEvent.tab();
     expect(getComputedStyle(wrap).transform).toBe('none');
+  });
+});
+
+describe('GameCard quit spinner', () => {
+  it('shows a spinner while the quit is pending and keeps the button size', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, running: true }, onpick: vi.fn() } });
+    const btn = page.getByRole('button', { name: 'Quit Portal' }).element() as HTMLElement;
+    const before = btn.getBoundingClientRect();
+    expect(btn.querySelector('[data-testid=quit-spinner]')).toBeNull();
+    quitting.set(new Set([400]));
+    await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    expect(btn.getAttribute('aria-label')).toBe('Quitting Portal');
+    const after = btn.getBoundingClientRect();
+    expect([after.width, after.height]).toEqual([before.width, before.height]);
+    quitting.set(new Set());
   });
 });

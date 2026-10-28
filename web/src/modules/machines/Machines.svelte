@@ -5,6 +5,7 @@
   import { api, type HostInfo, type StreamInfo } from '../../state/api';
   import type { Machine } from '../../state/machines';
   import { games, watchGames } from '../../state/games';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { host as hostStore, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
@@ -176,7 +177,7 @@
     <ul class="apps">
       {#each running as g (g.appid)}
         {@const q = $quitting.has(g.appid)}
-        <li><span>{g.name}</span><button class="btn ghost sm" aria-disabled={q} onclick={() => askQuit(g)} aria-label={q ? `Quitting ${g.name}` : `Quit ${g.name}`}>{q ? 'Quitting…' : 'Quit'}</button></li>
+        <li><span>{g.name}</span><button class="btn ghost sm" aria-disabled={q} aria-busy={q} onclick={() => askQuit(g)} aria-label={q ? `Quitting ${g.name}` : `Quit ${g.name}`}><QuitLabel busy={q} label="Quit" /></button></li>
       {/each}
     </ul>
   {/if}

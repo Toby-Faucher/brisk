@@ -3,7 +3,7 @@
   import { prefs, prefsChip } from '../../state/prefs';
   import { gameTags, notes } from '../../state/notes';
   import TagChip from './TagChip.svelte';
-  import Icon from '../../ui/Icon.svelte';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
@@ -61,7 +61,7 @@
   </button>
   {#if game.running}
     {@const q = $quitting.has(game.appid)}
-    <button class="btn ghost quit" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={13} />{q ? ' Quitting…' : ''}</button><Tip label="Quit game" />
+    <button class="btn ghost quit" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={13} /></button><Tip label="Quit game" />
   {/if}
 </div>
 
