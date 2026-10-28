@@ -3,6 +3,7 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::machines::{self, Hub};
 use crate::notes::{GameNote, NotesError, NotesStore, Tag};
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
@@ -16,7 +17,7 @@ use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, Sta
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{any, get, post, put};
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
@@ -43,6 +44,8 @@ pub struct AppState {
     pub friends: Mutex<Option<steam_info::FriendsEntry>>,
     /// Screenshot listings per game for a few seconds (see `steam_info::ShotCache`).
     pub shots: steam_info::ShotCache,
+    /// Set when machines.json exists (main.rs); None = single host, no hub routes answer.
+    pub hub: Option<Arc<Hub>>,
 }
 
 impl AppState {
@@ -65,6 +68,7 @@ impl AppState {
             warming: AtomicBool::new(false),
             friends: Mutex::new(None),
             shots: steam_info::ShotCache::default(),
+            hub: None,
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -505,31 +509,62 @@ async fn file_put(
 }
 
 async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(serde_json::json!({ "prefs": s.prefs.all(), "homeOrder": s.prefs.home_order() }))
-        .into_response()
+    axum::Json(serde_json::json!({
+        "prefs": s.prefs.all(),
+        "homeOrder": s.prefs.home_order(),
+        "machinesOrder": s.prefs.machines_order(),
+        "machineColors": s.prefs.machine_colors(),
+    }))
+    .into_response()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LayoutBody {
-    home_order: Vec<String>,
+    home_order: Option<Vec<String>>,
+    machines_order: Option<Vec<String>>,
+    machine_colors: Option<std::collections::BTreeMap<String, Option<String>>>,
 }
 
-/// The Home card order: not an array of strings is a 400; bad, duplicate and surplus ids are
-/// dropped (prefs::clean_home_order) and the stored order is returned.
+/// The Home card and Machines page orders plus the machine colours: at least one key, orders
+/// arrays of strings (else 400); bad, duplicate and surplus ids are dropped (prefs::clean_ids),
+/// a key not sent keeps its value. `machineColors` is merged (null removes an id) and a bad id,
+/// bad colour or more than 64 entries is a 400 that stores nothing. All three are returned.
 async fn layout_put(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
     match parse::<LayoutBody>(&b) {
-        Ok(b) => {
-            axum::Json(serde_json::json!({ "homeOrder": s.prefs.set_home_order(b.home_order) }))
-                .into_response()
+        Ok(b)
+            if b.home_order.is_none()
+                && b.machines_order.is_none()
+                && b.machine_colors.is_none() =>
+        {
+            err(
+                StatusCode::BAD_REQUEST,
+                "homeOrder, machinesOrder or machineColors required",
+            )
         }
+        Ok(b) => match s
+            .prefs
+            .set_layout(b.home_order, b.machines_order, b.machine_colors)
+        {
+            Ok((home, machines, colors)) => axum::Json(serde_json::json!({
+                "homeOrder": home, "machinesOrder": machines, "machineColors": colors
+            }))
+            .into_response(),
+            Err(e) => err(StatusCode::BAD_REQUEST, e),
+        },
         Err(r) => r,
     }
 }
 
-/// Reset layout: forget the saved order (Home falls back to its default).
+/// Reset layout: forget the saved orders and colours (Home and Machines fall back to their defaults).
 async fn layout_delete(State(s): State<Arc<AppState>>) -> Response {
-    s.prefs.set_home_order(vec![]);
+    let all = s
+        .prefs
+        .machine_colors()
+        .into_keys()
+        .map(|k| (k, None))
+        .collect();
+    let _ = s.prefs.set_layout(Some(vec![]), Some(vec![]), Some(all));
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -680,6 +715,9 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/notes/games/{appid}",
             put(game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
         )
+        .route("/machines", get(machines::list))
+        .route("/machines/{id}/power", post(machines::power))
+        .route("/m/{id}/{*path}", any(machines::proxy))
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
         .route(

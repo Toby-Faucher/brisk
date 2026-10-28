@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store';
 import { api, type Codec, type Preset, type StreamInfo, type StreamReq } from './api';
 import { settings } from './settings';
 import { hevcSupported } from '../lib/video';
+import { readyFirst } from '../modules/machines/machines';
 
 /** What hostd keeps per game (camelCase JSON). The custom numbers exist only for `custom`. */
 export type GamePrefs = {
@@ -71,6 +72,7 @@ export async function startGame(
     hevcOk: () => hevcSupported(),
   },
 ) {
+  await readyFirst(); // hub mode: wakes the selected machine first (the overlay shows it)
   const req = prefsFor(appid, get(prefs), d.defaultPreset());
   // Only this start falls back; the saved entry stays for a browser that can decode it.
   if (req.codec === 'hevc' && !(await d.hevcOk())) {

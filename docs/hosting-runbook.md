@@ -101,6 +101,131 @@ docs/ui-notes.md, Hosting, Static files.
      printed `http://localhost:8443/?s=…` link (same secret as the service used). Stock Sunshine again:
      `scripts/brisk-down.sh` after Ctrl-C.
 
+## Machine hub
+One URL for several streaming machines (a bare-metal box and a Proxmox gaming VM, say). Use it when you
+have more than one machine, or a VM that should start when you want to play and shut itself down when you
+stop. With one machine, skip it: the plain service above is simpler. Contract: docs/plans/machine-hub.md.
+
+```
+browser --https--> hub (Dockge VM: tailscale serve :443 -> brisk-hostd 127.0.0.1:8443)
+                     |-- /api/m/<id>/...  --tailnet--> machine hostd :8443 (one per machine)
+                     '-- power on/off     --https---> Proxmox API (VM.PowerMgmt on one VM)
+browser <==== video (WebTransport) ==== the machine's own bridge  (never through the hub)
+```
+
+The hub is the same `brisk-hostd` as a container with a `machines.json`. Prefs and notes live on the hub.
+Each machine keeps running its own hostd as above.
+
+### Build the image
+On the build box (capped; Docker is needed only for the last step). `web/dist` may be the symlink: build.rs
+resolves it.
+```
+scripts/brisk-service.sh update            # builds the page into web/dist (or: cd web && npm run build)
+. scripts/capped.sh
+BRISK_EMBED_DIR=web/dist SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
+  capped cargo build --release -p brisk-hostd --features embed
+cp target/release/brisk-hostd deploy/hub/brisk-hostd
+docker build -t brisk-hub:local deploy/hub      # or the box that runs Docker, after copying deploy/hub/
+rm deploy/hub/brisk-hostd
+```
+`BRISK_EMBED_DIR` is relative to the repo root (or absolute). The binary is glibc: if the image base is
+older than the build box, hostd may fail with a `GLIBC_x.y not found` error; pass `--build-arg BASE=...`
+with a newer base. If Docker runs on another host, `docker save brisk-hub:local | ssh <vm> docker load`.
+
+### Deploy
+1. On the VM: `mkdir -p /srv/brisk-hub/config`, then copy `deploy/hub/machines.example.json` there as
+   `machines.json` and edit it. The container runs as uid 10001: `chown -R 10001 /srv/brisk-hub/config`
+   and `chmod 600` the secret and token files.
+2. In Dockge create a stack from `deploy/hub/compose.yaml`; set `BRISK_ALLOWED_HOSTS` to the VM's tailnet
+   name, with and without `:8443`.
+3. On the VM: `tailscale serve --bg --https=443 http://127.0.0.1:8443` (needs root or the tailscale
+   operator). The page is then `https://<hub>.<tailnet>.ts.net`.
+4. First visit needs the hub's own secret: `docker compose exec` has no shell tools, so read it from the
+   volume: `docker run --rm -v <stack>_data:/data debian:trixie-slim cat /data/secret` and open
+   `https://<hub>.<tailnet>.ts.net/?s=<secret>` once. Or set `BRISK_ALLOWED_USERS` (see the limits in
+   docs/ui-notes.md, Auth model).
+
+### machines.json
+`deploy/hub/machines.example.json` is the template; field rules are in docs/plans/machine-hub.md. In the
+container the paths are under `/config`. A bad file stops hostd at start (check the stack logs).
+
+Each machine's `secret_file` is that machine's own hostd secret: on the machine,
+`cat ~/.config/brisk/secret` (created by hostd on first start; `scripts/brisk-service.sh link` prints it
+inside a link). Copy it to `/srv/brisk-hub/config/<id>.secret` (no newline needed, 0600, owner uid 10001).
+Rotating a machine's secret means copying it again; the hub reads the file on each use, no restart.
+
+The machine's hostd must also accept the hub: it is reached by its tailnet name over `tailscale serve`
+(`https://<machine>.<tailnet>.ts.net:8443`), and the hub authenticates with the secret, so the machine
+needs no `allowed-users` entry for the hub.
+
+### Proxmox token (power control)
+Run on the Proxmox node as root. The hub gets only "see and start/stop" on one VM (here vmid 110):
+```
+pveum role add BriskPower --privs "VM.Audit VM.PowerMgmt"
+pveum user add brisk@pve --comment "brisk hub"
+pveum user token add brisk@pve hub --privsep 1          # prints the secret once; save it
+pveum acl modify /vms/110 --roles BriskPower --users 'brisk@pve'
+pveum acl modify /vms/110 --roles BriskPower --tokens 'brisk@pve!hub'
+```
+Put the printed secret value (only the UUID) in `/srv/brisk-hub/config/pve.token`, and set `token_id` to
+`brisk@pve!hub`. With privilege separation a token gets at most what both the token and the user have, so
+the ACL is granted to both, on `/vms/110` only (no `propagate` needed for a single VM, no `/` ACL).
+Why these two: `VM.PowerMgmt` covers start/shutdown/stop; reading `status/current` needs `VM.Audit`.
+Not confirmed on a live node: check with `pveum user token permissions brisk@pve hub --path /vms/110`.
+If the status call still answers 403, read the hub log before adding any privilege.
+
+`ca_file`: the PEM that signed the Proxmox web certificate. For the default self-signed setup that is
+`/etc/pve/pve-root-ca.pem` on the node (copy it to `/srv/brisk-hub/config/pve-ca.pem`). If the node uses a
+public or ACME certificate, the system roots in the image already work: leave `ca_file` out.
+
+### Add a machine
+1. Machine runs the hosting setup above (hostd as a service, `tailscale serve` on :8443).
+2. Copy its secret to the hub config dir; add an entry to `machines.json` (a unique `id`). For a Proxmox VM
+   add a `power` block and create the token/ACL for its vmid (a second VM: repeat the two `acl modify`
+   lines with its path).
+3. Restart the stack in Dockge (the file is read at start). Reload the page: the machine is in the list.
+
+### Idle shutdown
+With `idle_shutdown_min` set, the hub checks every 30 s. A machine that is `ready` with no live stream, no
+running game and no Steam update in progress starts a clock; after N minutes the hub sends an ACPI shutdown
+(never a hard stop). Any activity, or the hub being unable to see the machine, resets the clock. The clock
+starts when the machine becomes ready, so a machine you start and never use also shuts down. Leave the key
+out for never. Change it by editing `machines.json` and restarting the stack.
+
+### Gotchas
+- Host header: `tailscale serve` on 443 sends `Host: <hub>.<tailnet>.ts.net` (no port). Both forms must be
+  in `BRISK_ALLOWED_HOSTS` or every request is 403.
+- `BRISK_ALLOWED_USERS` works only because hostd sees `tailscale serve` as a loopback peer, which is why
+  the stack uses host networking. In a bridged container the peer is not loopback and logins are never
+  trusted; use the secret.
+- File drop is not available through the hub (501): drop files on the machine's own page.
+- Stream video connects from the browser straight to the machine's bridge address; that must be reachable
+  from the browser (tailnet), not just from the hub.
+
+### Update the hub
+Rebuild the binary and image as above (same tag `brisk-hub:local`), then in Dockge press Update/Redeploy
+(or `docker compose up -d --force-recreate`). Prefs, notes and the hub secret stay in the `data` volume.
+Before rebuilding, tag the running image for rollback: `docker tag brisk-hub:local brisk-hub:prev`.
+
+### Roll back
+`docker tag brisk-hub:prev brisk-hub:local`, then redeploy the stack. To leave the hub altogether:
+`tailscale serve --https=443 off` on the VM and keep using each machine's own page at :8443.
+
+### Troubleshooting
+- Every request 403: Host not allowed (see Gotchas), or no secret/login. Check `BRISK_ALLOWED_HOSTS` against
+  the exact name in the browser address bar, and the stack logs.
+- A machine's calls give 403 through the hub: the secret file is stale or has the wrong owner/mode.
+- 502 `machine did not answer`: the hub cannot reach `url` (tailnet down, hostd stopped, wrong name or
+  port, or 40 s timeout). From the VM: `curl -sk -o /dev/null -w '%{http_code}\n' https://<machine>.<tailnet>.ts.net:8443/`.
+- 503 `machine is off`: Proxmox says the VM is stopped; press Start (or Play, which starts it).
+- Proxmox calls fail (502 on power): token or ACL wrong, or the CA does not match. The message names the
+  cause but never the token. Check `ca_file` and `pveum user token permissions`.
+- VM starts but is never `ready`: `ready` needs the machine's hostd to answer and Sunshine to be up. Check
+  the guest booted to the desktop session (autologin), `systemctl --user status brisk-hostd` in the guest,
+  and `tailscale status` there. The page gives up waiting after 5 min.
+- Machine shuts down while you are away from the keyboard but connected: the hub only counts a live
+  stream as activity; raise `idle_shutdown_min` or remove it.
+
 ## What needs root, and why
 | Step | Command | Why root |
 |---|---|---|
