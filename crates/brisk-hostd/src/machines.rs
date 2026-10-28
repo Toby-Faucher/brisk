@@ -730,6 +730,12 @@ mod tests {
                 }),
             )
             .route(
+                "/api/emulators/dolphin/controls/{kind}",
+                any(|req: Rq<Body>| async move {
+                    axum::Json(json!({ "method": req.method().to_string(), "pq": req.uri().to_string() }))
+                }),
+            )
+            .route(
                 "/api/echo",
                 any(|req: Rq<Body>| async move {
                     let h = req.headers().clone();
@@ -1127,6 +1133,26 @@ mod tests {
                 .0,
             StatusCode::NOT_FOUND
         );
+    }
+
+    /// The hub has no path allowlist (only `files` is refused), so the emulator mapping routes pass.
+    #[tokio::test]
+    async fn proxy_passes_emulator_controls() {
+        let (url, _) = upstream().await;
+        let r = rig(vec![("a", url, None)]);
+        for m in ["GET", "PUT"] {
+            let (st, _, b) = send(
+                &r.app,
+                m,
+                "/api/m/a/emulators/dolphin/controls/gamecube",
+                None,
+                vec![],
+            )
+            .await;
+            let v: Value = serde_json::from_slice(&b).unwrap();
+            assert_eq!(st, StatusCode::OK, "{m}");
+            assert_eq!(v["pq"], "/api/emulators/dolphin/controls/gamecube");
+        }
     }
 
     #[tokio::test]
