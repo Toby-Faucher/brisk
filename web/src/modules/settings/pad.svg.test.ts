@@ -72,4 +72,19 @@ describe('pad diagram geometry', () => {
       cy = (f.Y.y + f.A.y) / 2;
     for (const c of pad.FACE) expect(Math.hypot(c.x - cx, c.y - cy)).toBeCloseTo(10.55, 0);
   });
+
+  it('select mode: every mapped id is drawn, every pad name has a printed label, bound labels have a spot', () => {
+    const ids = new Set(pad.ALL.map((c) => c.id));
+    for (const id of Object.keys(pad.PAD_NAME_BY_ID)) expect(ids.has(id), id).toBe(true);
+    for (const n of pad.PAD_NAMES) expect(pad.PAD_LABEL[n], n).toBeTruthy();
+    expect(new Set(Object.values(pad.PAD_NAME_BY_ID))).toEqual(new Set(pad.PAD_NAMES));
+    for (const id of Object.keys(pad.PAD_NAME_BY_ID).filter((i) => i !== 'pad-down' && i !== 'pad-left' && i !== 'pad-right'))
+      expect(pad.BOUND_AT[id], id).toBeDefined();
+  });
+
+  it('the drawing prints Back, Start, Home for View, Menu, Guide', () => {
+    const drawn = Object.fromEntries(pad.MIDDLE.map((c) => [c.id, c.label]));
+    for (const id of ['pad-back', 'pad-start', 'pad-home']) expect(pad.PAD_LABEL[pad.PAD_NAME_BY_ID[id]], id).toBe(drawn[id]);
+    expect([pad.PAD_LABEL.View, pad.PAD_LABEL.Menu, pad.PAD_LABEL.Guide]).toEqual(['Back', 'Start', 'Home']);
+  });
 });

@@ -116,3 +116,75 @@ export const USBC: Box = { id: 'pad-usbc', label: '', x: -4.5, y: -52.4, w: 9, h
 
 /** Every drawn control, for the id checks. */
 export const ALL = [...STICKS, ...FACE, ...MIDDLE, ...BUMPERS, ...TRIGGERS, ...DPAD, ...EXTRA_BOXES, ...EXTRA_CIRCLES, ...PADDLES, USBC];
+
+// --- select mode (the Emulator mappings editor) ---
+/** The 14 names the emulator API uses for pad inputs. */
+export const PAD_NAMES = [
+  'A',
+  'B',
+  'X',
+  'Y',
+  'LB',
+  'RB',
+  'LT',
+  'RT',
+  'View',
+  'Menu',
+  'Guide',
+  'Left stick',
+  'Right stick',
+  'D-pad',
+] as const;
+export type PadName = (typeof PAD_NAMES)[number];
+
+/** Drawn element -> pad name. All four d-pad arms are the one `D-pad`. */
+export const PAD_NAME_BY_ID: Record<string, PadName> = {
+  'pad-a': 'A',
+  'pad-b': 'B',
+  'pad-x': 'X',
+  'pad-y': 'Y',
+  'pad-lb': 'LB',
+  'pad-rb': 'RB',
+  'pad-lt': 'LT',
+  'pad-rt': 'RT',
+  'pad-back': 'View',
+  'pad-start': 'Menu',
+  'pad-home': 'Guide',
+  'pad-l3': 'Left stick',
+  'pad-r3': 'Right stick',
+  'pad-up': 'D-pad',
+  'pad-down': 'D-pad',
+  'pad-left': 'D-pad',
+  'pad-right': 'D-pad',
+};
+
+/** What the drawing and the mapping lists print for each name (the API keeps Xbox names; the pad prints Back, Start, Home). */
+export const PAD_LABEL: Record<PadName, string> = {
+  A: 'A',
+  B: 'B',
+  X: 'X',
+  Y: 'Y',
+  LB: 'LB',
+  RB: 'RB',
+  LT: 'LT',
+  RT: 'RT',
+  View: 'Back',
+  Menu: 'Start',
+  Guide: 'Home',
+  'Left stick': 'Left stick',
+  'Right stick': 'Right stick',
+  'D-pad': 'D-pad',
+};
+
+/** Where an element's bound-function text goes (units as the drawing). */
+export type LabelAt = { x: number; y: number; anchor?: 'start' | 'end' };
+export const BOUND_AT: Record<string, LabelAt> = Object.fromEntries([
+  ...[...FACE, ...MIDDLE].map((c) => [c.id, { x: c.x, y: c.y + c.r + 2.6 }]),
+  ...STICKS.map((s) => [s.id, { x: s.x, y: s.y + s.ring + 2.8 }]),
+  ...BUMPERS.map((b) => [b.id, { x: b.lx, y: b.ly + 3.4 }]),
+  ...TRIGGERS.map((t) => [
+    t.id,
+    t.x < 0 ? { x: t.x - 1.5, y: t.y + t.h / 2, anchor: 'end' } : { x: t.x + t.w + 1.5, y: t.y + t.h / 2, anchor: 'start' },
+  ]),
+  ['pad-up', { x: DPAD_C.x, y: DPAD_C.y + DPAD_C.half + 3 }],
+]);
