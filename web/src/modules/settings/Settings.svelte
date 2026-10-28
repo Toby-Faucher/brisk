@@ -12,8 +12,9 @@
   import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap } from '../../ui/motion';
   import ControllerTest from './ControllerTest.svelte';
+  import EmulatorMappings from './EmulatorMappings.svelte';
   import NotesBackup from './NotesBackup.svelte';
-  import { TABS, TAB_KEY, hashFor, initialTab, parseHash, type Tab } from './tabs';
+  import { TABS, TAB_KEY, hashFor, initialTab, parseHash, subOf, type Tab } from './tabs';
 
   const PRESETS: Exclude<Preset, 'custom'>[] = ['fast', 'balanced', 'crisp'];
   const set = (p: Partial<Settings>) => settings.update((s) => ({ ...s, ...p }));
@@ -46,6 +47,7 @@
   let ind = $state({ x: 0, w: 0 });
   let live = $state(false);
   let quality: HTMLElement | undefined = $state();
+  let dolphinKey = $state(0); // bumped by every #controller/dolphin visit: the card scrolls itself into view
   function show(t: Tab) {
     tab = t;
     live = true;
@@ -61,7 +63,13 @@
     let stored: string | null = null;
     try { stored = localStorage.getItem(TAB_KEY); } catch {}
     tab = initialTab(location.hash, stored);
-    const onHash = () => { const t = parseHash(location.hash); if (t) (tab = t, live = true); };
+    if (subOf(location.hash) === 'dolphin' && tab === 'controller') dolphinKey++;
+    const onHash = () => {
+      const t = parseHash(location.hash);
+      if (!t) return;
+      if (t === 'controller' && subOf(location.hash) === 'dolphin') dolphinKey++;
+      (tab = t, live = true);
+    };
     window.addEventListener('hashchange', onHash);
     window.addEventListener('popstate', onHash);
     window.addEventListener('resize', measure);
@@ -139,7 +147,7 @@
     </Tabs.Content>
 
     <Tabs.Content value="controller">
-      {#if tab === 'controller'}<ControllerTest />{/if}
+      {#if tab === 'controller'}<ControllerTest /><EmulatorMappings focusKey={dolphinKey} />{/if}
     </Tabs.Content>
 
     <Tabs.Content value="about">

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import Settings from './Settings.svelte';
@@ -26,9 +26,15 @@ describe('Settings tabs', () => {
     }
   });
 
-  it('the Controller tab points to the emulator game editor', async () => {
-    history.replaceState(null, '', '#controller');
+  it('the Controller tab shows the Emulator mappings card, and #controller/dolphin opens it', async () => {
+    const { api } = await import('../../state/api');
+    const fx = (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-get.json')).default;
+    vi.spyOn(api, 'emulatorControls').mockResolvedValue(fx as never);
+    history.replaceState(null, '', '#controller/dolphin');
     await render(Settings);
-    await expect.element(page.getByText(/open an emulator game in the Library/)).toBeInTheDocument();
+    await expect.element(page.getByRole('heading', { name: 'Emulator mappings' })).toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'Controller' })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => document.activeElement?.id).toBe('em-h');
+    vi.restoreAllMocks();
   });
 });

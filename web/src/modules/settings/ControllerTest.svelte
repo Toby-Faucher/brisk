@@ -160,7 +160,7 @@
 <section bind:this={root} aria-label="Controller test" class="ct">
   <Card cols={2} class="ctcard">
     <h4>Controller</h4>
-    <p class="note first">Live view of your pad, to spot stick drift and see what each button sends. Runs in this page only: nothing is sent to the host, and it stops when you leave. To change what a game's buttons do, open an emulator game in the Library.</p>
+    <p class="note first">Live view of your pad, to spot stick drift and see what each button sends. Runs in this page only: nothing is sent to the host, and it stops when you leave.</p>
 
     <div class="sr" role="status">{status}</div>
     {#if status}<p class="msg" aria-hidden="true">{status}</p>{/if}
