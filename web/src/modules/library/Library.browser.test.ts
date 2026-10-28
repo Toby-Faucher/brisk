@@ -199,6 +199,24 @@ describe('Library', () => {
   });
 });
 
+describe('Library Steam banner', () => {
+  const banner = () => page.getByText("Couldn't reach Steam", { exact: false });
+
+  it('shows loading, not the Steam banner, while the games have not arrived', async () => {
+    games.set(null);
+    vi.spyOn(api, 'games').mockReturnValue(new Promise(() => {})); // held: no machine known yet
+    await render(Library);
+    await expect.element(page.getByLabelText('Loading games')).toBeInTheDocument();
+    expect(banner().elements()).toHaveLength(0);
+  });
+
+  it('shows the banner only when the machine that answered says Steam is unreachable', async () => {
+    games.set({ games: list, ownedAvailable: false });
+    await render(Library);
+    await expect.element(banner()).toBeInTheDocument();
+  });
+});
+
 describe('Library ?open=', () => {
   it('opens the panel of a known game and clears the param', async () => {
     history.replaceState(null, '', '?open=2');
