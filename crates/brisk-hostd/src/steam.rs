@@ -275,7 +275,7 @@ pub(crate) fn now() -> u64 {
 const MAX_BODY: u64 = 8 << 20;
 
 /// HTTPS only, except plain http to loopback (the tests' mock server).
-fn base_ok(base: &str) -> bool {
+pub(crate) fn base_ok(base: &str) -> bool {
     if base.starts_with("https://") {
         return true;
     }
@@ -288,7 +288,7 @@ fn base_ok(base: &str) -> bool {
 
 /// Error text safe to log: only the kind of failure. ureq's own messages can embed the URL, and
 /// the URL carries the key, so they are never passed on.
-fn safe_err(e: &ureq::Error) -> String {
+pub(crate) fn safe_err(e: &ureq::Error) -> String {
     match e {
         ureq::Error::StatusCode(c) => format!("HTTP {c}"),
         ureq::Error::Timeout(_) => "timed out".into(),
@@ -308,6 +308,12 @@ fn safe_err(e: &ureq::Error) -> String {
 /// debug lines) with the full path and query, i.e. `key=`. hostd installs no `log` logger, so
 /// nothing is printed; never add one (env_logger, tracing-log, ...) without filtering ureq out.
 fn https_get(url: &str) -> Result<Vec<u8>, String> {
+    get_limited(url, None, MAX_BODY)
+}
+
+/// `https_get` with an optional bearer token (sent only as the Authorization header, never in the
+/// URL) and a caller-chosen body cap. Errors still carry only the kind of failure.
+pub(crate) fn get_limited(url: &str, bearer: Option<&str>, max: u64) -> Result<Vec<u8>, String> {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     let tls = TlsConfig::builder()
         .provider(TlsProvider::Rustls)
@@ -324,13 +330,17 @@ fn https_get(url: &str) -> Result<Vec<u8>, String> {
         .timeout_global(Some(Duration::from_secs(15)))
         .build()
         .into();
-    let mut r = agent.get(url).call().map_err(|e| safe_err(&e))?;
+    let mut req = agent.get(url);
+    if let Some(t) = bearer {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+    let mut r = req.call().map_err(|e| safe_err(&e))?;
     if r.status() != 200 {
         return Err(format!("HTTP {}", r.status().as_u16()));
     }
     r.body_mut()
         .with_config()
-        .limit(MAX_BODY)
+        .limit(max)
         .read_to_vec()
         .map_err(|e| safe_err(&e))
 }

@@ -19,4 +19,5 @@ pub mod sessions;
 pub mod site;
 pub mod steam;
 pub mod steam_info; // pub for tests
+pub mod steamgriddb;
 pub mod stream;
