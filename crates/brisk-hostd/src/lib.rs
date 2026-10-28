@@ -11,6 +11,7 @@ pub mod game;
 pub mod host;
 pub mod http;
 pub mod idle;
+pub mod ingest;
 pub mod machines;
 pub mod migrate;
 pub mod notes;
@@ -26,3 +27,4 @@ pub(crate) mod source;
 pub mod steam;
 pub mod steam_info; // pub for tests
 pub mod stream;
+pub mod uploads;

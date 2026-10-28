@@ -30,6 +30,10 @@ pub struct Config {
     pub downloads_dir: PathBuf,
     /// Where running games are looked up; tests point it at a fake.
     pub proc_dir: PathBuf,
+    /// Games folder with one sub-folder per system (`BRISK_GAMES_DIR`, default `~/Games`).
+    pub games_dir: PathBuf,
+    /// Scan the games folder once at startup (`BRISK_SCAN_ON_START=1`).
+    pub scan_on_start: bool,
     /// Hub machine list (`BRISK_MACHINES_FILE`); read by main.rs, absent = single host.
     pub machines_file: PathBuf,
     /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
@@ -72,6 +76,8 @@ impl Config {
             service: std::env::var_os("INVOCATION_ID").is_some(),
             downloads_dir: env_path("BRISK_DOWNLOADS_DIR")
                 .unwrap_or_else(|| home.join("Downloads/brisk")),
+            games_dir: env_path("BRISK_GAMES_DIR").unwrap_or_else(|| home.join("Games")),
+            scan_on_start: std::env::var("BRISK_SCAN_ON_START").is_ok_and(|v| v == "1"),
             proc_dir: "/proc".into(),
             machines_file: env_path("BRISK_MACHINES_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/machines.json")),
