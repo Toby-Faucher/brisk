@@ -11,6 +11,7 @@ snap() { cat "$t"/c/* 2>/dev/null | cksum; }
 run
 cmp -s "$s/../deploy/dolphin/WiimoteNew.ini" "$t/c/WiimoteNew.ini" || fail "fresh: profile not written"
 grep -qx 'BackgroundInput = True' "$t/c/Dolphin.ini" || fail "fresh: Dolphin.ini lacks the key"
+grep -qx 'ConfirmStop = False' "$t/c/Dolphin.ini" || fail "fresh: Dolphin.ini lacks ConfirmStop"
 a=$(snap); run; [ "$a" = "$(snap)" ] || fail "second run changed something"
 
 echo "# mine" >> "$t/c/WiimoteNew.ini"; a=$(snap)
@@ -28,6 +29,10 @@ done
 printf '[Core]\nFoo = 1\n' > "$t/c/Dolphin.ini"
 run
 grep -qxF 'Foo = 1' "$t/c/Dolphin.ini" && grep -qx 'BackgroundInput = True' "$t/c/Dolphin.ini" || fail "no [Input] section case"
+
+printf '[Interface]\nConfirmStop = True\nX = 1\n' > "$t/c/Dolphin.ini"
+run
+grep -qx 'ConfirmStop = True' "$t/c/Dolphin.ini" && ! grep -q 'ConfirmStop = False' "$t/c/Dolphin.ini" || fail "an existing ConfirmStop was rewritten"
 
 [ $bad = 0 ] && echo "ok: setup-dolphin"
 exit $bad

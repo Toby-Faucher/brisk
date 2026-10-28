@@ -231,9 +231,12 @@ Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolph
 
 1. Install Dolphin: `pacman -S dolphin-emu` (needs root).
 2. Install the gamepad profile as the games user: `scripts/setup-dolphin.sh`. It writes
-   `~/.config/dolphin-emu/WiimoteNew.ini` and adds `BackgroundInput = True` to `Dolphin.ini`. A file you
+   `~/.config/dolphin-emu/WiimoteNew.ini` and adds `BackgroundInput = True` and `ConfirmStop = False` to `Dolphin.ini`. A file you
    have changed is left alone. `--force` replaces it and keeps the old one as `<name>.before-brisk`.
-   `BackgroundInput` was added while debugging the pad and may not be needed.
+   `BackgroundInput` was added while debugging the pad and may not be needed. `ConfirmStop = False` is
+   needed for Quit: by default Dolphin answers a window close with a "stop the current emulation?" dialog
+   that nobody sees on a stream, and it then ignores SIGTERM until it is answered. Existing values are
+   never rewritten.
 3. List the games in `emulators.json` in the hostd data dir (`~/.local/share/brisk` by default, see
    `BRISK_DATA_DIR`): `[{"name": "Mario Kart Wii", "emulator": "dolphin", "file": "/path/to/game.iso"}]`.
    Only `dolphin` works today. A game whose file is missing shows as not installed. A broken file is ignored
@@ -243,7 +246,9 @@ Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolph
 The profile maps the streamed Sunshine pad to a Wii Classic Controller. It names the pad
 `evdev/0/Sunshine (libvirtualhid) X-Box Series Controller`. The `0` is the index among pads with that
 name, so it assumes one such pad. With two, the index changes and the mapping misses.
-Dolphin reads input config only at start. After a change, quit Dolphin and start the game again.
+Quit on a Dolphin game closes its window and waits about 5 s, sends SIGTERM and waits about 10 s more, then
+reports still running so the UI can offer Force quit. Nothing is killed without that tap.
+Dolphin reads its config only at start. After a change, quit Dolphin and start the game again.
 
 ## What needs root, and why
 | Step | Command | Why root |

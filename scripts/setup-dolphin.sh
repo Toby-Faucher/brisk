@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the Dolphin gamepad profile (deploy/dolphin) for the streamed Sunshine pad. Safe to rerun.
 # A missing file is written. A file that differs is left alone unless --force, which first saves
-# the old one as <name>.before-brisk. Dolphin.ini only gets the [Input] key added if it is absent.
+# the old one as <name>.before-brisk. Dolphin.ini only gets BackgroundInput and ConfirmStop added, each if absent.
 # Usage: scripts/setup-dolphin.sh [--force] [--dir DIR]   (DIR default: ${XDG_CONFIG_HOME:-~/.config}/dolphin-emu)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,15 +31,22 @@ else
 fi
 
 d=$dir/Dolphin.ini
-key=$(grep '^BackgroundInput' "$src/Dolphin.ini.fragment")
-if [ ! -e "$d" ]; then
-  printf '[Input]\n%s\n' "$key" > "$d"; echo "Dolphin.ini: written"
-elif grep -q '^BackgroundInput[ =]' "$d"; then
-  echo "Dolphin.ini: BackgroundInput already set"
-elif grep -q '^\[Input\]' "$d"; then
-  awk -v k="$key" '{print} /^\[Input\]/ {print k}' "$d" > "$d.tmp" && mv "$d.tmp" "$d"
-  echo "Dolphin.ini: added BackgroundInput to [Input]"
-else
-  printf '[Input]\n%s\n' "$key" >> "$d"; echo "Dolphin.ini: added [Input] with BackgroundInput"
-fi
+# add_key SECTION KEY: adds the fragment's "KEY = value" under [SECTION] if KEY is absent anywhere.
+add_key() {
+  local sec=$1 name=$2 line
+  line=$(grep "^$name" "$src/Dolphin.ini.fragment")
+  if [ ! -e "$d" ]; then
+    printf '[%s]\n%s\n' "$sec" "$line" > "$d"; echo "Dolphin.ini: written with $name"
+  elif grep -q "^$name[ =]" "$d"; then
+    echo "Dolphin.ini: $name already set"
+  elif grep -q "^\[$sec\]" "$d"; then
+    awk -v s="[$sec]" -v k="$line" '{print} $0==s {print k}' "$d" > "$d.tmp" && mv "$d.tmp" "$d"
+    echo "Dolphin.ini: added $name to [$sec]"
+  else
+    printf '\n[%s]\n%s\n' "$sec" "$line" >> "$d"; echo "Dolphin.ini: added [$sec] with $name"
+  fi
+}
+add_key Input BackgroundInput
+# Without this, closing the window asks "stop the current emulation?" and nobody sees it on a stream.
+add_key Interface ConfirmStop
 echo "Dolphin reads these at start: restart it to pick them up."

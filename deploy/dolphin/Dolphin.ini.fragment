@@ -1,5 +1,10 @@
-# Added to Dolphin.ini by scripts/setup-dolphin.sh (only the key line below, only if absent).
+# Added to Dolphin.ini by scripts/setup-dolphin.sh (only the key lines below, each only if absent).
 # Added while debugging the gamepad. It is not known yet whether it is needed. Remove it if the pad
 # works without it.
 [Input]
 BackgroundInput = True
+
+# Quit from brisk closes the window. With the default (True) Dolphin then waits on a stop confirmation
+# dialog that nobody sees on a stream, so Quit hangs.
+[Interface]
+ConfirmStop = False
