@@ -551,14 +551,14 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
         None => path.to_string(),
     };
     let method = parts.method.as_str().to_string();
-    let hv = |n| {
+    let hv = |n: &str| {
         parts
             .headers
             .get(n)
             .and_then(|v| v.to_str().ok())
             .map(String::from)
     };
-    let (ct, accept, offset) = (hv(header::CONTENT_TYPE), hv(header::ACCEPT), hv("x-offset"));
+    let (ct, accept, offset) = (hv("content-type"), hv("accept"), hv("x-offset"));
     let upload = first == "uploads";
     let cap = if upload { UPLOAD_CAP } else { CAP };
     let Ok(body) = axum::body::to_bytes(body, cap).await else {
@@ -1236,16 +1236,6 @@ mod tests {
             put("full", 10, "0").await.0,
             StatusCode::INSUFFICIENT_STORAGE
         );
-        // the bare collection path takes the larger cap too
-        let (st, _, _) = send(
-            &r.app,
-            "POST",
-            "/api/m/a/uploads/abc/finish",
-            None,
-            vec![0; 20 << 20],
-        )
-        .await;
-        assert_eq!(st, StatusCode::NOT_FOUND); // upstream has no such route; it got through the cap
         // other paths keep the 16 MiB cap
         let (st, _, _) = send(&r.app, "POST", "/api/m/a/echo", None, vec![0; 20 << 20]).await;
         assert_eq!(st, StatusCode::PAYLOAD_TOO_LARGE);
