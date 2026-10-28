@@ -11,6 +11,7 @@ import {
   smartTags,
   fmtFortnight,
   installLabel,
+  isEmulatorGame,
   playLabel,
   savesLine,
   searchGames,
@@ -268,5 +269,14 @@ describe('library', () => {
     const many = Array.from({ length: 50 }, (_, i) => g(i + 1, `g${i}`, { playtimeMin: i % 10 }));
     expect(backlog(many)).toHaveLength(40);
     expect(backlog(many)[0].playtimeMin).toBe(0);
+  });
+});
+
+describe('isEmulatorGame', () => {
+  it('is true from 0xE0000000 up and false for Steam appids', () => {
+    expect(isEmulatorGame({ appid: 0xe0000000 })).toBe(true);
+    expect(isEmulatorGame({ appid: 0xe0000001 })).toBe(true);
+    expect(isEmulatorGame({ appid: 0xdfffffff })).toBe(false);
+    expect(isEmulatorGame({ appid: 730 })).toBe(false);
   });
 });

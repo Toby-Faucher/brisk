@@ -123,6 +123,9 @@ export function savesLine(s: GameLocal['saves'], now = Date.now()): string | nul
 }
 export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
 /** A game still running on the host is resumed (streamed as is), not launched again. */
+/** Emulator games get ids from 0xE0000000 up (hostd keeps them away from Steam appids). */
+export const isEmulatorGame = (g: Pick<Game, 'appid'>) => g.appid >= 0xe0000000;
+
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
 export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));
 

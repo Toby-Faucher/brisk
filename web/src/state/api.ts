@@ -133,6 +133,23 @@ export type SessionRec = {
 /** `[t s since started, delay ms, fps, Mbit/s]`, one per 5 s. */
 export type SeriesPoint = [number, number, number, number];
 
+/** The Classic Controller mapping of an emulator game (GET/PUT/reset /api/games/{appid}/controls); see docs/plans/2026-10-27-emulator-controls.md. */
+export type ControlId = 'a' | 'b' | 'x' | 'y' | 'l' | 'r' | 'zl' | 'zr' | 'minus' | 'plus' | 'home' | 'ls' | 'rs' | 'dp';
+export type Bindings = Record<ControlId, string | null>;
+export type ControlsData = {
+  emulator: string;
+  controller: string;
+  source: 'file' | 'default';
+  rev: string;
+  running: boolean;
+  appliesOn: 'next-launch';
+  bindings: Bindings;
+  deadZone: { ls: number; rs: number };
+  custom: Record<ControlId, boolean>;
+};
+/** PUT body; `rev` left out is last write wins. */
+export type ControlsPut = { rev?: string; bindings: Bindings; deadZone: { ls: number; rs: number } };
+
 import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
@@ -142,6 +159,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The parsed JSON body of an error answer, when it had one (a 409 on controls carries `current`). */
+    readonly body?: unknown,
   ) {
     super(message);
   }
@@ -210,11 +229,13 @@ function seen(status: number) {
 /** hostd's `{error}` text, else the status line. */
 function apiError(status: number, statusText: string, body: string): ApiError {
   let msg = `${status} ${statusText}`.trim();
+  let parsed: unknown;
   try {
-    const j = JSON.parse(body);
-    if (typeof j?.error === 'string') msg = j.error;
+    parsed = JSON.parse(body);
+    const e = (parsed as { error?: unknown } | null)?.error;
+    if (typeof e === 'string') msg = e;
   } catch {}
-  return new ApiError(msg, status);
+  return new ApiError(msg, status, parsed);
 }
 
 async function send(path: string, init: RequestInit): Promise<Response> {
@@ -291,6 +312,9 @@ export const api = {
   gameInfo: (appid: number, refresh?: boolean) => call<GameInfo>('GET', `/api/games/${appid}/info${q(refresh)}`),
   gameAchievements: (appid: number, refresh?: boolean) => call<Achievements>('GET', `/api/games/${appid}/achievements${q(refresh)}`),
   gameNews: (appid: number, refresh?: boolean) => call<News>('GET', `/api/games/${appid}/news${q(refresh)}`),
+  controls: (appid: number) => call<ControlsData>('GET', `/api/games/${appid}/controls`),
+  putControls: (appid: number, b: ControlsPut) => call<ControlsData>('PUT', `/api/games/${appid}/controls`, b),
+  resetControls: (appid: number) => call<ControlsData>('POST', `/api/games/${appid}/controls/reset`),
   gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),
