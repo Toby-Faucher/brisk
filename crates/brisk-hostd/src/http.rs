@@ -849,6 +849,20 @@ async fn ids_remap(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Resp
             "map wants old emulator numbers and new emu ids",
         );
     }
+    // A machine with a library moves only to games it has, and never from a number two of its
+    // games share. The hub has no library and takes the web client's pairs as sent.
+    let recs = s.records();
+    let m: std::collections::BTreeMap<_, _> = if recs.is_empty() {
+        m
+    } else {
+        m.into_iter()
+            .filter(|(k, v)| {
+                let n = k.parse::<u32>().ok();
+                crate::game::GameId::parse(v).is_some_and(|g| recs.iter().any(|r| r.is(&g)))
+                    && recs.iter().filter(|r| Some(r.legacy()) == n).count() <= 1
+            })
+            .collect()
+    };
     let notes = match s.notes.rekey(&m) {
         Ok(n) => n,
         Err(e) => return notes_err(e),

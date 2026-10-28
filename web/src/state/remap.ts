@@ -9,9 +9,13 @@ import { prefs, refreshPrefs, type PrefsMap } from './prefs';
 /** Old number -> new id for emulator games whose old number still keys a note or a pref on the hub. */
 export function remapPairs(list: Game[], n: Notes, p: PrefsMap): Record<string, string> {
   const out: Record<string, string> = {};
+  const clash = new Set<string>(); // two games share the old number (same name hash): nobody can say whose note it was
   for (const g of list)
-    if (g.source === 'emu' && g.id && g.legacyId && g.legacyId !== g.id && (g.legacyId in n.games || g.legacyId in p))
+    if (g.source === 'emu' && g.id && g.legacyId && g.legacyId !== g.id && (g.legacyId in n.games || g.legacyId in p)) {
+      if (g.legacyId in out && out[g.legacyId] !== g.id) clash.add(g.legacyId);
       out[g.legacyId] = g.id;
+    }
+  for (const k of clash) delete out[k];
   return out;
 }
 

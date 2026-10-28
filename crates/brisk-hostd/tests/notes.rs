@@ -537,3 +537,54 @@ async fn remap_moves_emulator_keys_the_hub_could_not_map_and_keeps_a_backup() {
         StatusCode::FORBIDDEN
     );
 }
+
+#[tokio::test]
+async fn remap_on_a_machine_with_a_library_ignores_unknown_targets_and_ambiguous_numbers() {
+    use brisk_hostd::emu::{Record, library_json};
+    let dir = tempfile::tempdir().unwrap();
+    let rec = |id: &str, legacy: u32| Record {
+        id: brisk_hostd::game::GameId::parse(id).unwrap(),
+        emulator: "dolphin".into(),
+        system: None,
+        file: format!("/g/{id}.iso").replace(':', "_").into(),
+        name: id.into(),
+        added_at: None,
+        source: "scan".into(),
+        legacy_id: Some(legacy),
+        aliases: vec![],
+    };
+    let recs = [
+        rec("emu:dolphin:AAAAAA", 0xE000_0001),
+        rec("emu:dolphin:BBBBBB", 0xE000_0001),
+        rec("emu:dolphin:CCCCCC", 0xE000_0002),
+    ];
+    std::fs::write(dir.path().join("library.json"), library_json(&recs)).unwrap();
+    let game = r#"{"note":"n","tags":[]}"#;
+    std::fs::write(
+        dir.path().join("notes.json"),
+        format!(r#"{{"tags":{{}},"games":{{"3758096385":{game},"3758096386":{game},"3758096387":{game}}}}}"#),
+    )
+    .unwrap();
+    let t = t_in(dir);
+    let (st, v) = t
+        .call(
+            "POST",
+            "/api/ids/remap",
+            true,
+            Some(
+                json!({"map": {
+                    "3758096385": "emu:dolphin:AAAAAA",
+                    "3758096386": "emu:dolphin:CCCCCC",
+                    "3758096387": "emu:dolphin:ZZZZZZ"
+                }})
+                .to_string(),
+            ),
+        )
+        .await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"notes": 1, "prefs": 0})));
+    let g = t.all().await["games"].clone();
+    assert!(g.get("emu:dolphin:CCCCCC").is_some());
+    for k in ["3758096385", "3758096387"] {
+        assert!(g.get(k).is_some(), "{k} stays");
+    }
+}

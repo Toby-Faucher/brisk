@@ -16,6 +16,10 @@ describe('remapPairs', () => {
     expect(remapPairs(games, { tags: {}, games: { 'emu:dolphin:mario-kart-wii': note, '620': note } }, { 'steam:620': prefs })).toEqual({});
     expect(remapPairs([{ ...games[0], legacyId: '620' }], { tags: {}, games: { '620': note } }, {})).toEqual({});
   });
+  it('skips an old number that two games share (same name on two machines)', () => {
+    const two = [games[0], { ...games[0], id: 'emu:dolphin:OTHER1' }];
+    expect(remapPairs(two, { tags: {}, games: { '3907440760': note } }, {})).toEqual({});
+  });
   it('lists nothing for a game from an old hostd (no id)', () => {
     expect(remapPairs([{ appid: 3907440760, emulator: 'dolphin' } as Game], { tags: {}, games: { '3907440760': note } }, {})).toEqual({});
   });
