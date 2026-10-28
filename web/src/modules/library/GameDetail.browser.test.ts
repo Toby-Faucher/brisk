@@ -796,3 +796,33 @@ describe('GameDetail', () => {
     });
   });
 });
+
+describe('GameDetail with the Quit confirm', () => {
+  it('puts the confirm above the panel; Esc closes the confirm first, then the panel; focus returns to Quit', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    const { default: Harness } = await import('../../test/DetailQuitHarness.svelte');
+    await render(Harness, { props: { game: { ...game, running: true } } });
+    await userEvent.click(page.getByRole('button', { name: 'Open detail' }));
+    const panel = page.getByRole('dialog', { name: 'Portal 2', exact: true });
+    await expect.element(panel).toBeInTheDocument();
+    const quit = page.getByRole('button', { name: 'Quit Portal 2' }).element() as HTMLElement;
+    await userEvent.click(quit);
+    const confirm = page.getByRole('dialog', { name: 'Quit Portal 2?' });
+    await expect.element(confirm).toBeInTheDocument();
+    await expect.poll(() => confirm.element().contains(document.activeElement)).toBe(true);
+    for (const name of ['Cancel', 'Quit']) {
+      const el = confirm.getByRole('button', { name, exact: true }).element();
+      const r = el.getBoundingClientRect();
+      expect(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2), name).toBe(el);
+    }
+    // its overlay covers the panel too
+    const dim = document.querySelector('.rs-dim')!;
+    expect(Number(getComputedStyle(dim).zIndex)).toBeGreaterThan(Number(getComputedStyle(panel.element()).zIndex));
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => page.getByRole('dialog', { name: 'Quit Portal 2?' }).elements().length).toBe(0);
+    expect(panel.element().isConnected).toBe(true);
+    await expect.poll(() => document.activeElement).toBe(quit);
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => page.getByRole('dialog', { name: 'Portal 2', exact: true }).elements().length).toBe(0);
+  });
+});
