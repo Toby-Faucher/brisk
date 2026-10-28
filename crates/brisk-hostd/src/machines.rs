@@ -306,6 +306,7 @@ struct Up {
     status: u16,
     ctype: Option<String>,
     seq: Option<String>,
+    retry_after: Option<String>,
     body: Vec<u8>,
 }
 
@@ -351,7 +352,12 @@ fn call(
             .and_then(|v| v.to_str().ok())
             .map(String::from)
     };
-    let (ctype, seq, status) = (h("content-type"), h("x-brisk-seq"), r.status().as_u16());
+    let (ctype, seq, retry_after, status) = (
+        h("content-type"),
+        h("x-brisk-seq"),
+        h("retry-after"),
+        r.status().as_u16(),
+    );
     let body = r
         .body_mut()
         .with_config()
@@ -362,6 +368,7 @@ fn call(
         status,
         ctype,
         seq,
+        retry_after,
         body,
     })
 }
@@ -608,6 +615,7 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
             for (n, v) in [
                 (header::CONTENT_TYPE.as_str(), up.ctype),
                 ("x-brisk-seq", up.seq),
+                (header::RETRY_AFTER.as_str(), up.retry_after),
             ] {
                 if let Some(v) = v.and_then(|v| HeaderValue::from_str(&v).ok()) {
                     r.headers_mut().insert(n, v);
@@ -741,7 +749,7 @@ mod tests {
             .route(
                 "/api/boom",
                 any(|| async {
-                    (StatusCode::CONFLICT, [("content-type", "application/json")], r#"{"error":"nope"}"#)
+                    (StatusCode::CONFLICT, [("content-type", "application/json"), ("retry-after", "7")], r#"{"error":"nope"}"#)
                 }),
             )
             .route(
@@ -1162,6 +1170,7 @@ mod tests {
         assert_eq!(st, StatusCode::CONFLICT);
         assert_eq!(h["content-type"], "application/json");
         assert_eq!(b, br#"{"error":"nope"}"#);
+        assert_eq!(h["retry-after"], "7");
         // An upstream 404 is an upstream 404.
         assert_eq!(
             send(&r.app, "GET", "/api/m/a/nothing", None, vec![])
