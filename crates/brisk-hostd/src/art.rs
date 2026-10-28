@@ -152,6 +152,14 @@ fn find_img(dir: &Path, name: &str) -> Option<PathBuf> {
         .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file()))
 }
 
+/// Modified time in nanoseconds: two refreshes within one second still get different `?v=` and ETag.
+pub fn stamp(m: &std::fs::Metadata) -> u128 {
+    m.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos())
+}
+
 /// Fills the art URLs, details, credits and `needsMatch` of an emulator card from the cache. Reads
 /// files only.
 pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
@@ -166,11 +174,7 @@ pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
         let Some(p) = find_img(&dir, kind) else {
             continue;
         };
-        let v = std::fs::metadata(&p)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_secs());
+        let v = std::fs::metadata(&p).map_or(0, |m| stamp(&m));
         let url = format!("/api/games/{seg}/art/{kind}?v={v}");
         match kind {
             "cover" => g.cover = url,
@@ -220,11 +224,7 @@ pub fn read_art(
     let p = find_img(&dir_of(data_dir, &key_of(id)?), name)?;
     let body = std::fs::read(&p).ok()?;
     let ct = image_type(&body)?;
-    let mt = std::fs::metadata(&p)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map_or(0, |d| d.as_secs());
+    let mt = std::fs::metadata(&p).map_or(0, |m| stamp(&m));
     Some((ct, format!("\"{}-{mt}\"", body.len()), body))
 }
 
@@ -836,6 +836,28 @@ mod tests {
         ] {
             assert_eq!(clean_name(raw), want, "{raw}");
         }
+    }
+
+    #[test]
+    fn the_cache_stamp_changes_within_one_second() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("cover.png");
+        std::fs::write(&f, b"a").unwrap();
+        let t0 = std::time::UNIX_EPOCH + Duration::new(1_800_000_000, 100);
+        let t1 = std::time::UNIX_EPOCH + Duration::new(1_800_000_000, 900_000_000);
+        let set = |t| {
+            std::fs::File::options()
+                .write(true)
+                .open(&f)
+                .unwrap()
+                .set_modified(t)
+                .unwrap()
+        };
+        set(t0);
+        let a = stamp(&std::fs::metadata(&f).unwrap());
+        set(t1);
+        let b = stamp(&std::fs::metadata(&f).unwrap());
+        assert_ne!(a, b);
     }
 
     #[test]
