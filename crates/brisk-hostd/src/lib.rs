@@ -2,6 +2,7 @@ pub mod auth;
 pub mod clipboard;
 pub mod config;
 pub mod controls;
+pub mod discid;
 #[cfg(feature = "embed")]
 pub mod embed;
 pub mod emu;
@@ -18,6 +19,7 @@ pub mod playtime;
 pub mod power;
 pub mod prefs;
 pub mod registry;
+pub mod rahash;
 pub mod running;
 pub mod sessions;
 pub mod site;
