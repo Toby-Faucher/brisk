@@ -19,6 +19,8 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_STEAM_STORE_BASE` | Steam store base URL (tests point it at a mock). | `https://store.steampowered.com` | `hostd/src/config.rs` |
 | `BRISK_SGDB_BASE` | SteamGridDB API base URL (tests point it at a mock). | `https://www.steamgriddb.com/api/v2` | `hostd/src/steamgriddb.rs` |
 | `BRISK_SGDB_KEY_FILE` | File with the SteamGridDB API key, one line (0600). Missing = art lookup off. | `~/.config/brisk/steamgriddb-api-key` | `hostd/src/steamgriddb.rs` |
+| `BRISK_GAMETDB_XML_URL` | URL of a plain `wiitdb.xml` for Wii and GameCube titles (no default; a `.zip` is refused). | unset | `hostd/src/gametdb.rs` |
+| `BRISK_GAMETDB_ART_BASE` | GameTDB art base URL (tests point it at a mock). | `https://art.gametdb.com` | `hostd/src/gametdb.rs` |
 | `BRISK_BRIDGE_BIN` | `brisk-bridge` binary hostd starts per stream. | `brisk-bridge` (on PATH) | `hostd/src/config.rs` |
 | `BRISK_LISTEN` | Bridge address, `IPv4:PORT`; `scripts/brisk-up.sh` rejects `0.0.0.0`. | the Tailscale IPv4 on `:4433`, asked at each stream start | `hostd/src/config.rs`, `scripts/brisk-up.sh` |
 | `BRISK_TLS_DIR` | Bridge certificate directory. | `~/.config/brisk/tls` | `hostd/src/config.rs` |

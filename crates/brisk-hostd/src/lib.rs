@@ -8,6 +8,7 @@ pub mod embed;
 pub mod emu;
 pub mod files;
 pub mod game;
+pub mod gametdb;
 pub mod host;
 pub mod http;
 pub mod idle;
