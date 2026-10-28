@@ -858,4 +858,56 @@ describe('GameDetail with the Quit confirm', () => {
     await userEvent.keyboard('{Escape}');
     await expect.poll(() => page.getByRole('dialog', { name: 'Portal 2', exact: true }).elements().length).toBe(0);
   });
+
+  describe('Saves section', () => {
+    const caps = { install: false, controls: false, achievements: false, launchOptions: false, saves: true, screenshots: false };
+    const wii: Game = {
+      ...game,
+      appid: 0xe0000002,
+      id: 'emu:dolphin:rmce01',
+      source: 'emu',
+      legacyId: '3758096386',
+      emulator: 'dolphin',
+      name: 'Mario Kart Wii',
+      caps,
+    };
+    const items = [
+      {
+        kind: 'state' as const,
+        name: 'RMCE01.s01',
+        path: 'StateSaves/RMCE01.s01',
+        size: 4_100_000,
+        modified: Math.floor(Date.now() / 1000) - 3 * 86_400,
+      },
+      { kind: 'nand-save' as const, name: 'Wii save data', path: 'Wii/title/00010000/524d4345/data', size: 2048, modified: null, files: 3 },
+    ];
+
+    it('lists saves, asks by id, and offers no download or delete', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const s = vi.spyOn(api, 'gameSaves').mockResolvedValue({ available: true, userDir: 'Dolphin user folder', items });
+      await render(GameDetail, { props: props(wii) });
+      const list = page.getByRole('list', { name: 'Saves' });
+      await expect.element(list.getByText('RMCE01.s01')).toBeInTheDocument();
+      await expect.element(list.getByText('Save state, 4.1 MB, 3 d ago')).toBeInTheDocument();
+      await expect.element(list.getByText('Wii save, 3 files, 2 KB')).toBeInTheDocument();
+      expect(s).toHaveBeenCalledWith('emu:dolphin:rmce01');
+      expect(page.getByRole('button', { name: /download|delete/i }).elements()).toHaveLength(0);
+    });
+
+    it('explains where saves appear when there are none', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'gameSaves').mockResolvedValue({ available: false, userDir: 'Dolphin user folder', items: [] });
+      await render(GameDetail, { props: props(wii) });
+      await expect.element(page.getByText('Save states and saves show up here after you play.')).toBeInTheDocument();
+    });
+
+    it('an old hostd (no caps) and a Steam game never call the route', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      const s = vi.spyOn(api, 'gameSaves');
+      await render(GameDetail, { props: props({ ...wii, caps: undefined, id: undefined }) });
+      await expect.element(page.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+      expect(s).not.toHaveBeenCalled();
+      expect(page.getByRole('heading', { name: 'Saves' }).elements()).toHaveLength(0);
+    });
+  });
 });
