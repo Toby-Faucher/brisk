@@ -137,12 +137,21 @@ fn unix(s: &str) -> Option<u64> {
     let [y, m, d, h, mi, sec] = n[..] else {
         return None;
     };
-    let y = if m <= 2 { y - 1 } else { y };
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || h > 24 || mi > 59 || sec > 60 {
+        return None;
+    }
+    // checked: the digits come from a remote reply
+    let y = if m <= 2 { y.checked_sub(1)? } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
     let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
-    let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
-    u64::try_from(days * 86400 + h * 3600 + mi * 60 + sec).ok()
+    let days = era
+        .checked_mul(146097)?
+        .checked_add(yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468)?;
+    let secs = days
+        .checked_mul(86400)?
+        .checked_add(h * 3600 + mi * 60 + sec)?;
+    u64::try_from(secs).ok()
 }
 
 fn ach_json(a: &Achievement) -> Value {
@@ -297,5 +306,7 @@ mod tests {
         assert_eq!(unix("1970-01-02 00:00:01"), Some(86401));
         assert_eq!(unix("2026-03-12 17:47:29"), Some(1773337649));
         assert_eq!(unix("junk"), None);
+        assert_eq!(unix("9000000000000000-01-01 00:00:00"), None);
+        assert_eq!(unix("2026-13-40 99:99:99"), None);
     }
 }
