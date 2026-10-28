@@ -423,9 +423,10 @@ impl Art {
         tokio::spawn(async move {
             let _turn = me.gate.acquire().await;
             let (m2, id2) = (me.clone(), id.clone());
-            let r =
-                tokio::task::spawn_blocking(move || m2.run(&cfg, &id2, &title, system.as_deref(), disc.as_deref()))
-                    .await;
+            let r = tokio::task::spawn_blocking(move || {
+                m2.run(&cfg, &id2, &title, system.as_deref(), disc.as_deref())
+            })
+            .await;
             match r {
                 Ok(Outcome::Failed(why)) => eprintln!("art: {id}: {why}"),
                 Ok(o) => eprintln!("art: {id}: {o:?}"),
