@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -569,6 +569,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     fn pad_of(text: &str, id: &str) -> Option<&'static str> {
         read_text(text).bindings[IDS.iter().position(|i| *i == id).unwrap()]
@@ -675,14 +676,7 @@ mod tests {
         let base = |k: &str, v: &str| apply(DEFAULT_INI, &[Op::Set(k.into(), v.into())]);
         let a = read_text(&base("Classic/Buttons/A", "EAST | TL"));
         assert!(a.custom[0] && a.bindings[0].is_none());
-        for odd in [
-            "east",
-            "`EAST",
-            "EAST`x",
-            "`EA`ST`",
-            "",
-            "EAST&TL",
-        ] {
+        for odd in ["east", "`EAST", "EAST`x", "`EA`ST`", "", "EAST&TL"] {
             assert!(
                 read_text(&base("Classic/Buttons/A", odd)).custom[0],
                 "{odd:?}"

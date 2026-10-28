@@ -708,6 +708,7 @@ async fn game_note_put(
 
 /// The Dolphin entry behind `appid`, if it has a controller editor; and whether any Dolphin runs
 /// (the config file is shared, so any running Dolphin owns it).
+#[allow(clippy::result_large_err)]
 fn controls_gate(s: &AppState, appid: u32) -> Result<bool, Response> {
     let entries = crate::emu::load(&s.cfg.data_dir);
     let has = |e: &crate::emu::Entry| crate::emu::spec(&e.emulator).is_some_and(|c| c.controls);
