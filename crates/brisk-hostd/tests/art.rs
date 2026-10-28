@@ -308,7 +308,7 @@ async fn confident_match_fetches_once_after_an_upload() {
     let out = r
         .state
         .art
-        .run(&r.state.cfg, &id, "Mario Kart Wii", Some("wii"));
+        .run(&r.state.cfg, &id, "Mario Kart Wii", Some("wii"), None);
     assert_eq!(out, brisk_hostd::art::Outcome::Cached);
     assert_eq!(m.hits.load(Ordering::SeqCst), before);
 }
@@ -421,7 +421,7 @@ async fn none_of_these_is_cached_until_refresh() {
     assert_eq!(
         r.state
             .art
-            .run(&r.state.cfg, &id, "Mario Kart Wii", Some("wii")),
+            .run(&r.state.cfg, &id, "Mario Kart Wii", Some("wii"), None),
         brisk_hostd::art::Outcome::NoMatch
     );
     assert_eq!(m.hits.load(Ordering::SeqCst), before);
@@ -596,11 +596,12 @@ async fn one_task_per_game_at_a_time() {
         id.clone(),
         "Mario Kart Wii".into(),
         None,
+        None,
     );
     let b = r
         .state
         .art
-        .spawn(r.state.cfg.clone(), id, "Mario Kart Wii".into(), None);
+        .spawn(r.state.cfg.clone(), id, "Mario Kart Wii".into(), None, None);
     assert!(a && !b);
     r.idle().await;
 }

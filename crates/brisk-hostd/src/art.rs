@@ -307,7 +307,14 @@ impl Art {
     }
 
     /// The whole pipeline for one game. Blocking.
-    pub fn run(&self, cfg: &Config, id: &GameId, title: &str, system: Option<&str>) -> Outcome {
+    pub fn run(
+        &self,
+        cfg: &Config,
+        id: &GameId,
+        title: &str,
+        system: Option<&str>,
+        disc: Option<&str>,
+    ) -> Outcome {
         let Some(key) = key_of(id) else {
             return Outcome::Failed("game id too long for the art cache".into());
         };
@@ -319,8 +326,8 @@ impl Art {
         // GameTDB (only when configured): a better title and the description fields, once.
         if !meta.sources.iter().any(|s| s == CREDIT_TDB)
             && matches!(system, Some("wii" | "gamecube"))
-            && let Some((_, gid)) = id.emu_parts()
-            && let Some(e) = (self.tdb)(cfg, gid.split('-').next().unwrap_or(gid))
+            && let Some(disc) = disc // from `emu::disc_id_of`, so a slug id with a disc id alias still matches
+            && let Some(e) = (self.tdb)(cfg, disc)
         {
             meta.title = e.title("EN").to_string();
             meta.year = e.year;
@@ -401,6 +408,7 @@ impl Art {
         id: GameId,
         title: String,
         system: Option<String>,
+        disc: Option<String>,
     ) -> bool {
         let Some(key) = key_of(&id) else { return false };
         if !self
@@ -416,7 +424,7 @@ impl Art {
             let _turn = me.gate.acquire().await;
             let (m2, id2) = (me.clone(), id.clone());
             let r =
-                tokio::task::spawn_blocking(move || m2.run(&cfg, &id2, &title, system.as_deref()))
+                tokio::task::spawn_blocking(move || m2.run(&cfg, &id2, &title, system.as_deref(), disc.as_deref()))
                     .await;
             match r {
                 Ok(Outcome::Failed(why)) => eprintln!("art: {id}: {why}"),
@@ -444,7 +452,13 @@ impl Art {
     pub fn trigger_new(self: &Arc<Self>, cfg: &Config, ids: &[GameId]) {
         let recs = crate::emu::load(&cfg.data_dir);
         for r in recs.iter().filter(|r| ids.contains(&r.id)) {
-            self.spawn(cfg.clone(), r.id.clone(), r.name.clone(), r.system.clone());
+            self.spawn(
+                cfg.clone(),
+                r.id.clone(),
+                r.name.clone(),
+                r.system.clone(),
+                crate::emu::disc_id_of(r),
+            );
         }
     }
 
@@ -614,6 +628,7 @@ fn start(s: &Arc<AppState>, id: &GameId) {
             r.id.clone(),
             r.name.clone(),
             r.system.clone(),
+            crate::emu::disc_id_of(r),
         );
     }
 }
@@ -743,5 +758,22 @@ mod tests {
         assert_eq!(image_type(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
         assert_eq!(image_type(b"RIFF\0\0\0\0WEBPVP8 "), Some("image/webp"));
         assert_eq!(image_type(b"<svg></svg>"), None);
+    }
+    #[test]
+    fn gametdb_uses_the_disc_id_not_a_slug_id() {
+        let d = std::env::temp_dir().join(format!("brisk-art-{}", std::process::id()));
+        let mut cfg = Config::from_env(d.clone());
+        cfg.data_dir = d.clone();
+        let art = Art::new(Box::new(|_| None), |_, id| {
+            (id == "RMCE01").then(|| gametdb::Entry {
+                name: "Mario".into(),
+                ..Default::default()
+            })
+        });
+        let id = GameId::parse("emu:dolphin:mario-kart-wii").unwrap();
+        art.run(&cfg, &id, "Mario Kart Wii", Some("wii"), Some("RMCE01"));
+        let meta: Meta = read_json(&dir_of(&d, &key_of(&id).unwrap()).join("meta.json")).unwrap();
+        assert!(meta.sources.iter().any(|s| s == CREDIT_TDB));
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
