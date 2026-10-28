@@ -73,9 +73,12 @@ pub fn clean_name(raw: &str) -> String {
                 .is_some_and(|t| t.chars().all(|c| c.is_ascii_digit()))
         {
             w.truncate(n - 2);
-        } else if n > 1 && matches!(last.as_deref(), Some("wii" | "gamecube" | "gc" | "-" | ":")) {
-            w.pop();
-        } else if n > 1 && matches!(last.as_deref(), Some("for")) {
+        } else if n > 1
+            && matches!(
+                last.as_deref(),
+                Some("wii" | "gamecube" | "gc" | "-" | ":" | "for")
+            )
+        {
             w.pop();
         } else {
             break;
@@ -511,6 +514,7 @@ fn fetch_all(sgc: &SgdbConfig, key: &str, dir: &Path, cand: &Candidate) -> Resul
 
 // ---- routes ----
 
+#[allow(clippy::result_large_err)]
 fn emu_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
     let id = s
         .parse_id(raw)
