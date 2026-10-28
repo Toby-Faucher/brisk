@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { raView, startPoll, POLL_MS, BACKOFF_MAX_MS } from './ra';
+import { raView, TITLE_NOTE, startPoll, POLL_MS, BACKOFF_MAX_MS } from './ra';
 import type { Achievements } from './api';
 
 const ok: Achievements = { available: true, unlocked: 1, total: 2, list: [], state: 'ok', source: 'retroachievements' };
@@ -9,6 +9,11 @@ describe('raView', () => {
   it('shows ok and a stateless Steam answer as they are', () => {
     expect(raView(ok)).toEqual({ ach: ok, note: null });
     expect(raView(steam)).toEqual({ ach: steam, note: null });
+  });
+  it('keeps the matched flag so the UI can show the title note', () => {
+    const t: Achievements = { ...ok, matched: 'title' };
+    expect(raView(t).ach?.matched).toBe('title');
+    expect(TITLE_NOTE).toMatch(/^Matched by title/);
   });
   it('hides off, shows the reason for unsupported, fixed wording for the rest', () => {
     expect(raView({ state: 'off' })).toEqual({ ach: null, note: null });

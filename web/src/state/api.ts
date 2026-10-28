@@ -75,6 +75,8 @@ export type Achievements = {
   /** RetroAchievements (state 'ok') only. */
   source?: 'retroachievements';
   state?: 'ok';
+  /** How the RA game was found: by the file's hash, or only by its title (the hash is not in RA's list). */
+  matched?: 'hash' | 'title';
   unlockedHardcore?: number;
   pointsUnlocked?: number;
   pointsTotal?: number;

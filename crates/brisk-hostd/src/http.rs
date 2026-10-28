@@ -254,7 +254,8 @@ async fn emu_achievements(s: &AppState, g: &Game, refresh: bool) -> Response {
         }
         ok
     };
-    let body = crate::ra_game::state_json(&s.cfg, &r.file, fresh).await;
+    let body =
+        crate::ra_game::state_json(&s.cfg, &r.file, std::slice::from_ref(&r.name), fresh).await;
     ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
 }
 

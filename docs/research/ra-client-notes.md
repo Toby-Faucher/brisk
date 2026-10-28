@@ -36,3 +36,7 @@ Module: `crates/brisk-hostd/src/retroachievements.rs`. Read-only. Date of checks
 ## Stage 5 wiring
 
 Add a `ra_config` to hostd's state from `RaConfig::from_env(&cfg.data_dir)`. For a running or selected Wii/GameCube game, compute the disc hash, call `progress_for(&ra, CONSOLE_WII, &hash)` from a handler, and map `RaError` to a short status line (hide the panel on `Off`). Poll on view, not on a timer.
+
+## Title fallback
+
+When a file's hash is not in the console's list (trimmed WBFS dumps, whose first 32 MB hash region is zeros), `progress_for_names` matches the library name against the same cached game list. Titles are lowercased, "(...)" groups and a trailing "disc N" dropped, punctuation removed. RA's "[Subset - X]" titles keep their brackets so a subset never equals the base game. Exactly one game id must match, otherwise the state stays `not-found`. The answer carries `matched: "title"` and the UI says the hash was not verified. A hash hit always wins. The list is cached (`ra/titles-<console>.json`, 7 days).
