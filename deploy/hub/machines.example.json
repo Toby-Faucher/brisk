@@ -1,0 +1,9 @@
+{ "machines": [
+  { "id": "bawn", "name": "bawn",
+    "url": "https://bawn.example.invalid:8443", "secret_file": "/config/bawn.secret" },
+  { "id": "games", "name": "games-arch",
+    "url": "https://games.example.invalid:8443", "secret_file": "/config/games.secret",
+    "power": { "proxmox": { "api": "https://pve.example.invalid:8006", "node": "pve", "vmid": 110,
+                            "token_id": "brisk@pve!hub", "token_file": "/config/pve.token",
+                            "ca_file": "/config/pve-ca.pem" },
+               "idle_shutdown_min": 15 } } ] }

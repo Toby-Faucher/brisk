@@ -7,11 +7,11 @@
 <script lang="ts">
   import { getContext, type Snippet } from 'svelte';
 
-  let { cols = 2, rows = 1, class: cls = '', children }: { cols?: number; rows?: number; class?: string; children?: Snippet } = $props();
+  let { cols = 2, rows = 1, class: cls = '', style = '', children }: { cols?: number; rows?: number; class?: string; style?: string; children?: Snippet } = $props();
   const slot = getContext<Slot | undefined>(SLOT);
 </script>
 
-<div class="card reveal {cls}" style:grid-column="span {cols}" style:grid-row="span {rows}" role="group" data-card={slot?.id}>
+<div class="card reveal {cls}" {style} style:grid-column="span {cols}" style:grid-row="span {rows}" role="group" data-card={slot?.id}>
   {#if slot}
     <!-- aria-pressed is flipped by modules/home/drag.ts while the card is picked up -->
     <button type="button" class="grip" data-grip aria-label="Move {slot.label} card" aria-describedby="grip-hint" aria-pressed="false">

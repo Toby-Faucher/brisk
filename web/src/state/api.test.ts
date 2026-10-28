@@ -55,6 +55,16 @@ describe('api', () => {
     expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-brisk-secret']).toBe('abc123');
   });
 
+  it('putLayout_carries_machine_colours_and_keeps_the_array_form', async () => {
+    stubPage('https://bawn.tail0.ts.net:8443/');
+    const f = stubFetch(200, { homeOrder: ['1'], machineColors: { a: '#112233' } });
+    const r: { machineColors?: Record<string, string> } = await api.putLayout({ machineColors: { a: '#112233', b: null } });
+    expect(r.machineColors).toEqual({ a: '#112233' });
+    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ machineColors: { a: '#112233', b: null } });
+    await api.putLayout(['1']);
+    expect(JSON.parse((f.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toEqual({ homeOrder: ['1'] });
+  });
+
   it('works_without_a_secret_and_survives_broken_storage', async () => {
     stubPage('https://bawn.tail0.ts.net:8443/');
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } });

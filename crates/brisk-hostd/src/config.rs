@@ -30,6 +30,8 @@ pub struct Config {
     pub downloads_dir: PathBuf,
     /// Where running games are looked up; tests point it at a fake.
     pub proc_dir: PathBuf,
+    /// Hub machine list (`BRISK_MACHINES_FILE`); read by main.rs, absent = single host.
+    pub machines_file: PathBuf,
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
@@ -67,6 +69,8 @@ impl Config {
             downloads_dir: env_path("BRISK_DOWNLOADS_DIR")
                 .unwrap_or_else(|| home.join("Downloads/brisk")),
             proc_dir: "/proc".into(),
+            machines_file: env_path("BRISK_MACHINES_FILE")
+                .unwrap_or_else(|| home.join(".config/brisk/machines.json")),
         }
     }
 }

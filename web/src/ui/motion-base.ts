@@ -74,3 +74,34 @@ export function glide(el: Element, from: Box, to: Box, o: { pseudo?: string; eas
     { duration: ms('--spring-snappy-dur', 400), easing: o.easing ?? (cssVar('--spring-snappy') || cssVar('--ease')), pseudoElement: o.pseudo },
   );
 }
+
+const lastText = new WeakMap<Element, string>();
+
+/**
+ * Svelte attachment for a text that changes after load (Machines uptime, Sunshine state, host pill name): `<dd {@attach fadeOnChange(v)}>{v}</dd>`.
+ * Svelte writes the text; on a later change the element only fades in from .35 (opacity, native, nothing loaded), so nothing
+ * moves and nothing is announced. The first value, an unchanged value and reduced motion do nothing.
+ */
+export const fadeOnChange = (value: string, quick = false) => (el: Element) => {
+  const was = lastText.get(el);
+  lastText.set(el, value);
+  if (was === undefined || was === value || onStreamRoute() || reducedMotion()) return; // the host pill is on /stream too: silent there
+  // `quick` (host pill name): a shorter fade from .3
+  const a = el.animate({ opacity: [quick ? 0.3 : 0.35, 1] }, { duration: quick ? 180 : 360, easing: cssVar('--ease') });
+  return () => a.cancel();
+};
+
+const swaps = new WeakMap<Element, Animation>();
+
+/**
+ * The selected machine changed: the page content cross-fades (opacity .5 -> 1, 240 ms after a 40 ms hold) while the new
+ * machine's data loads. Native Web Animations on `opacity` only: no blur, no movement, no inline style, and opacity makes
+ * no containing block for fixed descendants anyway. A new swap replaces one in flight. Null when nothing ran (reduced motion, /stream).
+ */
+export function pageSwap(el: Element): Animation | null {
+  if (onStreamRoute() || reducedMotion()) return null;
+  swaps.get(el)?.cancel();
+  const a = el.animate({ opacity: [0.5, 1] }, { duration: 240, delay: 40, fill: 'backwards', easing: cssVar('--ease') });
+  swaps.set(el, a);
+  return a;
+}
