@@ -209,6 +209,10 @@ pub fn caps(emulator: &str) -> Caps {
 pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let ps = procs(proc);
     let played = played(data_dir);
+    let pt = crate::playtime::Store::load(data_dir);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
     recs.iter()
         .map(|r| {
             let mut g = Game::steam(r.legacy(), &r.name);
@@ -219,7 +223,13 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
             g.system = r.system.clone();
             g.installed = r.file.is_file();
             g.size_bytes = std::fs::metadata(&r.file).ok().map(|m| m.len());
-            g.last_played = played.get(r.id.as_str()).copied();
+            // The launch stamp is the fallback; a later session end wins.
+            g.last_played = played
+                .get(r.id.as_str())
+                .copied()
+                .max(pt.last_end(r.id.as_str()));
+            g.playtime_min = pt.total_minutes(r.id.as_str());
+            g.playtime2wk_min = pt.last_two_weeks_minutes(r.id.as_str(), now);
             g.emulator = Some(r.emulator.clone());
             g.running = !pids(&ps, r).is_empty();
             g
@@ -518,6 +528,38 @@ mod tests {
         let mode = std::fs::metadata(d.path().join(PLAYED_FILE)).unwrap();
         assert_eq!(mode.permissions().mode() & 0o777, 0o600);
         assert_eq!(g(d.path()).emulator.as_deref(), Some("dolphin"));
+    }
+
+    #[test]
+    fn games_show_playtime_and_the_later_of_launch_and_session_end() {
+        let d = tempfile::tempdir().unwrap();
+        let r = rec("MKW", "dolphin", Path::new("/x.iso"));
+        let none = fake_proc(&[]);
+        let g = |d: &Path| games(std::slice::from_ref(&r), none.path(), d).remove(0);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut pt = crate::playtime::Store::default();
+        pt.add(r.id.as_str(), now - 7200, now - 3600);
+        pt.save(d.path());
+        let x = g(d.path());
+        assert_eq!((x.playtime_min, x.playtime2wk_min), (60, 60));
+        assert_eq!(
+            x.last_played,
+            Some(now - 3600),
+            "no launch stamp: session end"
+        );
+        std::fs::write(
+            d.path().join(PLAYED_FILE),
+            format!(r#"{{"{}":{}}}"#, r.id, now - 100),
+        )
+        .unwrap();
+        assert_eq!(
+            g(d.path()).last_played,
+            Some(now - 100),
+            "later launch stamp wins"
+        );
     }
 
     #[test]

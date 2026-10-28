@@ -20,6 +20,7 @@
 //!   BRISK_STEAM_DIR        Steam install (default ~/.local/share/Steam)
 //!   BRISK_STEAM_KEY_FILE   Steam API key file (default ~/.config/brisk/steam-api-key)
 //!   BRISK_STEAM_API_BASE   Steam Web API base URL (default https://api.steampowered.com)
+//!   BRISK_PLAYTIME_POLL_S  playtime watcher poll seconds (default 15, min 5)
 //!   BRISK_SPAWN_SCOPE      `1` starts spawned programs in a systemd scope (host.rs)
 
 use brisk_hostd::config::{Config, load_secret, load_users, page_line};
@@ -92,6 +93,14 @@ async fn main() -> std::process::ExitCode {
     }
     state.hosts.refresh().await;
     state.clip.start_watch();
+    tokio::spawn(brisk_hostd::playtime::watch(
+        state.cfg.data_dir.clone(),
+        state.cfg.proc_dir.clone(),
+        state.cfg.playtime_poll,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    ));
     state.files.clean_partials();
     let app = router(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
     // systemd (Type=notify): READY only once the router answers on the socket, then the watchdog.

@@ -34,6 +34,8 @@ pub struct Config {
     pub machines_file: PathBuf,
     /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
     pub dolphin_dir: PathBuf,
+    /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
+    pub playtime_poll: std::time::Duration,
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
@@ -79,6 +81,9 @@ impl Config {
                     .unwrap_or_else(|| home.join(".config"))
                     .join("dolphin-emu")
             }),
+            playtime_poll: crate::playtime::poll_from(
+                std::env::var("BRISK_PLAYTIME_POLL_S").ok().as_deref(),
+            ),
         }
     }
 }
