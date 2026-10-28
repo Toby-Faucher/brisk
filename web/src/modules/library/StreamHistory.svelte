@@ -1,45 +1,47 @@
 <script lang="ts">
   // "Streamed 12 times · 14 h · last 3 d ago · usually Crisp", plus a one-click suggestion for a cheaper preset.
-  import { api, type Preset, type SessionRec } from '../../state/api';
+  import { api, type Game, type Preset, type SessionRec } from '../../state/api';
+  import { gameKey, pick, without } from '../../state/gameId';
   import { homeOrder, prefs, refreshPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
   import { fmtAgo } from '../home/home';
   import { gameHistory, fmtTotal, recentTrouble, recommendPreset } from './streamHistory';
 
-  let { appid }: { appid: number } = $props();
+  let { game }: { game: Game } = $props();
+  const key = $derived(gameKey(game));
 
   const NAME: Record<Preset, string> = { fast: 'Fast', balanced: 'Balanced', crisp: 'Crisp', custom: 'Custom' };
 
   // Loaded once when the panel opens; nothing shows while loading or on error. hostd sends at most the last 100 sessions.
   let sessions = $state<SessionRec[]>([]);
   $effect(() => {
-    const id = appid;
+    const id = key;
     sessions = [];
     api.sessions().then(
-      (v) => id === appid && (sessions = v.sessions),
+      (v) => id === key && (sessions = v.sessions),
       () => {},
     );
   });
 
-  const h = $derived(gameHistory(sessions, appid));
-  const rec = $derived(recommendPreset(sessions, appid));
-  const trouble = $derived(recentTrouble(sessions, appid));
-  const shown = $derived(rec && $prefs[appid]?.preset !== rec ? rec : null);
+  const h = $derived(gameHistory(sessions, key));
+  const rec = $derived(recommendPreset(sessions, key));
+  const trouble = $derived(recentTrouble(sessions, key));
+  const shown = $derived(rec && pick($prefs, game)?.preset !== rec ? rec : null);
   const dur = $derived(fmtTotal(h.totalMs));
 
   let saving = $state(false);
   async function use(preset: Preset) {
     if (saving) return;
     saving = true;
-    const id = appid; // the panel may switch games while the save is in flight
+    const id = key; // the panel may switch games while the save is in flight
     try {
       await refreshPrefs(); // so a saved codec is known before it is kept
       if ($homeOrder === undefined) { // still undefined: the GET failed, so a saved codec is unknown
         toast('Could not load your saved settings', { error: true });
         return;
       }
-      const saved = await api.putPrefs(id, { preset, codec: $prefs[id]?.codec ?? 'h264' });
-      prefs.update((m) => ({ ...m, [id]: saved }));
+      const saved = await api.putPrefs(id, { preset, codec: pick($prefs, id)?.codec ?? 'h264' });
+      prefs.update((m) => ({ ...without(m, id), [id]: saved }));
       toast(`Saved ${NAME[preset]} for this game`);
     } catch {
       toast(`Could not save ${NAME[preset]}`, { error: true });

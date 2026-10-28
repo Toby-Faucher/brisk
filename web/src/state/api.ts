@@ -1,5 +1,23 @@
 // Typed client for brisk-hostd's /api (same origin). Shapes match hostd's camelCase JSON.
+/** What a game's source can do with it (hostd sends these; for an old hostd see gameCaps in gameId.ts). */
+export type Caps = {
+  install: boolean;
+  controls: boolean;
+  achievements: boolean;
+  launchOptions: boolean;
+  saves: boolean;
+  screenshots: boolean;
+};
 export type Game = {
+  /** The key to use: `steam:620`, `emu:dolphin:mario-kart-wii`. An old hostd sends none (see gameKey in gameId.ts). */
+  id?: string;
+  source?: 'steam' | 'emu';
+  caps?: Caps;
+  /** The old number as text (for a release). */
+  legacyId?: string;
+  /** `wii`, `gamecube`; only when known. */
+  system?: string;
+  /** The Steam appid; for an emulator game the old hash. Not a key: use gameKey. */
   appid: number;
   name: string;
   installed: boolean;
@@ -26,10 +44,6 @@ export type Game = {
   coop: boolean;
   /** Emulator games only (e.g. 'dolphin'): these have no art, so the cover is a title card with this badge. */
   emulator?: string;
-  /** Stage 1 fields (a hostd that has them): the id to use in URLs, who owns the game, and what the UI may offer. */
-  id?: string;
-  source?: 'steam' | 'emu';
-  caps?: { launchOptions?: boolean };
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
@@ -87,13 +101,16 @@ export type StreamReq = {
   fps?: number;
   bitrateKbps?: number;
   codec?: Codec;
-  appid?: number;
+  /** The game's key (see gameKey); the client turns it into `id` or `appid` for the machine. Omit for the Desktop. */
+  game?: string;
 };
 export type StreamInfo = {
   state: 'idle' | 'starting' | 'live';
   preset: Preset | null;
   codec: Codec | null;
   appid: number | null;
+  /** Set by a new hostd. */
+  gameId?: string | null;
   wt: string | null;
   hash: string | null;
   /** The live session's id (its record's `started`), where the page PUTs its series. */
@@ -127,6 +144,8 @@ export type SessionStats = {
 /** codec, bitrate and stats are null (or absent) on records from before they were kept. */
 export type SessionRec = {
   appid: number | null;
+  /** Set by a new hostd (older rows get it at its first start). */
+  gameId?: string | null;
   name: string;
   started: number /* unix ms */;
   ended: number | null;
@@ -164,6 +183,7 @@ import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
 import type { Machine } from './machines';
+import { gameSegment, toIdForm, toNumberForm } from './gameId';
 
 /** Launch options (docs/hosting-runbook.md, "Launch options"). Wrappers are 'mangohud', 'gamemode' or {gamescope: {args}}. */
 export type LaunchWrapper = 'mangohud' | 'gamemode' | { gamescope: { args: string[] } };
@@ -260,6 +280,26 @@ export function route(path: string): string {
   return prefix && SCOPED.test(path) ? `/api/m/${encodeURIComponent(prefix)}/${path.slice(5)}` : path;
 }
 
+// Which machines (and the hub's own hostd, for notes and prefs) speak string ids. The decision lives here: callers pass a
+// game key and these turn it into the form on the wire. '' is a single host. An unknown machine gets numbers, which
+// every hostd accepts for a Steam game.
+const idSchemes = new Map<string, boolean>();
+let hubSeen = false;
+const noteScheme = (machine: string | null, r: { games: Game[]; idScheme?: number }) =>
+  idSchemes.set(machine ?? '', r.idScheme === 1 || (r.games ?? []).some((g) => g.id !== undefined));
+const machineIds = () => idSchemes.get(prefix ?? '') === true;
+/** The hub's own hostd keeps notes and prefs. It speaks ids when it said so (a key with ':'), or it is the one host. */
+const hubIds = () => hubSeen || (prefix === null && idSchemes.get('') === true);
+const seeIds = (m: Record<string, unknown>) => void (Object.keys(m).some((k) => k.includes(':')) && (hubSeen = true));
+const machineForm = (key: string) => (machineIds() ? toIdForm(key) : toNumberForm(key));
+const hubForm = (key: string) => (hubIds() ? toIdForm(key) : toNumberForm(key));
+/** The body that names a game: `{id}` for a new hostd, `{appid}` for an old one. */
+function nameGame(key: string): { id: string } | { appid: number } {
+  const k = machineForm(key);
+  return /^[1-9]\d*$/.test(k) && !machineIds() ? { appid: Number(k) } : { id: k };
+}
+const gamePath = (key: string, tail: string) => `/api/games/${gameSegment(machineForm(key))}${tail}`;
+
 function seen(status: number) {
   denied.set(status === 403);
 }
@@ -300,8 +340,8 @@ async function getClipboard(since: number | null): Promise<{ seq: number; clip: 
 }
 
 /** An object URL for one host screenshot: fetched with the auth headers, which an `<img src>` cannot send. Revoke it when done. */
-async function screenshot(appid: number, name: string): Promise<string> {
-  const r = await send(`/api/games/${appid}/screenshots/${encodeURIComponent(name)}`, { headers: auth() });
+async function screenshot(key: string, name: string): Promise<string> {
+  const r = await send(gamePath(key, `/screenshots/${encodeURIComponent(name)}`), { headers: auth() });
   return URL.createObjectURL(await r.blob());
 }
 
@@ -333,11 +373,13 @@ const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
 function forMachine(id: string) {
   const base = `/api/m/${encodeURIComponent(id)}`; // not in SCOPED, so route() leaves it alone
   return {
-    games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `${base}/games${q(refresh)}`),
+    games: (refresh?: boolean) => call<GamesAnswer>('GET', `${base}/games${q(refresh)}`).then((r) => (noteScheme(id, r), r)),
     sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', `${base}/sessions`),
     host: () => call<HostInfo>('GET', `${base}/host`),
   };
 }
+
+type GamesAnswer = { games: Game[]; ownedAvailable: boolean; idScheme?: number };
 
 export const api = {
   forMachine,
@@ -347,34 +389,38 @@ export const api = {
     call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
   host: () => call<HostInfo>('GET', '/api/host'),
   /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
-  games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),
-  gameInfo: (appid: number, refresh?: boolean) => call<GameInfo>('GET', `/api/games/${appid}/info${q(refresh)}`),
-  gameAchievements: (appid: number, refresh?: boolean) => call<Achievements>('GET', `/api/games/${appid}/achievements${q(refresh)}`),
-  gameNews: (appid: number, refresh?: boolean) => call<News>('GET', `/api/games/${appid}/news${q(refresh)}`),
+  games: (refresh?: boolean) => call<GamesAnswer>('GET', `/api/games${q(refresh)}`).then((r) => (noteScheme(prefix, r), r)),
+  gameInfo: (key: string, refresh?: boolean) => call<GameInfo>('GET', gamePath(key, `/info${q(refresh)}`)),
+  gameAchievements: (key: string, refresh?: boolean) => call<Achievements>('GET', gamePath(key, `/achievements${q(refresh)}`)),
+  gameNews: (key: string, refresh?: boolean) => call<News>('GET', gamePath(key, `/news${q(refresh)}`)),
   emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
   putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),
   resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
   launchDefaults: () => call<LaunchDefaults>('GET', '/api/launch/defaults'),
   putLaunchDefaults: (b: { rev?: string; allowCustomCommands: boolean; options: LaunchOpts }) =>
     call<LaunchDefaults>('PUT', '/api/launch/defaults', b),
-  /** `id` is the game's Stage 1 id (`steam:620`); an old hostd also takes the bare number. */
-  gameLaunch: (id: string) => call<GameLaunch>('GET', `/api/games/${encodeURIComponent(id)}/launch`),
-  putGameLaunch: (id: string, b: { rev?: string; override: LaunchOverride }) =>
-    call<GameLaunch>('PUT', `/api/games/${encodeURIComponent(id)}/launch`, b),
-  resetGameLaunch: (id: string) => call<GameLaunch>('DELETE', `/api/games/${encodeURIComponent(id)}/launch`),
-  gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
+  gameLaunch: (key: string) => call<GameLaunch>('GET', gamePath(key, '/launch')),
+  putGameLaunch: (key: string, b: { rev?: string; override: LaunchOverride }) => call<GameLaunch>('PUT', gamePath(key, '/launch'), b),
+  resetGameLaunch: (key: string) => call<GameLaunch>('DELETE', gamePath(key, '/launch')),
+  gameLocal: (key: string) => call<GameLocal>('GET', gamePath(key, '/local')),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
-  startStream: (req: StreamReq) => call<StreamInfo>('POST', '/api/stream', req),
+  startStream: (req: StreamReq) => {
+    const { game, ...rest } = req;
+    return call<StreamInfo>('POST', '/api/stream', game === undefined ? rest : { ...rest, ...nameGame(game) });
+  },
   stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),
-  launch: (appid: number) => call<void>('POST', '/api/launch', { appid }),
-  install: (appid: number) => call<void>('POST', '/api/install', { appid }),
+  launch: (key: string) => call<void>('POST', '/api/launch', nameGame(key)),
+  install: (key: string) => call<void>('POST', '/api/install', nameGame(key)),
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
-  quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
+  quit: (key: string, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { ...nameGame(key), force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
   prefs: () =>
-    call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('GET', '/api/prefs'),
+    call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>(
+      'GET',
+      '/api/prefs',
+    ).then((r) => (seeIds(r.prefs ?? {}), r)),
   /** Card orders and machine colours (hostd cleans them and answers with what it kept); a bare array is the Home order. An omitted key keeps its value; a colour of null removes that machine's. Reset forgets all. */
   putLayout: (l: string[] | { homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string | null> }) =>
     call<{ homeOrder: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>(
@@ -383,15 +429,17 @@ export const api = {
       Array.isArray(l) ? { homeOrder: l } : l,
     ),
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
-  putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
-  deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
-  notes: () => call<Notes>('GET', '/api/notes'),
+  putPrefs: (key: string, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${gameSegment(hubForm(key))}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
+  deletePrefs: (key: string) => call<void>('DELETE', `/api/prefs/${gameSegment(hubForm(key))}`),
+  notes: () => call<Notes>('GET', '/api/notes').then((r) => (seeIds(r.games ?? {}), r)),
+  /** Hub only: move notes and prefs kept under an old emulator number to its new id. Safe to repeat; an old hostd has no such route. */
+  remapIds: (map: Record<string, string>) => call<{ notes: number; prefs: number }>('POST', '/api/ids/remap', { map }),
   /** Create or replace a tag; hostd answers with what it stored (name trimmed). */
   putTag: (id: string, tag: Tag) => call<Tag>('PUT', `/api/notes/tags/${id}`, tag),
   /** Also takes the tag off every game. */
   deleteTag: (id: string) => call<void>('DELETE', `/api/notes/tags/${id}`),
   /** hostd drops unknown tag ids and answers with what it stored. */
-  putGameNote: (appid: number, b: GameNote) => call<GameNote>('PUT', `/api/notes/games/${appid}`, b, true), // keepalive: flushed on pagehide
+  putGameNote: (key: string, b: GameNote) => call<GameNote>('PUT', `/api/notes/games/${gameSegment(hubForm(key))}`, b, true), // keepalive: flushed on pagehide
   /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */
   sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', '/api/sessions'),
   session: (started: number) => call<{ session: SessionRec; series: SeriesPoint[] }>('GET', `/api/sessions/${started}`),

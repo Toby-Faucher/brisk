@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Game } from '../../state/api';
+  import { gameKey, pick } from '../../state/gameId';
   import { prefs, prefsChip } from '../../state/prefs';
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
@@ -15,7 +16,7 @@
   let logoLoaded = $state('');
   const heroOk = $derived(!!game.hero && heroBad !== game.hero);
   const logoOk = $derived(!!game.logo && logoLoaded === game.logo);
-  const saved = $derived($prefs[game.appid]);
+  const saved = $derived(pick($prefs, game));
   const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
 </script>
 
@@ -34,7 +35,7 @@
       <button class="btn" aria-disabled={busy} onclick={() => onplay(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
       <button class="btn ghost" aria-haspopup="dialog" onclick={() => ondetails(game)} aria-label="Details for {game.name}">Details</button>
       {#if game.running}
-        {@const q = $quitting.has(game.appid)}
+        {@const q = $quitting.has(gameKey(game))}
         <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
       {/if}
     </div>

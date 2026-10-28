@@ -7,9 +7,7 @@ import {
   gsArgs,
   gsParse,
   gsProblems,
-  hasLaunchOptions,
   inheritOf,
-  launchIdOf,
   optionsOf,
   overrideOf,
   summary,
@@ -117,17 +115,5 @@ describe('summary', () => {
       'Runs under gamescope and GameMode.',
     );
     expect(summary({ wrappers: [], env: {}, custom: null, extra_args: [] })).toBe('Starts the game as it is, with no options.');
-  });
-});
-
-describe('game ids and caps', () => {
-  it('uses the Stage 1 id, else the old number', () => {
-    expect(launchIdOf({ id: 'emu:dolphin:mario-kart-wii', appid: 3907440760 })).toBe('emu:dolphin:mario-kart-wii');
-    expect(launchIdOf({ appid: 620 })).toBe('620');
-  });
-  it('the section needs the cap', () => {
-    expect(hasLaunchOptions({ caps: { launchOptions: true } })).toBe(true);
-    expect(hasLaunchOptions({ caps: { launchOptions: false } })).toBe(false);
-    expect(hasLaunchOptions({})).toBe(false);
   });
 });

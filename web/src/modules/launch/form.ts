@@ -1,6 +1,6 @@
 // Launch options as a form: JSON <-> editable rows, the gamescope flag mapping, the per-field inherit flags and the
 // plain-words summary. Pure. hostd validates again on every save; this only keeps the form from sending nonsense.
-import type { Game, LaunchOpts, LaunchOverride, LaunchWrapper } from '../../state/api';
+import type { LaunchOpts, LaunchOverride, LaunchWrapper } from '../../state/api';
 
 /** gamescope flags that take a number, with hostd's largest value (crates/brisk-hostd/src/launch.rs). */
 export const GS_NUM = [
@@ -129,8 +129,3 @@ export function summary(o: LaunchOpts): string {
   if (o.extra_args.length) out.push(`Extra arguments: ${o.extra_args.join(' ')}.`);
   return out.join(' ') || 'Starts the game as it is, with no options.';
 }
-
-/** The id to put in a URL: the Stage 1 id, else the old number (an old hostd). */
-export const launchIdOf = (g: Pick<Game, 'id' | 'appid'>) => g.id ?? String(g.appid);
-/** Offer the section when hostd says it can; a hostd without caps (old) has no launch options. */
-export const hasLaunchOptions = (g: Pick<Game, 'caps'>) => g.caps?.launchOptions === true;

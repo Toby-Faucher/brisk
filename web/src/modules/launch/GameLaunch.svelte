@@ -4,14 +4,15 @@
   import { onDestroy, onMount } from 'svelte';
   import type { Game } from '../../state/api';
   import { copyText } from './copy';
-  import { FIELDS, inheritOf, launchIdOf, summary } from './form';
+  import { FIELDS, inheritOf, summary } from './form';
   import OptionsEditor from './OptionsEditor.svelte';
+  import { gameKey } from '../../state/gameId';
   import { createGameLaunch, SAVED } from './store';
 
   let { game }: { game: Pick<Game, 'id' | 'appid'> } = $props();
   // The parent keys this component by the game id, so reading it once is right.
   // svelte-ignore state_referenced_locally
-  const ctl = createGameLaunch(launchIdOf(game));
+  const ctl = createGameLaunch(gameKey(game));
   const s = ctl.state;
   onMount(() => void ctl.load());
   onDestroy(() => void ctl.flush());

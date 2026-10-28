@@ -5,6 +5,7 @@
   import { api, type HostInfo, type StreamInfo } from '../../state/api';
   import type { Machine } from '../../state/machines';
   import { games, watchGames } from '../../state/games';
+  import { findGame, gameKey, rowKey } from '../../state/gameId';
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { host as hostStore, refreshHost } from '../../state/host';
@@ -47,7 +48,8 @@
     shutting = null;
     await powerMachine(m.id, 'shutdown').catch((e) => failed(`shut down ${m.name}`, e));
   }
-  const app = $derived(stream?.appid == null ? null : ($games?.games.find((g) => g.appid === stream!.appid)?.name ?? `App ${stream.appid}`));
+  const liveKey = $derived(stream ? rowKey(stream) : null);
+  const app = $derived(liveKey === null ? null : (findGame($games?.games ?? [], liveKey)?.name ?? `App ${liveKey}`));
 
   let arrived = false; // the host card lands after hydration: entrance once
   $effect(() => {
@@ -175,8 +177,8 @@
   {#if here && running.length}
     <h5 class="lab">Running apps</h5>
     <ul class="apps">
-      {#each running as g (g.appid)}
-        {@const q = $quitting.has(g.appid)}
+      {#each running as g (gameKey(g))}
+        {@const q = $quitting.has(gameKey(g))}
         <li><span>{g.name}</span><button class="btn ghost sm" aria-disabled={q} aria-busy={q} onclick={() => askQuit(g)} aria-label={q ? `Quitting ${g.name}` : `Quit ${g.name}`}><QuitLabel busy={q} label="Quit" /></button></li>
       {/each}
     </ul>

@@ -189,7 +189,7 @@ describe('GameDetail refresh across games', () => {
     vi.useRealTimers();
     i.mockClear();
     await userEvent.click(b);
-    expect(i).toHaveBeenCalledWith(400, true);
+    expect(i).toHaveBeenCalledWith('400', true);
   });
 
   it('an in-flight refresh of game A does not block game B', async () => {
@@ -204,7 +204,7 @@ describe('GameDetail refresh across games', () => {
     expect((b.element() as HTMLElement).getAttribute('aria-disabled')).not.toBe('true');
     i.mockClear();
     await userEvent.click(b);
-    expect(i).toHaveBeenCalledWith(400, true);
+    expect(i).toHaveBeenCalledWith('400', true);
   });
 });
 
@@ -219,9 +219,9 @@ describe('GameDetail', () => {
     n.mockResolvedValue({ items: [{ title: 'Fresh patch', url: 'https://n.example.test/f', date: 1, patch: true }] });
     const b = page.getByRole('button', { name: 'Refresh Steam data' });
     await userEvent.click(b);
-    expect(i).toHaveBeenLastCalledWith(620, true);
-    expect(a).toHaveBeenLastCalledWith(620, true);
-    expect(n).toHaveBeenLastCalledWith(620, true);
+    expect(i).toHaveBeenLastCalledWith('620', true);
+    expect(a).toHaveBeenLastCalledWith('620', true);
+    expect(n).toHaveBeenLastCalledWith('620', true);
     await expect.element(page.getByRole('link', { name: 'Fresh patch' })).toBeInTheDocument();
     await expect.element(page.getByText('First Steps')).toBeInTheDocument();
     await expect.element(b).toHaveAttribute('aria-disabled', 'true');
@@ -277,7 +277,7 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('First Steps')).toBeInTheDocument();
     await expect.element(page.getByText('Take a step.')).toBeInTheDocument();
     await expect.element(page.getByText('Hidden One')).toBeInTheDocument();
-    expect(spy).toHaveBeenCalledExactlyOnceWith(620);
+    expect(spy).toHaveBeenCalledExactlyOnceWith('620');
   });
 
   it('hides the section when total is 0', async () => {
@@ -297,7 +297,7 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('Puzzle', { exact: true })).toBeInTheDocument();
     await expect.element(page.getByText('Remote Play Together')).toBeInTheDocument();
     await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-    expect(spy).toHaveBeenCalledExactlyOnceWith(620);
+    expect(spy).toHaveBeenCalledExactlyOnceWith('620');
   });
 
   it('shows "No store details" when available is false', async () => {
@@ -361,8 +361,8 @@ describe('GameDetail', () => {
     const img = page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' });
     await expect.element(img).toHaveAttribute('src', expect.stringMatching(/^blob:/));
     await expect.poll(() => shot.mock.calls.length).toBe(2);
-    expect(shot).toHaveBeenCalledWith(620, 'b.png');
-    expect(shot).toHaveBeenCalledWith(620, 'a.jpg');
+    expect(shot).toHaveBeenCalledWith('620', 'b.png');
+    expect(shot).toHaveBeenCalledWith('620', 'a.jpg');
     expect(
       page
         .getByRole('img')
@@ -444,7 +444,7 @@ describe('GameDetail', () => {
       .toBeInTheDocument();
     expect(put).not.toHaveBeenCalled();
     await userEvent.click(page.getByRole('button', { name: 'Use Balanced' }));
-    expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'hevc' });
+    expect(put).toHaveBeenCalledWith('620', { preset: 'balanced', codec: 'hevc' });
     await vi.waitFor(() => expect(get(prefs)[620]).toEqual(saved));
     await expect.element(page.getByRole('button', { name: 'Use Balanced' })).not.toBeInTheDocument();
   });
@@ -476,7 +476,7 @@ describe('GameDetail', () => {
     const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
     await render(GameDetail, { props: props(game) });
     await userEvent.click(sugg());
-    await vi.waitFor(() => expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'h264' }));
+    await vi.waitFor(() => expect(put).toHaveBeenCalledWith('620', { preset: 'balanced', codec: 'h264' }));
   });
 
   it('toasts and keeps the button on a failed save', async () => {
@@ -783,6 +783,42 @@ describe('GameDetail', () => {
       await expect.poll(() => page.getByRole('heading', { name: 'Controls' }).elements().length).toBe(0);
     });
 
+    // what a new hostd sends for the same game: id, source and caps decide, not the number
+    const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false };
+    const newEmu: Game = { ...emu, id: 'emu:dolphin:mario-kart-wii', source: 'emu', legacyId: '3758096385', emulator: 'dolphin', caps };
+
+    it('a new hostd emulator game shows the link, asks hostd by id, and has Play and Quit but no Install', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'emulatorControls').mockResolvedValue((await fx()) as never);
+      const ach = vi.mocked(api.gameAchievements);
+      const loc = vi.mocked(api.gameLocal);
+      await render(GameDetail, { props: props({ ...newEmu, running: true, installed: false }) });
+      await expect.element(page.getByRole('link', { name: 'Edit mappings' })).toBeInTheDocument();
+      await expect.element(page.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+      await expect.element(page.getByRole('button', { name: 'Quit Mario Kart Wii' })).toBeInTheDocument();
+      expect(page.getByRole('button', { name: /^Install/ }).elements()).toHaveLength(0);
+      expect(ach).not.toHaveBeenCalled(); // caps.achievements is false
+      expect(loc).not.toHaveBeenCalled(); // caps.screenshots is false
+    });
+
+    it('caps decide: an emulator game without an editor has no Controls section, a number in the old range does not matter', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const c = vi.spyOn(api, 'emulatorControls');
+      await render(GameDetail, { props: props({ ...newEmu, caps: { ...caps, controls: false } }) });
+      await expect.element(page.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+      expect(page.getByRole('heading', { name: 'Controls' }).elements()).toHaveLength(0);
+      expect(c).not.toHaveBeenCalled();
+    });
+
+    it('a new hostd Steam game in a high number range is still Steam', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      const c = vi.spyOn(api, 'emulatorControls');
+      const steamCaps = { ...caps, install: true, controls: false, achievements: true, screenshots: true };
+      await render(GameDetail, { props: props({ ...game, appid: 0xe0000005, id: 'steam:3758096389', source: 'steam', caps: steamCaps }) });
+      await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+      expect(c).not.toHaveBeenCalled();
+    });
+
     it('is absent for a Steam game and never asks hostd', async () => {
       vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
       const c = vi.spyOn(api, 'emulatorControls');
@@ -825,7 +861,12 @@ describe('GameDetail with the Quit confirm', () => {
 });
 
 describe('GameDetail launch options', () => {
-  const withCaps = { ...game, id: 'steam:620', source: 'steam' as const, caps: { launchOptions: true } };
+  const withCaps = {
+    ...game,
+    id: 'steam:620',
+    source: 'steam' as const,
+    caps: { install: true, controls: false, achievements: true, launchOptions: true, saves: false, screenshots: true },
+  };
   const view = {
     id: 'steam:620',
     rev: 'g1',

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, type SessionRec } from '../../state/api';
+  import { findGame, rowKey } from '../../state/gameId';
   import { games } from '../../state/games';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
@@ -10,13 +11,13 @@
   onMount(() => {
     api.sessions().then((r) => (list = r.sessions.slice(0, 4)), () => (list = null));
   });
-  const cover = (appid: number | null) => $games?.games.find((g) => g.appid === appid)?.cover;
+  const cover = (s: SessionRec) => findGame($games?.games ?? [], rowKey(s))?.cover;
 </script>
 
 <Card cols={2} rows={2}>
   <h4><Icon name="chart" color="var(--c-hist)" size={16} /> <a class="more" href="/history">Recent sessions <Icon name="chev" size={12} /></a></h4>
   {#each list ?? [] as s (s.started)}
-    {@const c = cover(s.appid)}
+    {@const c = cover(s)}
     <a class="mini" href="/history?session={s.started}">
       {#if c}<img class="cover" src={c} alt="" />{:else}<div class="cover"></div>{/if}
       <div class="txt"><b>{s.name}</b><div class="lab">{fmtDuration(s.started, s.ended)} · {fmtAgo(s.started)}</div></div>
