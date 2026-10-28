@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { homeOrder, prefs } from '../../state/prefs';
-import { api, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
+import { api, ApiError, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
 
@@ -761,38 +761,33 @@ describe('GameDetail', () => {
 
   describe('Controls section', () => {
     const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii' };
-    const fx = async () => (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/get.json')).default;
+    const fx = async () => (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-get.json')).default;
 
-    it('shows for an emulator id and not for a Steam id', async () => {
+    it('an emulator id shows the summary and the Edit mappings link into Settings', async () => {
       vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
-      const c = vi.spyOn(api, 'controls').mockResolvedValue((await fx()) as never);
+      const c = vi.spyOn(api, 'emulatorControls').mockResolvedValue((await fx()) as never);
       await render(GameDetail, { props: props(emu) });
       await expect.element(page.getByRole('heading', { name: 'Controls' })).toBeInTheDocument();
-      await expect.element(page.getByRole('group', { name: 'Classic Controller' })).toBeInTheDocument();
-      expect(c).toHaveBeenCalledWith(0xe0000001);
+      await expect.element(page.getByText(/Dolphin uses one mapping for every game on this machine/)).toBeInTheDocument();
+      await expect.element(page.getByRole('link', { name: 'Edit mappings' })).toHaveAttribute('href', '/settings#controller/dolphin');
+      expect(c).toHaveBeenCalledWith('classic');
+      expect(document.querySelector('svg[aria-label="Pad buttons"]')).toBeNull(); // text only, no drawing
+    });
+
+    it('is hidden when hostd has no Dolphin (404)', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'emulatorControls').mockRejectedValue(new ApiError('no controls on this machine', 404));
+      await render(GameDetail, { props: props(emu) });
+      await expect.poll(() => page.getByRole('heading', { name: 'Controls' }).elements().length).toBe(0);
     });
 
     it('is absent for a Steam game and never asks hostd', async () => {
       vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-      const c = vi.spyOn(api, 'controls');
+      const c = vi.spyOn(api, 'emulatorControls');
       await render(GameDetail, { props: props(game) });
       await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
       expect(page.getByRole('heading', { name: 'Controls' }).elements()).toHaveLength(0);
       expect(c).not.toHaveBeenCalled();
-    });
-
-    it('Esc while listening cancels the listen and leaves the panel open', async () => {
-      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
-      vi.spyOn(api, 'controls').mockResolvedValue((await fx()) as never);
-      await render(GameDetail, { props: props(emu) });
-      const a = page.getByRole('button', { name: /^A, bound to B/ });
-      await expect.element(a).toBeInTheDocument();
-      (a.element() as HTMLElement).focus();
-      await userEvent.keyboard('{Enter}');
-      await expect.element(page.getByRole('button', { name: /^A, listening/ })).toBeInTheDocument();
-      await userEvent.keyboard('{Escape}');
-      await expect.element(page.getByRole('button', { name: /^A, bound to B/ })).toBeInTheDocument();
-      await expect.element(page.getByRole('dialog', { name: 'Mario Kart Wii' })).toBeInTheDocument();
     });
   });
 });
