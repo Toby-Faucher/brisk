@@ -1,6 +1,7 @@
 use crate::auth::{Hosts, tailnet_ok};
 use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
+use crate::controls::{Controls, CtlError};
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::machines::{self, Hub};
@@ -35,6 +36,8 @@ pub struct AppState {
     pub prefs: Prefs,
     /// Your notes and tags (`data_dir/notes.json`); private text, never logged.
     pub notes: NotesStore,
+    /// Dolphin's `WiimoteNew.ini` (controller editor).
+    pub controls: Controls,
     pub hosts: Hosts,
     /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
     pub site: Site,
@@ -62,6 +65,7 @@ impl AppState {
             files: Files::new(cfg.downloads_dir.clone()),
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             notes: NotesStore::load(cfg.data_dir.join("notes.json")),
+            controls: Controls::new(cfg.dolphin_dir.clone()),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone(), cfg.data_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
@@ -702,6 +706,63 @@ async fn game_note_put(
     }
 }
 
+/// The Dolphin entry behind `appid`, if it has a controller editor; and whether any Dolphin runs
+/// (the config file is shared, so any running Dolphin owns it).
+fn controls_gate(s: &AppState, appid: u32) -> Result<bool, Response> {
+    let entries = crate::emu::load(&s.cfg.data_dir);
+    let has = |e: &crate::emu::Entry| crate::emu::spec(&e.emulator).is_some_and(|c| c.controls);
+    if !crate::emu::is_emu_id(appid) || !entries.iter().any(|e| e.id() == appid && has(e)) {
+        return Err(err(StatusCode::NOT_FOUND, "no controls for this game"));
+    }
+    let ps = crate::running::procs(&s.cfg.proc_dir);
+    Ok(entries
+        .iter()
+        .filter(|e| has(e))
+        .any(|e| !crate::emu::pids(&ps, e).is_empty()))
+}
+
+fn controls_reply(r: Result<crate::controls::View, CtlError>) -> Response {
+    match r {
+        Ok(v) => axum::Json(v).into_response(),
+        Err(CtlError::Bad(m)) => err(StatusCode::BAD_REQUEST, m),
+        Err(CtlError::Changed(cur)) => (
+            StatusCode::CONFLICT,
+            axum::Json(serde_json::json!({ "error": "changed elsewhere", "current": cur })),
+        )
+            .into_response(),
+        Err(CtlError::Io) => err(StatusCode::INTERNAL_SERVER_ERROR, "could not save controls"),
+    }
+}
+
+async fn controls_get(State(s): State<Arc<AppState>>, UrlPath(appid): UrlPath<u32>) -> Response {
+    match controls_gate(&s, appid) {
+        Ok(run) => controls_reply(s.controls.get(run)),
+        Err(r) => r,
+    }
+}
+
+async fn controls_put(
+    State(s): State<Arc<AppState>>,
+    UrlPath(appid): UrlPath<u32>,
+    b: axum::body::Bytes,
+) -> Response {
+    match controls_gate(&s, appid) {
+        Ok(run) => controls_reply(s.controls.put(&b, run)),
+        Err(r) => r,
+    }
+}
+
+async fn controls_reset(
+    State(s): State<Arc<AppState>>,
+    UrlPath(appid): UrlPath<u32>,
+    _b: axum::body::Bytes,
+) -> Response {
+    match controls_gate(&s, appid) {
+        Ok(run) => controls_reply(s.controls.reset(run)),
+        Err(r) => r,
+    }
+}
+
 /// Mount API routes on `api` below; everything else falls through to the static site (site.rs).
 /// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
@@ -712,6 +773,16 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{appid}/news", get(game_news))
         .route("/games/{appid}/local", get(game_local))
         .route("/games/{appid}/screenshots/{name}", get(game_screenshot))
+        .route(
+            "/games/{appid}/controls",
+            get(controls_get)
+                .put(controls_put)
+                .layer(DefaultBodyLimit::max(4 << 10)),
+        )
+        .route(
+            "/games/{appid}/controls/reset",
+            post(controls_reset).layer(DefaultBodyLimit::max(4 << 10)),
+        )
         .route("/friends", get(friends))
         .route("/host", get(host_status))
         .route("/sunshine/restart", post(sunshine_restart))

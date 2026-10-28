@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod clipboard;
 pub mod config;
+pub mod controls;
 #[cfg(feature = "embed")]
 pub mod embed;
 pub mod emu;

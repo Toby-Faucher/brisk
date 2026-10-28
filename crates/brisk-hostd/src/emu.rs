@@ -42,6 +42,8 @@ pub struct Spec {
     pub cmd: &'static str,
     args: &'static [&'static str],
     pub class: &'static str,
+    /// Has a controller editor (`controls.rs`).
+    pub controls: bool,
 }
 
 pub fn spec(emulator: &str) -> Option<Spec> {
@@ -50,6 +52,7 @@ pub fn spec(emulator: &str) -> Option<Spec> {
         cmd: "dolphin-emu",
         args: &["-b", "-e"],
         class: "dolphin-emu",
+        controls: true,
     })
 }
 

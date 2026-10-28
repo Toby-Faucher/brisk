@@ -32,6 +32,8 @@ pub struct Config {
     pub proc_dir: PathBuf,
     /// Hub machine list (`BRISK_MACHINES_FILE`); read by main.rs, absent = single host.
     pub machines_file: PathBuf,
+    /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
+    pub dolphin_dir: PathBuf,
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
@@ -71,6 +73,12 @@ impl Config {
             proc_dir: "/proc".into(),
             machines_file: env_path("BRISK_MACHINES_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/machines.json")),
+            dolphin_dir: env_path("BRISK_DOLPHIN_DIR").unwrap_or_else(|| {
+                env_path("XDG_CONFIG_HOME")
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or_else(|| home.join(".config"))
+                    .join("dolphin-emu")
+            }),
         }
     }
 }
