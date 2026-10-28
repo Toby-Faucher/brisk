@@ -34,6 +34,8 @@ pub struct Config {
     pub machines_file: PathBuf,
     /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
     pub dolphin_dir: PathBuf,
+    /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
+    pub dolphin_user_dir: PathBuf,
     /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
     pub playtime_poll: std::time::Duration,
 }
@@ -79,6 +81,17 @@ impl Config {
                 env_path("XDG_CONFIG_HOME")
                     .filter(|p| !p.as_os_str().is_empty())
                     .unwrap_or_else(|| home.join(".config"))
+                    .join("dolphin-emu")
+            }),
+            // Dolphin's own rule: ~/.dolphin-emu if it exists, else XDG data home.
+            dolphin_user_dir: env_path("BRISK_DOLPHIN_USER_DIR").unwrap_or_else(|| {
+                let legacy = home.join(".dolphin-emu");
+                if legacy.is_dir() {
+                    return legacy;
+                }
+                env_path("XDG_DATA_HOME")
+                    .filter(|p| p.is_absolute())
+                    .unwrap_or_else(|| home.join(".local/share"))
                     .join("dolphin-emu")
             }),
             playtime_poll: crate::playtime::poll_from(

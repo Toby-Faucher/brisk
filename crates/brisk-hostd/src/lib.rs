@@ -19,6 +19,7 @@ pub mod power;
 pub mod prefs;
 pub mod registry;
 pub mod running;
+pub mod saves;
 pub mod sessions;
 pub mod site;
 pub(crate) mod source;

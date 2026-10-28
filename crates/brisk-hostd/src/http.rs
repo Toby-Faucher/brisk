@@ -225,6 +225,36 @@ async fn game_local(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String
     }
 }
 
+/// Saves and save states of an emulator game, read-only. 404 for Steam games and games without the
+/// `saves` cap; a missing user dir is a 200 with `available: false`.
+async fn game_saves(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    if !g.caps.saves {
+        return err(StatusCode::NOT_FOUND, "no saves for this game");
+    }
+    let (disc, system) = (
+        crate::saves::disc_id(&g.id),
+        g.system.clone().unwrap_or_default(),
+    );
+    let dir = s.cfg.dolphin_user_dir.clone();
+    let found = tokio::task::spawn_blocking(move || {
+        disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system))
+    })
+    .await;
+    let Ok(found) = found else {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, "listing failed");
+    };
+    let body = serde_json::json!({
+        "available": found.is_some(),
+        "userDir": "Dolphin user folder",
+        "items": found.unwrap_or_default(),
+    });
+    ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
+}
+
 /// One screenshot file, only if `name` is in the game's listing (see `steam_info::screenshot`).
 async fn game_screenshot(
     State(s): State<Arc<AppState>>,
@@ -856,6 +886,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{id}/achievements", get(game_achievements))
         .route("/games/{id}/news", get(game_news))
         .route("/games/{id}/local", get(game_local))
+        .route("/games/{id}/saves", get(game_saves))
         .route("/games/{id}/screenshots/{name}", get(game_screenshot))
         .route(
             "/emulators/dolphin/controls/{kind}",
