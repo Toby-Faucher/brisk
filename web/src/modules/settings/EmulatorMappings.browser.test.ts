@@ -315,32 +315,51 @@ describe('EmulatorMappings: dead zone, reset, restart', () => {
     await expect.poll(status).toContain('Reset to the default.');
   });
 
-  const gameList = (running: boolean) =>
-    vi
-      .spyOn(api, 'games')
-      .mockResolvedValue({ ownedAvailable: true, games: [{ appid: 0xe0000001, name: 'Mario Kart Wii', running } as never] });
+  const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false };
+  const steam = {
+    id: 'steam:620',
+    source: 'steam',
+    appid: 620,
+    name: 'Portal 2',
+    running: true,
+    caps: { ...caps, install: true, controls: false },
+  };
+  // an old hostd has no id or caps (an emulator game is found by its old number), a new one sends both
+  const SHAPES = [
+    ['old hostd', { appid: 0xe0000001, name: 'Mario Kart Wii' }, '3758096385'],
+    [
+      'new hostd',
+      { id: 'emu:dolphin:mario-kart-wii', source: 'emu', appid: 0xe0000001, name: 'Mario Kart Wii', caps },
+      'emu:dolphin:mario-kart-wii',
+    ],
+  ] as const;
+  const gameList = (running: boolean, game: object = SHAPES[0][1]) =>
+    vi.spyOn(api, 'games').mockResolvedValue({ ownedAvailable: true, games: [steam, { ...game, running }] as never });
 
-  it('the restart bar shows only for a running Dolphin after a save, and runs quit, get, put, launch', async () => {
-    gameList(true);
-    const order: string[] = [];
-    await open({ running: true });
-    expect(document.querySelector('.bar')).toBeNull();
-    vi.spyOn(api, 'quit').mockImplementation(async () => (order.push('quit'), { state: 'closed' }));
-    vi.mocked(api.emulatorControls).mockImplementation(async (t) => (order.push('get'), fixture(t, { running: true })));
-    vi.mocked(api.putEmulatorControls).mockImplementation(
-      async (t, b) => (order.push(b.rev ? 'put-with-rev' : 'put'), fixture(t, { bindings: b.bindings, running: true })),
-    );
-    vi.spyOn(api, 'launch').mockImplementation(async () => void order.push('launch'));
-    await userEvent.click(page.getByRole('button', { name: /^LB, does ZL/ }));
-    await userEvent.click(page.getByRole('radio', { name: 'A', exact: true }));
-    await expect.element(page.getByRole('button', { name: 'Restart game to apply' })).toBeInTheDocument();
-    expect(document.querySelector('.bar')?.textContent).toContain('Dolphin reads the mapping at start, so restart the game to use it.');
-    order.length = 0;
-    await userEvent.click(page.getByRole('button', { name: 'Restart game to apply' }));
-    await expect.poll(() => order).toEqual(['quit', 'get', 'put', 'launch']);
-    expect(vi.mocked(api.launch)).toHaveBeenCalledWith(0xe0000001);
-    await expect.poll(() => document.querySelector('.bar')).toBeNull();
-  });
+  it.each(SHAPES)(
+    'the restart bar shows only for a running Dolphin after a save, and runs quit, get, put, launch (%s)',
+    async (_n, game, want) => {
+      gameList(true, game);
+      const order: string[] = [];
+      await open({ running: true });
+      expect(document.querySelector('.bar')).toBeNull();
+      vi.spyOn(api, 'quit').mockImplementation(async () => (order.push('quit'), { state: 'closed' }));
+      vi.mocked(api.emulatorControls).mockImplementation(async (t) => (order.push('get'), fixture(t, { running: true })));
+      vi.mocked(api.putEmulatorControls).mockImplementation(
+        async (t, b) => (order.push(b.rev ? 'put-with-rev' : 'put'), fixture(t, { bindings: b.bindings, running: true })),
+      );
+      vi.spyOn(api, 'launch').mockImplementation(async () => void order.push('launch'));
+      await userEvent.click(page.getByRole('button', { name: /^LB, does ZL/ }));
+      await userEvent.click(page.getByRole('radio', { name: 'A', exact: true }));
+      await expect.element(page.getByRole('button', { name: 'Restart game to apply' })).toBeInTheDocument();
+      expect(document.querySelector('.bar')?.textContent).toContain('Dolphin reads the mapping at start, so restart the game to use it.');
+      order.length = 0;
+      await userEvent.click(page.getByRole('button', { name: 'Restart game to apply' }));
+      await expect.poll(() => order).toEqual(['quit', 'get', 'put', 'launch']);
+      expect(vi.mocked(api.launch)).toHaveBeenCalledWith(want);
+      await expect.poll(() => document.querySelector('.bar')).toBeNull();
+    },
+  );
 
   it('with no running game to restart the bar has only the text', async () => {
     gameList(false);

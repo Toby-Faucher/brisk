@@ -48,7 +48,8 @@ const start: State = {
   restartError: null,
 };
 
-export type Target = { appid: number; name: string };
+/** `key` is the game's key (see gameKey). */
+export type Target = { key: string; name: string };
 
 export function createMappings(type: ControllerType, deps: ControlsDeps = {}) {
   const c = deps.api ?? api;
@@ -164,7 +165,7 @@ export function createMappings(type: ControllerType, deps: ControlsDeps = {}) {
     set({ restarting: true, restartError: null });
     const fail = (step: keyof typeof RESTART_FAILED) => set({ restarting: false, restartError: RESTART_FAILED[step] });
     try {
-      const q = await c.quit(target.appid, force);
+      const q = await c.quit(target.key, force);
       if (q.state === 'still-running') {
         toast(`Still running: ${target.name} (try Force quit)`, {
           ms: 30_000,
@@ -184,7 +185,7 @@ export function createMappings(type: ControllerType, deps: ControlsDeps = {}) {
       return fail('save');
     }
     try {
-      await c.launch(target.appid);
+      await c.launch(target.key);
     } catch {
       return fail('start');
     }

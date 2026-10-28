@@ -3,6 +3,7 @@
   import { Command, Dialog } from 'bits-ui';
   import { navigate } from 'astro:transitions/client';
   import { games, refreshGames } from '../state/games';
+  import { gameKey } from '../state/gameId';
   import { host } from '../state/host';
   import { api, type Preset } from '../state/api';
   import { emitCommand, machineEntries } from '../state/commands';
@@ -28,10 +29,10 @@
   const items = $derived.by<CommandItem[]>(() => [
     ...mods.flatMap((m) => m.routes.map((r) => ({ id: `route:${r.path}`, label: r.title, hint: 'Go to', icon: m.icon, run: () => go(r.path) }))),
     ...($games?.games ?? []).filter((g) => g.installed).map((g) => ({
-      id: `game:${g.appid}`,
+      id: `game:${gameKey(g)}`,
       label: `Launch ${g.name}`,
       icon: 'play',
-      run: () => void readyFirst().then(() => api.launch(g.appid)).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
+      run: () => void readyFirst().then(() => api.launch(gameKey(g))).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
     })),
     ...tagEntries($notes, $games?.games ?? [], go),
     ...[surpriseEntry($games?.games ?? [], go)].flatMap((e) => (e ? [e] : [])),

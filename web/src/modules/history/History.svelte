@@ -5,6 +5,7 @@
   import { enter } from '../../shell/reveal';
   import { api, type SeriesPoint, type SessionRec } from '../../state/api';
   import { games, watchGames } from '../../state/games';
+  import { findGame, rowKey } from '../../state/gameId';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import Tip from '../../ui/Tip.svelte';
@@ -24,8 +25,8 @@
   const visible = $derived(filterSessions(list ?? [], q));
   const detail = $derived(selected === null ? undefined : details[selected]); // only read while a session is selected
   const bad = new SvelteSet<string>(); // cover URLs that failed to load: the placeholder shows, in the list and the header
-  const cover = (appid: number | null) => {
-    const c = $games?.games.find((g) => g.appid === appid)?.cover;
+  const cover = (s: SessionRec) => {
+    const c = findGame($games?.games ?? [], rowKey(s))?.cover;
     return c && !bad.has(c) ? c : undefined;
   };
 
@@ -102,7 +103,7 @@
 
 {#if selected !== null}
   {@const s = detail && detail !== 'none' ? detail.session : list?.find((r) => r.started === selected)}
-  {@const c = s && cover(s.appid)}
+  {@const c = s && cover(s)}
   <div class:swap-in={swapped}>
   <div class="top">
     <button class="btn ghost back" onclick={() => open(null)}><Icon name="chev" size={14} /> History</button>
@@ -156,7 +157,7 @@
     <div class="grid">
       {#each visible as s (s.started)}
         {@const path = sparkPath(s.spark ?? [], 120, 28)}
-        {@const c = cover(s.appid)}
+        {@const c = cover(s)}
         <Card cols={1}>
           <a class="fill" href="/history?session={s.started}" data-session={s.started} onclick={(e) => (e.preventDefault(), open(s.started))} aria-label="{s.name}, {fmtWhen(s.started)}"></a>
           <div class="head">
