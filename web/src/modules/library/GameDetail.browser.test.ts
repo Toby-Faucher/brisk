@@ -823,3 +823,34 @@ describe('GameDetail with the Quit confirm', () => {
     await expect.poll(() => page.getByRole('dialog', { name: 'Portal 2', exact: true }).elements().length).toBe(0);
   });
 });
+
+describe('GameDetail launch options', () => {
+  const withCaps = { ...game, id: 'steam:620', source: 'steam' as const, caps: { launchOptions: true } };
+  const view = {
+    id: 'steam:620',
+    rev: 'g1',
+    override: null,
+    effective: { wrappers: [], env: {}, custom: null, extra_args: [] },
+    problems: [],
+    allowCustomCommands: false,
+    steamLine: 'brisk-hostd wrap steam:620 -- %command%',
+  };
+
+  it('shows the section when the game has the launchOptions cap', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'launchDefaults').mockResolvedValue({ rev: 'r', allowCustomCommands: false, options: view.effective, envAllowed: [] });
+    const g = vi.spyOn(api, 'gameLaunch').mockResolvedValue(view);
+    render(GameDetail, props(withCaps));
+    await expect.element(page.getByRole('heading', { name: 'Launch options' })).toBeInTheDocument();
+    expect(g).toHaveBeenCalledWith('steam:620');
+  });
+
+  it('is left out for a game without the cap (an older hostd)', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    const g = vi.spyOn(api, 'gameLaunch');
+    render(GameDetail, props(game));
+    await expect.element(page.getByText('No store details')).toBeInTheDocument();
+    expect(page.getByRole('heading', { name: 'Launch options' }).elements()).toHaveLength(0);
+    expect(g).not.toHaveBeenCalled();
+  });
+});
