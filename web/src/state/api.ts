@@ -122,6 +122,7 @@ export type SeriesPoint = [number, number, number, number];
 import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
+import type { Machine } from './machines';
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -173,6 +174,18 @@ function auth(headers: Record<string, string> = {}): Record<string, string> {
   return headers;
 }
 
+let prefix: string | null = null;
+/** machines.ts sets this to the selected machine's id while a hub is detected (null: single-host, paths untouched). */
+export function setRoute(machineId: string | null) {
+  prefix = machineId;
+}
+
+/** Machine-scoped paths go through the hub's `/api/m/{id}/`; prefs, notes and machines stay on the hub itself. */
+const SCOPED = /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files)(?=[/?]|$)/;
+export function route(path: string): string {
+  return prefix && SCOPED.test(path) ? `/api/m/${encodeURIComponent(prefix)}/${path.slice(5)}` : path;
+}
+
 function seen(status: number) {
   denied.set(status === 403);
 }
@@ -188,7 +201,7 @@ function apiError(status: number, statusText: string, body: string): ApiError {
 }
 
 async function send(path: string, init: RequestInit): Promise<Response> {
-  const r = await fetch(path, init);
+  const r = await fetch(route(path), init);
   seen(r.status);
   if (!r.ok) throw apiError(r.status, r.statusText, await r.text().catch(() => ''));
   return r;
@@ -226,7 +239,7 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
     const x = new XMLHttpRequest();
     signal?.addEventListener('abort', () => x.abort());
     x.onabort = () => no(new ApiError('cancelled', 0));
-    x.open('PUT', `/api/files/${encodeURIComponent(f.name)}`);
+    x.open('PUT', route(`/api/files/${encodeURIComponent(f.name)}`));
     for (const [k, v] of Object.entries(auth())) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => progress(e.loaded);
     x.onload = () => (seen(x.status), x.status === 200 ? ok(JSON.parse(x.responseText)) : no(apiError(x.status, x.statusText, x.responseText)));
@@ -238,6 +251,9 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
 const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
 
 export const api = {
+  /** Hub only, never routed. */
+  machines: () => call<{ machines: Machine[] }>('GET', '/api/machines'),
+  power: (id: string, action: 'start' | 'shutdown') => call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
   host: () => call<HostInfo>('GET', '/api/host'),
   /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
   games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),

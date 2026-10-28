@@ -5,7 +5,9 @@
   import { games, refreshGames } from '../state/games';
   import { host } from '../state/host';
   import { api, type Preset } from '../state/api';
-  import { emitCommand } from '../state/commands';
+  import { emitCommand, machineEntries } from '../state/commands';
+  import { hub, machines, selected, selectMachine, powerMachine } from '../state/machines';
+  import { readyFirst } from '../modules/machines/machines';
   import { attachShortcuts, rank } from './keys';
   import { loadModules, type CommandItem } from './registry';
   import { toast } from './Toasts.svelte';
@@ -29,11 +31,17 @@
       id: `game:${g.appid}`,
       label: `Launch ${g.name}`,
       icon: 'play',
-      run: () => void api.launch(g.appid).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
+      run: () => void readyFirst().then(() => api.launch(g.appid)).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
     })),
     ...tagEntries($notes, $games?.games ?? [], go),
     ...[surpriseEntry($games?.games ?? [], go)].flatMap((e) => (e ? [e] : [])),
     ...quitItems($games?.games ?? [], $stuck, askQuit),
+    ...($hub === true
+      ? machineEntries($machines, $selected, {
+          select: (id) => void selectMachine(id),
+          start: (id) => void powerMachine(id, 'start').catch((e) => toast(`Could not start it: ${e.message}`, { error: true })),
+        })
+      : []),
     { id: 'cmd:machine', label: 'Switch machine', hint: $host?.name ?? 'host', icon: 'host', run: () => go('/machines') },
     ...presets.map((p) => ({ id: `cmd:preset:${p}`, label: `Quality: ${p}`, icon: 'stream', run: () => { if (!emitCommand({ type: 'preset', preset: p })) toast(`Default quality: ${p}`); } })),
     { id: 'cmd:stats', label: 'Toggle stats', hint: 'Stream', icon: 'bolt', run: () => emitCommand({ type: 'stats' }) },

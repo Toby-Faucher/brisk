@@ -3,6 +3,7 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::files::Files;
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
+use crate::machines::{self, Hub};
 use crate::notes::{GameNote, NotesError, NotesStore, Tag};
 use crate::prefs::{Entry, Prefs};
 use crate::running::{Quit, QuitError, Quitter};
@@ -16,7 +17,7 @@ use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, Sta
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{any, get, post, put};
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
@@ -43,6 +44,8 @@ pub struct AppState {
     pub friends: Mutex<Option<steam_info::FriendsEntry>>,
     /// Screenshot listings per game for a few seconds (see `steam_info::ShotCache`).
     pub shots: steam_info::ShotCache,
+    /// Set when machines.json exists (main.rs); None = single host, no hub routes answer.
+    pub hub: Option<Arc<Hub>>,
 }
 
 impl AppState {
@@ -65,6 +68,7 @@ impl AppState {
             warming: AtomicBool::new(false),
             friends: Mutex::new(None),
             shots: steam_info::ShotCache::default(),
+            hub: None,
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -680,6 +684,9 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/notes/games/{appid}",
             put(game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
         )
+        .route("/machines", get(machines::list))
+        .route("/machines/{id}/power", post(machines::power))
+        .route("/m/{id}/{*path}", any(machines::proxy))
         .route("/clipboard", get(clip_get).post(clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
         .route(

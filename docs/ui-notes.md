@@ -595,6 +595,23 @@ reports; then add `frame-ancestors 'none'` and drop X-Frame-Options.
   (web/src/state/api.ts) and the Shell replaces the page with "Open this page from the link that
   includes ?s=… or ask hostd to allow your login"; the next successful call clears it.
 
+### Machine hub
+A hostd with a `machines.json` is a hub (contract: docs/plans/machine-hub.md; deployment, Proxmox token and
+troubleshooting: docs/hosting-runbook.md, Machine hub; image files: deploy/hub/).
+```
+browser -> hub (Dockge VM, tailscale serve) -> machine hostds over the tailnet
+browser <== video (WebTransport) == the machine's own bridge   (direct, never via the hub)
+```
+- Auth: the hub applies its own guard (Host allowlist, secret or tailnet login), then calls each machine
+  with that machine's secret from a file. Machines need no change.
+- Host header: behind `tailscale serve` on 443 the Host has no port; `BRISK_ALLOWED_HOSTS` needs the
+  name with and without `:8443`. The tailnet login check trusts only a loopback peer, so the container
+  uses host networking.
+- Prefs and notes are user-level and stay on the hub (`BRISK_DATA_DIR`); everything else under `/api/m/<id>/`
+  goes to the machine, file drop excepted (501).
+- Power: Proxmox API token with `VM.Audit` and `VM.PowerMgmt` on one VM; idle shutdown is ACPI only.
+- The image is built from a prebuilt `--features embed` binary (`BRISK_STATIC=embed`); nothing compiles in Docker.
+
 ## API (hostd, 127.0.0.1:8443 only; Host header checked; every /api request, GET included, needs the `x-brisk-secret` header or an allowed tailnet login (see Hosting), because GET /api/stream carries the bridge URL and session token; static pages and assets do not)
 - GET /api/games, GET /api/host, GET /api/sessions (last 100, no series), GET /api/sessions/<started>,
   PUT /api/sessions/<started>/series (see Session history)

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { emitCommand, onCommand } from './commands';
+import { emitCommand, machineEntries, onCommand } from './commands';
+import type { Machine } from './machines';
 import { settings } from './settings';
 
 describe('command bus', () => {
@@ -22,5 +23,18 @@ describe('command bus', () => {
     expect(emitCommand({ type: 'preset', preset: 'crisp' })).toBe(true);
     expect(get(settings).defaultPreset).toBe('fast');
     off();
+  });
+});
+
+describe('machineEntries', () => {
+  const m = (id: string, state: Machine['state'], canPower = true): Machine => ({ id, name: id.toUpperCase(), state, canPower, sunshine: null, host: null });
+  it('offers_switch_for_others_and_start_for_off_power_machines', () => {
+    const act = { select: vi.fn(), start: vi.fn() };
+    const es = machineEntries([m('a', 'ready'), m('b', 'off'), m('c', 'off', false)], 'a', act);
+    expect(es.map((e) => e.label)).toEqual(['Switch to B', 'Start B', 'Switch to C']);
+    es[0].run();
+    es[1].run();
+    expect(act.select).toHaveBeenCalledWith('b');
+    expect(act.start).toHaveBeenCalledWith('b');
   });
 });

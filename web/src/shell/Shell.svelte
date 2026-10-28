@@ -3,6 +3,9 @@
   import { enterWhenHydrated } from './reveal';
   import { settings } from '../state/settings';
   import { denied } from '../state/api';
+  import { hub, selectedMachine, startMachines, powerMachine } from '../state/machines';
+  import { toast } from './Toasts.svelte';
+  import WakeOverlay from '../ui/WakeOverlay.svelte';
   import { bindAccent } from '../modules/settings/accent';
   import Sidebar from './Sidebar.svelte';
   import Toasts from './Toasts.svelte';
@@ -11,7 +14,9 @@
 
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => bindAccent(settings, document.documentElement));
-  onMount(enterWhenHydrated);
+  onMount(() => (enterWhenHydrated(), startMachines())); // startMachines returns its cleanup
+  // Opening the app with the machine off never starts it; the banner offers to.
+  const off = $derived($hub === true && $selectedMachine?.state === 'off' ? $selectedMachine : null);
 </script>
 
 <div class="app">
@@ -27,16 +32,25 @@
         </p>
       </section>
     {/if}
+    {#if off}
+      <div class="off" role="status">
+        <span>{off.name} is off</span>
+        {#if off.canPower}<button class="btn sm" onclick={() => void powerMachine(off.id, 'start').catch((e) => toast(`Could not start ${off.name}: ${e.message}`, { error: true }))}>Start</button>{/if}
+      </div>
+    {/if}
     <div class="page" class:gone={$denied}>{@render children?.()}</div>
   </main>
 </div>
 <Toasts />
 <CommandMenu />
 <QuitDialog />
+<WakeOverlay />
 
 <style>
   .app { display: flex; min-height: 100vh; }
   main { flex: 1; min-width: 0; padding: 18px 20px; }
+  .off { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--muted); }
+  .off .sm { padding: 4px 12px; font-size: 13px; }
   .page { display: contents; }
   .gone { display: none; }
   .denied { max-width: 560px; margin: 12vh auto 0; padding: 22px 24px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }

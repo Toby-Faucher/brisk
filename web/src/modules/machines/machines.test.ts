@@ -3,7 +3,7 @@ import { ApiError, type HostInfo } from '../../state/api';
 import { get } from 'svelte/store';
 import { afterEach, vi } from 'vitest';
 import { applyAccent, bindAccent } from '../settings/accent';
-import { machinesFrom, restartError } from './machines';
+import { dotState, elapsedS, machinesFrom, powerWhy, restartError, STATE_LABEL } from './machines';
 
 const info: HostInfo = { name: 'bawn', sunshine: 'ready', uptimeS: 5, cpuTempC: null, gpuTempC: null, path: null, relay: null };
 
@@ -21,6 +21,18 @@ describe('machines', () => {
   it('restart_429_message', () => {
     expect(restartError(new ApiError('slow down', 429))).toBe('Sunshine was restarted a moment ago, try again in a minute');
     expect(restartError(new ApiError('boom', 500))).toContain('boom');
+  });
+  it('hub_labels_and_dots', () => {
+    expect(STATE_LABEL.unreachable).toBe('Not reachable');
+    expect(dotState({ state: 'ready', sunshine: 'busy' })).toBe('busy');
+    expect(dotState({ state: 'ready', sunshine: null })).toBe('ready');
+    expect(dotState({ state: 'starting', sunshine: null })).toBe('busy');
+    expect(dotState({ state: 'unreachable', sunshine: null })).toBe('down');
+    expect(dotState({ state: 'off', sunshine: null })).toBe('off');
+    expect(powerWhy('starting')).toContain('Starting');
+    expect(powerWhy('ready')).toBeNull();
+    expect(elapsedS(1000, 4500)).toBe(3);
+    expect(elapsedS(5000, 4500)).toBe(0);
   });
   it('accent_change_updates_css_variable', async () => {
     const mem = new Map<string, string>();
