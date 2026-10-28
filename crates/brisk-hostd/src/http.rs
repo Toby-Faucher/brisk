@@ -64,8 +64,10 @@ pub struct AppState {
     /// Art and details lookups for emulator games (`art.rs`).
     pub art: Arc<crate::art::Art>,
     /// library.json as last read, keyed by its size and modified time (`records`).
-    lib: Mutex<Option<((u64, std::time::SystemTime), Arc<Vec<crate::emu::Record>>)>>,
+    lib: Mutex<LibCache>,
 }
+
+type LibCache = Option<((u64, std::time::SystemTime), Arc<Vec<crate::emu::Record>>)>;
 
 #[derive(Default)]
 pub struct ScanGate {
