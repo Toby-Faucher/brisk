@@ -14,6 +14,7 @@ describe('raView', () => {
     expect(raView({ state: 'off' })).toEqual({ ach: null, note: null });
     expect(raView({ state: 'unsupported', reason: 'RVZ files cannot be hashed.' }).note).toBe('RVZ files cannot be hashed.');
     expect(raView({ state: 'not-found' }).note).toBe('No RetroAchievements set for this game.');
+    expect(raView({ state: 'not-found', reason: 'Hash not in list.' }).note).toBe('Hash not in list.');
     expect(raView({ state: 'rate-limited' }).note).toBe('RetroAchievements is busy. Try again shortly.');
     expect(raView({ state: 'bad-credentials' }).note).toBe('RetroAchievements refused the login. Check the key file on the machine.');
     expect(raView({ state: 'error' }).note).toBe('Could not reach RetroAchievements.');

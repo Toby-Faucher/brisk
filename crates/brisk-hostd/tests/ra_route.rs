@@ -234,7 +234,9 @@ async fn states_off_unsupported_not_found_and_upstream_errors() {
     .await;
     let mut r = r0;
     r.cfg.ra_base = base;
-    assert_eq!(json(&app(&r.cfg), URI).await["state"], "not-found");
+    let v = json(&app(&r.cfg), URI).await;
+    assert_eq!(v["state"], "not-found");
+    assert!(v["reason"].as_str().unwrap().contains("hash"));
 
     // upstream failures, malformed credentials and body
     let cases: [(u16, &str, &str); 4] = [

@@ -187,6 +187,16 @@ pub fn ok_json(p: &GameProgress) -> Value {
     })
 }
 
+/// Said when the file's hash is not in RA's list. On Wii the hash reads raw disc bytes past the
+/// partition table, so a dump trimmed of its update partition (most WBFS files) cannot match.
+fn not_found_reason(console: u32) -> &'static str {
+    if console == CONSOLE_WII {
+        "RetroAchievements supports Wii, but this file's hash is not in its list. A trimmed dump (for example a WBFS without the update partition) cannot match; a full ISO of the same game can."
+    } else {
+        "This file's hash is not in the RetroAchievements list. It may be a modified or trimmed dump."
+    }
+}
+
 pub fn err_json(e: &RaError) -> Value {
     let state = match e {
         RaError::Off => "off",
@@ -209,6 +219,9 @@ pub async fn state_json(cfg: &Config, file: &Path, fresh: bool) -> Value {
         Err(HashErr::Failed(_)) => json!({ "state": "error" }),
         Ok(h) => match ra::progress_for_opts(&rc, h.console, &h.hash, fresh).await {
             Ok(p) => ok_json(&p),
+            Err(RaError::NotFound) => {
+                json!({ "state": "not-found", "reason": not_found_reason(h.console) })
+            }
             Err(e) => err_json(&e),
         },
     }

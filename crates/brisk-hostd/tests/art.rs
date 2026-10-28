@@ -676,3 +676,46 @@ async fn a_revoked_key_stops_the_batch_after_one_call_and_retries_after_the_cool
     r.idle().await;
     assert_eq!(m.count("search/autocomplete/"), 2);
 }
+
+#[tokio::test]
+async fn startup_sweep_finds_art_once_and_leaves_existing_art_alone() {
+    let m = mock(sgdb(
+        json!({"success": true, "data": [hit(5, "Mario Kart Wii")]}),
+    ))
+    .await;
+    let r = rig(Some(&m.base));
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 1);
+    // art exists: a sweep asks nobody
+    r.state.art.sweep(&r.state.cfg);
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 1);
+    // a game that was registered without a lookup (a hand edit, `add`) gets one at startup
+    std::fs::remove_dir_all(r.data.join("art")).unwrap();
+    r.state.art.sweep(&r.state.cfg);
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 2);
+    assert!(r.data.join("art/emu_dolphin_RMCE01/done.json").exists());
+}
+
+#[tokio::test]
+async fn a_failed_lookup_is_not_retried_by_the_sweep_until_its_backoff_ends() {
+    let m = mock(|_| vec![("search/autocomplete/", 500, b"{}".to_vec())]).await;
+    let r = rig(Some(&m.base));
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.idle().await;
+    assert!(r.data.join("art/emu_dolphin_RMCE01/tried.json").exists());
+    r.state.art.sweep(&r.state.cfg);
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 1, "backoff holds");
+    // an hour and a bit later it is due again
+    std::fs::write(
+        r.data.join("art/emu_dolphin_RMCE01/tried.json"),
+        r#"{"at":1,"fails":1}"#,
+    )
+    .unwrap();
+    r.state.art.sweep(&r.state.cfg);
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 2);
+}
