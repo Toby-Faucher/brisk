@@ -36,6 +36,12 @@ pub struct Config {
     pub dolphin_dir: PathBuf,
     /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
     pub playtime_poll: std::time::Duration,
+    /// RetroAchievements: line 1 user name, line 2 Web API key (`BRISK_RA_KEY_FILE`). Missing = off.
+    pub ra_key_file: PathBuf,
+    /// `BRISK_RA_BASE`.
+    pub ra_base: String,
+    /// Least gap between two RetroAchievements requests; tests set it to zero.
+    pub ra_min_interval: std::time::Duration,
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
@@ -84,6 +90,11 @@ impl Config {
             playtime_poll: crate::playtime::poll_from(
                 std::env::var("BRISK_PLAYTIME_POLL_S").ok().as_deref(),
             ),
+            ra_key_file: env_path("BRISK_RA_KEY_FILE")
+                .unwrap_or_else(|| home.join(".config/brisk/retroachievements")),
+            ra_base: std::env::var("BRISK_RA_BASE")
+                .unwrap_or_else(|_| crate::retroachievements::DEFAULT_BASE.into()),
+            ra_min_interval: std::time::Duration::from_secs(1),
         }
     }
 }

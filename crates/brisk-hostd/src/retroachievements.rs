@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const DEFAULT_BASE: &str = "https://retroachievements.org/API";
+pub(crate) const DEFAULT_BASE: &str = "https://retroachievements.org/API";
 /// shortcut: console ids from memory of the RA site, not confirmed by the official docs (the docs page
 /// lists no ids); check with API_GetConsoleIDs.php once a key exists.
 pub const CONSOLE_GAMECUBE: u32 = 16;
@@ -276,13 +276,13 @@ struct Cached<T> {
     data: T,
 }
 
-fn read_cache<T: serde::de::DeserializeOwned>(path: &Path, ttl: Duration) -> Option<T> {
+pub(crate) fn read_cache<T: serde::de::DeserializeOwned>(path: &Path, ttl: Duration) -> Option<T> {
     let c: Cached<T> = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
     (now_secs().saturating_sub(c.fetched) < ttl.as_secs()).then_some(c.data)
 }
 
 /// 0600 temp file, fsync, rename. A failure leaves no temp file behind.
-fn write_cache<T: Serialize>(path: &Path, data: &T) -> std::io::Result<()> {
+pub(crate) fn write_cache<T: Serialize>(path: &Path, data: &T) -> std::io::Result<()> {
     use std::io::Write;
     let tmp = path.with_extension(format!("tmp{}", std::process::id()));
     let go = || -> std::io::Result<()> {
@@ -384,7 +384,20 @@ pub async fn progress_for(
     console: u32,
     hash: &str,
 ) -> Result<GameProgress, RaError> {
+    progress_for_opts(cfg, console, hash, false).await
+}
+
+/// `fresh` drops the cached progress first (the hash list cache is kept).
+pub async fn progress_for_opts(
+    cfg: &RaConfig,
+    console: u32,
+    hash: &str,
+    fresh: bool,
+) -> Result<GameProgress, RaError> {
     let creds = read_creds(cfg)?;
     let id = resolve_with(cfg, &creds, console, hash).await?;
+    if fresh {
+        let _ = std::fs::remove_file(cfg.data_dir.join(format!("ra/game-{id}.json")));
+    }
     progress_with(cfg, &creds, id).await
 }

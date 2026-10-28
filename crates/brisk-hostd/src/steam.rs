@@ -538,11 +538,13 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }
     }
-    games.extend(crate::emu::games(
+    let mut emu = crate::emu::games(
         &crate::emu::load(&cfg.data_dir),
         &cfg.proc_dir,
         &cfg.data_dir,
-    ));
+    );
+    crate::ra_game::caps_on(cfg, &mut emu);
+    games.extend(emu);
     games.sort_by(|a, b| {
         b.last_played
             .cmp(&a.last_played)
