@@ -703,6 +703,39 @@ async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Stri
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RemapBody {
+    map: std::collections::BTreeMap<String, String>,
+}
+
+/// `{map: {"<old number>": "<new id>"}}`: rekeys notes and prefs entries of emulator games that
+/// startup could not map (the hub has no library of its own; the web client knows `legacyId` and
+/// `id` from each machine's games). Keys must be old emulator numbers, values new emulator ids;
+/// at most 2000 pairs, else 400. Answers `{notes, prefs}` counts. Safe to repeat.
+async fn ids_remap(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
+    let m = match parse::<RemapBody>(&b) {
+        Ok(m) => m.map,
+        Err(r) => return r,
+    };
+    let ok = |(k, v): (&String, &String)| {
+        k.parse::<u32>()
+            .is_ok_and(|n| n >= crate::game::LEGACY_EMU_BASE)
+            && crate::game::GameId::parse(v).is_some_and(|g| g.emu_parts().is_some())
+    };
+    if m.len() > 2000 || !m.iter().all(ok) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "map wants old emulator numbers and new emu ids",
+        );
+    }
+    let notes = match s.notes.rekey(&m) {
+        Ok(n) => n,
+        Err(e) => return notes_err(e),
+    };
+    axum::Json(serde_json::json!({ "notes": notes, "prefs": s.prefs.rekey(&m) })).into_response()
+}
+
 fn notes_err(e: NotesError) -> Response {
     match e {
         NotesError::Bad(m) => err(StatusCode::BAD_REQUEST, m),
@@ -854,6 +887,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         // static beats the {id} capture in axum's router
         .route("/prefs/layout", put(layout_put).delete(layout_delete))
         .route("/prefs/{id}", put(prefs_put).delete(prefs_delete))
+        .route(
+            "/ids/remap",
+            post(ids_remap).layer(DefaultBodyLimit::max(256 << 10)),
+        )
         .route("/notes", get(notes_get))
         .route(
             "/notes/tags/{id}",

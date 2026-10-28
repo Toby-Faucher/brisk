@@ -292,6 +292,7 @@ fn rig_full(exits: Exits, fail: Fail, recycle: Option<u32>, as_root: bool) -> Ri
         ]
         .concat(),
         owned_available: true,
+        id_scheme: 1,
     });
     Rig {
         app: router(Arc::new(st)),

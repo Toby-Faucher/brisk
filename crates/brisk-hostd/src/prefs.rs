@@ -229,6 +229,33 @@ impl Prefs {
         e
     }
 
+    /// Moves entries from old game keys to new ones (`{old: new}`), keeping the file's `.pre-ids`
+    /// copy first. A new key that is already there wins and the old entry stays. Returns how many moved.
+    pub fn rekey(&self, map: &BTreeMap<String, String>) -> usize {
+        let mut m = self.inner.lock().unwrap();
+        if !map.keys().any(|k| m.map.contains_key(k)) {
+            return 0;
+        }
+        if let Err(e) = crate::migrate::backup_once(&self.path) {
+            eprintln!(
+                "warning: {}: no backup, not rekeyed: {e}",
+                self.path.display()
+            );
+            return 0;
+        }
+        let mut moved = 0;
+        for (old, new) in map {
+            if !m.map.contains_key(new)
+                && let Some(e) = m.map.remove(old)
+            {
+                m.map.insert(new.clone(), e);
+                moved += 1;
+            }
+        }
+        self.save(&m);
+        moved
+    }
+
     pub fn delete(&self, id: &str) {
         let mut m = self.inner.lock().unwrap();
         if m.map.remove(id).is_some() {

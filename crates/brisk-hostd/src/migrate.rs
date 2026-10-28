@@ -228,6 +228,19 @@ pub fn sessions(old: &str, legacy: &LegacyMap) -> Result<Out, String> {
     Ok(Out { text, unmapped })
 }
 
+/// Copies `path` to `<path>.pre-ids` unless that copy exists already (made once). A missing file is fine.
+pub fn backup_once(path: &Path) -> std::io::Result<()> {
+    let mut b = path.as_os_str().to_owned();
+    b.push(BACKUP_SUFFIX);
+    let b = std::path::PathBuf::from(b);
+    match std::fs::read(path) {
+        Ok(bytes) if !b.exists() => write_atomic(&b, &bytes),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 /// Applies `convert` to `data_dir/name`: missing = skip, unparseable = warn and leave, unchanged
 /// = nothing written. Otherwise the original is copied to `<name>.pre-ids` unless that exists
 /// (made once), then the new text is written to a temp file and renamed over it.
@@ -253,11 +266,8 @@ fn apply(data_dir: &Path, name: &str, convert: impl Fn(&str) -> Result<Out, Stri
     let Some(new) = out.text else {
         return;
     };
-    let backup = data_dir.join(format!("{name}{BACKUP_SUFFIX}"));
     let go = || -> std::io::Result<()> {
-        if !backup.exists() {
-            write_atomic(&backup, old.as_bytes())?;
-        }
+        backup_once(&path)?;
         write_atomic(&path, new.as_bytes())
     };
     match go() {

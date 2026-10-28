@@ -237,10 +237,15 @@ Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolph
    needed for Quit: by default Dolphin answers a window close with a "stop the current emulation?" dialog
    that nobody sees on a stream, and it then ignores SIGTERM until it is answered. Existing values are
    never rewritten.
-3. List the games in `emulators.json` in the hostd data dir (`~/.local/share/brisk` by default, see
-   `BRISK_DATA_DIR`): `[{"name": "Mario Kart Wii", "emulator": "dolphin", "file": "/path/to/game.iso"}]`.
-   Only `dolphin` works today. A game whose file is missing shows as not installed. A broken file is ignored
-   with a warning in the hostd log.
+3. List the games in `library.json` in the hostd data dir (`~/.local/share/brisk` by default, see
+   `BRISK_DATA_DIR`):
+   `{"v": 1, "games": [{"id": "emu:dolphin:mario-kart-wii", "emulator": "dolphin", "name": "Mario Kart Wii", "file": "/path/to/game.iso"}]}`.
+   The id is yours to pick, and it stays the game's id for good: notes, tags and quality settings hang on it.
+   On the first start after an upgrade, an old `emulators.json` is turned into `library.json` (ids from a
+   slug of the name) and is kept as it is. Only `dolphin` works today. A game whose file is missing shows as
+   not installed. A broken file is ignored with a warning in the hostd log. The data files that were keyed by
+   game number are rewritten to the new ids once, with a copy kept next to each as `<name>.pre-ids`
+   (see `docs/plans/2026-10-28-stage1-api.md`).
 4. Put the ROMs in any directory the games user can read. A separate disk mounted somewhere is fine.
 
 The profile maps the streamed Sunshine pad to a Wii Classic Controller. It names the pad

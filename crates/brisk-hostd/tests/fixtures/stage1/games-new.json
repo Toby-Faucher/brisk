@@ -62,5 +62,6 @@
       "emulator": "dolphin"
     }
   ],
-  "ownedAvailable": true
+  "ownedAvailable": true,
+  "idScheme": 1
 }

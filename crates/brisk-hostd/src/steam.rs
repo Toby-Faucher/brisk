@@ -16,6 +16,8 @@ const OWNED_TTL_S: u64 = 6 * 3600;
 pub struct GamesResult {
     pub games: Vec<Game>,
     pub owned_available: bool,
+    /// 1: games carry string `id`s and the id routes work. An older hostd leaves it out.
+    pub id_scheme: u32,
 }
 
 impl GamesResult {
@@ -549,6 +551,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     GamesResult {
         games,
         owned_available,
+        id_scheme: 1,
     }
 }
 

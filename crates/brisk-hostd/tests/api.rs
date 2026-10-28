@@ -612,6 +612,7 @@ fn rig_at(mode: &str, service: bool, base: &str) -> Rig {
             g
         }],
         owned_available: true,
+        id_scheme: 1,
     });
     let state = Arc::new(st);
     Rig {

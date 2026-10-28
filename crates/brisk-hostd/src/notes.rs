@@ -197,6 +197,29 @@ impl NotesStore {
         Ok(out)
     }
 
+    /// Moves entries from old game keys to new ones (`{old: new}`), keeping the file's `.pre-ids`
+    /// copy first. A new key that is already there wins and the old entry stays. Returns how many moved.
+    pub fn rekey(&self, map: &BTreeMap<String, String>) -> Result<usize, NotesError> {
+        let hit = |n: &Notes| map.keys().any(|k| n.games.contains_key(k));
+        if !hit(&self.inner.lock().unwrap()) {
+            return Ok(0);
+        }
+        crate::migrate::backup_once(&self.path).map_err(|_| NotesError::Io)?;
+        let mut moved = 0;
+        self.change(|n| {
+            for (old, new) in map {
+                if !n.games.contains_key(new)
+                    && let Some(g) = n.games.remove(old)
+                {
+                    n.games.insert(new.clone(), g);
+                    moved += 1;
+                }
+            }
+            Ok(())
+        })?;
+        Ok(moved)
+    }
+
     /// Applies `f` to a copy, writes it, and only then keeps it: a failed write changes nothing.
     fn change(
         &self,

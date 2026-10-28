@@ -478,3 +478,62 @@ async fn an_old_emulator_number_reaches_the_game_when_the_library_has_it() {
         "hi"
     );
 }
+
+#[tokio::test]
+async fn remap_moves_emulator_keys_the_hub_could_not_map_and_keeps_a_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = r#"{"tags":{},"games":{"3907440760":{"note":"hub note","tags":[]},"3907440999":{"note":"other","tags":[]}}}"#;
+    std::fs::write(dir.path().join("notes.json"), old).unwrap();
+    std::fs::write(
+        dir.path().join("prefs.json"),
+        r#"{"3907440760":{"preset":"fast","codec":"h264","updated":1}}"#,
+    )
+    .unwrap();
+    let t = t_in(dir);
+    let body = |m: Value| Some(json!({ "map": m }).to_string());
+    let go = |m: Value| t.call("POST", "/api/ids/remap", true, body(m));
+    let (st, v) = go(json!({"3907440760": "emu:dolphin:mario-kart-wii"})).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"notes": 1, "prefs": 1})));
+    let all = t.all().await;
+    assert_eq!(
+        all["games"]["emu:dolphin:mario-kart-wii"]["note"],
+        "hub note"
+    );
+    assert!(
+        all["games"].get("3907440999").is_some(),
+        "an unlisted key stays"
+    );
+    assert_eq!(
+        std::fs::read_to_string(t.dir.path().join("notes.json.pre-ids")).unwrap(),
+        old
+    );
+    assert!(t.dir.path().join("prefs.json.pre-ids").exists());
+    // again: nothing left to move, the backup is still the original
+    let (_, v) = go(json!({"3907440760": "emu:dolphin:mario-kart-wii"})).await;
+    assert_eq!(v, json!({"notes": 0, "prefs": 0}));
+    assert_eq!(
+        std::fs::read_to_string(t.dir.path().join("notes.json.pre-ids")).unwrap(),
+        old
+    );
+    // only old emulator numbers to new emu ids
+    for bad in [
+        json!({"620": "emu:dolphin:x"}),
+        json!({"3907440760": "steam:620"}),
+        json!({"3907440760": "nope"}),
+        json!({"x": "emu:dolphin:x"}),
+    ] {
+        assert_eq!(go(bad.clone()).await.0, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    assert_eq!(
+        t.call("POST", "/api/ids/remap", true, Some("{}".into()))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        t.call("POST", "/api/ids/remap", false, body(json!({})))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+}

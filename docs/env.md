@@ -12,7 +12,7 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 |---|---|---|---|
 | `BRISK_DIST` | Directory hostd serves (the built web UI). A command-line argument wins. | `web/dist` | `hostd/src/main.rs` |
 | `BRISK_STATIC` | `disk` or `embed`. `embed` needs a build with `--features embed`; anything else warns and uses disk. | `disk` | `hostd/src/site.rs` |
-| `BRISK_DATA_DIR` | hostd's data: `prefs.json`, `sessions.jsonl`, `owned.json`, `emulators.json`. | `~/.local/share/brisk` | `hostd/src/config.rs` |
+| `BRISK_DATA_DIR` | hostd's data: `prefs.json`, `sessions.jsonl`, `owned.json`, `library.json` (emulator games; the old `emulators.json` is read once and migrated). | `~/.local/share/brisk` | `hostd/src/config.rs` |
 | `BRISK_STEAM_DIR` | Steam install, for the `appmanifest_*.acf` library. | `~/.local/share/Steam` | `hostd/src/config.rs` |
 | `BRISK_STEAM_KEY_FILE` | File with the Steam Web API key (0600). | `~/.config/brisk/steam-api-key` | `hostd/src/config.rs` |
 | `BRISK_STEAM_API_BASE` | Steam Web API base URL (tests point it at a mock). | `https://api.steampowered.com` | `hostd/src/config.rs` |
