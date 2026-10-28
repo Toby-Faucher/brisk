@@ -1,0 +1,22 @@
+{
+  "emulator": "dolphin",
+  "type": "classic",
+  "controller": "Wii Remote 1, Classic Controller",
+  "source": "file",
+  "rev": "5b1f0c9a2d7e4a31",
+  "running": false,
+  "appliesOn": "next-launch",
+  "bindings": {
+    "a": "B", "b": "A", "x": "Y", "y": "X",
+    "l": "LT", "r": "RT", "zl": "LB", "zr": "RB",
+    "minus": "View", "plus": "Menu", "home": "Guide",
+    "ls": "Left stick", "rs": "Right stick", "dp": "D-pad"
+  },
+  "deadZone": { "ls": 0, "rs": 0 },
+  "custom": {
+    "a": false, "b": false, "x": false, "y": false,
+    "l": false, "r": false, "zl": false, "zr": false,
+    "minus": false, "plus": false, "home": false,
+    "ls": false, "rs": false, "dp": false
+  }
+}
