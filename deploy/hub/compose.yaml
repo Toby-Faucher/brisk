@@ -1,6 +1,6 @@
 # Brisk machine hub for Dockge. Replace the <placeholders>; docs/hosting-runbook.md, Machine hub.
 # Host networking: hostd binds 127.0.0.1:8443 only and trusts a tailnet login only from a loopback
-# peer, so `tailscale serve` on this VM (https 443 -> http://127.0.0.1:8443) is the way in.
+# peer, so `tailscale serve` on this VM (https 443 or 8443 -> http://127.0.0.1:8443) is the way in.
 services:
   brisk-hub:
     image: brisk-hub:local
@@ -10,11 +10,17 @@ services:
       BRISK_MACHINES_FILE: /config/machines.json
       BRISK_SECRET_FILE: /data/secret            # the hub's own secret (created on first start)
       BRISK_STATIC: embed
+      # hostd prints its secret at startup unless it thinks it runs under systemd; keep it out of `docker logs`.
+      INVOCATION_ID: container
       BRISK_DATA_DIR: /data
       # tailscale serve on 443 sends Host without a port; direct :8443 access sends it with one.
       BRISK_ALLOWED_HOSTS: "<hub>.<tailnet>.ts.net,<hub>.<tailnet>.ts.net:8443"
       # Optional: tailnet logins let in without the secret (see the runbook before using).
       # BRISK_ALLOWED_USERS: "<you>@example.invalid"
+    # If this VM's resolver does not know MagicDNS, pin each machine's tailnet name to its tailnet IP
+    # (the TLS check still uses the name):
+    # extra_hosts:
+    #   - "<machine>.<tailnet>.ts.net:<tailnet ip>"
     volumes:
       - /srv/brisk-hub/config:/config:ro         # machines.json + secret and CA files, readable by uid 10001
       - data:/data                               # prefs, notes, the hub secret
