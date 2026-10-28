@@ -1,7 +1,9 @@
 //! Running Steam games and their sway windows. Steam starts every game under a launcher reaper
 //! (`reaper SteamLaunch AppId=<id> -- ...`); the reaper's descendants are the game's processes.
 
+use crate::game::GameId;
 use crate::host::Runner;
+use crate::source::{Scope, of};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -154,26 +156,7 @@ fn game_tree(proc: &Path, appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
     tree(&procs(proc), appid)
 }
 
-/// What a quit acts on: `(top processes, their descendants, window class)`. A Steam game is its
-/// reaper tree; an emulator game (id from `emulators.json`) is the emulator's own processes, with
-/// no descendants and a window class. `None` when it is not running.
-fn scope(
-    ps: &[Proc],
-    data_dir: &Path,
-    appid: u32,
-) -> Option<(HashSet<u32>, HashSet<u32>, Option<&'static str>)> {
-    if !crate::emu::is_emu_id(appid) {
-        return tree(ps, appid).map(|(r, k)| (r, k, None));
-    }
-    let e = crate::emu::load(data_dir)
-        .into_iter()
-        .find(|e| e.id() == appid)?;
-    let pids = crate::emu::pids(ps, &e);
-    let class = crate::emu::spec(&e.emulator)?.class;
-    (!pids.is_empty()).then_some((pids, HashSet::new(), Some(class)))
-}
-
-fn tree(ps: &[Proc], appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
+pub(crate) fn tree(ps: &[Proc], appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
     let reapers: HashSet<u32> = ps
         .iter()
         .filter(|p| reaper_appid(&p.argv) == Some(appid))
@@ -388,9 +371,9 @@ pub enum QuitError {
 pub struct Quitter {
     runner: Arc<dyn Runner>,
     proc: PathBuf,
-    /// Where `emulators.json` lives: an emulator id is resolved to its process and window class there.
+    /// Where `library.json` lives: an emulator game is resolved to its process and window class there.
     data_dir: PathBuf,
-    busy: Mutex<HashSet<u32>>,
+    busy: Mutex<HashSet<GameId>>,
     /// How long an emulator's polite close waits before SIGTERM (Steam games wait `wait`).
     pub close_wait: Duration,
     /// How long SIGTERM waits before the quit gives up (the UI then offers Force quit).
@@ -405,7 +388,7 @@ pub struct Quitter {
 const BRIEF: Duration = Duration::from_secs(3);
 
 /// Frees the game's slot however the quit ends.
-struct Claim<'a>(&'a Mutex<HashSet<u32>>, u32);
+struct Claim<'a>(&'a Mutex<HashSet<GameId>>, GameId);
 impl Drop for Claim<'_> {
     fn drop(&mut self) {
         self.0.lock().unwrap().remove(&self.1);
@@ -448,10 +431,11 @@ impl Quitter {
     }
 
     /// True once the game's reapers are gone, polling every 100 ms up to `wait`.
-    async fn gone_within(&self, appid: u32, wait: Duration) -> bool {
+    async fn gone_within(&self, id: &GameId, wait: Duration) -> bool {
         let end = tokio::time::Instant::now() + wait;
         loop {
-            let gone = self.blocking(move |_, p, d| scope(&procs(p), d, appid).is_none());
+            let id = id.clone();
+            let gone = self.blocking(move |_, p, d| of(&id).scope(&procs(p), d, &id).is_none());
             if gone.await.unwrap_or(false) {
                 return true;
             }
@@ -465,12 +449,13 @@ impl Quitter {
     /// `sig` to the game's processes as they are now (a fresh scan): the reapers' descendants, or
     /// the reapers themselves when nothing is left under them. Never their parent (Steam). Each
     /// pid is signalled through a pidfd and only if it is still the scanned process.
-    async fn signal(&self, appid: u32, sig: Sig) {
+    async fn signal(&self, id: &GameId, sig: Sig) {
+        let id = id.clone();
         let me = std::process::id();
         let s = self.signaller.clone();
         self.blocking(move |_, p, d| {
             let ps = procs(p);
-            let Some((reapers, kids, _)) = scope(&ps, d, appid) else {
+            let Some(Scope { reapers, kids, .. }) = of(&id).scope(&ps, d, &id) else {
                 return;
             };
             let targets = if kids.is_empty() { reapers } else { kids };
@@ -486,12 +471,12 @@ impl Quitter {
                     Sent::Recycled => recycled += 1,
                     Sent::Denied => denied += 1,
                     Sent::Failed(e) => {
-                        eprintln!("warning: {sig:?} to pid {} of game {appid}: {e}", x.pid);
+                        eprintln!("warning: {sig:?} to pid {} of game {id}: {e}", x.pid);
                         failed += 1;
                     }
                     Sent::Unsupported => {
                         eprintln!(
-                            "error: cannot quit game {appid}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
+                            "error: cannot quit game {id}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
                         );
                         return;
                     }
@@ -499,7 +484,7 @@ impl Quitter {
             }
             if denied + recycled + failed > 0 {
                 eprintln!(
-                    "warning: {sig:?} for game {appid}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
+                    "warning: {sig:?} for game {id}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
                 );
             }
         })
@@ -508,20 +493,21 @@ impl Quitter {
 
     /// Closes `appid` politely, escalates to SIGTERM, and with `force` to SIGKILL. A forced quit
     /// skips the polite close: SIGTERM, 3 s, SIGKILL.
-    pub async fn quit(&self, appid: u32, force: bool) -> Result<Quit, QuitError> {
+    pub async fn quit(&self, id: &GameId, force: bool) -> Result<Quit, QuitError> {
         if self.as_root {
             return Err(QuitError::Root);
         }
         let _claim = {
             let mut b = self.busy.lock().unwrap();
-            if !b.insert(appid) {
+            if !b.insert(id.clone()) {
                 return Err(QuitError::Busy);
             }
-            Claim(&self.busy, appid)
+            Claim(&self.busy, id.clone())
         };
         let polite = !force;
+        let qid = id.clone();
         let asked = self.blocking(move |r, p, d| {
-            let (_, kids, class) = scope(&procs(p), d, appid)?;
+            let Scope { kids, class, .. } = of(&qid).scope(&procs(p), d, &qid)?;
             // An emulator has no reaper tree (kids is empty) but does have a window to close.
             let closable = !kids.is_empty() || class.is_some();
             if polite && closable {
@@ -542,26 +528,26 @@ impl Quitter {
         };
         if polite && closable {
             if self
-                .gone_within(appid, if emu { self.close_wait } else { self.wait })
+                .gone_within(id, if emu { self.close_wait } else { self.wait })
                 .await
             {
                 return Ok(Quit::Closed);
             }
-            eprintln!("info: game {appid} still running after closing its windows; SIGTERM");
+            eprintln!("info: game {id} still running after closing its windows; SIGTERM");
         }
-        self.signal(appid, Sig::Term).await;
+        self.signal(id, Sig::Term).await;
         let wait = if force || (lone && !emu) {
             BRIEF
         } else {
             self.wait
         };
-        if self.gone_within(appid, wait).await {
+        if self.gone_within(id, wait).await {
             return Ok(Quit::Closed);
         }
         if force {
-            eprintln!("info: game {appid} still running after SIGTERM; SIGKILL (forced)");
-            self.signal(appid, Sig::Kill).await;
-            if self.gone_within(appid, BRIEF).await {
+            eprintln!("info: game {id} still running after SIGTERM; SIGKILL (forced)");
+            self.signal(id, Sig::Kill).await;
+            if self.gone_within(id, BRIEF).await {
                 return Ok(Quit::Closed);
             }
         }

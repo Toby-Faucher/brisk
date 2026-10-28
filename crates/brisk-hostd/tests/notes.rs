@@ -123,7 +123,7 @@ async fn put_tag_roundtrip_and_persists_across_load() {
     assert_eq!(all["tags"]["coop"], sent);
     assert_eq!(all["tags"]["back"]["note"], "");
     assert_eq!(
-        all["games"]["620"],
+        all["games"]["steam:620"],
         json!({"note":"line 1\nline 2","tags":["coop","back"]})
     );
 }
@@ -264,11 +264,11 @@ async fn empty_game_note_without_tags_deletes_entry() {
         json!({"note":"keep the <img src=x onerror=alert(1)> as text"}),
     )
     .await;
-    assert!(t.all().await["games"].get("9").is_some());
+    assert!(t.all().await["games"].get("steam:9").is_some());
     let (st, body) = t.game(9, json!({"note":"  \n ","tags":[]})).await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(body, json!({"note":"  \n ","tags":[]}));
-    assert!(t.all().await["games"].get("9").is_none());
+    assert!(t.all().await["games"].get("steam:9").is_none());
 }
 
 #[tokio::test]
@@ -286,14 +286,17 @@ async fn delete_tag_removes_it_from_games() {
     assert_eq!(st, StatusCode::NO_CONTENT);
     let all = t.all().await;
     assert!(all["tags"].get("coop").is_none());
-    assert!(all["games"].get("1").is_none(), "left empty, so gone");
-    assert_eq!(all["games"]["2"], json!({"note":"hi","tags":["back"]}));
+    assert!(all["games"].get("steam:1").is_none(), "left empty, so gone");
+    assert_eq!(
+        all["games"]["steam:2"],
+        json!({"note":"hi","tags":["back"]})
+    );
     // unknown tag: still 204
     let (st, _) = t.call("DELETE", "/api/notes/tags/coop", true, None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     // and it is on disk
     let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
-    assert_eq!(on_disk["games"]["2"]["tags"], json!(["back"]));
+    assert_eq!(on_disk["games"]["steam:2"]["tags"], json!(["back"]));
 }
 
 #[tokio::test]
@@ -329,7 +332,7 @@ async fn corrupt_file_loads_empty_and_next_save_works() {
     );
     assert_eq!(t.game(5, json!({"note":"after"})).await.0, StatusCode::OK);
     let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
-    assert_eq!(on_disk["games"]["5"]["note"], "after");
+    assert_eq!(on_disk["games"]["steam:5"]["note"], "after");
 }
 
 #[tokio::test]

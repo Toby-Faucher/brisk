@@ -1,86 +1,104 @@
-//! Non-Steam games from `data_dir/emulators.json`: `[{"name","emulator","file"}]`. They show up in
-//! `/api/games` next to Steam's, under ids no Steam appid reaches (0xE0000000 and up, from a hash of
-//! the name), and Play starts the emulator on the host like `steam()` starts Steam. Read tolerantly:
-//! a missing or corrupt file is just no emulator games.
-//! Last-played times (unix seconds, by entry id) live in `data_dir/emu-played.json`, written at launch.
-//! Playtime is not tracked here (roadmap Stage 6a).
+//! Emulator games: the library file `data_dir/library.json` and how a game runs. The emulator
+//! itself comes from the registry (`registry.rs`); `source.rs` puts this behind `GameSource`.
+//!
+//! `library.json` is `{"v":1,"games":[Record]}`. When it is absent the old hand-written
+//! `emulators.json` (`[{"name","emulator","file"}]`) is read instead and converted in memory
+//! (`migrate::library_from_emulators`); startup writes the converted file and never deletes the
+//! old one. A missing or corrupt file is just no emulator games.
+//! Last-played times (unix seconds, by game id) live in `data_dir/emu-played.json`, written at
+//! launch. Playtime is not tracked here (roadmap Stage 6a).
 //! A game is running when a process of the emulator's command has the game file as an argument (a
 //! scan of the proc dir, so it survives a hostd restart). Play on a running game only focuses it.
-//! shortcut: Dolphin only (one table row in `spec`), one window class per emulator; add a row per
-//! emulator, and match the window by pid too if two emulators ever share a class.
 
+use crate::game::{Caps, Game, GameId, Source};
 use crate::host::Runner;
+use crate::registry;
 use crate::running::{Proc, procs};
-use crate::steam::Game;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
 
-const ID_BASE: u32 = 0xE000_0000;
+pub const LIBRARY_FILE: &str = "library.json";
+pub const OLD_FILE: &str = "emulators.json";
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Entry {
-    pub name: String,
+/// One game in the library. `id` is explicit and stable: a later stage may replace it (a disc
+/// header id) and keep the old one in `aliases`, so notes saved under it still resolve.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Record {
+    pub id: GameId,
     pub emulator: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
     pub file: PathBuf,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub added_at: Option<u64>,
+    /// "manual" (hand-written), later "scan" and "upload".
+    #[serde(default = "manual")]
+    pub source: String,
+    /// The old 0xE0000000+ id, from the name hash. Absent: it is computed from the name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_id: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<GameId>,
 }
 
-impl Entry {
-    /// FNV-1a of the name folded into the emulator id range, so ids survive reordering the file.
-    pub fn id(&self) -> u32 {
-        let h = self.name.bytes().fold(0x811c_9dc5_u32, |h, b| {
-            (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
-        });
-        ID_BASE | (h & 0x0FFF_FFFF)
+fn manual() -> String {
+    "manual".into()
+}
+
+/// FNV-1a of the name folded into the old emulator id range: the first emulator version's id.
+pub fn legacy_hash(name: &str) -> u32 {
+    let h = name.bytes().fold(0x811c_9dc5_u32, |h, b| {
+        (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+    });
+    crate::game::LEGACY_EMU_BASE | (h & 0x0FFF_FFFF)
+}
+
+impl Record {
+    /// The old numeric id this game answered to.
+    pub fn legacy(&self) -> u32 {
+        self.legacy_id.unwrap_or_else(|| legacy_hash(&self.name))
+    }
+
+    /// Matches the current id or one it replaced.
+    pub fn is(&self, id: &GameId) -> bool {
+        self.id == *id || self.aliases.contains(id)
     }
 }
 
-/// How one emulator runs: its command (also its process name), the arguments before the game
-/// file, and its window's X11 class (sway shows Xwayland windows by class, not app_id).
-pub struct Spec {
-    pub cmd: &'static str,
-    args: &'static [&'static str],
-    pub class: &'static str,
+/// The record `id` names, if the library has it.
+pub fn find<'a>(recs: &'a [Record], id: &GameId) -> Option<&'a Record> {
+    recs.iter().find(|r| r.is(id))
 }
 
-pub fn spec(emulator: &str) -> Option<Spec> {
-    // -b: no UI shell, -e: boot this file.
-    (emulator == "dolphin").then_some(Spec {
-        cmd: "dolphin-emu",
-        args: &["-b", "-e"],
-        class: "dolphin-emu",
-    })
+/// Resolves a request's id text (new form, or a bare number) against the library.
+pub fn resolve(recs: &[Record], raw: &str) -> Option<GameId> {
+    let id = GameId::compat(raw, |n| {
+        recs.iter().find(|r| r.legacy() == n).map(|r| r.id.clone())
+    })?;
+    // An alias answers with the id that replaced it.
+    Some(find(recs, &id).map_or(id, |r| r.id.clone()))
 }
 
-/// Pids of the emulator processes that were started on this entry's file.
-pub(crate) fn pids(ps: &[Proc], e: &Entry) -> HashSet<u32> {
-    let (Some(s), Some(file)) = (spec(&e.emulator), e.file.to_str()) else {
+/// Pids of the emulator processes that were started on this record's file.
+pub(crate) fn pids(ps: &[Proc], r: &Record) -> HashSet<u32> {
+    let (Some(e), Some(file)) = (registry::get(&r.emulator), r.file.to_str()) else {
         return HashSet::new();
     };
     ps.iter()
-        .filter(|p| p.comm == s.cmd && p.argv.iter().any(|a| a == file))
+        .filter(|p| p.comm == e.cmd && p.argv.iter().any(|a| a == file))
         .map(|p| p.pid)
         .collect()
-}
-
-/// Does the machine have a Dolphin entry (so the controller editor applies)?
-pub fn has_dolphin(entries: &[Entry]) -> bool {
-    entries.iter().any(|e| e.emulator == "dolphin")
-}
-
-pub fn is_emu_id(id: u32) -> bool {
-    id >= ID_BASE
 }
 
 const PLAYED_FILE: &str = "emu-played.json";
 const PLAYED_MAX: usize = 500;
 
-/// `{"<id>": unix seconds}`; a missing or corrupt file is empty.
+/// `{"<game id>": unix seconds}`; a missing or corrupt file is empty.
 fn played(data_dir: &Path) -> BTreeMap<String, u64> {
     std::fs::read(data_dir.join(PLAYED_FILE))
         .ok()
@@ -88,9 +106,31 @@ fn played(data_dir: &Path) -> BTreeMap<String, u64> {
         .unwrap_or_default()
 }
 
+/// Atomic 0600 write: a temp file in the same directory, then rename.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(dir)?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)
+    };
+    write().inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
 /// Records now as the game's last-played time: atomic 0600 write, the oldest entries dropped
 /// past a cap. A failed write is a warning only.
-pub fn mark_played(data_dir: &Path, id: u32) {
+pub fn mark_played(data_dir: &Path, id: &GameId) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -101,60 +141,88 @@ pub fn mark_played(data_dir: &Path, id: u32) {
         m.remove(&oldest.unwrap());
     }
     let path = data_dir.join(PLAYED_FILE);
-    let tmp = data_dir.join(format!(".emu-played.{}.tmp", std::process::id()));
-    let write = || -> std::io::Result<()> {
-        std::fs::create_dir_all(data_dir)?;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(&serde_json::to_vec(&m)?)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, &path)
-    };
-    if let Err(e) = write() {
-        let _ = std::fs::remove_file(&tmp);
+    if let Err(e) = write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default()) {
         eprintln!("warning: {}: {e}", path.display());
     }
 }
 
-pub fn load(data_dir: &Path) -> Vec<Entry> {
-    let Ok(text) = std::fs::read_to_string(data_dir.join("emulators.json")) else {
-        return vec![];
-    };
-    serde_json::from_str(&text).unwrap_or_else(|e| {
-        eprintln!("warn: emulators.json ignored: {e}");
-        vec![]
-    })
+/// The library file's records; bad records are skipped with a warning, a corrupt file is empty.
+pub fn parse_library(text: &str) -> Result<Vec<Record>, String> {
+    #[derive(Deserialize)]
+    struct File {
+        games: Vec<serde_json::Value>,
+    }
+    let f: File = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    Ok(f.games
+        .into_iter()
+        .filter_map(|v| {
+            serde_json::from_value::<Record>(v)
+                .map_err(|e| e.to_string())
+                // the id must be an emu id of the record's own emulator
+                .and_then(|r| match r.id.emu_parts() {
+                    Some((e, _)) if e == r.emulator => Ok(r),
+                    _ => Err(format!(
+                        "id {} does not match emulator {}",
+                        r.id, r.emulator
+                    )),
+                })
+                .inspect_err(|e| eprintln!("warn: {LIBRARY_FILE}: skipping a game: {e}"))
+                .ok()
+        })
+        .collect())
 }
 
-/// One card per entry; `installed` means the game file exists, so a missing ISO reads as "not installed".
-pub fn games(entries: &[Entry], proc: &Path, data_dir: &Path) -> Vec<Game> {
+pub fn library_json(recs: &[Record]) -> Vec<u8> {
+    serde_json::to_vec_pretty(&serde_json::json!({ "v": 1, "games": recs })).unwrap_or_default()
+}
+
+pub fn load(data_dir: &Path) -> Vec<Record> {
+    match std::fs::read_to_string(data_dir.join(LIBRARY_FILE)) {
+        Ok(text) => parse_library(&text).unwrap_or_else(|e| {
+            eprintln!("warn: {LIBRARY_FILE} ignored: {e}");
+            vec![]
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let Ok(text) = std::fs::read_to_string(data_dir.join(OLD_FILE)) else {
+                return vec![];
+            };
+            crate::migrate::library_from_emulators(&text).unwrap_or_else(|e| {
+                eprintln!("warn: {OLD_FILE} ignored: {e}");
+                vec![]
+            })
+        }
+        Err(e) => {
+            eprintln!("warn: {LIBRARY_FILE} unreadable: {e}");
+            vec![]
+        }
+    }
+}
+
+pub fn caps(emulator: &str) -> Caps {
+    Caps {
+        controls: registry::get(emulator).is_some_and(|e| !e.controller.is_empty()),
+        ..Caps::default()
+    }
+}
+
+/// One card per record; `installed` means the game file exists, so a missing ISO reads as "not installed".
+pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let ps = procs(proc);
     let played = played(data_dir);
-    entries
-        .iter()
-        .map(|e| Game {
-            appid: e.id(),
-            name: e.name.clone(),
-            installed: e.file.is_file(),
-            size_bytes: std::fs::metadata(&e.file).ok().map(|m| m.len()),
-            last_played: played.get(&e.id().to_string()).copied(),
-            emulator: Some(e.emulator.clone()),
-            playtime_min: 0,
-            playtime2wk_min: 0,
-            cover: String::new(),
-            hero: String::new(),
-            logo: String::new(),
-            running: !pids(&ps, e).is_empty(),
-            ach_unlocked: None,
-            ach_total: None,
-            updated: false,
-            update: None,
-            controller: None,
-            coop: false,
+    recs.iter()
+        .map(|r| {
+            let mut g = Game::steam(r.legacy(), &r.name);
+            g.id = r.id.clone();
+            g.source = Source::Emu;
+            g.legacy_id = Some(r.legacy().to_string());
+            g.caps = caps(&r.emulator);
+            g.system = r.system.clone();
+            g.installed = r.file.is_file();
+            g.size_bytes = std::fs::metadata(&r.file).ok().map(|m| m.len());
+            g.last_played = played.get(r.id.as_str()).copied();
+            g.emulator = Some(r.emulator.clone());
+            g.running = !pids(&ps, r).is_empty();
+            g
         })
         .collect()
 }
@@ -165,49 +233,33 @@ pub fn games(entries: &[Entry], proc: &Path, data_dir: &Path) -> Vec<Game> {
 pub fn launch(
     runner: &dyn Runner,
     proc: &Path,
-    entries: &[Entry],
-    id: u32,
+    recs: &[Record],
+    id: &GameId,
     env: &[(String, String)],
 ) -> bool {
-    let Some(e) = entries.iter().find(|e| e.id() == id) else {
+    let Some(r) = find(recs, id) else {
         return false;
     };
-    let (Some(file), Some(s)) = (
-        e.file.to_str().filter(|_| e.file.is_file()),
-        spec(&e.emulator),
+    let (Some(file), Some(e)) = (
+        r.file.to_str().filter(|_| r.file.is_file()),
+        registry::get(&r.emulator),
     ) else {
         return false;
     };
-    if !pids(&procs(proc), e).is_empty() {
-        eprintln!("info: {} is already running; focusing it", e.name);
+    if !pids(&procs(proc), r).is_empty() {
+        eprintln!("info: {} is already running; focusing it", r.name);
         return true;
     }
     // The path is a separate argument, never parsed by a shell.
-    let args: Vec<&str> = s.args.iter().copied().chain([file]).collect();
-    runner.spawn(s.cmd, &args, env)
-}
-
-/// Waits up to `wait` for the entry's emulator window, then focuses and fullscreens it. A miss is
-/// only logged; the game stays as it is.
-pub async fn focus(
-    runner: Arc<dyn Runner>,
-    entries: &[Entry],
-    id: u32,
-    env: Vec<(String, String)>,
-    wait: Duration,
-) {
-    let Some(e) = entries.iter().find(|e| e.id() == id) else {
-        return;
-    };
-    if let Some(s) = spec(&e.emulator) {
-        crate::running::focus_class(runner, env, s.class, e.name.clone(), wait).await;
-    }
+    let args: Vec<&str> = e.args.iter().copied().chain([file]).collect();
+    runner.spawn(e.cmd, &args, env)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     /// Records spawns and swaymsg calls. `get_tree` shows a Dolphin window (con 40) from the
     /// `after`-th call on.
@@ -253,11 +305,18 @@ mod tests {
         }
     }
 
-    fn entry(name: &str, emu: &str, file: &Path) -> Entry {
-        Entry {
-            name: name.into(),
+    /// A record with the id the migration would give `name`.
+    fn rec(name: &str, emu: &str, file: &Path) -> Record {
+        Record {
+            id: GameId::emu(emu, &crate::migrate::slug(name)).unwrap(),
             emulator: emu.into(),
+            system: None,
             file: file.into(),
+            name: name.into(),
+            added_at: None,
+            source: "manual".into(),
+            legacy_id: None,
+            aliases: vec![],
         }
     }
 
@@ -281,48 +340,90 @@ mod tests {
     }
 
     #[test]
-    fn ids_are_stable_and_clear_of_steam() {
-        let e = entry("Mario Kart Wii", "dolphin", Path::new("/x"));
-        assert_eq!(e.id(), e.clone().id());
-        assert!(is_emu_id(e.id()) && !is_emu_id(730));
+    fn old_ids_stay_computable_and_new_ids_are_separate_from_steam() {
+        let r = rec("Mario Kart Wii", "dolphin", Path::new("/x"));
+        assert_eq!(r.legacy(), 3907440760);
+        assert_eq!(legacy_hash("Mario Kart Wii"), r.legacy());
+        assert!(r.legacy() >= crate::game::LEGACY_EMU_BASE);
+        assert_eq!(r.id.as_str(), "emu:dolphin:mario-kart-wii");
+        // an explicit legacy id (set at migration) wins over the name hash
+        let mut r2 = r.clone();
+        r2.legacy_id = Some(0xE000_0005);
+        assert_eq!(r2.legacy(), 0xE000_0005);
+    }
+
+    #[test]
+    fn resolve_reads_new_ids_aliases_and_legacy_numbers() {
+        let mut r = rec("Mario Kart Wii", "dolphin", Path::new("/x"));
+        r.aliases = vec![GameId::parse("emu:dolphin:old-name").unwrap()];
+        let recs = [r.clone()];
+        let res = |s: &str| resolve(&recs, s).map(|g| g.to_string());
+        assert_eq!(
+            res("emu:dolphin:mario-kart-wii").as_deref(),
+            Some(r.id.as_str())
+        );
+        assert_eq!(res("emu:dolphin:old-name").as_deref(), Some(r.id.as_str()));
+        assert_eq!(res("3907440760").as_deref(), Some(r.id.as_str()));
+        assert_eq!(res("620").as_deref(), Some("steam:620"));
+        assert_eq!(res("3907440761"), None);
+        assert_eq!(res("nope"), None);
+    }
+
+    #[test]
+    fn games_carry_the_new_fields_and_caps_by_emulator() {
+        let f = iso("shape");
+        let none = fake_proc(&[]);
+        let recs = [rec("MKW", "dolphin", &f), rec("Odd", "mystery", &f)];
+        let g = games(&recs, none.path(), none.path());
+        assert_eq!(g[0].id.as_str(), "emu:dolphin:mkw");
+        assert_eq!(g[0].source, Source::Emu);
+        assert_eq!(g[0].appid, legacy_hash("MKW"));
+        assert_eq!(
+            g[0].legacy_id.as_deref(),
+            Some(legacy_hash("MKW").to_string().as_str())
+        );
+        assert!(g[0].caps.controls && !g[0].caps.install && !g[0].caps.achievements);
+        assert!(!g[1].caps.controls, "an emulator without an editor");
+        std::fs::remove_file(f).ok();
     }
 
     #[test]
     fn missing_file_reads_not_installed_and_will_not_launch() {
-        let e = entry("Mario Kart Wii", "dolphin", Path::new("/nope/mkwii.iso"));
+        let r = rec("Mario Kart Wii", "dolphin", Path::new("/nope/mkwii.iso"));
         let none = fake_proc(&[]);
-        assert!(!games(std::slice::from_ref(&e), none.path(), none.path())[0].installed);
-        let r = Rec::new(0);
+        assert!(!games(std::slice::from_ref(&r), none.path(), none.path())[0].installed);
+        let run = Rec::new(0);
         assert!(!launch(
-            &*r,
+            &*run,
             none.path(),
-            std::slice::from_ref(&e),
-            e.id(),
+            std::slice::from_ref(&r),
+            &r.id,
             &[]
         ));
-        assert!(r.log().is_empty());
+        assert!(run.log().is_empty());
     }
 
     #[test]
     fn launches_dolphin_on_an_existing_file_only() {
         let f = iso("one");
-        let ok = entry("MKW", "dolphin", &f);
-        let other = entry("Other", "mystery", &f);
+        let ok = rec("MKW", "dolphin", &f);
+        let other = rec("Other", "mystery", &f);
         let none = fake_proc(&[]);
-        let r = Rec::new(0);
+        let run = Rec::new(0);
         let both = [ok.clone(), other.clone()];
         assert!(games(std::slice::from_ref(&ok), none.path(), none.path())[0].installed);
-        assert!(launch(&*r, none.path(), &both, ok.id(), &[]));
-        assert!(!launch(&*r, none.path(), &both, other.id(), &[]));
+        assert!(launch(&*run, none.path(), &both, &ok.id, &[]));
+        assert!(!launch(&*run, none.path(), &both, &other.id, &[]));
+        let steam = GameId::steam(730);
         assert!(!launch(
-            &*r,
+            &*run,
             none.path(),
             std::slice::from_ref(&ok),
-            730,
+            &steam,
             &[]
         ));
         assert_eq!(
-            r.log(),
+            run.log(),
             vec![format!("spawn dolphin-emu -b -e {}", f.display())]
         );
         std::fs::remove_file(f).ok();
@@ -331,73 +432,88 @@ mod tests {
     #[test]
     fn running_means_a_dolphin_process_on_that_file_and_a_second_play_spawns_nothing() {
         let (a, b) = (iso("a"), iso("b"));
-        let (ea, eb) = (entry("A", "dolphin", &a), entry("B", "dolphin", &b));
+        let (ra, rb) = (rec("A", "dolphin", &a), rec("B", "dolphin", &b));
         let (sa, sb) = (a.to_str().unwrap(), b.to_str().unwrap());
         let p = fake_proc(&[
             (10, "dolphin-emu", &["dolphin-emu", "-b", "-e", sa]),
             // Not Dolphin, though it has B's path: must not count.
             (11, "vim", &["vim", sb]),
         ]);
-        let es = [ea.clone(), eb.clone()];
-        let g = games(&es, p.path(), p.path());
+        let rs = [ra.clone(), rb.clone()];
+        let g = games(&rs, p.path(), p.path());
         assert_eq!((g[0].running, g[1].running), (true, false));
-        let r = Rec::new(0);
+        let run = Rec::new(0);
         // A is running: Play succeeds without a spawn. B is not: it spawns.
-        assert!(launch(&*r, p.path(), &es, ea.id(), &[]));
-        assert!(r.log().is_empty());
-        assert!(launch(&*r, p.path(), &es, eb.id(), &[]));
-        assert_eq!(r.log(), vec![format!("spawn dolphin-emu -b -e {sb}")]);
+        assert!(launch(&*run, p.path(), &rs, &ra.id, &[]));
+        assert!(run.log().is_empty());
+        assert!(launch(&*run, p.path(), &rs, &rb.id, &[]));
+        assert_eq!(run.log(), vec![format!("spawn dolphin-emu -b -e {sb}")]);
         std::fs::remove_file(a).ok();
         std::fs::remove_file(b).ok();
     }
 
+    /// The focus loop is shared (`stream::focus` picks the class from the source).
     #[tokio::test(start_paused = true)]
     async fn focus_polls_until_the_window_appears_then_focuses_and_fullscreens() {
-        let e = entry("MKW", "dolphin", Path::new("/x.iso"));
-        let r = Rec::new(4);
+        let d = tempfile::tempdir().unwrap();
+        let r = rec("MKW", "dolphin", Path::new("/x.iso"));
+        std::fs::write(
+            d.path().join(LIBRARY_FILE),
+            library_json(std::slice::from_ref(&r)),
+        )
+        .unwrap();
+        let run = Rec::new(4);
         let env = vec![("SWAYSOCK".to_string(), "/s".to_string())];
-        focus(
-            r.clone(),
-            std::slice::from_ref(&e),
-            e.id(),
+        crate::stream::focus(
+            run.clone(),
+            PathBuf::from("/nonexistent-proc"),
+            d.path().into(),
             env,
+            r.id.clone(),
             Duration::from_secs(60),
         )
         .await;
-        assert_eq!(*r.trees.lock().unwrap(), 4);
+        assert_eq!(*run.trees.lock().unwrap(), 4);
         assert_eq!(
-            r.log(),
+            run.log(),
             vec!["swaymsg -s /s [con_id=40] focus, fullscreen enable"]
         );
     }
 
     #[tokio::test(start_paused = true)]
     async fn focus_gives_up_cleanly_when_no_window_ever_appears() {
-        let e = entry("MKW", "dolphin", Path::new("/x.iso"));
-        let r = Rec::new(u32::MAX);
-        focus(
-            r.clone(),
-            std::slice::from_ref(&e),
-            e.id(),
+        let d = tempfile::tempdir().unwrap();
+        let r = rec("MKW", "dolphin", Path::new("/x.iso"));
+        std::fs::write(
+            d.path().join(LIBRARY_FILE),
+            library_json(std::slice::from_ref(&r)),
+        )
+        .unwrap();
+        let run = Rec::new(u32::MAX);
+        crate::stream::focus(
+            run.clone(),
+            PathBuf::from("/nonexistent-proc"),
+            d.path().into(),
             vec![],
+            r.id.clone(),
             Duration::from_secs(60),
         )
         .await;
-        assert!(r.log().is_empty(), "nothing is focused: {:?}", r.log());
-        assert!(*r.trees.lock().unwrap() >= 60);
+        assert!(run.log().is_empty(), "nothing is focused: {:?}", run.log());
+        assert!(*run.trees.lock().unwrap() >= 60);
     }
 
     #[test]
     fn mark_played_feeds_games_and_a_corrupt_file_is_tolerated() {
         use std::os::unix::fs::PermissionsExt;
         let d = tempfile::tempdir().unwrap();
-        let e = entry("MKW", "dolphin", Path::new("/x.iso"));
+        let r = rec("MKW", "dolphin", Path::new("/x.iso"));
         let none = fake_proc(&[]);
-        let g = |d: &Path| games(std::slice::from_ref(&e), none.path(), d).remove(0);
+        let g = |d: &Path| games(std::slice::from_ref(&r), none.path(), d).remove(0);
         assert_eq!(g(d.path()).last_played, None);
         std::fs::write(d.path().join(PLAYED_FILE), "{not json").unwrap();
         assert_eq!(g(d.path()).last_played, None);
-        mark_played(d.path(), e.id());
+        mark_played(d.path(), &r.id);
         assert!(g(d.path()).last_played.unwrap() > 1_700_000_000);
         let mode = std::fs::metadata(d.path().join(PLAYED_FILE)).unwrap();
         assert_eq!(mode.permissions().mode() & 0o777, 0o600);
@@ -405,18 +521,36 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_or_missing_file_is_empty() {
-        let d = std::env::temp_dir().join(format!("brisk-emu-d-{}", std::process::id()));
-        std::fs::create_dir_all(&d).unwrap();
-        assert!(load(&d).is_empty());
-        std::fs::write(d.join("emulators.json"), "{not json").unwrap();
-        assert!(load(&d).is_empty());
+    fn library_file_wins_and_the_old_file_is_the_fallback_and_corrupt_is_empty() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(load(d.path()).is_empty());
+        std::fs::write(d.path().join(OLD_FILE), "{not json").unwrap();
+        assert!(load(d.path()).is_empty());
         std::fs::write(
-            d.join("emulators.json"),
+            d.path().join(OLD_FILE),
             r#"[{"name":"A","emulator":"dolphin","file":"/a.iso"}]"#,
         )
         .unwrap();
-        assert_eq!(load(&d).len(), 1);
-        std::fs::remove_dir_all(d).ok();
+        assert_eq!(load(d.path())[0].id.as_str(), "emu:dolphin:a");
+        // library.json present: the old file is no longer read
+        let b = rec("B", "dolphin", Path::new("/b.iso"));
+        std::fs::write(d.path().join(LIBRARY_FILE), library_json(&[b])).unwrap();
+        let l = load(d.path());
+        assert_eq!((l.len(), l[0].id.as_str()), (1, "emu:dolphin:b"));
+        std::fs::write(d.path().join(LIBRARY_FILE), "{not json").unwrap();
+        assert!(load(d.path()).is_empty());
+    }
+
+    #[test]
+    fn a_bad_record_is_skipped_not_fatal() {
+        let t = r#"{"v":1,"games":[
+            {"id":"emu:dolphin:ok","emulator":"dolphin","file":"/a","name":"A"},
+            {"id":"steam:5","emulator":"dolphin","file":"/b","name":"B"},
+            {"id":"emu:dolphin:ok2","emulator":"dolphin","file":"/c","name":"C","future":{"x":1}}]}"#;
+        let l = parse_library(t).unwrap();
+        assert_eq!(
+            l.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            ["A", "C"]
+        );
     }
 }

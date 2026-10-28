@@ -3,6 +3,7 @@ use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
 use crate::config::Config;
 use crate::controls::{Controls, CtlError, Kind as PadKind};
 use crate::files::Files;
+use crate::game::{Game, GameId};
 use crate::host::{self, Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
 use crate::machines::{self, Hub};
 use crate::notes::{GameNote, NotesError, NotesStore, Tag};
@@ -12,7 +13,7 @@ use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
 use crate::site::Site;
 use crate::steam::{self, GamesResult};
 use crate::steam_info;
-use crate::stream::{Codec, Preset, StreamReq, Supervisor};
+use crate::stream::{Codec, Preset, RawId, StreamReq, Supervisor};
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
 use axum::http::{StatusCode, header};
@@ -26,7 +27,7 @@ use std::sync::{Arc, Mutex};
 
 pub struct AppState {
     pub cfg: Config,
-    /// Last `/api/games` result, for `is_known_appid`.
+    /// Last `/api/games` result, for `game`.
     pub games: Mutex<Option<GamesResult>>,
     pub restarter: Restarter,
     pub stream: Supervisor,
@@ -78,24 +79,47 @@ impl AppState {
         }
     }
 
-    /// Whether `id` is an owned or installed game; loads the library if nothing is cached yet.
-    pub async fn is_known_appid(&self, id: u32) -> bool {
+    /// An id as a request writes it (`steam:620`, or a bare number) as a GameId: a bare number
+    /// in the old emulator range needs this machine's library to say which game it was.
+    pub fn parse_id(&self, raw: &str) -> Option<GameId> {
+        let recs = crate::emu::load(&self.cfg.data_dir);
+        crate::emu::resolve(&recs, raw)
+    }
+
+    /// The owned or installed game `id`; loads the library if nothing is cached yet.
+    pub async fn game(&self, id: &GameId) -> Option<Game> {
         let cached = self
             .games
             .lock()
             .unwrap()
             .as_ref()
-            .map(|g| g.is_known_appid(id));
+            .map(|g| g.find(id).cloned());
         match cached {
             Some(k) => k,
             None => {
                 let g = steam::load_games(&self.cfg).await;
-                let k = g.is_known_appid(id);
+                let k = g.find(id).cloned();
                 *self.games.lock().unwrap() = Some(g);
                 k
             }
         }
     }
+}
+
+/// The game a path names: 400 for text that is no id, 404 for a well-formed id (or a bare number)
+/// this machine does not have.
+#[allow(clippy::result_large_err)]
+async fn path_game(s: &AppState, raw: &str) -> Result<Game, Response> {
+    let id = match s.parse_id(raw) {
+        Some(id) => id,
+        None if !raw.is_empty() && raw.bytes().all(|b| b.is_ascii_digit()) => {
+            return Err(err(StatusCode::NOT_FOUND, "unknown game"));
+        }
+        None => return Err(err(StatusCode::BAD_REQUEST, "bad game id")),
+    };
+    s.game(&id)
+        .await
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "unknown game"))
 }
 
 async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
@@ -111,12 +135,9 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
         g.games
             .iter()
             .filter(|x| x.installed && x.playtime_min > 0)
-            .map(|x| x.appid)
-            .filter(|&id| !crate::emu::is_emu_id(id))
+            .filter_map(|x| x.id.steam_appid())
             .collect(),
-        (g.games.iter().map(|x| x.appid))
-            .filter(|&id| !crate::emu::is_emu_id(id))
-            .collect(),
+        g.games.iter().filter_map(|x| x.id.steam_appid()).collect(),
     );
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
@@ -131,15 +152,16 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
 /// no upstream call is made for it. A Store failure is a 200 with `available: false`.
 async fn game_info(
     State(s): State<Arc<AppState>>,
-    UrlPath(id): UrlPath<u32>,
+    UrlPath(raw): UrlPath<String>,
     req: Request,
 ) -> Response {
-    if !s.is_known_appid(id).await {
-        return err(StatusCode::NOT_FOUND, "unknown game");
-    }
-    if crate::emu::is_emu_id(id) {
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let Some(id) = g.id.steam_appid() else {
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
-    }
+    };
     let refresh = req
         .uri()
         .query()
@@ -151,15 +173,16 @@ async fn game_info(
 /// without stats or a private profile is a 200 with `available: false`.
 async fn game_achievements(
     State(s): State<Arc<AppState>>,
-    UrlPath(id): UrlPath<u32>,
+    UrlPath(raw): UrlPath<String>,
     req: Request,
 ) -> Response {
-    if !s.is_known_appid(id).await {
-        return err(StatusCode::NOT_FOUND, "unknown game");
-    }
-    if crate::emu::is_emu_id(id) {
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let Some(id) = g.id.steam_appid() else {
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
-    }
+    };
     let refresh = req
         .uri()
         .query()
@@ -171,15 +194,16 @@ async fn game_achievements(
 /// upstream failure is a 200 with an empty list.
 async fn game_news(
     State(s): State<Arc<AppState>>,
-    UrlPath(id): UrlPath<u32>,
+    UrlPath(raw): UrlPath<String>,
     req: Request,
 ) -> Response {
-    if !s.is_known_appid(id).await {
-        return err(StatusCode::NOT_FOUND, "unknown game");
-    }
-    if crate::emu::is_emu_id(id) {
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let Some(id) = g.id.steam_appid() else {
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
-    }
+    };
     let refresh = req
         .uri()
         .query()
@@ -189,10 +213,11 @@ async fn game_news(
 
 /// Screenshot names and a cloud-save summary from the host's Steam folder; 404 for an unknown game.
 /// No folder is a 200 with empty fields.
-async fn game_local(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -> Response {
-    if !s.is_known_appid(id).await {
-        return err(StatusCode::NOT_FOUND, "unknown game");
-    }
+async fn game_local(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
+    let id = match path_game(&s, &raw).await {
+        Ok(g) => g.appid,
+        Err(r) => return r,
+    };
     let s2 = s.clone();
     match tokio::task::spawn_blocking(move || steam_info::local(&s2.cfg, &s2.shots, id)).await {
         Ok(l) => axum::Json(l).into_response(),
@@ -203,11 +228,12 @@ async fn game_local(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -
 /// One screenshot file, only if `name` is in the game's listing (see `steam_info::screenshot`).
 async fn game_screenshot(
     State(s): State<Arc<AppState>>,
-    UrlPath((id, name)): UrlPath<(u32, String)>,
+    UrlPath((raw, name)): UrlPath<(String, String)>,
 ) -> Response {
-    if !s.is_known_appid(id).await {
-        return err(StatusCode::NOT_FOUND, "unknown game");
-    }
+    let id = match path_game(&s, &raw).await {
+        Ok(g) => g.appid,
+        Err(r) => return r,
+    };
     let s2 = s.clone();
     match tokio::task::spawn_blocking(move || steam_info::screenshot(&s2.cfg, &s2.shots, id, &name))
         .await
@@ -260,14 +286,31 @@ fn parse<T: serde::de::DeserializeOwned>(b: &[u8]) -> Result<T, Response> {
         .map_err(|e| err(StatusCode::BAD_REQUEST, &format!("bad request: {e}")))
 }
 
+/// The id text of a request: `id` (text or number) wins over the old numeric `appid`.
+fn raw_id(id: Option<RawId>, appid: Option<u32>) -> Option<String> {
+    id.map(|i| i.text()).or(appid.map(|n| n.to_string()))
+}
+
+/// The game a request body names: 400 for an id that is bad or unknown here. `None` in, `None` out.
 #[allow(clippy::result_large_err)]
-async fn check_appid(s: &AppState, id: Option<u32>) -> Result<(), Response> {
-    match id {
-        Some(id) if !s.is_known_appid(id).await => {
-            Err(err(StatusCode::BAD_REQUEST, "unknown game"))
-        }
-        _ => Ok(()),
-    }
+async fn check_game(s: &AppState, raw: Option<String>) -> Result<Option<Game>, Response> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let known = match s.parse_id(&raw) {
+        Some(id) => s.game(&id).await,
+        None => None,
+    };
+    known
+        .map(Some)
+        .ok_or_else(|| err(StatusCode::BAD_REQUEST, "unknown game"))
+}
+
+#[allow(clippy::result_large_err)]
+async fn need_game(s: &AppState, raw: Option<String>) -> Result<Game, Response> {
+    check_game(s, raw)
+        .await?
+        .ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad request: id required"))
 }
 
 async fn stream_get(State(s): State<Arc<AppState>>) -> Response {
@@ -278,18 +321,10 @@ async fn stream_start(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> R
     let run = async {
         let req: StreamReq = parse(&b)?;
         req.flags().map_err(|e| err(StatusCode::BAD_REQUEST, &e))?;
-        check_appid(&s, req.appid).await?;
-        let name = req.appid.and_then(|id| {
-            let g = s.games.lock().unwrap();
-            g.as_ref()?
-                .games
-                .iter()
-                .find(|g| g.appid == id)
-                .map(|g| g.name.clone())
-        });
+        let game = check_game(&s, raw_id(req.id.clone(), req.appid)).await?;
         // Own task: a client that hangs up must not abort a start halfway through a stop.
         let s2 = s.clone();
-        tokio::spawn(async move { s2.stream.start(req, name).await })
+        tokio::spawn(async move { s2.stream.start(req, game).await })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
             .map_err(|e| {
@@ -318,43 +353,42 @@ async fn stream_stop(State(s): State<Arc<AppState>>) -> Response {
 }
 
 #[derive(Deserialize)]
-struct AppId {
-    appid: u32,
+struct GameReq {
+    appid: Option<u32>,
+    id: Option<RawId>,
+    #[serde(default)]
+    force: bool,
 }
 
-/// `steam steam://<verb>/<appid>` for a known game, detached: 204 once it runs, 400, or 500 if it
-/// could not start.
-async fn steam_cmd(s: Arc<AppState>, b: &[u8], verb: &'static str) -> Response {
-    let id = match parse::<AppId>(b) {
-        Ok(a) => a.appid,
+/// Starts or installs a known game through its source, detached: 204 once it runs, 400, or 500
+/// if it could not start. Install is 400 for a game whose source has nothing to install.
+async fn game_cmd(s: Arc<AppState>, b: &[u8], install: bool) -> Response {
+    let g = match parse::<GameReq>(b) {
+        Ok(r) => match need_game(&s, raw_id(r.id, r.appid)).await {
+            Ok(g) => g,
+            Err(r) => return r,
+        },
         Err(r) => return r,
     };
-    if let Err(r) = check_appid(&s, Some(id)).await {
-        return r;
+    if install && !g.caps.install {
+        return err(StatusCode::BAD_REQUEST, "nothing to install for this game");
     }
     let s2 = s.clone();
-    if crate::emu::is_emu_id(id) {
-        if verb != "rungameid" {
-            return err(StatusCode::BAD_REQUEST, "nothing to install for this game");
+    let id = g.id;
+    let ok = tokio::task::spawn_blocking(move || {
+        if install {
+            s2.stream.install(&id) == Some(true)
+        } else {
+            s2.stream.launch(&id)
         }
-        let started = tokio::task::spawn_blocking(move || {
-            let ok = s2.stream.emulator(crate::emu::load(&s2.cfg.data_dir), id);
-            if ok {
-                crate::emu::mark_played(&s2.cfg.data_dir, id);
-            }
-            ok
-        })
-        .await;
-        return match started {
-            Ok(true) => StatusCode::NO_CONTENT.into_response(),
-            _ => err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "the emulator didn't start (is the game file there?)",
-            ),
-        };
-    }
-    match tokio::task::spawn_blocking(move || s2.stream.steam(verb, id)).await {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+    })
+    .await;
+    match (ok, g.source) {
+        (Ok(true), _) => StatusCode::NO_CONTENT.into_response(),
+        (_, crate::game::Source::Emu) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "the emulator didn't start (is the game file there?)",
+        ),
         _ => err(
             StatusCode::INTERNAL_SERVER_ERROR,
             "steam didn't take the command",
@@ -363,33 +397,26 @@ async fn steam_cmd(s: Arc<AppState>, b: &[u8], verb: &'static str) -> Response {
 }
 
 async fn launch(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
-    steam_cmd(s, &b, "rungameid").await
+    game_cmd(s, &b, false).await
 }
 
 async fn install(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
-    steam_cmd(s, &b, "install").await
-}
-
-#[derive(Deserialize)]
-struct QuitReq {
-    appid: u32,
-    #[serde(default)]
-    force: bool,
+    game_cmd(s, &b, true).await
 }
 
 /// `{state: "closed" | "still-running"}`; 400 for an unknown game, 409 if it is not running or
 /// already being quit. Answers within ~25 s; a longer quit carries on and reports still-running.
 async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
-    let q = match parse::<QuitReq>(&b) {
-        Ok(q) => q,
+    let (g, force) = match parse::<GameReq>(&b) {
+        Ok(q) => match need_game(&s, raw_id(q.id, q.appid)).await {
+            Ok(g) => (g, q.force),
+            Err(r) => return r,
+        },
         Err(r) => return r,
     };
-    if let Err(r) = check_appid(&s, Some(q.appid)).await {
-        return r;
-    }
     // Own task: a client that hangs up must not stop a quit between its steps.
     let s2 = s.clone();
-    let job = tokio::spawn(async move { s2.quit.quit(q.appid, q.force).await });
+    let job = tokio::spawn(async move { s2.quit.quit(&g.id, force).await });
     let state = match tokio::time::timeout(std::time::Duration::from_secs(25), job).await {
         Ok(Ok(Ok(st))) => st,
         Ok(Ok(Err(QuitError::NotRunning))) => return err(StatusCode::CONFLICT, "not running"),
@@ -620,10 +647,16 @@ struct PrefsBody {
 /// body or for the Desktop app, which has no per-game quality.
 async fn prefs_put(
     State(s): State<Arc<AppState>>,
-    UrlPath(id): UrlPath<u32>,
+    UrlPath(raw): UrlPath<String>,
     b: axum::body::Bytes,
 ) -> Response {
-    if id == 0 || id == s.cfg.app_id {
+    let Some(id) = s.parse_id(&raw) else {
+        return err(StatusCode::BAD_REQUEST, "bad game id");
+    };
+    if id
+        .steam_appid()
+        .is_some_and(|n| n == 0 || n == s.cfg.app_id)
+    {
         return err(
             StatusCode::BAD_REQUEST,
             "the Desktop has no per-game quality",
@@ -641,6 +674,7 @@ async fn prefs_put(
         bitrate_kbps: b.bitrate_kbps,
         codec: b.codec,
         appid: None,
+        id: None,
     };
     if let Err(e) = req.flags() {
         return err(StatusCode::BAD_REQUEST, &e);
@@ -656,12 +690,17 @@ async fn prefs_put(
         bitrate_kbps: keep(b.bitrate_kbps),
         updated: 0,
     };
-    axum::Json(s.prefs.put(id, e)).into_response()
+    axum::Json(s.prefs.put(id.as_str(), e)).into_response()
 }
 
-async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<u32>) -> Response {
-    s.prefs.delete(id);
-    StatusCode::NO_CONTENT.into_response()
+async fn prefs_delete(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
+    match s.parse_id(&raw) {
+        Some(id) => {
+            s.prefs.delete(id.as_str());
+            StatusCode::NO_CONTENT.into_response()
+        }
+        None => err(StatusCode::BAD_REQUEST, "bad game id"),
+    }
 }
 
 fn notes_err(e: NotesError) -> Response {
@@ -700,32 +739,36 @@ async fn tag_delete(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>
 /// One game's note and tags; answers with what was stored (unknown tag ids dropped).
 async fn game_note_put(
     State(s): State<Arc<AppState>>,
-    UrlPath(appid): UrlPath<u32>,
+    UrlPath(raw): UrlPath<String>,
     b: axum::body::Bytes,
 ) -> Response {
-    match parse::<GameNote>(&b).map(|g| s.notes.put_game(appid, g)) {
+    let Some(id) = s.parse_id(&raw) else {
+        return err(StatusCode::BAD_REQUEST, "bad game id");
+    };
+    match parse::<GameNote>(&b).map(|g| s.notes.put_game(id.as_str(), g)) {
         Ok(Ok(g)) => axum::Json(g).into_response(),
         Ok(Err(e)) => notes_err(e),
         Err(r) => r,
     }
 }
 
-/// The editor needs a Dolphin entry in `emulators.json`; and whether any Dolphin runs (the config
-/// files are shared, so any running Dolphin owns them).
+/// The editor needs a library game whose emulator has this editor (`registry` controller types);
+/// and whether any such emulator runs (the config files are shared, so any running one owns them).
 #[allow(clippy::result_large_err)]
 fn controls_gate(s: &AppState, kind: &str) -> Result<(PadKind, bool), Response> {
     let Some(kind) = PadKind::parse(kind) else {
         return Err(err(StatusCode::NOT_FOUND, "no such controller type"));
     };
-    let entries = crate::emu::load(&s.cfg.data_dir);
-    if !crate::emu::has_dolphin(&entries) {
+    let recs = crate::emu::load(&s.cfg.data_dir);
+    let mut editable = recs
+        .iter()
+        .filter(|r| crate::emu::caps(&r.emulator).controls)
+        .peekable();
+    if editable.peek().is_none() {
         return Err(err(StatusCode::NOT_FOUND, "no controls on this machine"));
     }
     let ps = crate::running::procs(&s.cfg.proc_dir);
-    let running = entries
-        .iter()
-        .filter(|e| e.emulator == "dolphin")
-        .any(|e| !crate::emu::pids(&ps, e).is_empty());
+    let running = editable.any(|r| !crate::emu::pids(&ps, r).is_empty());
     Ok((kind, running))
 }
 
@@ -776,11 +819,11 @@ async fn controls_reset(
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/games", get(games))
-        .route("/games/{appid}/info", get(game_info))
-        .route("/games/{appid}/achievements", get(game_achievements))
-        .route("/games/{appid}/news", get(game_news))
-        .route("/games/{appid}/local", get(game_local))
-        .route("/games/{appid}/screenshots/{name}", get(game_screenshot))
+        .route("/games/{id}/info", get(game_info))
+        .route("/games/{id}/achievements", get(game_achievements))
+        .route("/games/{id}/news", get(game_news))
+        .route("/games/{id}/local", get(game_local))
+        .route("/games/{id}/screenshots/{name}", get(game_screenshot))
         .route(
             "/emulators/dolphin/controls/{kind}",
             get(controls_get)
@@ -808,9 +851,9 @@ pub fn router(state: Arc<AppState>) -> Router {
             put(series_put).layer(DefaultBodyLimit::max(1 << 20)),
         )
         .route("/prefs", get(prefs_get))
-        // static beats the {appid} capture in axum's router
+        // static beats the {id} capture in axum's router
         .route("/prefs/layout", put(layout_put).delete(layout_delete))
-        .route("/prefs/{appid}", put(prefs_put).delete(prefs_delete))
+        .route("/prefs/{id}", put(prefs_put).delete(prefs_delete))
         .route("/notes", get(notes_get))
         .route(
             "/notes/tags/{id}",
@@ -819,7 +862,7 @@ pub fn router(state: Arc<AppState>) -> Router {
                 .layer(DefaultBodyLimit::max(16 << 10)),
         )
         .route(
-            "/notes/games/{appid}",
+            "/notes/games/{id}",
             put(game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
         )
         .route("/machines", get(machines::list))

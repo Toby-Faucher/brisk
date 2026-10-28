@@ -244,7 +244,9 @@ async fn not_found_cases() {
 #[tokio::test]
 async fn old_per_game_route_is_gone() {
     let t = rig_file(CL);
-    let id = brisk_hostd::emu::load(&t.dir.path().join("data"))[0].id();
+    let id = brisk_hostd::emu::load(&t.dir.path().join("data"))[0]
+        .id
+        .to_string();
     for u in [
         format!("/api/games/{id}/controls"),
         "/api/games/4026531840/controls".into(),

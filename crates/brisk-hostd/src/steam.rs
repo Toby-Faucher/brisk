@@ -2,45 +2,14 @@
 //! The API key is read from `cfg.steam_key_file` per fetch, never stored or logged.
 
 use crate::config::Config;
+pub use crate::game::Game;
+use crate::game::GameId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const OWNED_TTL_S: u64 = 6 * 3600;
-
-#[derive(Clone, Debug, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Game {
-    pub appid: u32,
-    pub name: String,
-    pub installed: bool,
-    pub size_bytes: Option<u64>,
-    pub last_played: Option<u64>,
-    pub playtime_min: u64,
-    /// Minutes played in the last two weeks (Steam leaves the field out when 0).
-    pub playtime2wk_min: u64,
-    pub cover: String,
-    /// Wide library art (404s for some games: the UI falls back) and the title logo.
-    pub hero: String,
-    pub logo: String,
-    /// Steam is running it now (its launcher reaper is alive).
-    pub running: bool,
-    /// Achievement counts from the cache (filled by the background warm); None until known.
-    pub ach_unlocked: Option<u32>,
-    pub ach_total: Option<u32>,
-    /// Installed, and a patch note newer than the last play (from the news cache).
-    pub updated: bool,
-    /// Steam's own update state of an installed game: "needed" or "running" (from StateFlags).
-    pub update: Option<String>,
-    /// "full" or "partial", from the info cache (None until warmed or when the Store has none).
-    pub controller: Option<String>,
-    /// Co-op or Remote Play Together, from the info cache.
-    pub coop: bool,
-    /// Emulator games only (e.g. "dolphin"): the card's system badge.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub emulator: Option<String>,
-}
 
 #[derive(Clone, Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -50,8 +19,8 @@ pub struct GamesResult {
 }
 
 impl GamesResult {
-    pub fn is_known_appid(&self, id: u32) -> bool {
-        self.games.iter().any(|g| g.appid == id)
+    pub fn find(&self, id: &GameId) -> Option<&Game> {
+        self.games.iter().find(|g| g.id == *id)
     }
 }
 
@@ -461,6 +430,16 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
     }
 }
 
+/// `(cover, hero, logo)` URLs on Steam's CDN.
+fn steam_art(id: u32) -> (String, String, String) {
+    let art = |file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
+    (
+        art("library_600x900.jpg"),
+        art("library_hero.jpg"),
+        art("logo.png"),
+    )
+}
+
 pub async fn load_games(cfg: &Config) -> GamesResult {
     load_games_with(cfg, false).await
 }
@@ -473,32 +452,13 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let (owned, owned_available) = owned(cfg, refresh).await;
 
     let mut by_id: HashMap<u32, Game> = HashMap::new();
-    let art =
-        |id, file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
     for o in owned {
-        by_id.insert(
-            o.appid,
-            Game {
-                appid: o.appid,
-                name: o.name,
-                installed: false,
-                size_bytes: None,
-                last_played: (o.rtime_last_played > 0).then_some(o.rtime_last_played),
-                playtime_min: o.playtime_forever,
-                playtime2wk_min: o.playtime_2weeks,
-                cover: art(o.appid, "library_600x900.jpg"),
-                hero: art(o.appid, "library_hero.jpg"),
-                logo: art(o.appid, "logo.png"),
-                running: false,
-                ach_unlocked: None,
-                ach_total: None,
-                updated: false,
-                update: None,
-                controller: None,
-                coop: false,
-                emulator: None,
-            },
-        );
+        let mut g = Game::steam(o.appid, &o.name);
+        g.last_played = (o.rtime_last_played > 0).then_some(o.rtime_last_played);
+        g.playtime_min = o.playtime_forever;
+        g.playtime2wk_min = o.playtime_2weeks;
+        (g.cover, g.hero, g.logo) = steam_art(o.appid);
+        by_id.insert(o.appid, g);
     }
     for i in installed {
         // Steam tools (runtimes, Proton) have manifests but are not games: the owned list is the
@@ -518,25 +478,10 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
         } {
             continue;
         }
-        let g = by_id.entry(i.appid).or_insert_with(|| Game {
-            appid: i.appid,
-            name: i.name.clone(),
-            installed: false,
-            size_bytes: None,
-            last_played: None,
-            playtime_min: 0,
-            playtime2wk_min: 0,
-            cover: art(i.appid, "library_600x900.jpg"),
-            hero: art(i.appid, "library_hero.jpg"),
-            logo: art(i.appid, "logo.png"),
-            running: false,
-            ach_unlocked: None,
-            ach_total: None,
-            updated: false,
-            update: None,
-            controller: None,
-            coop: false,
-            emulator: None,
+        let g = by_id.entry(i.appid).or_insert_with(|| {
+            let mut g = Game::steam(i.appid, &i.name);
+            (g.cover, g.hero, g.logo) = steam_art(i.appid);
+            g
         });
         g.installed = i.state_flags & 4 != 0;
         g.update = i.update.clone();

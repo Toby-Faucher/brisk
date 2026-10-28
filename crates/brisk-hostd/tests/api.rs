@@ -2,6 +2,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::Response;
 use brisk_hostd::config::Config;
+use brisk_hostd::game::GameId;
 use brisk_hostd::http::{AppState, router};
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -398,8 +399,8 @@ async fn owned_cache_is_used_until_refresh() {
 async fn is_known_appid_uses_cached_library() {
     let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", Some(KEY));
     let st = AppState::new(s.cfg.clone());
-    assert!(st.is_known_appid(570).await);
-    assert!(!st.is_known_appid(999).await);
+    assert!(st.game(&GameId::steam(570)).await.is_some());
+    assert!(st.game(&GameId::steam(999)).await.is_none());
 }
 
 #[tokio::test]
@@ -605,25 +606,10 @@ fn rig_at(mode: &str, service: bool, base: &str) -> Rig {
     let runner = Arc::new(Calls(Default::default()));
     let st = AppState::with_host(cfg, runner.clone(), Arc::new(Clock0));
     *st.games.lock().unwrap() = Some(GamesResult {
-        games: vec![Game {
-            appid: 10,
-            name: "Half-Life".into(),
-            installed: true,
-            size_bytes: None,
-            last_played: None,
-            playtime_min: 0,
-            playtime2wk_min: 0,
-            cover: String::new(),
-            hero: String::new(),
-            logo: String::new(),
-            running: false,
-            ach_unlocked: None,
-            ach_total: None,
-            updated: false,
-            update: None,
-            controller: None,
-            coop: false,
-            emulator: None,
+        games: vec![{
+            let mut g = Game::steam(10, "Half-Life");
+            g.installed = true;
+            g
         }],
         owned_available: true,
     });
@@ -1271,17 +1257,21 @@ async fn games_marks_running_game() {
 }
 
 /// A rig whose library also holds one Dolphin game (its file exists); returns the rig and its id.
-fn emu_rig(base: &str) -> (Rig, u32) {
+fn emu_rig(base: &str) -> (Rig, String) {
     let r = rig_at("", false, base);
     let iso = r.data.join("mk.iso");
     std::fs::create_dir_all(&r.data).unwrap();
     std::fs::write(&iso, "x").unwrap();
-    let e = brisk_hostd::emu::Entry {
-        name: "Mario Kart Wii".into(),
-        emulator: "dolphin".into(),
-        file: iso,
-    };
-    let games = brisk_hostd::emu::games(std::slice::from_ref(&e), &r.proc, &r.data);
+    std::fs::write(
+        r.data.join("emulators.json"),
+        serde_json::to_string(
+            &serde_json::json!([{"name": "Mario Kart Wii", "emulator": "dolphin", "file": iso}]),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let recs = brisk_hostd::emu::load(&r.data);
+    let games = brisk_hostd::emu::games(&recs, &r.proc, &r.data);
     r.state
         .games
         .lock()
@@ -1290,26 +1280,17 @@ fn emu_rig(base: &str) -> (Rig, u32) {
         .unwrap()
         .games
         .extend(games);
-    std::fs::write(
-        r.data.join("emulators.json"),
-        serde_json::to_string(
-            &serde_json::json!([{"name": e.name, "emulator": "dolphin", "file": e.file}]),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    let id = e.id();
-    (r, id)
+    (r, recs[0].id.to_string())
 }
 
 #[tokio::test]
-async fn emulator_appid_stream_spawns_dolphin_and_never_steam() {
+async fn emulator_id_stream_spawns_dolphin_and_never_steam() {
     let (r, id) = emu_rig("http://127.0.0.1:1");
     let (st, v) = r
         .call(
             "POST",
             "/api/stream",
-            &format!(r#"{{"preset":"balanced","appid":{id}}}"#),
+            &format!(r#"{{"preset":"balanced","id":"{id}"}}"#),
         )
         .await;
     assert_eq!(st, StatusCode::OK, "{v}");
@@ -1337,7 +1318,7 @@ async fn emulator_appid_stream_spawns_dolphin_and_never_steam() {
 }
 
 #[tokio::test]
-async fn emulator_appid_has_no_steam_details_and_no_outbound_call() {
+async fn emulator_id_has_no_steam_details_and_no_outbound_call() {
     let (base, hits) = mock_steam_hits(vec![]).await;
     let (r, id) = emu_rig(&base);
     for what in ["info", "achievements", "news"] {

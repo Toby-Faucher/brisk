@@ -3,8 +3,10 @@
 //! else the tailscale IP looked up at each start, see `resolve_listen`).
 
 use crate::config::Config;
+use crate::game::{Game, GameId, Source};
 use crate::host::Runner;
 use crate::sessions::{Report, SessionRec, Sessions, now_ms};
+use crate::source::of;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
@@ -51,8 +53,27 @@ pub struct StreamReq {
     pub bitrate_kbps: Option<u32>,
     #[serde(default)]
     pub codec: Codec,
-    /// Set on a fresh start from a game; the page omits it for a quality change.
+    /// Set on a fresh start from a game; the page omits both for a quality change. `id` is the new
+    /// string id (or a bare number); `appid` is the old numeric field, still read.
     pub appid: Option<u32>,
+    pub id: Option<RawId>,
+}
+
+/// A game id as a request carries it: text (`steam:620`) or a bare number.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum RawId {
+    Num(u32),
+    Text(String),
+}
+
+impl RawId {
+    pub fn text(&self) -> String {
+        match self {
+            RawId::Num(n) => n.to_string(),
+            RawId::Text(t) => t.clone(),
+        }
+    }
 }
 
 impl StreamReq {
@@ -97,6 +118,8 @@ pub struct StreamInfo {
     pub preset: Option<Preset>,
     pub codec: Option<Codec>,
     pub appid: Option<u32>,
+    #[serde(rename = "gameId")]
+    pub game_id: Option<String>,
     pub wt: Option<String>,
     pub hash: Option<String>,
     /// The live session's id (its record's `started`), for `PUT /api/sessions/<started>/series`.
@@ -112,6 +135,7 @@ const IDLE: StreamInfo = StreamInfo {
     preset: None,
     codec: None,
     appid: None,
+    game_id: None,
     wt: None,
     hash: None,
     started: None,
@@ -205,8 +229,9 @@ impl Supervisor {
     }
 
     /// Stops any running bridge, starts a new one and waits for its `page` line. `game` names
-    /// the session record. Callers validate `req` (flags, appid) first.
-    pub async fn start(&self, req: StreamReq, game: Option<String>) -> Result<StreamInfo, String> {
+    /// the session record. Callers validate `req` (flags) and resolve the game first; `game` is
+    /// set on a fresh start from a game and None for a quality change or the Desktop.
+    pub async fn start(&self, req: StreamReq, game: Option<Game>) -> Result<StreamInfo, String> {
         let [w, h, fps, kbps] = req.flags()?;
         let mut slot = self.child.lock().await;
         if self.shutting_down() {
@@ -223,8 +248,12 @@ impl Supervisor {
         .await
         .map_err(|e| e.to_string())??;
         let (prev, prev_rec) = self.stop_locked(&mut slot).await;
-        let quality_change = req.appid.is_none() && prev.state == State::Live;
-        let appid = req.appid.or(prev.appid.filter(|_| quality_change));
+        let quality_change = game.is_none() && prev.state == State::Live;
+        let (appid, game_id) = match &game {
+            Some(g) => (Some(g.appid), Some(g.id.to_string())),
+            None if quality_change => (prev.appid, prev.game_id.clone()),
+            None => (None, None),
+        };
         let mut rec = prev_rec;
         if !quality_change && let Some(r) = rec.take() {
             self.sessions.close(r);
@@ -236,6 +265,7 @@ impl Supervisor {
                 preset: Some(req.preset),
                 codec: Some(req.codec),
                 appid,
+                game_id: game_id.clone(),
                 ..IDLE
             };
             s.epoch
@@ -294,7 +324,7 @@ impl Supervisor {
             self.sessions.clone(),
             self.runner.clone(),
         );
-        let mut launch = req.appid;
+        let mut launch = game.as_ref().map(|g| g.id.clone());
         let (proc, data) = (self.proc_dir.clone(), self.data_dir.clone());
         let quiet = self.quiet;
         let report = Arc::new(Mutex::new(Report::default()));
@@ -382,7 +412,8 @@ impl Supervisor {
             None => {
                 let r = SessionRec {
                     appid,
-                    name: game.unwrap_or_else(|| "Desktop".into()),
+                    game_id: game_id.clone(),
+                    name: game.map_or_else(|| "Desktop".into(), |g| g.name),
                     started: now_ms(),
                     ended: None,
                     host: hostname(),
@@ -402,6 +433,7 @@ impl Supervisor {
             preset: Some(req.preset),
             codec: Some(req.codec),
             appid,
+            game_id,
             wt: Some(wt),
             hash: Some(hash),
             started: Some(rec.started),
@@ -473,23 +505,29 @@ impl Supervisor {
         prev
     }
 
-    /// `steam steam://<verb>/<id>` in the graphical session. Blocking.
-    pub fn steam(&self, verb: &str, id: u32) -> bool {
-        steam(&*self.runner, verb, id)
+    /// Install through the game's source; None when it has nothing to install. Blocking.
+    pub fn install(&self, id: &GameId) -> Option<bool> {
+        of(id).install(&*self.runner, id)
     }
 
-    /// Starts an emulator game from `emu::load` in the graphical session (or finds it already
-    /// running), then focuses its window in the background for up to a minute. Blocking; needs
-    /// a tokio runtime context.
-    pub fn emulator(&self, entries: Vec<crate::emu::Entry>, id: u32) -> bool {
-        let env = graphical_env();
-        if !crate::emu::launch(&*self.runner, &self.proc_dir, &entries, id, &env) {
+    /// Starts the game through its source (an emulator already running it is left alone), stamps
+    /// last-played if the source keeps one, and for a source that names a window class focuses
+    /// that window in the background for up to a minute. Blocking; needs a tokio runtime context.
+    pub fn launch(&self, id: &GameId) -> bool {
+        let (src, env) = (of(id), graphical_env());
+        if !src.launch(&*self.runner, &self.proc_dir, &self.data_dir, id, &env) {
             return false;
         }
-        let r = self.runner.clone();
-        tokio::spawn(async move {
-            crate::emu::focus(r, &entries, id, env, Duration::from_secs(60)).await;
-        });
+        src.after_launch(&self.data_dir, id);
+        if src.focus_class(&self.data_dir, id).is_some() {
+            let (r, p, d, id) = (
+                self.runner.clone(),
+                self.proc_dir.clone(),
+                self.data_dir.clone(),
+                id.clone(),
+            );
+            tokio::spawn(async move { focus(r, p, d, env, id, Duration::from_secs(60)).await });
+        }
         true
     }
 }
@@ -636,41 +674,53 @@ fn hostname() -> String {
         .map_or_else(|_| "bawn".into(), |s| s.trim().to_string())
 }
 
-/// A running game is only brought to the front: `rungameid` on it does nothing useful and leaves
-/// its window small on the desktop. Then waits up to a minute for the window to fullscreen it.
-async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf, id: u32) {
-    if crate::emu::is_emu_id(id) {
-        let (r, p) = (runner.clone(), proc);
-        let entries = crate::emu::load(&data);
-        let (env, e2) = (graphical_env(), entries.clone());
-        let ok = tokio::task::spawn_blocking(move || {
-            crate::emu::launch(&*r, &p, &e2, id, &graphical_env())
-        })
-        .await
-        .unwrap_or(false);
-        if ok {
-            crate::emu::mark_played(&data, id);
-            crate::emu::focus(runner, &entries, id, env, Duration::from_secs(60)).await;
-        }
-        return;
+/// Waits up to `wait` for the game's window, then focuses and fullscreens it: found by the
+/// source's window class, else through the game's process tree. A miss is only logged.
+pub(crate) async fn focus(
+    runner: Arc<dyn Runner>,
+    proc: PathBuf,
+    data: PathBuf,
+    env: Vec<(String, String)>,
+    id: GameId,
+    wait: Duration,
+) {
+    if let Some(class) = of(&id).focus_class(&data, &id) {
+        crate::running::focus_class(runner, env, class, id.to_string(), wait).await;
+    } else if let Some(n) = id.steam_appid() {
+        crate::running::focus_game(runner, proc, env, n, wait).await;
     }
-    let (r, p) = (runner.clone(), proc.clone());
-    let env = tokio::task::spawn_blocking(move || {
-        if crate::running::running_appids(&p).contains(&id) {
-            eprintln!("info: game {id} is already running; streaming it without relaunch");
+}
+
+/// A running game is only brought to the front: launching it again does nothing useful and
+/// leaves its window small on the desktop. Then waits up to a minute for the window to fullscreen it.
+async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf, id: GameId) {
+    let (r, p, d, i) = (runner.clone(), proc.clone(), data.clone(), id.clone());
+    let (ok, env) = tokio::task::spawn_blocking(move || {
+        let src = of(&i);
+        let env = graphical_env();
+        let running = src.scope(&crate::running::procs(&p), &d, &i).is_some();
+        // The emulator source skips a spawn for a running game itself; Steam is told here.
+        let ok = if running && i.source() == Source::Steam {
+            eprintln!("info: game {i} is already running; streaming it without relaunch");
+            true
         } else {
-            steam(&*r, "rungameid", id);
+            src.launch(&*r, &p, &d, &i, &env)
+        };
+        if ok {
+            src.after_launch(&d, &i);
         }
-        graphical_env()
+        (ok, env)
     })
     .await
     .unwrap_or_default();
-    crate::running::focus_game(runner, proc, env, id, Duration::from_secs(60)).await;
+    if ok {
+        focus(runner, proc, data, env, id, Duration::from_secs(60)).await;
+    }
 }
 
-/// `appid` is a u32 validated by the caller, so the URL cannot carry anything else. Detached:
+/// `id` is a u32 validated by the caller, so the URL cannot carry anything else. Detached:
 /// true once steam is running (it hands the URL to the running client and exits).
-fn steam(runner: &dyn Runner, verb: &str, id: u32) -> bool {
+pub(crate) fn steam(runner: &dyn Runner, verb: &str, id: u32) -> bool {
     runner.spawn(
         "steam",
         &[&format!("steam://{verb}/{id}")],

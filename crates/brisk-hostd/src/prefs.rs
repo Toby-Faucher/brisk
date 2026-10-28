@@ -1,4 +1,4 @@
-//! Per-game quality in `data_dir/prefs.json` (`{"<appid>": Entry}`): written whole to a 0600 temp
+//! Per-game quality in `data_dir/prefs.json` (`{"<game id>": Entry}`, ids like `steam:620`): written whole to a 0600 temp
 //! file and renamed over the old one, read tolerantly (a missing or corrupt file is just empty).
 //! The Home card order and the Machines page order ride along under
 //! `"layout": {"v": 1, "homeOrder": [...], "machinesOrder": [...], "machineColors": {id: "#rrggbb"}}`
@@ -73,7 +73,7 @@ fn clean_ids(ids: Vec<String>, max: usize) -> Vec<String> {
 
 #[derive(Default)]
 struct Inner {
-    map: BTreeMap<u32, Entry>,
+    map: BTreeMap<String, Entry>,
     home: Vec<String>,
     machines: Vec<String>,
     colors: BTreeMap<String, String>,
@@ -137,9 +137,13 @@ impl Prefs {
             .filter_map(|(k, v)| valid_id(&k).then_some((k.clone(), normalize_color(v.as_str()?)?)))
             .take(COLORS_MAX)
             .collect();
-        let mut map: BTreeMap<u32, Entry> = raw
+        // Keys are kept as they are, even an old number the migration could not map (never dropped).
+        let mut map: BTreeMap<String, Entry> = raw
             .into_iter()
-            .filter_map(|(k, v)| Some((k.parse().ok()?, serde_json::from_value(v).ok()?)))
+            .filter(|(k, _)| {
+                crate::game::GameId::parse(k).is_some() || k.bytes().all(|b| b.is_ascii_digit())
+            })
+            .filter_map(|(k, v)| Some((k, serde_json::from_value(v).ok()?)))
             .collect();
         evict(&mut map);
         Prefs {
@@ -153,7 +157,7 @@ impl Prefs {
         }
     }
 
-    pub fn all(&self) -> BTreeMap<u32, Entry> {
+    pub fn all(&self) -> BTreeMap<String, Entry> {
         self.inner.lock().unwrap().map.clone()
     }
 
@@ -207,27 +211,27 @@ impl Prefs {
     }
 
     /// Stores `e` with its `updated` as given and writes the file.
-    pub fn put_entry(&self, appid: u32, e: Entry) {
+    pub fn put_entry(&self, id: &str, e: Entry) {
         let mut m = self.inner.lock().unwrap();
-        m.map.insert(appid, e);
+        m.map.insert(id.into(), e);
         evict(&mut m.map);
         self.save(&m);
     }
 
     /// Like `put_entry` with `updated` = now, but always newer than every entry already there.
-    pub fn put(&self, appid: u32, mut e: Entry) -> Entry {
+    pub fn put(&self, id: &str, mut e: Entry) -> Entry {
         let mut m = self.inner.lock().unwrap();
         let newest = m.map.values().map(|e| e.updated).max().unwrap_or(0);
         e.updated = now_ms().max(newest + 1);
-        m.map.insert(appid, e.clone());
+        m.map.insert(id.into(), e.clone());
         evict(&mut m.map);
         self.save(&m);
         e
     }
 
-    pub fn delete(&self, appid: u32) {
+    pub fn delete(&self, id: &str) {
         let mut m = self.inner.lock().unwrap();
-        if m.map.remove(&appid).is_some() {
+        if m.map.remove(id).is_some() {
             self.save(&m);
         }
     }
@@ -273,13 +277,13 @@ impl Prefs {
     }
 }
 
-/// Drops the oldest by `updated` (lowest appid on a tie) until the cap holds.
-fn evict(m: &mut BTreeMap<u32, Entry>) {
+/// Drops the oldest by `updated` (lowest id text on a tie) until the cap holds.
+fn evict(m: &mut BTreeMap<String, Entry>) {
     while m.len() > MAX_ENTRIES {
         let oldest = m
             .iter()
-            .min_by_key(|(id, e)| (e.updated, **id))
-            .map(|(id, _)| *id);
+            .min_by_key(|(id, e)| (e.updated, id.as_str()))
+            .map(|(id, _)| id.clone());
         m.remove(&oldest.unwrap());
     }
 }

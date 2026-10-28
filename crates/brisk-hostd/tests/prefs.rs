@@ -124,15 +124,15 @@ async fn put_get_delete_roundtrip() {
     t.put("8", json!({"preset":"crisp","codec":"h264","width":2560}))
         .await;
     let all = t.all().await;
-    assert_eq!(all["7"]["preset"], "custom");
-    assert_eq!(all["7"]["codec"], "hevc");
-    assert_eq!(all["7"]["width"], 2560);
-    assert_eq!(all["7"]["bitrateKbps"], 50000);
-    assert!(all["7"]["updated"].as_u64().unwrap() > 0);
-    assert!(all["8"].get("width").is_none());
+    assert_eq!(all["steam:7"]["preset"], "custom");
+    assert_eq!(all["steam:7"]["codec"], "hevc");
+    assert_eq!(all["steam:7"]["width"], 2560);
+    assert_eq!(all["steam:7"]["bitrateKbps"], 50000);
+    assert!(all["steam:7"]["updated"].as_u64().unwrap() > 0);
+    assert!(all["steam:8"].get("width").is_none());
     // last write wins
     t.put("8", json!({"preset":"fast","codec":"hevc"})).await;
-    assert_eq!(t.all().await["8"]["preset"], "fast");
+    assert_eq!(t.all().await["steam:8"]["preset"], "fast");
     assert_eq!(
         t.call("DELETE", "/api/prefs/8", true, None).await.0,
         StatusCode::NO_CONTENT
@@ -141,8 +141,8 @@ async fn put_get_delete_roundtrip() {
         t.call("DELETE", "/api/prefs/8", true, None).await.0,
         StatusCode::NO_CONTENT
     ); // idempotent
-    assert!(t.all().await.get("8").is_none());
-    assert!(t.all().await.get("7").is_some());
+    assert!(t.all().await.get("steam:8").is_none());
+    assert!(t.all().await.get("steam:7").is_some());
 }
 
 #[tokio::test]
@@ -150,7 +150,7 @@ async fn named_preset_ignores_out_of_range_custom_numbers() {
     let t = t();
     let b = json!({"preset":"balanced","codec":"h264","width":99999,"fps":1,"bitrateKbps":5});
     assert_eq!(t.put("3", b).await, StatusCode::OK);
-    let e = t.all().await["3"].clone();
+    let e = t.all().await["steam:3"].clone();
     assert!(e.get("width").is_none() && e.get("fps").is_none() && e.get("bitrateKbps").is_none());
 }
 
@@ -203,7 +203,7 @@ async fn file_is_0600_atomic_and_survives_restart() {
     assert_eq!(names, vec![std::ffi::OsString::from("prefs.json")]);
     // a new process reads it back
     let t2 = t_in(t.dir);
-    assert_eq!(t2.all().await["5"]["codec"], "hevc");
+    assert_eq!(t2.all().await["steam:5"]["codec"], "hevc");
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn corrupt_or_missing_file_starts_empty_and_recovers() {
         StatusCode::OK
     );
     let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
-    assert_eq!(on_disk["9"]["preset"], "fast");
+    assert_eq!(on_disk["steam:9"]["preset"], "fast");
 }
 
 #[test]
@@ -226,7 +226,10 @@ fn entries_with_bad_values_in_the_file_are_dropped_not_fatal() {
     let p = d.path().join("prefs.json");
     std::fs::write(&p, r#"{"1":{"preset":"fast","codec":"h264","updated":1},"x":{"preset":"fast","codec":"h264","updated":1},"2":{"preset":"bogus","codec":"h264","updated":1}}"#).unwrap();
     let all = Prefs::load(p).all();
-    assert_eq!(all.keys().copied().collect::<Vec<_>>(), vec![1]);
+    assert_eq!(
+        all.keys().cloned().collect::<Vec<_>>(),
+        vec!["1".to_string()]
+    );
 }
 
 #[test]
@@ -243,16 +246,16 @@ fn cap_drops_the_oldest_by_updated() {
         updated: u,
     };
     for i in 0..MAX_ENTRIES as u32 {
-        p.put_entry(i, e(1000 + i as u64));
+        p.put_entry(&format!("steam:{i}"), e(1000 + i as u64));
     }
     assert_eq!(p.all().len(), MAX_ENTRIES);
-    p.put_entry(99_999, e(5000));
+    p.put_entry("steam:99999", e(5000));
     let all = p.all();
     assert_eq!(all.len(), MAX_ENTRIES);
-    assert!(!all.contains_key(&0), "oldest dropped");
-    assert!(all.contains_key(&1) && all.contains_key(&99_999));
+    assert!(!all.contains_key("steam:0"), "oldest dropped");
+    assert!(all.contains_key("steam:1") && all.contains_key("steam:99999"));
     // re-writing an existing appid never evicts
-    p.put_entry(1, e(6000));
+    p.put_entry("steam:1", e(6000));
     assert_eq!(p.all().len(), MAX_ENTRIES);
 }
 
@@ -287,13 +290,13 @@ async fn home_order_put_get_delete_and_survives_restart() {
     );
     let t2 = t_in(t.dir);
     assert_eq!(t2.home().await, json!(["recent", "host", "library"]));
-    assert_eq!(t2.all().await["5"]["preset"], "fast");
+    assert_eq!(t2.all().await["steam:5"]["preset"], "fast");
     assert_eq!(
         t2.call("DELETE", "/api/prefs/layout", true, None).await.0,
         StatusCode::NO_CONTENT
     );
     assert_eq!(t2.home().await, json!([]));
-    assert_eq!(t2.all().await["5"]["preset"], "fast");
+    assert_eq!(t2.all().await["steam:5"]["preset"], "fast");
 }
 
 #[tokio::test]
