@@ -24,9 +24,17 @@ export function emitCommand(c: StreamCommand): boolean {
 }
 
 /** Ctrl+K entries in hub mode: switch to every other machine, start the ones that are off. */
-export function machineEntries(ms: Machine[], selected: string | null, act: { select: (id: string) => void; start: (id: string) => void }): CommandItem[] {
+export function machineEntries(
+  ms: Machine[],
+  selected: string | null,
+  act: { select: (id: string) => void; start: (id: string) => void },
+): CommandItem[] {
   return ms.flatMap((m) => [
-    ...(m.id === selected ? [] : [{ id: `machine:${m.id}`, label: `Switch to ${m.name}`, hint: 'Machine', icon: 'host', run: () => act.select(m.id) }]),
-    ...(m.state === 'off' && m.canPower ? [{ id: `machine-start:${m.id}`, label: `Start ${m.name}`, hint: 'Machine', icon: 'host', run: () => act.start(m.id) }] : []),
+    ...(m.id === selected
+      ? []
+      : [{ id: `machine:${m.id}`, label: `Switch to ${m.name}`, hint: 'Machine', icon: 'host', run: () => act.select(m.id) }]),
+    ...(m.state === 'off' && m.canPower
+      ? [{ id: `machine-start:${m.id}`, label: `Start ${m.name}`, hint: 'Machine', icon: 'host', run: () => act.start(m.id) }]
+      : []),
   ]);
 }

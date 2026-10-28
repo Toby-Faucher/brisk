@@ -2,8 +2,32 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Game } from '../../state/api';
 import { fmtPlaytime, gamesHeader, layoutFor, listGames, loadSort, saveSort, stepIndex } from './modal';
 
-const g = (o: Partial<Game>): Game => ({ appid: 1, name: 'A', installed: true, sizeBytes: null, lastPlayed: null, playtimeMin: 0, playtime2wkMin: 0, cover: '', hero: '', logo: '', running: false, achUnlocked: null, achTotal: null, updated: false, update: null, controller: null, coop: false, ...o });
-const set = [g({ appid: 1, name: 'Zed', sizeBytes: 5e9, lastPlayed: 10, playtimeMin: 30 }), g({ appid: 2, name: 'alpha', sizeBytes: 2e10, lastPlayed: 50, playtimeMin: 600 }), g({ appid: 3, name: 'Mid', installed: false, sizeBytes: 9e9 }), g({ appid: 4, name: 'Beta' })];
+const g = (o: Partial<Game>): Game => ({
+  appid: 1,
+  name: 'A',
+  installed: true,
+  sizeBytes: null,
+  lastPlayed: null,
+  playtimeMin: 0,
+  playtime2wkMin: 0,
+  cover: '',
+  hero: '',
+  logo: '',
+  running: false,
+  achUnlocked: null,
+  achTotal: null,
+  updated: false,
+  update: null,
+  controller: null,
+  coop: false,
+  ...o,
+});
+const set = [
+  g({ appid: 1, name: 'Zed', sizeBytes: 5e9, lastPlayed: 10, playtimeMin: 30 }),
+  g({ appid: 2, name: 'alpha', sizeBytes: 2e10, lastPlayed: 50, playtimeMin: 600 }),
+  g({ appid: 3, name: 'Mid', installed: false, sizeBytes: 9e9 }),
+  g({ appid: 4, name: 'Beta' }),
+];
 const names = (l: Game[]) => l.map((x) => x.name);
 
 describe('modal helpers', () => {
@@ -46,7 +70,14 @@ describe('modal helpers', () => {
     expect(loadSort()).toBe('size');
     mem.set('brisk.machineGamesSort', 'junk');
     expect(loadSort()).toBe('name');
-    vi.stubGlobal('sessionStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    });
     expect(loadSort()).toBe('name');
     expect(() => saveSort('size')).not.toThrow();
     vi.unstubAllGlobals();

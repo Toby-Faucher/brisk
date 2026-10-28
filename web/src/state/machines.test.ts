@@ -2,27 +2,56 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 type M = { id: string; state: string; rttMs?: number | null };
-const mk = (id: string, state = 'ready') => ({ id, name: id, state, canPower: true, sunshine: null, host: null, url: `http://${id}.test:8443`, rttMs: 5, vm: null });
+const mk = (id: string, state = 'ready') => ({
+  id,
+  name: id,
+  state,
+  canPower: true,
+  sunshine: null,
+  host: null,
+  url: `http://${id}.test:8443`,
+  rttMs: 5,
+  vm: null,
+});
 
 /** hostd's answer to a layout PUT: the cleaned order, or the colours as stored (a null removes one). */
 const layoutAnswer = (b: { machinesOrder?: string[]; machineColors?: Record<string, string | null> }) =>
-  b.machineColors ? { homeOrder: [], machineColors: Object.fromEntries(Object.entries(b.machineColors).flatMap(([k, v]) => (v ? [[k, v]] : []))) } : { homeOrder: [], machinesOrder: b.machinesOrder!.filter((i) => i !== 'bad') };
+  b.machineColors
+    ? { homeOrder: [], machineColors: Object.fromEntries(Object.entries(b.machineColors).flatMap(([k, v]) => (v ? [[k, v]] : []))) }
+    : { homeOrder: [], machinesOrder: b.machinesOrder!.filter((i) => i !== 'bad') };
 
 /** Fresh module graph per test (the stores are module state), a stubbed hub and in-memory localStorage. */
 async function setup(opts: { list?: M[]; stored?: string; machinesStatus?: number } = {}) {
   vi.resetModules();
   const local = new Map<string, string>(opts.stored ? [['brisk.machine', opts.stored]] : []);
-  vi.stubGlobal('localStorage', { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v), removeItem: (k: string) => void local.delete(k) });
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => local.get(k) ?? null,
+    setItem: (k: string, v: string) => void local.set(k, v),
+    removeItem: (k: string) => void local.delete(k),
+  });
   vi.stubGlobal('sessionStorage', { getItem: () => null, setItem() {} });
   vi.stubGlobal('location', { href: 'http://localhost/' });
-  const state = { list: opts.list ?? [mk('a'), mk('b')], status: opts.machinesStatus ?? 200, fail: false, order: [] as string[], colors: undefined as unknown, putFail: false, ping: 'ok' as 'ok' | 'fail' | 'hang', pingMs: 20 };
+  const state = {
+    list: opts.list ?? [mk('a'), mk('b')],
+    status: opts.machinesStatus ?? 200,
+    fail: false,
+    order: [] as string[],
+    colors: undefined as unknown,
+    putFail: false,
+    ping: 'ok' as 'ok' | 'fail' | 'hang',
+    pingMs: 20,
+  };
   const f = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/machines') {
       if (state.fail) throw new TypeError('network');
       return new Response(JSON.stringify(state.status === 200 ? { machines: state.list } : { error: 'nope' }), { status: state.status });
     }
-    if (url === '/api/prefs') return new Response(JSON.stringify({ prefs: {}, machinesOrder: state.order, machineColors: state.colors }), { status: 200 });
-    if (url === '/api/prefs/layout') return state.putFail ? new Response('{"error":"nope"}', { status: 500 }) : new Response(JSON.stringify(layoutAnswer(JSON.parse(init!.body as string))), { status: 200 });
+    if (url === '/api/prefs')
+      return new Response(JSON.stringify({ prefs: {}, machinesOrder: state.order, machineColors: state.colors }), { status: 200 });
+    if (url === '/api/prefs/layout')
+      return state.putFail
+        ? new Response('{"error":"nope"}', { status: 500 })
+        : new Response(JSON.stringify(layoutAnswer(JSON.parse(init!.body as string))), { status: 200 });
     if (url.startsWith('http')) {
       if (state.ping === 'fail') throw new TypeError('network');
       await new Promise<void>((ok, no) => {
@@ -56,9 +85,32 @@ describe('routing', () => {
     const stop = m.startMachines();
     await vi.advanceTimersByTimeAsync(0);
     expect(get(m.hub)).toBe(true);
-    const routed = ['/api/host', '/api/games', '/api/games/5/info?refresh=1', '/api/friends', '/api/stream', '/api/launch', '/api/install', '/api/quit', '/api/sessions', '/api/sessions/9/series', '/api/sunshine/restart', '/api/clipboard?since=3', '/api/files/x'];
+    const routed = [
+      '/api/host',
+      '/api/games',
+      '/api/games/5/info?refresh=1',
+      '/api/friends',
+      '/api/stream',
+      '/api/launch',
+      '/api/install',
+      '/api/quit',
+      '/api/sessions',
+      '/api/sessions/9/series',
+      '/api/sunshine/restart',
+      '/api/clipboard?since=3',
+      '/api/files/x',
+    ];
     for (const p of routed) expect(a.route(p)).toBe(p.replace('/api/', '/api/m/a/'));
-    for (const p of ['/api/prefs', '/api/prefs/5', '/api/notes/tags/x', '/api/machines', '/api/machines/a/power', '/api/gamesx', '/api/other']) expect(a.route(p)).toBe(p);
+    for (const p of [
+      '/api/prefs',
+      '/api/prefs/5',
+      '/api/notes/tags/x',
+      '/api/machines',
+      '/api/machines/a/power',
+      '/api/gamesx',
+      '/api/other',
+    ])
+      expect(a.route(p)).toBe(p);
     await a.api.gameInfo(5, true);
     expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/games/5/info?refresh=1');
     await a.api.prefs();
@@ -134,7 +186,17 @@ describe('selection', () => {
 
   it('keeps_a_known_stored_id_and_survives_broken_storage', async () => {
     const { m } = await setup({ stored: 'b' });
-    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('x'); }, setItem: () => { throw new Error('x'); }, removeItem: () => { throw new Error('x'); } });
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('x');
+      },
+      setItem: () => {
+        throw new Error('x');
+      },
+      removeItem: () => {
+        throw new Error('x');
+      },
+    });
     m.startMachines();
     await vi.advanceTimersByTimeAsync(0);
     expect(get(m.selected)).toBe('b');
@@ -156,7 +218,9 @@ describe('ensureReady', () => {
     const p = m.ensureReady('a');
     await vi.advanceTimersByTimeAsync(0);
     expect(calls(f, /\/api\/machines\/a\/power/)).toBe(1);
-    expect(JSON.parse((f.mock.calls.find((c) => /power/.test(String(c[0])))![1] as RequestInit).body as string)).toEqual({ action: 'start' });
+    expect(JSON.parse((f.mock.calls.find((c) => /power/.test(String(c[0])))![1] as RequestInit).body as string)).toEqual({
+      action: 'start',
+    });
     expect(get(m.wake)).toMatchObject({ id: 'a', phase: 'waiting' });
     state.list = [mk('a', 'starting')];
     await vi.advanceTimersByTimeAsync(1_500);
@@ -191,7 +255,13 @@ describe('ensureReady', () => {
 
   it('fails_when_proxmox_refuses', async () => {
     const { m, f } = await setup({ list: [mk('a', 'off')] });
-    f.mockImplementation(async (url: string) => (String(url).endsWith('/power') ? new Response('{"error":"proxmox said no"}', { status: 502 }) : new Response('{"machines":[{"id":"a","name":"a","state":"off","canPower":true,"sunshine":null,"host":null,"url":"http://a.test","rttMs":null,"vm":null}]}')));
+    f.mockImplementation(async (url: string) =>
+      String(url).endsWith('/power')
+        ? new Response('{"error":"proxmox said no"}', { status: 502 })
+        : new Response(
+            '{"machines":[{"id":"a","name":"a","state":"off","canPower":true,"sunshine":null,"host":null,"url":"http://a.test","rttMs":null,"vm":null}]}',
+          ),
+    );
     await expect(m.ensureReady('a')).rejects.toMatchObject({ message: 'proxmox said no' });
     expect(get(m.wake)).toMatchObject({ phase: 'failed', error: 'proxmox said no' });
   });
@@ -286,7 +356,8 @@ describe('machine colours', () => {
     await vi.advanceTimersByTimeAsync(0);
     return r;
   };
-  const putBody = (f: ReturnType<typeof vi.fn>) => JSON.parse((f.mock.calls.find((c) => c[0] === '/api/prefs/layout')![1] as RequestInit).body as string);
+  const putBody = (f: ReturnType<typeof vi.fn>) =>
+    JSON.parse((f.mock.calls.find((c) => c[0] === '/api/prefs/layout')![1] as RequestInit).body as string);
 
   it('hue_defaults_to_the_palette_by_server_position', async () => {
     const { m } = await boot();
@@ -366,7 +437,11 @@ describe('forMachine', () => {
 describe('pings', () => {
   function stubDoc() {
     const l = new Set<() => void>();
-    const doc = { hidden: false, addEventListener: (_: string, f: () => void) => l.add(f), removeEventListener: (_: string, f: () => void) => l.delete(f) };
+    const doc = {
+      hidden: false,
+      addEventListener: (_: string, f: () => void) => l.add(f),
+      removeEventListener: (_: string, f: () => void) => l.delete(f),
+    };
     vi.stubGlobal('document', doc);
     return { doc, fire: () => l.forEach((f) => f()), l };
   }

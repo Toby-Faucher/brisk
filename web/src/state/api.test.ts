@@ -63,7 +63,9 @@ describe('api', () => {
     const f = stubFetch(200, { homeOrder: ['1'], machineColors: { a: '#112233' } });
     const r: { machineColors?: Record<string, string> } = await api.putLayout({ machineColors: { a: '#112233', b: null } });
     expect(r.machineColors).toEqual({ a: '#112233' });
-    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ machineColors: { a: '#112233', b: null } });
+    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({
+      machineColors: { a: '#112233', b: null },
+    });
     await api.putLayout(['1']);
     expect(JSON.parse((f.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toEqual({ homeOrder: ['1'] });
   });

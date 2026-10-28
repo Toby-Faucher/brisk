@@ -98,14 +98,16 @@ const lastText = new WeakMap<Element, string>();
  * Svelte writes the text; on a later change the element only fades in from .35 (opacity, native, nothing loaded), so nothing
  * moves and nothing is announced. The first value, an unchanged value and reduced motion do nothing.
  */
-export const fadeOnChange = (value: string, quick = false) => (el: Element) => {
-  const was = lastText.get(el);
-  lastText.set(el, value);
-  if (was === undefined || was === value || onStreamRoute() || reducedMotion()) return; // the host pill is on /stream too: silent there
-  // `quick` (host pill name): a shorter fade from .3
-  const a = el.animate({ opacity: [quick ? 0.3 : 0.35, 1] }, { duration: quick ? 180 : 360, easing: cssVar('--ease') });
-  return () => a.cancel();
-};
+export const fadeOnChange =
+  (value: string, quick = false) =>
+  (el: Element) => {
+    const was = lastText.get(el);
+    lastText.set(el, value);
+    if (was === undefined || was === value || onStreamRoute() || reducedMotion()) return; // the host pill is on /stream too: silent there
+    // `quick` (host pill name): a shorter fade from .3
+    const a = el.animate({ opacity: [quick ? 0.3 : 0.35, 1] }, { duration: quick ? 180 : 360, easing: cssVar('--ease') });
+    return () => a.cancel();
+  };
 
 const swaps = new WeakMap<Element, Animation>();
 

@@ -56,8 +56,10 @@ function tangents(s: { x: number; y: number }[]): number[] {
   d.forEach((k, i) => {
     if (k === 0) m[i] = m[i + 1] = 0;
     else {
-      const a = m[i] / k, b = m[i + 1] / k, h = Math.hypot(a, b);
-      if (h > 3) m[i] = (3 * a * k) / h, m[i + 1] = (3 * b * k) / h;
+      const a = m[i] / k,
+        b = m[i + 1] / k,
+        h = Math.hypot(a, b);
+      if (h > 3) (m[i] = (3 * a * k) / h), (m[i + 1] = (3 * b * k) / h);
     }
   });
   return m;

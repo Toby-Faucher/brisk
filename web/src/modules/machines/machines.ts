@@ -13,7 +13,13 @@ export function restartError(e: unknown): string {
   return `Could not restart Sunshine: ${(e as Error).message}`;
 }
 
-export const STATE_LABEL: Record<MachineState, string> = { off: 'Off', starting: 'Starting…', stopping: 'Shutting down…', ready: 'Ready', unreachable: 'Not reachable' };
+export const STATE_LABEL: Record<MachineState, string> = {
+  off: 'Off',
+  starting: 'Starting…',
+  stopping: 'Shutting down…',
+  ready: 'Ready',
+  unreachable: 'Not reachable',
+};
 
 /** The StatusDot state for a machine: a ready one shows its Sunshine state. */
 export function dotState(m: Pick<Machine, 'state' | 'sunshine'>): 'ready' | 'busy' | 'down' | 'off' {
@@ -22,7 +28,8 @@ export function dotState(m: Pick<Machine, 'state' | 'sunshine'>): 'ready' | 'bus
 }
 
 /** Why a card's Start / Shut down button is unavailable, or null when it works. */
-export const powerWhy = (s: MachineState): string | null => (s === 'starting' ? 'Starting, hang on a moment' : s === 'stopping' ? 'Shutting down, hang on a moment' : null);
+export const powerWhy = (s: MachineState): string | null =>
+  s === 'starting' ? 'Starting, hang on a moment' : s === 'stopping' ? 'Shutting down, hang on a moment' : null;
 
 /** Seconds since `since` (unix ms), never negative. */
 export const elapsedS = (since: number, now = Date.now()) => Math.max(0, Math.floor((now - since) / 1000));
@@ -52,23 +59,35 @@ export function statRows(info: Pick<HostInfo, 'gpuTempC' | 'cpuTempC'>, vm: Vm |
   if (info.gpuTempC != null) rows.push(temp('GPU', info.gpuTempC));
   if (info.cpuTempC != null) rows.push(temp('CPU', info.cpuTempC));
   else if (vm) rows.push({ label: 'CPU load', text: `${Math.round(vm.cpuPct)} %`, n: vm.cpuPct, fmt: (v) => `${Math.round(v)} %` });
-  if (vm) rows.push({ label: 'RAM', text: vm.memTotalBytes > 0 ? `${gb(vm.memUsedBytes)} / ${gb(vm.memTotalBytes)}` : DASH, n: null, fmt: String });
+  if (vm)
+    rows.push({
+      label: 'RAM',
+      text: vm.memTotalBytes > 0 ? `${gb(vm.memUsedBytes)} / ${gb(vm.memTotalBytes)}` : DASH,
+      n: null,
+      fmt: String,
+    });
   return rows;
 }
 
 /** Pointer travel (px) up to which a press and release on a card still count as a click, not a drag or a text selection. */
 export const TAP_PX = 5;
-export const isTap = (down: { x: number; y: number } | null, up: { x: number; y: number }, max = TAP_PX) => !!down && Math.hypot(up.x - down.x, up.y - down.y) <= max;
+export const isTap = (down: { x: number; y: number } | null, up: { x: number; y: number }, max = TAP_PX) =>
+  !!down && Math.hypot(up.x - down.x, up.y - down.y) <= max;
 
 /** The card swap to choreograph: only a change from one machine to another (not the first placement, not a repeat). */
 /** A hub card rests dimmed when it is not the selected machine (and there is more than one to choose from). */
-export const dimmed = (hub: boolean, count: number, selected: string | null, id: string) => hub && count > 1 && !!selected && selected !== id;
+export const dimmed = (hub: boolean, count: number, selected: string | null, id: string) =>
+  hub && count > 1 && !!selected && selected !== id;
 
 export const SUN_LABEL = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
-export const networkText = (i: Pick<HostInfo, 'path' | 'relay'>) => (i.path === 'relay' ? `Relay${i.relay ? ` · ${i.relay}` : ''}` : i.path === 'direct' ? 'Direct' : DASH);
+export const networkText = (i: Pick<HostInfo, 'path' | 'relay'>) =>
+  i.path === 'relay' ? `Relay${i.relay ? ` · ${i.relay}` : ''}` : i.path === 'direct' ? 'Direct' : DASH;
 
 /** The chips under a card header; `running` is the already-worded Running value. */
-export const chipData = (i: Pick<HostInfo, 'sunshine' | 'uptimeS' | 'path' | 'relay'>, running: string): { label: string; value: string }[] => [
+export const chipData = (
+  i: Pick<HostInfo, 'sunshine' | 'uptimeS' | 'path' | 'relay'>,
+  running: string,
+): { label: string; value: string }[] => [
   { label: 'Sunshine', value: SUN_LABEL[i.sunshine] },
   { label: 'Uptime', value: fmtUptime(i.uptimeS) },
   { label: 'Network', value: networkText(i) },
@@ -86,10 +105,32 @@ const pct100 = (v: number) => Math.max(0, Math.min(100, v));
  */
 export function gauges(host: Pick<HostInfo, 'cpuTempC' | 'gpuTempC'> | null, vm: Vm | null): Gauge[] {
   const out: Gauge[] = [];
-  if (host?.cpuTempC != null) out.push({ key: 'cpu', label: 'CPU', pct: pct100(host.cpuTempC), text: `${Math.round(host.cpuTempC)}°`, level: lvl(host.cpuTempC, 70, 85) });
-  else if (vm) out.push({ key: 'cpu', label: 'CPU', pct: pct100(vm.cpuPct), text: `${Math.round(vm.cpuPct)}%`, level: lvl(vm.cpuPct, 70, 90) });
-  if (host?.gpuTempC != null) out.push({ key: 'gpu', label: 'GPU', pct: pct100(host.gpuTempC), text: `${Math.round(host.gpuTempC)}°`, level: lvl(host.gpuTempC, 75, 88) });
-  if (vm) out.push({ key: 'ram', label: 'RAM', pct: 100, text: vm.memTotalBytes > 0 ? `${Math.round(vm.memTotalBytes / GB)}G` : DASH, level: 'static' });
+  if (host?.cpuTempC != null)
+    out.push({
+      key: 'cpu',
+      label: 'CPU',
+      pct: pct100(host.cpuTempC),
+      text: `${Math.round(host.cpuTempC)}°`,
+      level: lvl(host.cpuTempC, 70, 85),
+    });
+  else if (vm)
+    out.push({ key: 'cpu', label: 'CPU', pct: pct100(vm.cpuPct), text: `${Math.round(vm.cpuPct)}%`, level: lvl(vm.cpuPct, 70, 90) });
+  if (host?.gpuTempC != null)
+    out.push({
+      key: 'gpu',
+      label: 'GPU',
+      pct: pct100(host.gpuTempC),
+      text: `${Math.round(host.gpuTempC)}°`,
+      level: lvl(host.gpuTempC, 75, 88),
+    });
+  if (vm)
+    out.push({
+      key: 'ram',
+      label: 'RAM',
+      pct: 100,
+      text: vm.memTotalBytes > 0 ? `${Math.round(vm.memTotalBytes / GB)}G` : DASH,
+      level: 'static',
+    });
   return out;
 }
 

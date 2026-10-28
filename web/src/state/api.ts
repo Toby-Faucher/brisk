@@ -283,7 +283,8 @@ export const api = {
   forMachine,
   /** Hub only, never routed. */
   machines: () => call<{ machines: Machine[] }>('GET', '/api/machines'),
-  power: (id: string, action: 'start' | 'shutdown') => call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
+  power: (id: string, action: 'start' | 'shutdown') =>
+    call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
   host: () => call<HostInfo>('GET', '/api/host'),
   /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
   games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),
@@ -301,10 +302,15 @@ export const api = {
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
-  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('GET', '/api/prefs'),
+  prefs: () =>
+    call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('GET', '/api/prefs'),
   /** Card orders and machine colours (hostd cleans them and answers with what it kept); a bare array is the Home order. An omitted key keeps its value; a colour of null removes that machine's. Reset forgets all. */
   putLayout: (l: string[] | { homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string | null> }) =>
-    call<{ homeOrder: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('PUT', '/api/prefs/layout', Array.isArray(l) ? { homeOrder: l } : l),
+    call<{ homeOrder: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>(
+      'PUT',
+      '/api/prefs/layout',
+      Array.isArray(l) ? { homeOrder: l } : l,
+    ),
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),

@@ -27,7 +27,17 @@ describe('command bus', () => {
 });
 
 describe('machineEntries', () => {
-  const m = (id: string, state: Machine['state'], canPower = true): Machine => ({ id, name: id.toUpperCase(), state, canPower, sunshine: null, host: null, url: '', rttMs: null, vm: null });
+  const m = (id: string, state: Machine['state'], canPower = true): Machine => ({
+    id,
+    name: id.toUpperCase(),
+    state,
+    canPower,
+    sunshine: null,
+    host: null,
+    url: '',
+    rttMs: null,
+    vm: null,
+  });
   it('offers_switch_for_others_and_start_for_off_power_machines', () => {
     const act = { select: vi.fn(), start: vi.fn() };
     const es = machineEntries([m('a', 'ready'), m('b', 'off'), m('c', 'off', false)], 'a', act);
