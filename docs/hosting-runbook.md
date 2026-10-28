@@ -258,6 +258,33 @@ Quit on a Dolphin game closes its window and waits about 5 s, sends SIGTERM and 
 reports still running so the UI can offer Force quit. Nothing is killed without that tap.
 Dolphin reads its config only at start. After a change, quit Dolphin and start the game again.
 
+## RetroAchievements
+Brisk shows your RetroAchievements progress for Wii and GameCube games, read-only. Dolphin earns the
+achievements; brisk only reads them back from the public web API when you open the game (and on a Refresh,
+and every so often while the game runs). Nothing hooks into Dolphin.
+
+1. On retroachievements.org: make an account, then copy the Web API key from the Keys section of the
+   account settings.
+2. On the host, as the games user, write `~/.config/brisk/retroachievements`: line 1 your user name, line 2
+   the key, then `chmod 600` it. Letters, digits, `_`, `-` and `.` only. No file means the panel stays off.
+   (`BRISK_RA_KEY_FILE` moves it, see `docs/env.md`.) Never commit it.
+3. Log in to RetroAchievements inside Dolphin on the VM (Settings, Achievements). This needs a Dolphin
+   build with achievements support (GameCube since 2407-68, Wii since 2603a per
+   `docs/research/emulator-metadata-and-achievements.md`) and Dual Core off. UNVERIFIED: whether the Arch
+   `dolphin-emu` package is built with it.
+4. Only plain `.iso` (GameCube, Wii) and `.wbfs` (Wii) files can be hashed. An RVZ or WIA file shows
+   "unsupported". Hashing reads the whole game once and is cached in `data_dir/ra/hash-cache.json`.
+
+Confirm the hash by hand: `GET /api/games/<id>/ra-hash` answers `{console, hash, container, computedAt}`.
+On retroachievements.org open the game page, then its Supported Game Files list, and compare the hash.
+The GameCube routine and the Wii routine are checked against synthetic images only. Neither has been
+compared with a real disc yet, so a "not found" for a game that has a set may mean a wrong hash: check this
+first.
+
+States of `GET /api/games/<id>/achievements` for an emulator game: `off`, `unsupported`, `not-found`,
+`rate-limited`, `bad-credentials`, `error` and `ok`. `?refresh=1` skips the 5 minute cache, at most once
+every 30 s per game.
+
 ## What needs root, and why
 | Step | Command | Why root |
 |---|---|---|
