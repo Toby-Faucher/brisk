@@ -15,11 +15,11 @@
   import ConnPath from './ConnPath.svelte';
   import MachineModal from './MachineModal.svelte';
   import Slot from '../home/Slot.svelte';
-  import { box, count, fadeOnChange, glide, swapCards } from '../../ui/motion';
+  import { count, fadeOnChange } from '../../ui/motion';
   import { DASH, fmtUptime, reconcileOrder } from '../home/home';
   import { reorder } from '../home/drag';
   import { hub, orderedMachines, pings, startPings, selected, selectMachine, setMachinesOrder, powerMachine } from '../../state/machines';
-  import { isTap, machinesFrom, restartError, swapPlan, dotState, powerWhy, statRows, STATE_LABEL, type Vm } from './machines';
+  import { isTap, machinesFrom, restartError, dimmed, dotState, powerWhy, statRows, STATE_LABEL, type Vm } from './machines';
 
   const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
   let stream = $state<StreamInfo | null>(null);
@@ -55,7 +55,6 @@
   const running = $derived(($games?.games ?? []).filter((g) => g.running));
 
   let grid: HTMLElement | undefined = $state();
-  let ring: HTMLElement | undefined = $state();
   let modal = $state<{ id: string; origin: DOMRect } | null>(null);
   let opener: HTMLElement | null = null;
   let said = $state('');
@@ -90,35 +89,13 @@
     },
   });
 
-  // The Selected ring is one overlay (cards clip their overflow) that glides to the newly selected card while swapCards
-  // choreographs the two cards' content. Not on first placement, and instant under reduced motion.
-  let was: string | null = null;
-  let stopSwap = () => {};
-  function place() {
-    const id = hubOn ? $selected : null;
-    const card = id && grid?.querySelector<HTMLElement>(`[data-card="${id}"]`);
-    if (!ring || !card) return;
-    const from = ring.hidden ? null : box(ring);
-    Object.assign(ring.style, { left: `${card.offsetLeft}px`, top: `${card.offsetTop}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
-    ring.hidden = false;
-    const swap = swapPlan(was, id);
-    if (swap) {
-      if (from) glide(ring, from, box(ring));
-      stopSwap = swapCards(card, grid?.querySelector<HTMLElement>(`[data-card="${swap.from}"]`) ?? null);
-    }
-    was = id;
-  }
-  $effect(() => void [machines, $selected, hubOn, place()]);
-
   onMount(() => {
     const unwatch = watchGames();
     const stopPings = startPings();
-    const ro = new ResizeObserver(place);
-    if (grid) ro.observe(grid);
     const load = () => api.stream().then((s) => (stream = s), () => (stream = null));
     void load();
     const id = setInterval(() => !document.hidden && void load(), 10_000);
-    return () => (clearInterval(id), clearTimeout(timer), unwatch(), stopPings(), ro.disconnect(), stopSwap()); // HostPill keeps $host fresh
+    return () => (clearInterval(id), clearTimeout(timer), unwatch(), stopPings()); // HostPill keeps $host fresh
   });
 
   async function restart() {
@@ -145,7 +122,6 @@
 {/if}
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (the keyboard path is each card's .fill button) -->
 <div class="grid" class:hub={hubOn} bind:this={grid} onpointerdown={(e) => (down = { x: e.clientX, y: e.clientY })} onclick={cardClick} {@attach hubOn ? drag : undefined}>
-  {#if hubOn}<span class="ring" bind:this={ring} aria-hidden="true" hidden></span>{/if}
   {#each machines as m (m.id)}
     {#if hubOn}
       <Slot id={m.id} label={m.name}>{@render card(m)}</Slot>
@@ -166,7 +142,7 @@
     {@const i = m.info}
     {@const here = !hubOn || m.id === $selected}
     {@const why = powerWhy(m.state)}
-    <Card cols={2} rows={2}>
+    <Card cols={2} rows={2} class={hubOn && here ? 'on' : dimmed(hubOn, machines.length, $selected, m.id) ? 'dim' : ''}>
       <!-- the card's one tab stop: visually hidden, the card shows its focus ring; mouse clicks are handled on the grid -->
       {#if hubOn}<button type="button" class="fill" aria-label="Open {m.name} details" onclick={(e) => openModal(e.currentTarget)}></button>{/if}
       <h4><Icon name="host" color="var(--c-host)" size={16} /> {m.name} <StatusDot state={i ? dotState({ state: m.state, sunshine: i.sunshine }) : dotState({ state: m.state, sunshine: null })} />{#if hubOn && here}<span class="sel">Selected</span>{/if}</h4>
@@ -242,11 +218,8 @@
 <style>
   .top { padding: 0 2px 14px; border-bottom: 1px solid var(--line); }
   h2 { font-size: 18px; letter-spacing: -.02em; }
-  /* position: the cards' offsets (drag.ts hit tests, the ring) are relative to the grid */
+  /* position: the cards' offsets (drag.ts hit tests) are relative to the grid */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding-top: 16px; position: relative; }
-  /* the Selected ring: one overlay glided by place(); above the cards, below a lifted one, hidden while one is held */
-  .ring { position: absolute; z-index: 1; pointer-events: none; border: 2px solid var(--accent); border-radius: var(--r-card); box-sizing: border-box; transition: opacity .2s; }
-  .grid:has(:global([data-lifted])) .ring { opacity: 0; }
   /* the whole hub card is the target: pointer, a little brighter on hover; the real controls keep their own cursor */
   .hub :global(.card) { cursor: pointer; }
   .hub :global(.card:hover) { background: color-mix(in srgb, var(--panel) 90%, #fff 4%); }
@@ -270,6 +243,16 @@
   .apps li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .apps span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sel { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); }
+  /* Spotlight: the selected card is lit, the others rest dimmed (their content, not .actions, so Use/Start stay full contrast) */
+  @media (prefers-reduced-motion: no-preference) {
+    .hub :global(.card) { transition: transform var(--spring-soft-dur) var(--spring-soft), scale .3s cubic-bezier(.2, .8, .2, 1), box-shadow .25s, border-color .3s cubic-bezier(.2, .8, .2, 1); }
+    .hub :global(.card.dim > :not(.actions, .grip, .fill)) { transition: opacity .3s cubic-bezier(.2, .8, .2, 1), filter .3s cubic-bezier(.2, .8, .2, 1); }
+    .sel { animation: sel-in .16s .12s ease-out backwards; }
+  }
+  .hub :global(.card.on:not([data-lifted])) { border-color: var(--accent); scale: 1.012; }
+  .hub :global(.card.dim:not([data-lifted]) > :not(.actions, .grip, .fill)) { opacity: .5; filter: saturate(.5); }
+  .hub :global(.card.dim:not([data-lifted]):hover > :not(.actions, .grip, .fill)) { opacity: .85; }
+  @keyframes sel-in { from { opacity: 0; } }
   .sm { padding: 4px 10px; font-size: 13px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
 </style>

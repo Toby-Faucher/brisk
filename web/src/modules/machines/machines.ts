@@ -61,4 +61,5 @@ export const TAP_PX = 5;
 export const isTap = (down: { x: number; y: number } | null, up: { x: number; y: number }, max = TAP_PX) => !!down && Math.hypot(up.x - down.x, up.y - down.y) <= max;
 
 /** The card swap to choreograph: only a change from one machine to another (not the first placement, not a repeat). */
-export const swapPlan = (was: string | null, id: string | null) => (was && id && was !== id ? { from: was, to: id } : null);
+/** A hub card rests dimmed when it is not the selected machine (and there is more than one to choose from). */
+export const dimmed = (hub: boolean, count: number, selected: string | null, id: string) => hub && count > 1 && !!selected && selected !== id;

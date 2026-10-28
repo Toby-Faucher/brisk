@@ -3,8 +3,7 @@ import { ApiError, type HostInfo } from '../../state/api';
 import { get } from 'svelte/store';
 import { afterEach, vi } from 'vitest';
 import { applyAccent, bindAccent } from '../settings/accent';
-import { rowStep } from '../../ui/motion';
-import { isTap, swapPlan, dotState, elapsedS, machinesFrom, powerWhy, restartError, statRows, STATE_LABEL } from './machines';
+import { isTap, dimmed, dotState, elapsedS, machinesFrom, powerWhy, restartError, statRows, STATE_LABEL } from './machines';
 
 const info: HostInfo = { name: 'bawn', sunshine: 'ready', uptimeS: 5, cpuTempC: null, gpuTempC: null, path: null, relay: null };
 
@@ -85,15 +84,11 @@ describe('card click and swap helpers', () => {
     expect(isTap({ x: 10, y: 10 }, { x: 10, y: 16 })).toBe(false);
     expect(isTap(null, { x: 0, y: 0 })).toBe(false);
   });
-  it('swapPlan_only_for_a_change_between_machines', () => {
-    expect(swapPlan(null, 'a')).toBeNull();
-    expect(swapPlan('a', 'a')).toBeNull();
-    expect(swapPlan('a', null)).toBeNull();
-    expect(swapPlan('a', 'b')).toEqual({ from: 'a', to: 'b' });
-  });
-  it('rowStep_caps_the_total_stagger', () => {
-    expect(rowStep(0)).toBe(0);
-    expect(rowStep(4)).toBe(28);
-    expect(rowStep(16)).toBe(10);
+  it('dimmed_only_for_other_cards_in_hub_mode_with_several_machines', () => {
+    expect(dimmed(true, 2, 'a', 'b')).toBe(true);
+    expect(dimmed(true, 2, 'a', 'a')).toBe(false);
+    expect(dimmed(true, 1, 'a', 'b')).toBe(false);
+    expect(dimmed(false, 2, 'a', 'b')).toBe(false);
+    expect(dimmed(true, 2, null, 'b')).toBe(false);
   });
 });
