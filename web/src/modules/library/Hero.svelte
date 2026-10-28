@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { artBg, artSrc } from '../../state/art';
   import type { Game } from '../../state/api';
   import { gameKey, pick } from '../../state/gameId';
   import { prefs, prefsChip } from '../../state/prefs';
@@ -22,13 +23,13 @@
 
 <div class="hero reveal" style="background:radial-gradient(120% 140% at 85% 0%, hsl({hue(game)} 62% 48% / .67), #12151c 62%)">
   {#if heroOk}
-    <img src={game.hero} alt="" hidden onerror={() => (heroBad = game.hero)} />
-    <div class="art" style="background-image:url({game.hero})"></div>
+    <img {@attach artSrc(game.hero)} alt="" hidden onerror={() => (heroBad = game.hero)} />
+    <div class="art" {@attach artBg(game.hero)}></div>
   {/if}
   <Cover {game} style="width:150px;flex:0 0 auto" />
   <div class="txt">
     <div class="lab">{game.running ? 'Running on the host' : 'Continue where you left off'}</div>
-    {#if game.logo}<img class="logo" class:on={logoOk} src={game.logo} alt="" onload={() => (logoLoaded = game.logo)} />{/if}
+    {#if game.logo}<img class="logo" class:on={logoOk} {@attach artSrc(game.logo)} alt="" onload={() => (logoLoaded = game.logo)} />{/if}
     <h3 class:vh={logoOk} {@attach titleIn}><span>{game.name}</span></h3>
     <div class="lab">Played {fmtAgo(game.lastPlayed! * 1000)} · {hrs} total{#if saved} <span class="pchip">{prefsChip(saved)}</span><Tip label="Saved quality for this game" />{/if}</div>
     <div class="acts">

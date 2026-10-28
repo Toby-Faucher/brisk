@@ -7,6 +7,8 @@ export type Caps = {
   launchOptions: boolean;
   saves: boolean;
   screenshots: boolean;
+  /** Art and details from the machine's cache. An old hostd sends none: no art controls. */
+  art?: boolean;
 };
 export type Game = {
   /** The key to use: `steam:620`, `emu:dolphin:mario-kart-wii`. An old hostd sends none (see gameKey in gameId.ts). */
@@ -44,7 +46,16 @@ export type Game = {
   coop: boolean;
   /** Emulator games only (e.g. 'dolphin'): these have no art, so the cover is a title card with this badge. */
   emulator?: string;
+  /** Cached details (only what a source gave) and who they came from, for the credit line. */
+  details?: { year?: number; publisher?: string; developer?: string; languages?: string[] };
+  credits?: string[];
+  /** Art lookup found several possible games and waits for a pick (Settings > Emulators > Art and details). */
+  needsMatch?: boolean;
 };
+export type ArtCandidate = { id: number; name: string; year?: number | null; verified?: boolean };
+export type ArtPending = { id: string; title: string; system?: string; candidates: ArtCandidate[] };
+/** GET /api/art/pending. `hasKey` false: the machine has no SteamGridDB key file. */
+export type ArtQueue = { hasKey: boolean; items: ArtPending[]; credits: string[] };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
 /** GET /api/games/{appid}/achievements. `available` false (no stats, private profile): total is 0. */
@@ -279,7 +290,7 @@ export function setRoute(machineId: string | null, known = true) {
 
 /** Machine-scoped paths go through the hub's `/api/m/{id}/`; prefs, notes and machines stay on the hub itself. */
 const SCOPED =
-  /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators|uploads|library)(?=[/?]|$)/;
+  /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators|uploads|library|art)(?=[/?]|$)/;
 export function route(path: string): string {
   return prefix && SCOPED.test(path) ? `/api/m/${encodeURIComponent(prefix)}/${path.slice(5)}` : path;
 }
@@ -347,6 +358,20 @@ async function getClipboard(since: number | null): Promise<{ seq: number; clip: 
 async function screenshot(key: string, name: string): Promise<string> {
   const r = await send(gamePath(key, `/screenshots/${encodeURIComponent(name)}`), { headers: auth() });
   return URL.createObjectURL(await r.blob());
+}
+
+const artBlobs = new Map<string, Promise<string>>();
+/** An object URL for cached art (`/api/games/{id}/art/{kind}?v=`): fetched with the auth headers an `<img src>` cannot send.
+ *  Kept per machine and url for the page's life (art is small and the url changes when the art does). */
+function artImage(path: string): Promise<string> {
+  const k = route(path);
+  let p = artBlobs.get(k);
+  if (!p) {
+    p = send(path, { headers: auth() }).then(async (r) => URL.createObjectURL(await r.blob()));
+    p.catch(() => artBlobs.delete(k));
+    artBlobs.set(k, p);
+  }
+  return p;
 }
 
 async function postClipboard(c: Clip): Promise<void> {
@@ -428,6 +453,13 @@ export const api = {
   resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
   gameLocal: (key: string) => call<GameLocal>('GET', gamePath(key, '/local')),
   screenshot,
+  artImage,
+  artPending: () => call<ArtQueue>('GET', '/api/art/pending'),
+  /** Confirm a candidate (hostd fetches the art in the background) or answer "none of these". */
+  artAnswer: (key: string, pick: { candidateId: number } | { none: true }) =>
+    call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/match`, pick),
+  /** Forget the match and cached art, search again. 409 without a key on the machine, 429 when repeated quickly. */
+  artRefresh: (key: string) => call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/refresh`),
   friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => {

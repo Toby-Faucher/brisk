@@ -10,7 +10,7 @@ export const EMULATORS: EmulatorEntry[] = [
       { id: 'controllers', name: 'Controllers' },
       { id: 'launch', name: 'Launch options', planned: true },
       { id: 'folders', name: 'Games folders' },
-      { id: 'metadata', name: 'Metadata', planned: true },
+      { id: 'art', name: 'Art and details' },
     ],
   },
 ];

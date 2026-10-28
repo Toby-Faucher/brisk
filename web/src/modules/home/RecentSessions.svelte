@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   import { onMount } from 'svelte';
   import { api, type SessionRec } from '../../state/api';
   import { findGame, rowKey } from '../../state/gameId';
@@ -19,7 +20,7 @@
   {#each list ?? [] as s (s.started)}
     {@const c = cover(s)}
     <a class="mini" href="/history?session={s.started}">
-      {#if c}<img class="cover" src={c} alt="" />{:else}<div class="cover"></div>{/if}
+      {#if c}<img class="cover" {@attach artSrc(c)} alt="" />{:else}<div class="cover"></div>{/if}
       <div class="txt"><b>{s.name}</b><div class="lab">{fmtDuration(s.started, s.ended)} · {fmtAgo(s.started)}</div></div>
     </a>
   {:else}

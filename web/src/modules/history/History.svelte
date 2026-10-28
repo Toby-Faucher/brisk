@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   import { flushSync, onMount, tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import type { TransitionBeforePreparationEvent } from 'astro:transitions/client';
@@ -110,7 +111,7 @@
   </div>
   <!-- fixed-size cover box: the header keeps its height when the image or the record arrives -->
   <div class="dh">
-    {#if c}<img class="hcover" data-cover={selected} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="hcover" data-cover={selected}></div>{/if}
+    {#if c}<img class="hcover" data-cover={selected} {@attach artSrc(c)} alt="" onerror={() => bad.add(c)} />{:else}<div class="hcover" data-cover={selected}></div>{/if}
     <div class="dt">
       <div class="dn">
         <h2 id="session-title" tabindex="-1">{s?.name ?? (detail === 'none' ? 'Session' : 'Loading…')}</h2>
@@ -161,7 +162,7 @@
         <Card cols={1}>
           <a class="fill" href="/history?session={s.started}" data-session={s.started} onclick={(e) => (e.preventDefault(), open(s.started))} aria-label="{s.name}, {fmtWhen(s.started)}"></a>
           <div class="head">
-            {#if c}<img class="cover" data-cover={s.started} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="cover" data-cover={s.started}></div>{/if}
+            {#if c}<img class="cover" data-cover={s.started} {@attach artSrc(c)} alt="" onerror={() => bad.add(c)} />{:else}<div class="cover" data-cover={s.started}></div>{/if}
             <div class="txt"><b>{s.name}</b><div class="lab">{fmtWhen(s.started)}</div></div>
             {#if s.stats?.gate}<span class="gate {s.stats.gate}">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span>{/if}
           </div>
