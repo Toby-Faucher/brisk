@@ -859,3 +859,121 @@ describe('GameDetail with the Quit confirm', () => {
     await expect.poll(() => page.getByRole('dialog', { name: 'Portal 2', exact: true }).elements().length).toBe(0);
   });
 });
+
+describe('GameDetail RetroAchievements', () => {
+  const wii: Game = {
+    ...game,
+    appid: 3_800_000_000,
+    id: 'emu:dolphin:mkwii',
+    name: 'Mario Kart Wii',
+    source: 'emu',
+    emulator: 'dolphin',
+    installed: true,
+    caps: { install: false, controls: true, achievements: true, launchOptions: false, saves: false, screenshots: false },
+  };
+  const raOk: Achievements = {
+    available: true,
+    unlocked: 1,
+    total: 2,
+    list: [
+      { id: '21', name: 'First', description: 'Do the first thing', icon: '', unlockedAt: 1773337649, points: 3, hardcore: true },
+      { id: '22', name: 'Second', description: 'Later', icon: '', unlockedAt: null, points: 5, hardcore: false },
+    ],
+    source: 'retroachievements',
+    state: 'ok',
+    unlockedHardcore: 1,
+    pointsUnlocked: 3,
+    pointsTotal: 8,
+    gameId: 9,
+    title: 'Mario Kart Wii',
+    url: 'https://retroachievements.org/game/9',
+  };
+  beforeEach(() => vi.spyOn(api, 'gameInfo').mockResolvedValue({ available: false } as GameInfo));
+  afterEach(() => vi.useRealTimers());
+
+  const notes: [Record<string, unknown>, string][] = [
+    [{ state: 'unsupported', reason: 'RVZ files cannot be hashed.' }, 'RVZ files cannot be hashed.'],
+    [{ state: 'not-found' }, 'No RetroAchievements set for this game.'],
+    [{ state: 'rate-limited' }, 'RetroAchievements is busy. Try again shortly.'],
+    [{ state: 'bad-credentials' }, 'RetroAchievements refused the login. Check the key file on the machine.'],
+    [{ state: 'error' }, 'Could not reach RetroAchievements.'],
+  ];
+  for (const [answer, text] of notes)
+    it(`says "${text}" for ${answer.state}`, async () => {
+      vi.spyOn(api, 'gameAchievements').mockResolvedValue(answer as never);
+      await render(GameDetail, { props: props(wii) });
+      await expect.element(page.getByText(text)).toBeInTheDocument();
+    });
+
+  it('hides the panel for off', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue({ state: 'off' });
+    await render(GameDetail, { props: props(wii) });
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    await expect.element(page.getByText('Achievements', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('ok: totals, points, hardcore marker and the credit link', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/1 of 2 unlocked, 3 of 8 points/)).toBeInTheDocument();
+    await expect.element(page.getByText('Hardcore')).toBeInTheDocument();
+    const link = page.getByRole('link', { name: 'RetroAchievements' });
+    await expect.element(link).toHaveAttribute('href', 'https://retroachievements.org/game/9');
+    await expect.element(link).toHaveAttribute('target', '_blank');
+    await expect.element(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(spy).toHaveBeenCalledExactlyOnceWith('emu:dolphin:mkwii');
+  });
+
+  it('Refresh asks with refresh and is disabled for 30 s', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/points/)).toBeInTheDocument();
+    const b = page.getByRole('button', { name: 'Refresh', exact: true });
+    await userEvent.click(b);
+    expect(spy).toHaveBeenLastCalledWith('emu:dolphin:mkwii', true);
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true');
+    spy.mockClear();
+    (b.element() as HTMLElement).click();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('polls every 45 s only while the game runs, and stops on unmount', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    const idle = await render(GameDetail, { props: props(wii) });
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(spy).toHaveBeenCalledTimes(1); // the load only
+    idle.unmount();
+    spy.mockClear();
+    const run = await render(GameDetail, { props: props({ ...wii, running: true }) });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(spy).toHaveBeenCalledTimes(2);
+    run.unmount();
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('an old hostd (no caps) emulator game never asks', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    await render(GameDetail, {
+      props: props({ ...wii, caps: undefined, id: undefined, source: undefined, achievements: undefined } as never),
+    });
+    await vi.waitFor(() => expect(api.gameInfo).toHaveBeenCalled());
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('a Steam game keeps its panel: no RetroAchievements link, no extra Refresh', async () => {
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue({
+      available: true,
+      unlocked: 3,
+      total: 5,
+      list: [{ id: 'A', name: 'First Steps', description: 'Take a step.', icon: '', unlockedAt: 1700000100 }],
+    });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('First Steps')).toBeInTheDocument();
+    await expect.element(page.getByRole('link', { name: 'RetroAchievements' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Refresh', exact: true })).not.toBeInTheDocument();
+  });
+});
