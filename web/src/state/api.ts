@@ -133,22 +133,26 @@ export type SessionRec = {
 /** `[t s since started, delay ms, fps, Mbit/s]`, one per 5 s. */
 export type SeriesPoint = [number, number, number, number];
 
-/** The Classic Controller mapping of an emulator game (GET/PUT/reset /api/games/{appid}/controls); see docs/plans/2026-10-27-emulator-controls.md. */
-export type ControlId = 'a' | 'b' | 'x' | 'y' | 'l' | 'r' | 'zl' | 'zr' | 'minus' | 'plus' | 'home' | 'ls' | 'rs' | 'dp';
-export type Bindings = Record<ControlId, string | null>;
+/** An emulator controller mapping (GET/PUT/reset /api/emulators/dolphin/controls/{type}); see docs/plans/2026-10-28-emulator-controls-v2.md. */
+export type ControllerType = 'classic' | 'gamecube';
+/** Game control ids of the type (`a`, `zl`, `ms`...); the key sets are in modules/settings/emulators/mapping.ts. */
+export type Bindings = Record<string, string | null>;
 export type ControlsData = {
   emulator: string;
+  type: ControllerType;
   controller: string;
   source: 'file' | 'default';
   rev: string;
   running: boolean;
   appliesOn: 'next-launch';
+  /** GameCube only: Dolphin's port 1 is set to a standard controller. */
+  portReady?: boolean;
   bindings: Bindings;
-  deadZone: { ls: number; rs: number };
-  custom: Record<ControlId, boolean>;
+  deadZone: Record<string, number>;
+  custom: Record<string, boolean>;
 };
 /** PUT body; `rev` left out is last write wins. */
-export type ControlsPut = { rev?: string; bindings: Bindings; deadZone: { ls: number; rs: number } };
+export type ControlsPut = { rev?: string; bindings: Bindings; deadZone: Record<string, number> };
 
 import { writable } from 'svelte/store';
 import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
@@ -217,7 +221,7 @@ export function setRoute(machineId: string | null) {
 }
 
 /** Machine-scoped paths go through the hub's `/api/m/{id}/`; prefs, notes and machines stay on the hub itself. */
-const SCOPED = /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files)(?=[/?]|$)/;
+const SCOPED = /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators)(?=[/?]|$)/;
 export function route(path: string): string {
   return prefix && SCOPED.test(path) ? `/api/m/${encodeURIComponent(prefix)}/${path.slice(5)}` : path;
 }
@@ -312,9 +316,9 @@ export const api = {
   gameInfo: (appid: number, refresh?: boolean) => call<GameInfo>('GET', `/api/games/${appid}/info${q(refresh)}`),
   gameAchievements: (appid: number, refresh?: boolean) => call<Achievements>('GET', `/api/games/${appid}/achievements${q(refresh)}`),
   gameNews: (appid: number, refresh?: boolean) => call<News>('GET', `/api/games/${appid}/news${q(refresh)}`),
-  controls: (appid: number) => call<ControlsData>('GET', `/api/games/${appid}/controls`),
-  putControls: (appid: number, b: ControlsPut) => call<ControlsData>('PUT', `/api/games/${appid}/controls`, b),
-  resetControls: (appid: number) => call<ControlsData>('POST', `/api/games/${appid}/controls/reset`),
+  emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
+  putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),
+  resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
   gameLocal: (appid: number) => call<GameLocal>('GET', `/api/games/${appid}/local`),
   screenshot,
   friends: () => call<Friends>('GET', '/api/friends'),

@@ -108,3 +108,14 @@ describe('api', () => {
     await expect(api.host()).rejects.toThrow('502');
   });
 });
+
+describe('route', () => {
+  it('scopes the emulator controls path to the selected machine', async () => {
+    const { route, setRoute } = await import('./api');
+    setRoute('m1');
+    expect(route('/api/emulators/dolphin/controls/classic')).toBe('/api/m/m1/emulators/dolphin/controls/classic');
+    expect(route('/api/prefs')).toBe('/api/prefs');
+    setRoute(null);
+    expect(route('/api/emulators/dolphin/controls/classic')).toBe('/api/emulators/dolphin/controls/classic');
+  });
+});
