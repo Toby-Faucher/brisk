@@ -24,6 +24,8 @@ export type Game = {
   controller: 'full' | 'partial' | null;
   /** Co-op or Remote Play Together, same source. */
   coop: boolean;
+  /** Emulator games only (e.g. 'dolphin'): these have no art, so the cover is a title card with this badge. */
+  emulator?: string;
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
