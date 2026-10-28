@@ -27,7 +27,7 @@ function mocks() {
       data({ bindings: b.bindings, deadZone: b.deadZone, rev: `r${Math.random()}` }),
     ),
     resetControls: vi.fn(async (_: number) => data({ rev: 'reset' })),
-    quit: vi.fn(async (_: number, __?: boolean) => ({ state: 'closed' as const })),
+    quit: vi.fn(async (_: number, __?: boolean): Promise<{ state: 'closed' | 'still-running' }> => ({ state: 'closed' })),
     launch: vi.fn(async (_: number) => undefined),
   };
 }

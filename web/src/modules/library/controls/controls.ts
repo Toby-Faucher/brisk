@@ -186,10 +186,11 @@ export function createControls(appid: number, name: string, deps: ControlsDeps =
     } catch {
       return fail('start');
     }
-    set({ restarting: false, changed: false, note: { text: 'Restarted the game with the new mapping.', tone: 'info' } });
+    set({ restarting: false, changed: false, saved: false, note: { text: 'Restarted the game with the new mapping.', tone: 'info' } });
   }
 
   return {
+    setNote: (text: string) => set({ note: { text, tone: 'info' }, saved: false }),
     state: store as Readable<State>,
     load,
     refresh,

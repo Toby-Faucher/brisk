@@ -29,7 +29,7 @@ export const PAD_NAMES: readonly string[] = [...BUTTON_NAMES, ...STICK_NAMES, 'D
 /** Which pad names each control takes (the allowlist, the same table hostd checks). */
 export const ACCEPTS: Record<ControlId, readonly string[]> = Object.fromEntries(
   CONTROLS.map((c) => [c.id, c.kind === 'button' ? BUTTON_NAMES : c.kind === 'stick' ? STICK_NAMES : ['D-pad']]),
-) as Record<ControlId, readonly string[]>;
+) as unknown as Record<ControlId, readonly string[]>;
 
 /** The known-good file's mapping (deploy/dolphin/WiimoteNew.ini), not the mock-up's. */
 export const XBOX_DEFAULT: Bindings = {
