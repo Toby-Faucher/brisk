@@ -15,11 +15,11 @@
   import ConnPath from './ConnPath.svelte';
   import MachineModal from './MachineModal.svelte';
   import Slot from '../home/Slot.svelte';
-  import { box, count, cssVar, fadeOnChange, glide, motionAllowed, ms } from '../../ui/motion';
+  import { box, count, fadeOnChange, glide, swapCards } from '../../ui/motion';
   import { DASH, fmtUptime, reconcileOrder } from '../home/home';
   import { reorder } from '../home/drag';
   import { hub, orderedMachines, pings, startPings, selected, selectMachine, setMachinesOrder, powerMachine } from '../../state/machines';
-  import { machinesFrom, restartError, dotState, powerWhy, statRows, STATE_LABEL, type Vm } from './machines';
+  import { isTap, machinesFrom, restartError, swapPlan, dotState, powerWhy, statRows, STATE_LABEL, type Vm } from './machines';
 
   const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
   let stream = $state<StreamInfo | null>(null);
@@ -59,9 +59,21 @@
   let modal = $state<{ id: string; origin: DOMRect } | null>(null);
   let opener: HTMLElement | null = null;
   let said = $state('');
-  async function openModal(e: MouseEvent, id: string) {
-    opener = e.currentTarget as HTMLElement;
-    modal = { id, origin: opener.closest('.card')!.getBoundingClientRect() };
+  // The whole card opens the details: the one focusable `.fill` button per card (keyboard, screen readers) plus a click
+  // anywhere else on the card. Real controls, the drag handle, a drag and a text selection never open it.
+  function openModal(fill: HTMLElement) {
+    opener = fill;
+    modal = { id: fill.closest<HTMLElement>('[data-card]')!.dataset.card!, origin: fill.closest('.card')!.getBoundingClientRect() };
+  }
+  let down: { x: number; y: number } | null = null;
+  function cardClick(e: MouseEvent) {
+    const t = e.target as Element;
+    const card = t.closest<HTMLElement>('[data-card]');
+    const fill = card?.querySelector<HTMLElement>('.fill');
+    if (!fill || t.closest('button, a, input, select, textarea, [role="dialog"], [data-grip]') || !isTap(down, { x: e.clientX, y: e.clientY })) return;
+    const sel = getSelection();
+    if (sel && !sel.isCollapsed && card!.contains(sel.anchorNode)) return; // selecting text, not opening
+    openModal(fill);
   }
   const closeModal = () => (modal = null, void tick().then(() => opener?.focus()));
 
@@ -78,9 +90,10 @@
     },
   });
 
-  // The Selected ring is one overlay (cards clip their overflow) that glides to the newly selected card; the new card
-  // lifts on the settle spring and the old one settles. Not on first placement, and instant under reduced motion.
+  // The Selected ring is one overlay (cards clip their overflow) that glides to the newly selected card while swapCards
+  // choreographs the two cards' content. Not on first placement, and instant under reduced motion.
   let was: string | null = null;
+  let stopSwap = () => {};
   function place() {
     const id = hubOn ? $selected : null;
     const card = id && grid?.querySelector<HTMLElement>(`[data-card="${id}"]`);
@@ -88,13 +101,10 @@
     const from = ring.hidden ? null : box(ring);
     Object.assign(ring.style, { left: `${card.offsetLeft}px`, top: `${card.offsetTop}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
     ring.hidden = false;
-    if (was && was !== id) {
+    const swap = swapPlan(was, id);
+    if (swap) {
       if (from) glide(ring, from, box(ring));
-      if (motionAllowed()) {
-        const opts = { duration: ms('--spring-settle-dur', 900), easing: cssVar('--spring-settle') || 'ease-out' };
-        card.animate([{ translate: '0 -10px' }, { translate: '0 0' }], opts);
-        grid?.querySelector(`[data-card="${was}"]`)?.animate([{ scale: '1.02' }, { scale: '1' }], opts);
-      }
+      stopSwap = swapCards(card, grid?.querySelector<HTMLElement>(`[data-card="${swap.from}"]`) ?? null);
     }
     was = id;
   }
@@ -108,7 +118,7 @@
     const load = () => api.stream().then((s) => (stream = s), () => (stream = null));
     void load();
     const id = setInterval(() => !document.hidden && void load(), 10_000);
-    return () => (clearInterval(id), clearTimeout(timer), unwatch(), stopPings(), ro.disconnect()); // HostPill keeps $host fresh
+    return () => (clearInterval(id), clearTimeout(timer), unwatch(), stopPings(), ro.disconnect(), stopSwap()); // HostPill keeps $host fresh
   });
 
   async function restart() {
@@ -133,7 +143,8 @@
   <!-- one polite line per drop, as on Home -->
   <span class="sr" role="status">{said}</span>
 {/if}
-<div class="grid" bind:this={grid} {@attach hubOn ? drag : undefined}>
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (the keyboard path is each card's .fill button) -->
+<div class="grid" class:hub={hubOn} bind:this={grid} onpointerdown={(e) => (down = { x: e.clientX, y: e.clientY })} onclick={cardClick} {@attach hubOn ? drag : undefined}>
   {#if hubOn}<span class="ring" bind:this={ring} aria-hidden="true" hidden></span>{/if}
   {#each machines as m (m.id)}
     {#if hubOn}
@@ -156,8 +167,8 @@
     {@const here = !hubOn || m.id === $selected}
     {@const why = powerWhy(m.state)}
     <Card cols={2} rows={2}>
-      <!-- stretched primary button: the whole card opens the details; the real buttons sit above it -->
-      {#if hubOn}<button type="button" class="fill" aria-label="Open {m.name} details" onclick={(e) => openModal(e, m.id)}></button>{/if}
+      <!-- the card's one tab stop: visually hidden, the card shows its focus ring; mouse clicks are handled on the grid -->
+      {#if hubOn}<button type="button" class="fill" aria-label="Open {m.name} details" onclick={(e) => openModal(e.currentTarget)}></button>{/if}
       <h4><Icon name="host" color="var(--c-host)" size={16} /> {m.name} <StatusDot state={i ? dotState({ state: m.state, sunshine: i.sunshine }) : dotState({ state: m.state, sunshine: null })} />{#if hubOn && here}<span class="sel">Selected</span>{/if}</h4>
       {#if hubOn && !i}
         <div class="big">{STATE_LABEL[m.state]}</div>
@@ -236,8 +247,14 @@
   /* the Selected ring: one overlay glided by place(); above the cards, below a lifted one, hidden while one is held */
   .ring { position: absolute; z-index: 1; pointer-events: none; border: 2px solid var(--accent); border-radius: var(--r-card); box-sizing: border-box; transition: opacity .2s; }
   .grid:has(:global([data-lifted])) .ring { opacity: 0; }
-  /* real buttons above the stretched .fill button */
-  .actions, .apps li { position: relative; z-index: 1; }
+  /* the whole hub card is the target: pointer, a little brighter on hover; the real controls keep their own cursor */
+  .hub :global(.card) { cursor: pointer; }
+  .hub :global(.card:hover) { background: color-mix(in srgb, var(--panel) 90%, #fff 4%); }
+  .hub :global(.card:has(.fill:focus-visible)) { outline: 2px solid var(--fg); outline-offset: -4px; }
+  .hub :global(.card button) { cursor: pointer; }
+  .hub :global(.card .grip) { cursor: grab; }
+  /* visually hidden but focusable and real */
+  .hub :global(.fill) { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   /* drag.ts marks, as on Home (Home.svelte) */
   .grid :global([data-lifted]) { z-index: 3; scale: 1.03; background: var(--panel); box-shadow: 0 18px 40px rgba(0, 0, 0, .45); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
   .grid :global([data-landing]) { z-index: 2; background: var(--panel); }

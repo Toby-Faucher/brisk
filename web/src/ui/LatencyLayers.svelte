@@ -14,7 +14,7 @@
     { key: 'hub', name: 'Hub → machine' },
     { key: 'direct', name: 'You → machine' },
   ];
-  const PAD = { t: 8, b: 8, r: 6 };
+  const PAD = { t: 18, b: 8, r: 6 };
   let width = $state(280);
   let off = $state<Record<Layer, boolean>>({ direct: false, hub: false });
   let g: SVGGElement | undefined = $state();
@@ -70,7 +70,7 @@
     </defs>
     {#each grid as v (v)}
       <line class="grid" x1="0" x2={width} y1={y(v)} y2={y(v)} />
-      <text class="lbl" x="2" y={y(v) - 3}>{v} ms</text>
+      <text class="lbl" x="4" y={y(v) - 3}>{v} ms</text>
     {/each}
     <line class="base" x1="0" x2={width} y1={base} y2={base} />
     <g bind:this={g}>
@@ -114,7 +114,7 @@
   svg { display: block; overflow: hidden; max-width: 100%; }
   .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; opacity: .7; }
   .base { stroke: var(--line); stroke-width: 1; }
-  .lbl { fill: var(--dim); font: 9px var(--mono); }
+  .lbl { fill: var(--dim); font: 9px var(--mono); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; }
   .msg { fill: var(--muted); font: 12px var(--font); }
   .edge { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .edge.direct { stroke: var(--c-direct); }

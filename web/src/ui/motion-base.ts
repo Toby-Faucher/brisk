@@ -82,10 +82,29 @@ const lastText = new WeakMap<Element, string>();
  * Svelte writes the text; on a later change the element only fades in from .35 (opacity, native, nothing loaded), so nothing
  * moves and nothing is announced. The first value, an unchanged value and reduced motion do nothing.
  */
-export const fadeOnChange = (value: string) => (el: Element) => {
+export const fadeOnChange = (value: string, slide = false) => (el: Element) => {
   const was = lastText.get(el);
   lastText.set(el, value);
   if (was === undefined || was === value || onStreamRoute() || reducedMotion()) return; // the host pill is on /stream too: silent there
-  const a = el.animate({ opacity: [0.35, 1] }, { duration: 360, easing: cssVar('--ease') });
+  // `slide`: the new text also rises 6 px into place (host pill name); `translate`, never `transform`
+  const a = el.animate(slide ? { opacity: [0.2, 1], translate: ['0 6px', '0 0'] } : { opacity: [0.35, 1] }, { duration: 360, easing: cssVar('--ease') });
   return () => a.cancel();
 };
+
+const swaps = new WeakMap<Element, Animation>();
+
+/**
+ * The selected machine changed: the page content dips (fades and blurs, ~160 ms) and comes back sharp (~300 ms) while the
+ * new machine's data loads under it. Native Web Animations on `opacity` + `filter` only, nothing loaded, no layout shift,
+ * no inline style. A swap during one in flight lets it finish (the content is already on its way back). Null when nothing
+ * ran (reduced motion, /stream, in flight).
+ */
+export function pageSwap(el: Element): Animation | null {
+  if (onStreamRoute() || reducedMotion() || swaps.get(el)?.playState === 'running') return null;
+  const a = el.animate(
+    [{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0.25, filter: 'blur(6px)', offset: 0.34 }, { opacity: 1, filter: 'blur(0px)' }],
+    { duration: 460, easing: cssVar('--ease') },
+  );
+  swaps.set(el, a);
+  return a;
+}

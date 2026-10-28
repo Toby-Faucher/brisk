@@ -49,7 +49,7 @@
     {/if}
     <button class="pill" aria-haspopup="menu" aria-expanded={open} onclick={() => void toggle()} title={sel ? STATE_LABEL[sel.state] : 'No machine selected'}>
       <Icon name="host" color={sel?.state === 'ready' ? 'var(--ok)' : 'var(--muted)'} />
-      <span class="name" {@attach fadeOnChange(sel?.name ?? '–')}>{sel?.name ?? '–'}</span>
+      <span class="name" {@attach fadeOnChange(sel?.name ?? '–', true)}>{sel?.name ?? '–'}</span>
       {#if sel}<span class="st">{STATE_LABEL[sel.state]}</span>{/if}
       <StatusDot state={sel ? dotState(sel) : 'off'} />
     </button>

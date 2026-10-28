@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
+  import { pageSwap } from '../ui/motion-base';
   import { enterWhenHydrated } from './reveal';
   import { settings } from '../state/settings';
   import { denied } from '../state/api';
@@ -15,13 +16,21 @@
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => bindAccent(settings, document.documentElement));
   onMount(() => (enterWhenHydrated(), startMachines())); // startMachines returns its cleanup
+  // A changed machine (Use, host pill, Ctrl+K) dips the page while its data reloads; the first selection and a remount don't.
+  let main: HTMLElement | undefined = $state();
+  let seen: string | null = null;
+  $effect(() => {
+    const id = $selectedMachine?.id ?? null, was = seen;
+    seen = id;
+    if (was && id && was !== id && main) pageSwap(main);
+  });
   // Opening the app with the machine off never starts it; the banner offers to.
   const off = $derived($hub === true && $selectedMachine?.state === 'off' ? $selectedMachine : null);
 </script>
 
 <div class="app">
   <Sidebar {path} />
-  <main class:page-in={!/^\/stream/.test(path)}>
+  <main bind:this={main} class:page-in={!/^\/stream/.test(path)}>
     {#if $denied}
       <section class="denied" role="alert">
         <h1>This host doesn't know this browser</h1>

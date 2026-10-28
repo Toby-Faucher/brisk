@@ -17,6 +17,22 @@ describe('LatencyLayers', () => {
     expect(document.querySelectorAll('.edge.direct')).toHaveLength(0);
   });
 
+  it('y labels stay inside the svg at card and modal heights', async () => {
+    for (const [width, height] of [[280, 72], [700, 110]]) {
+      document.body.style.width = `${width}px`;
+      const r = await render(LatencyLayers, { props: { samples, height } });
+      const box = document.querySelector('svg')!.getBoundingClientRect();
+      const labels = [...document.querySelectorAll('.lbl')];
+      expect(labels).toHaveLength(2);
+      for (const l of labels) {
+        const b = l.getBoundingClientRect();
+        expect([b.top >= box.top, b.left >= box.left, b.bottom <= box.bottom, b.right <= box.right]).toEqual([true, true, true, true]);
+      }
+      r.unmount();
+    }
+    document.body.style.width = '';
+  });
+
   it('empty and all-lost read as states, not blank charts', async () => {
     const r = await render(LatencyLayers, { props: { samples: [] } });
     await expect.element(page.getByText('Waiting for the first ping…')).toBeInTheDocument();

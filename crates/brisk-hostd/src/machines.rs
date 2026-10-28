@@ -60,6 +60,24 @@ fn url_ok(u: &str) -> Result<(), &'static str> {
     }
 }
 
+/// Hub-to-machine ping: milliseconds (at least 1) for a plain TCP connect to the url's host:port, None on failure.
+fn tcp_rtt_ms(url: &str) -> Option<u64> {
+    use std::net::{TcpStream, ToSocketAddrs};
+    let uri: ureq::http::Uri = url.parse().ok()?;
+    let port = uri
+        .port_u16()
+        .unwrap_or(if uri.scheme_str() == Some("https") {
+            443
+        } else {
+            80
+        });
+    let host = uri.host()?.trim_matches(['[', ']']);
+    let addr = (host, port).to_socket_addrs().ok()?.next()?; // resolved before the clock starts
+    let t = Instant::now();
+    TcpStream::connect_timeout(&addr, Duration::from_secs(2)).ok()?;
+    Some((t.elapsed().as_secs_f64() * 1000.0).round().max(1.0) as u64)
+}
+
 /// `power.temp_url`: https, or http only to loopback, a private IPv4 or a tailnet IPv4; no userinfo.
 fn temp_url_ok(u: &str) -> Result<(), &'static str> {
     use std::net::Ipv4Addr;
@@ -212,11 +230,10 @@ impl Hub {
 
     /// Blocking: one state probe (Proxmox, then the machine's /api/host).
     fn probe(&self, e: &Entry) -> Value {
-        // The machine's /api/host and how long it took; the temperature fills a missing cpuTempC.
+        // The machine's /api/host plus a TCP-connect ping; the temperature fills a missing cpuTempC.
         let host = || {
-            let t = Instant::now();
+            let rtt = tcp_rtt_ms(&e.cfg.url);
             let mut h = get_json(e, "host");
-            let rtt = h.is_some().then(|| t.elapsed().as_millis() as u64);
             if let Some(Value::Object(o)) = &mut h
                 && o.get("cpuTempC").is_none_or(Value::is_null)
                 && let Some(c) = e
@@ -734,6 +751,18 @@ mod tests {
     }
 
     /// A URL nothing listens on.
+    #[tokio::test]
+    async fn tcp_rtt_is_a_connect_time() {
+        let (url, _w) = upstream().await;
+        let dead = dead_url().await;
+        let (a, b, c) = tokio::task::spawn_blocking(move || {
+            (tcp_rtt_ms(&url), tcp_rtt_ms(&dead), tcp_rtt_ms("not a url"))
+        })
+        .await
+        .unwrap();
+        assert!(a.is_some_and(|n| n >= 1) && b.is_none() && c.is_none());
+    }
+
     async fn dead_url() -> String {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         format!("http://{}", l.local_addr().unwrap())
@@ -1267,7 +1296,7 @@ mod tests {
             m[0]["url"].as_str(),
             Some(r.hub.machines[0].cfg.url.as_str())
         );
-        // rttMs: a number when /api/host answered, null otherwise; vm only for a running VM.
+        // rttMs: a number when the TCP connect worked, null otherwise; vm only for a running VM.
         let rtt = |i: usize| m[i]["rttMs"].as_u64();
         assert!(rtt(0).is_some() && rtt(4).is_some());
         assert!([1, 2, 3, 5].iter().all(|&i| m[i]["rttMs"].is_null()));

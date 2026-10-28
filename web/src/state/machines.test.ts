@@ -316,7 +316,7 @@ describe('pings', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(get(m.pings).a).toEqual([{ t: expect.any(Number), direct: 20, hub: 5 }]);
     const [url, init] = direct(f)[0] as [string, RequestInit];
-    expect(url).toBe('http://a.test:8443/');
+    expect(url).toBe('http://a.test:8443/api/ping');
     expect(init).toMatchObject({ method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
     await vi.advanceTimersByTimeAsync(3_000);
     expect(get(m.pings).a).toHaveLength(2);

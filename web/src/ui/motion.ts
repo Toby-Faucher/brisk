@@ -420,6 +420,71 @@ export function cardsIn(els: HTMLElement[], step = 30): () => void {
   };
 }
 
+/** Gap (ms) between incoming rows: 28 ms each, squeezed so the last row starts within `span` ms. */
+export const rowStep = (n: number, span = 160, max = 28) => (n > 0 ? Math.min(max, span / n) : 0);
+
+/**
+ * Machines page: the card choreography when the selected machine changes (anime.js, ~660 ms, one run at a time).
+ * The outgoing card's content dims and defocuses, then recovers; the incoming card's parts (its `dl` rows one by one)
+ * rise in from a blur on a stagger; its "Selected" label slides in; an accent sweep crosses the card. Only opacity,
+ * transform and filter, on the card's children (never the card, whose hover owns `transform`). The incoming parts are
+ * hidden at once, so a slow chunk never shows them first; every inline style and the sweep go at the end, on cancel,
+ * under reduced motion and when the chunk fails. A new swap cancels the one in flight first. Returns the cancel function.
+ */
+let swapOff: (() => void) | null = null;
+export function swapCards(next: HTMLElement, prev: HTMLElement | null): () => void {
+  swapOff?.();
+  swapOff = null;
+  if (!motionAllowed()) return () => {};
+  const parts = (card: HTMLElement) =>
+    [...card.children].filter((c) => !c.matches('.grip, .fill')).flatMap((c) => (c.tagName === 'DL' ? [...c.children] : [c])) as HTMLElement[];
+  const outs = prev ? parts(prev) : [];
+  const ins = parts(next);
+  const sel = next.querySelector<HTMLElement>('.sel');
+  const sweep = document.createElement('span');
+  sweep.setAttribute('aria-hidden', 'true');
+  sweep.style.cssText = 'position:absolute;top:0;bottom:0;left:0;width:45%;opacity:0;pointer-events:none;background:linear-gradient(100deg,transparent,color-mix(in srgb,var(--accent) 26%,transparent),transparent)';
+  next.append(sweep);
+  const styled = [...outs, ...ins, ...(sel ? [sel] : [])];
+  const clean = () => {
+    sweep.remove();
+    styled.forEach((e) => {
+      ['opacity', 'transform', 'filter'].forEach((p) => e.style.removeProperty(p));
+      if (!e.getAttribute('style')) e.removeAttribute('style');
+    });
+  };
+  [...ins, ...(sel ? [sel] : [])].forEach((e) => (e.style.opacity = '0'));
+  const anims: { cancel(): unknown; complete(): unknown }[] = [];
+  let dead = false;
+  const off = () => {
+    dead = true;
+    anims.forEach((a) => (live.delete(a), a.cancel()));
+    clean();
+    if (swapOff === off) swapOff = null;
+  };
+  void load('animation', 'easings').then((lib) => {
+    if (dead) return;
+    if (reducedMotion()) return off();
+    const step = rowStep(ins.length);
+    let left = 0;
+    const run = (targets: HTMLElement[], p: Record<string, unknown>) => {
+      if (!targets.length) return;
+      left++;
+      const a = lib.animate(targets, { ease: ease(lib), ...p, onComplete: () => (live.delete(a), --left || off()) });
+      live.add(a);
+      anims.push(a);
+    };
+    run(outs, {
+      opacity: [{ from: 1, to: 0.45, duration: 180 }, { to: 1, duration: 420 }],
+      filter: [{ from: 'blur(0px)', to: 'blur(2px)', duration: 180 }, { to: 'blur(0px)', duration: 420 }],
+    });
+    run(ins, { opacity: [0, 1], translateY: [12, 0], filter: ['blur(4px)', 'blur(0px)'], duration: 400, delay: (_?: unknown, i = 0) => 100 + i * step });
+    if (sel) run([sel], { opacity: [0, 1], translateX: [-10, 0], duration: 380, delay: 200, ease: lib.spring({ bounce: 0.3, duration: 500 }) });
+    run([sweep], { translateX: ['-120%', '320%'], opacity: [{ from: 0, to: 1, duration: 140 }, { to: 0, duration: 420 }], duration: 560, delay: 60 });
+  }).catch(() => dead || off());
+  return (swapOff = off);
+}
+
 /**
  * Svelte attachment: a result number counts up from 0 to `value` when it mounts (`tweenNumber`). Only for numbers measured
  * once and then fixed, never for a live reading. Svelte still renders the same text, so both agree at rest; with a chunk that

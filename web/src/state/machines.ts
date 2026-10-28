@@ -181,7 +181,8 @@ async function directPing(url: string): Promise<number | null> {
   const to = setTimeout(() => ac.abort(), PING_TIMEOUT);
   const t0 = performance.now();
   try {
-    await fetch(`${url}/`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: ac.signal });
+    // /api/ping answers 403 to a stranger: no CORP header (static files carry one), nothing read, no secret needed.
+    await fetch(`${url}/api/ping`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: ac.signal });
     return performance.now() - t0;
   } catch {
     return null;

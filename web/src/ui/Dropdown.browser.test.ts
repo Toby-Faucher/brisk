@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import Dropdown from './Dropdown.svelte';
+import DropdownInDialog from './DropdownInDialog.fixture.svelte';
 
 const options: [string, string][] = [['default', 'Default order'], ['az', 'A-Z'], ['most', 'Most played']];
 
@@ -37,5 +38,23 @@ describe('Dropdown', () => {
     const gap = t.getBoundingClientRect().right - t.querySelector('svg')!.getBoundingClientRect().right;
     expect(gap).toBeGreaterThanOrEqual(10);
     expect(gap).toBeLessThanOrEqual(16);
+  });
+});
+
+describe('Dropdown inside a Dialog', () => {
+  it('the menu is the topmost thing at its own spot, picks by click, and Escape closes only the menu', async () => {
+    await render(DropdownInDialog);
+    const trigger = page.getByRole('combobox', { name: 'Sort games' });
+    await userEvent.click(trigger);
+    const opt = page.getByRole('option', { name: 'Beta' });
+    await expect.element(opt).toBeInTheDocument();
+    const r = opt.element().getBoundingClientRect();
+    expect(opt.element().contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    await expect.element(page.getByRole('listbox')).not.toBeInTheDocument();
+    await expect.element(page.getByRole('dialog')).toBeInTheDocument();
+    await userEvent.click(trigger);
+    await userEvent.click(page.getByRole('option', { name: 'Beta' }));
+    await expect.element(trigger).toHaveTextContent('Beta');
   });
 });

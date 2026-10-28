@@ -7,6 +7,7 @@
   import { startGame } from '../../state/prefs';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { toast } from '../../shell/Toasts.svelte';
+  import Dropdown from '../../ui/Dropdown.svelte';
   import Icon from '../../ui/Icon.svelte';
   import LatencyLayers from '../../ui/LatencyLayers.svelte';
   import StatusDot from '../../ui/StatusDot.svelte';
@@ -67,6 +68,7 @@
   // an off machine's lists are stale: show the Start prompt instead
   const gamesOk = $derived(ready && gl.data !== null);
 
+  const SORT_OPTS = SORTS.map((s): [SortKey, string] => [s.key, s.label]);
   let q = $state('');
   let sort = $state<SortKey>(loadSort());
   let pick = $state<number | null>(null);
@@ -212,9 +214,7 @@
           {:else}
             <div class="tools">
               <label class="search"><Icon name="search" size={14} /><input type="search" placeholder="Search games" aria-label="Search installed games" bind:value={q} /></label>
-              <select aria-label="Sort games" value={sort} onchange={(e) => (saveSort((sort = e.currentTarget.value as SortKey)), undefined)}>
-                {#each SORTS as s (s.key)}<option value={s.key}>{s.label}</option>{/each}
-              </select>
+              <Dropdown bind:value={sort} options={SORT_OPTS} label="Sort games" onchange={saveSort} />
             </div>
             <p class="lab" aria-live="polite">{gamesHeader(list)}</p>
             {#if gl.state === 'error'}<p class="lab">Could not refresh: {gl.error} <button class="link" onclick={() => void loadGames(true)}>Retry</button></p>{/if}
@@ -281,7 +281,7 @@
             {:else}
               <p class="lab">No streams from this machine yet. Pick a game and press Play.</p>
             {/if}
-            <p class="lab">Pick a game to see its details.</p>
+            <p class="lab hint">Pick a game to see its details.</p>
           {/if}
         </section>
       </div>
@@ -304,17 +304,19 @@
 </Dialog.Root>
 
 <style>
-  :global(.mm.mp) { position: fixed; left: 0; right: 0; top: 6vh; margin-inline: auto; width: min(1180px, calc(100vw - 32px)); max-height: 88vh; padding: 18px; z-index: 41; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+  :global(.mm.mp) { position: fixed; left: 0; right: 0; top: 6vh; margin-inline: auto; width: min(1180px, calc(100vw - 32px)); max-height: 88vh; padding: 22px 26px; z-index: 41; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
   .mm-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   :global(.mm-t) { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
   .sm { padding: 4px 10px; font-size: 13px; }
   .tabs { display: flex; gap: 6px; }
   .tab { flex: 1; padding: 7px; border: 0; border-radius: 9px; background: var(--panel2); color: var(--fg); font: inherit; cursor: pointer; }
   .tab[aria-pressed='true'] { background: var(--accent); color: var(--accent-fg); }
-  .panes { display: grid; gap: 14px; min-height: 0; flex: 1; position: relative; overflow: hidden; }
+  .panes { display: grid; gap: 14px; margin-top: 2px; min-height: 0; flex: 1; position: relative; overflow: hidden; }
   .panes.wide { grid-template-columns: 1fr 1.3fr 1fr; }
   .panes.medium { grid-template-columns: 1fr 1.2fr; }
   .panes.narrow { grid-template-columns: 1fr; }
+  .panes.wide .pane + .pane, .panes.medium .pane + .pane { border-left: 1px solid var(--line); padding-left: 14px; }
+  .hint { margin-top: 8px; opacity: .7; }
   .pane { overflow-y: auto; min-height: 0; padding-right: 4px; display: grid; gap: 8px; align-content: start; }
   .pane[hidden] { display: none; }
   h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; }
@@ -327,12 +329,11 @@
   dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
   .empty { display: grid; gap: 10px; justify-items: start; }
-  .tools { display: flex; gap: 8px; }
+  .tools { display: flex; gap: 8px; align-items: center; }
   .search { flex: 1; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
   .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; min-width: 0; }
-  select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; font: inherit; }
   .games, .sess { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-  .row { display: grid; grid-template-columns: 34px 1fr auto auto auto; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+  .row { display: grid; grid-template-columns: 34px 1fr auto auto auto; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
   .row:hover, .row[aria-selected='true'] { background: var(--panel2); }
   .row[aria-selected='true'] { box-shadow: 0 0 0 1px var(--accent) inset; }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -353,5 +354,5 @@
   }
   .panes.medium:not(.over) .p3 { display: grid; }
   .back { justify-self: start; }
-  @media (max-width: 699px) { :global(.mm.mp) { top: 3vh; max-height: 94vh; padding: 14px; } .row { grid-template-columns: 34px 1fr auto; } .row .meta { display: none; } }
+  @media (max-width: 699px) { :global(.mm.mp) { top: 3vh; max-height: 94vh; padding: 16px; } .row { grid-template-columns: 34px 1fr auto; } .row .meta { display: none; } }
 </style>

@@ -91,7 +91,7 @@ Added after the first browser test.
 ### Hub API additions
 
 - `Machine` gains `url` (the machine's own base URL from machines.json, so the browser can time a direct
-  request to it), `rttMs` (`number | null`: how long the hub's last `/api/host` probe of the machine took, null
+  request to it), `rttMs` (`number | null`: how long a plain TCP connect from the hub to the machine took, null
   when it did not answer) and `vm` (`{ cpuPct, memUsedBytes, memTotalBytes } | null`, power machines only, from
   Proxmox `status/current`: `cpu` is a 0..1 fraction of the VM's vCPUs, `mem`/`maxmem` are bytes; null when
   the Proxmox call failed).

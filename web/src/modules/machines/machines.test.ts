@@ -3,7 +3,8 @@ import { ApiError, type HostInfo } from '../../state/api';
 import { get } from 'svelte/store';
 import { afterEach, vi } from 'vitest';
 import { applyAccent, bindAccent } from '../settings/accent';
-import { dotState, elapsedS, machinesFrom, powerWhy, restartError, statRows, STATE_LABEL } from './machines';
+import { rowStep } from '../../ui/motion';
+import { isTap, swapPlan, dotState, elapsedS, machinesFrom, powerWhy, restartError, statRows, STATE_LABEL } from './machines';
 
 const info: HostInfo = { name: 'bawn', sunshine: 'ready', uptimeS: 5, cpuTempC: null, gpuTempC: null, path: null, relay: null };
 
@@ -77,3 +78,22 @@ describe('machines', () => {
 });
 const root0 = { dataset: {} as DOMStringMap };
 afterEach(() => vi.unstubAllGlobals());
+
+describe('card click and swap helpers', () => {
+  it('isTap_allows_a_few_px_of_jitter_only', () => {
+    expect(isTap({ x: 10, y: 10 }, { x: 13, y: 14 })).toBe(true);
+    expect(isTap({ x: 10, y: 10 }, { x: 10, y: 16 })).toBe(false);
+    expect(isTap(null, { x: 0, y: 0 })).toBe(false);
+  });
+  it('swapPlan_only_for_a_change_between_machines', () => {
+    expect(swapPlan(null, 'a')).toBeNull();
+    expect(swapPlan('a', 'a')).toBeNull();
+    expect(swapPlan('a', null)).toBeNull();
+    expect(swapPlan('a', 'b')).toEqual({ from: 'a', to: 'b' });
+  });
+  it('rowStep_caps_the_total_stagger', () => {
+    expect(rowStep(0)).toBe(0);
+    expect(rowStep(4)).toBe(28);
+    expect(rowStep(16)).toBe(10);
+  });
+});

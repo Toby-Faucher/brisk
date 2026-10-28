@@ -55,3 +55,10 @@ export function statRows(info: Pick<HostInfo, 'gpuTempC' | 'cpuTempC'>, vm: Vm |
   if (vm) rows.push({ label: 'RAM', text: vm.memTotalBytes > 0 ? `${gb(vm.memUsedBytes)} / ${gb(vm.memTotalBytes)}` : DASH, n: null, fmt: String });
   return rows;
 }
+
+/** Pointer travel (px) up to which a press and release on a card still count as a click, not a drag or a text selection. */
+export const TAP_PX = 5;
+export const isTap = (down: { x: number; y: number } | null, up: { x: number; y: number }, max = TAP_PX) => !!down && Math.hypot(up.x - down.x, up.y - down.y) <= max;
+
+/** The card swap to choreograph: only a change from one machine to another (not the first placement, not a repeat). */
+export const swapPlan = (was: string | null, id: string | null) => (was && id && was !== id ? { from: was, to: id } : null);
