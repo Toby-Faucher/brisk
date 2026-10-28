@@ -11,6 +11,7 @@ pub mod host;
 pub mod http;
 pub mod idle;
 pub mod launch;
+pub mod launchstore;
 pub mod machines;
 pub mod migrate;
 pub mod notes;
