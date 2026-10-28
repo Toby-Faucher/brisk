@@ -275,7 +275,7 @@ pub(crate) fn now() -> u64 {
 const MAX_BODY: u64 = 8 << 20;
 
 /// HTTPS only, except plain http to loopback (the tests' mock server).
-fn base_ok(base: &str) -> bool {
+pub(crate) fn base_ok(base: &str) -> bool {
     if base.starts_with("https://") {
         return true;
     }
@@ -308,6 +308,11 @@ fn safe_err(e: &ureq::Error) -> String {
 /// debug lines) with the full path and query, i.e. `key=`. hostd installs no `log` logger, so
 /// nothing is printed; never add one (env_logger, tracing-log, ...) without filtering ureq out.
 fn https_get(url: &str) -> Result<Vec<u8>, String> {
+    https_get_limit(url, MAX_BODY)
+}
+
+/// `https_get` with its own body cap (GameTDB's database is bigger than Steam's replies).
+pub(crate) fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     let tls = TlsConfig::builder()
         .provider(TlsProvider::Rustls)
@@ -330,7 +335,7 @@ fn https_get(url: &str) -> Result<Vec<u8>, String> {
     }
     r.body_mut()
         .with_config()
-        .limit(MAX_BODY)
+        .limit(limit)
         .read_to_vec()
         .map_err(|e| safe_err(&e))
 }
