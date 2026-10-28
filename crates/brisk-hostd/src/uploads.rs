@@ -37,6 +37,10 @@ fn fail_at(code: StatusCode, msg: &str, offset: u64) -> Fail {
 struct St {
     offset: u64,
     busy: bool,
+    /// The last finish failed in a way that is not the file's fault; the slot can be taken.
+    failed: bool,
+    /// Cancelled while a chunk was arriving: that chunk must not report success.
+    aborted: bool,
     touched: Instant,
 }
 
@@ -164,6 +168,17 @@ impl Uploads {
             keep
         });
         if open.len() >= MAX_OPEN {
+            // a failed finish keeps its file for a retry, but not at the price of a new upload
+            open.retain(|id, e| {
+                let st = e.st.lock().unwrap();
+                let keep = !st.failed || st.busy;
+                if !keep {
+                    let _ = std::fs::remove_file(self.part(id));
+                }
+                keep
+            });
+        }
+        if open.len() >= MAX_OPEN {
             return Err(fail(
                 StatusCode::TOO_MANY_REQUESTS,
                 "two uploads are already open",
@@ -191,6 +206,8 @@ impl Uploads {
                 st: Mutex::new(St {
                     offset: 0,
                     busy: false,
+                    failed: false,
+                    aborted: false,
                     touched: Instant::now(),
                 }),
             }),
@@ -259,6 +276,9 @@ impl Uploads {
             .map_err(io_fail)?;
         let mut n = 0u64;
         while let Some(fr) = body.frame().await {
+            if e.st.lock().unwrap().aborted {
+                return Err(fail(StatusCode::NOT_FOUND, "unknown upload"));
+            }
             let fr = fr.map_err(|_| fail(StatusCode::BAD_REQUEST, "upload interrupted"))?;
             let Ok(d) = fr.into_data() else { continue };
             n += d.len() as u64;
@@ -272,13 +292,17 @@ impl Uploads {
         }
         f.flush().await.map_err(io_fail)?;
         let mut st = e.st.lock().unwrap();
+        if st.aborted {
+            return Err(fail(StatusCode::NOT_FOUND, "unknown upload"));
+        }
         st.offset = offset + n;
         st.touched = Instant::now();
         Ok(json!({ "offset": st.offset }))
     }
 
     pub fn abort(&self, id: &str) {
-        if self.open.lock().unwrap().remove(id).is_some() {
+        if let Some(e) = self.open.lock().unwrap().remove(id) {
+            e.st.lock().unwrap().aborted = true;
             let _ = std::fs::remove_file(self.part(id));
         }
     }
@@ -302,6 +326,7 @@ impl Uploads {
                 ));
             }
             st.busy = true;
+            st.failed = false;
         }
         let _busy = Busy(e.clone());
         let (part, games, data_dir, name) = (
@@ -320,6 +345,8 @@ impl Uploads {
             || matches!(&r, Err((c, _)) if *c == StatusCode::UNPROCESSABLE_ENTITY)
         {
             self.abort(id);
+        } else if r.is_err() {
+            e.st.lock().unwrap().failed = true;
         }
         r
     }

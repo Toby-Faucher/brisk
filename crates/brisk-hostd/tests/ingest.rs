@@ -785,3 +785,52 @@ async fn a_removed_game_stays_gone_until_added_on_purpose() {
     let (_, v) = r.call("POST", "/api/library/scan", Value::Null).await;
     assert_eq!(v["removed"].as_u64(), Some(0));
 }
+
+#[tokio::test]
+async fn failed_uploads_release_their_slots() {
+    let r = rig();
+    // a file where the system folder should be: placing fails with a 500 and the part stays
+    std::fs::create_dir_all(&r.games).unwrap();
+    std::fs::write(r.games.join("wii"), b"in the way").unwrap();
+    let bytes = disc(b"RMCE01", true, "A");
+    for n in ["a.iso", "b.iso"] {
+        let id = r.upload(n, &bytes, 512).await;
+        let (st, _) = r
+            .call("POST", &format!("/api/uploads/{id}/finish"), Value::Null)
+            .await;
+        assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    assert_eq!(r.create("c.iso", 10).await.0, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn abort_works_on_a_busy_upload() {
+    let r = rig();
+    let (_, v) = r.create("a.iso", 4).await;
+    let id = v["id"].as_str().unwrap().to_string();
+    let slow = futures_util::stream::unfold(0, |i| async move {
+        if i == 1 {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        }
+        (i < 2).then(|| {
+            (
+                Ok::<_, std::io::Error>(axum::body::Bytes::from_static(b"ab")),
+                i + 1,
+            )
+        })
+    });
+    let (uri, hdr) = (
+        format!("/api/uploads/{id}"),
+        [("x-offset", "0".to_string())],
+    );
+    let put = r.req("PUT", &uri, &hdr, Body::from_stream(slow), true);
+    let del = async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        r.call("DELETE", &format!("/api/uploads/{id}"), Value::Null)
+            .await
+            .0
+    };
+    let (p, d) = tokio::join!(put, del);
+    assert_eq!(d, StatusCode::NO_CONTENT);
+    assert_eq!(p.0, StatusCode::NOT_FOUND);
+}
