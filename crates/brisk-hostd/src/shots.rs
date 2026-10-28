@@ -149,9 +149,10 @@ pub fn list(data: &Path, id: &str) -> Vec<Shot> {
         .into_iter()
         .filter_map(|name| {
             let p = d.join(&name);
-            let size = std::fs::metadata(&p).ok()?.len();
+            let mut f = crate::discid::open_regular(&p).ok()?;
+            let size = f.metadata().ok()?.len();
             let mut h = [0u8; 24];
-            std::io::Read::read_exact(&mut std::fs::File::open(&p).ok()?, &mut h).ok()?;
+            std::io::Read::read_exact(&mut f, &mut h).ok()?;
             let n = |i: usize| u32::from_be_bytes(h[i..i + 4].try_into().unwrap());
             Some(Shot {
                 taken_at: valid_name(&name)?,
@@ -166,7 +167,11 @@ pub fn list(data: &Path, id: &str) -> Vec<Shot> {
 
 pub fn read(data: &Path, id: &str, name: &str) -> Option<Vec<u8>> {
     valid_name(name)?;
-    std::fs::read(dir(data, id).join(name)).ok()
+    let f = crate::discid::open_regular(&dir(data, id).join(name)).ok()?;
+    let mut v = Vec::new();
+    // The cap guards a file that was swapped in after we wrote it.
+    std::io::Read::read_to_end(&mut std::io::Read::take(f, MAX_BYTES as u64), &mut v).ok()?;
+    Some(v)
 }
 
 /// Idempotent: a missing file is fine. False for a name that is not ours.
