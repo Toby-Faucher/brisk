@@ -30,6 +30,7 @@ pub mod retroachievements;
 pub mod running;
 pub mod saves;
 pub mod sessions;
+pub mod shots;
 pub mod site;
 pub(crate) mod source;
 pub mod steam;

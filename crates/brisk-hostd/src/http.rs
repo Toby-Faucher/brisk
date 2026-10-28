@@ -284,10 +284,18 @@ async fn game_news(
 /// Screenshot names and a cloud-save summary from the host's Steam folder; 404 for an unknown game.
 /// No folder is a 200 with empty fields.
 async fn game_local(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
-    let id = match path_game(&s, &raw).await {
-        Ok(g) => g.appid,
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
         Err(r) => return r,
     };
+    if g.source == crate::game::Source::Emu {
+        let (d, id) = (s.cfg.data_dir.clone(), g.id.as_str().to_string());
+        let names = tokio::task::spawn_blocking(move || crate::shots::list_names(&d, &id)).await;
+        let names = names.unwrap_or_default();
+        return axum::Json(serde_json::json!({ "screenshots": names, "saves": null }))
+            .into_response();
+    }
+    let id = g.appid;
     let s2 = s.clone();
     match tokio::task::spawn_blocking(move || steam_info::local(&s2.cfg, &s2.shots, id)).await {
         Ok(l) => axum::Json(l).into_response(),
@@ -331,10 +339,14 @@ async fn game_screenshot(
     State(s): State<Arc<AppState>>,
     UrlPath((raw, name)): UrlPath<(String, String)>,
 ) -> Response {
-    let id = match path_game(&s, &raw).await {
-        Ok(g) => g.appid,
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
         Err(r) => return r,
     };
+    if g.source == crate::game::Source::Emu {
+        return shot_get(&s, &g, name).await;
+    }
+    let id = g.appid;
     let s2 = s.clone();
     match tokio::task::spawn_blocking(move || steam_info::screenshot(&s2.cfg, &s2.shots, id, &name))
         .await
@@ -347,6 +359,96 @@ async fn game_screenshot(
             body,
         )
             .into_response(),
+        _ => err(StatusCode::NOT_FOUND, "no such screenshot"),
+    }
+}
+
+const NO_SHOTS: &str = "no stored screenshots for this game";
+
+/// An emulator game that takes screenshots, else the error to send.
+#[allow(clippy::result_large_err)]
+async fn shot_game(s: &AppState, raw: &str) -> Result<Game, Response> {
+    let g = path_game(s, raw).await?;
+    if g.source == crate::game::Source::Emu && g.caps.screenshots {
+        Ok(g)
+    } else {
+        Err(err(StatusCode::NOT_FOUND, NO_SHOTS))
+    }
+}
+
+async fn shot_get(s: &AppState, g: &Game, name: String) -> Response {
+    let (d, id) = (s.cfg.data_dir.clone(), g.id.as_str().to_string());
+    match tokio::task::spawn_blocking(move || crate::shots::read(&d, &id, &name)).await {
+        Ok(Some(body)) => (
+            [
+                (header::CONTENT_TYPE, "image/png"),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+                (header::CACHE_CONTROL, "private, max-age=3600"),
+            ],
+            body,
+        )
+            .into_response(),
+        _ => err(StatusCode::NOT_FOUND, "no such screenshot"),
+    }
+}
+
+/// The raw PNG as the body (8 MiB cap, counted while it streams in). 201 with the stored entry.
+async fn shot_post(
+    State(s): State<Arc<AppState>>,
+    UrlPath(raw): UrlPath<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let g = match shot_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let (d, id) = (s.cfg.data_dir.clone(), g.id.as_str().to_string());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |t| t.as_millis() as u64);
+    let r = tokio::task::spawn_blocking(move || {
+        let free = crate::files::disk_free(&d);
+        crate::shots::save(&d, &id, &body, now, free)
+    })
+    .await;
+    match r {
+        Ok(Ok(shot)) => (StatusCode::CREATED, axum::Json(shot)).into_response(),
+        Ok(Err(crate::shots::Fail::Invalid(m))) => err(StatusCode::UNPROCESSABLE_ENTITY, m),
+        Ok(Err(crate::shots::Fail::NoSpace)) => {
+            err(StatusCode::INSUFFICIENT_STORAGE, "the disk is full")
+        }
+        _ => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not store the screenshot",
+        ),
+    }
+}
+
+async fn shot_list(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
+    let g = match shot_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let (d, id) = (s.cfg.data_dir.clone(), g.id.as_str().to_string());
+    let l = tokio::task::spawn_blocking(move || crate::shots::list(&d, &id)).await;
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        axum::Json(l.unwrap_or_default()),
+    )
+        .into_response()
+}
+
+async fn shot_delete(
+    State(s): State<Arc<AppState>>,
+    UrlPath((raw, name)): UrlPath<(String, String)>,
+) -> Response {
+    let g = match shot_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let (d, id) = (s.cfg.data_dir.clone(), g.id.as_str().to_string());
+    match tokio::task::spawn_blocking(move || crate::shots::delete(&d, &id, &name)).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
         _ => err(StatusCode::NOT_FOUND, "no such screenshot"),
     }
 }
@@ -1289,7 +1391,16 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{id}/news", get(game_news))
         .route("/games/{id}/local", get(game_local))
         .route("/games/{id}/saves", get(game_saves))
-        .route("/games/{id}/screenshots/{name}", get(game_screenshot))
+        .route(
+            "/games/{id}/screenshots",
+            get(shot_list)
+                .post(shot_post)
+                .layer(DefaultBodyLimit::max(crate::shots::MAX_BYTES)),
+        )
+        .route(
+            "/games/{id}/screenshots/{name}",
+            get(game_screenshot).delete(shot_delete),
+        )
         .route("/games/{id}/art/{kind}", get(crate::art::serve))
         .route("/art/pending", get(crate::art::pending))
         .route(
