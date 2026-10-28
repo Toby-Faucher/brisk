@@ -85,8 +85,8 @@ export type Achievements = {
 /** The other answers an emulator game's route gives (always status 200). A Steam answer has no `state`. */
 export type RaAnswer =
   | Achievements
-  | { state: 'off' | 'not-found' | 'rate-limited' | 'bad-credentials' | 'error' }
-  | { state: 'unsupported'; reason?: string };
+  | { state: 'off' | 'rate-limited' | 'bad-credentials' | 'error' }
+  | { state: 'not-found' | 'unsupported'; reason?: string };
 /** One headline; `title` is text only, `url` is https or empty. `patch`: the game's own announcements feed. */
 export type NewsItem = { title: string; url: string; date: number; patch: boolean };
 /** GET /api/games/{appid}/news; an empty list when Steam had nothing. */

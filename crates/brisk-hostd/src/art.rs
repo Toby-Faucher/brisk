@@ -248,6 +248,38 @@ pub enum Outcome {
     Halted,
 }
 
+/// A failed automatic lookup: when, and how many in a row.
+#[derive(Serialize, Deserialize)]
+struct Tried {
+    at: u64,
+    fails: u32,
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// Seconds to wait after `fails` failures in a row: 1 h, doubling, 16 h at most.
+fn backoff(fails: u32) -> u64 {
+    3600u64 << fails.saturating_sub(1).min(4) // 1, 2, 4, 8, 16 h, then flat
+}
+
+fn record_failure(data_dir: &Path, key: &str) {
+    let p = dir_of(data_dir, key).join("tried.json");
+    let fails = read_json::<Tried>(&p)
+        .map_or(0, |t| t.fails)
+        .saturating_add(1);
+    let _ = write_json(
+        &p,
+        &Tried {
+            at: now_secs(),
+            fails,
+        },
+    );
+}
+
 type KeyLoader = Box<dyn Fn(&Path) -> Option<SgdbConfig> + Send + Sync>;
 
 pub struct Art {
@@ -508,6 +540,7 @@ impl Art {
             return false;
         }
         let me = self.clone();
+        let data_dir = cfg.data_dir.clone();
         tokio::spawn(async move {
             let _turn = me.gate.acquire().await;
             let (m2, id2) = (me.clone(), id.clone());
@@ -518,7 +551,10 @@ impl Art {
             .await;
             match r {
                 Ok(Outcome::Halted) => {}
-                Ok(Outcome::Failed(why)) => eprintln!("art: {id}: {why}"),
+                Ok(Outcome::Failed(why)) => {
+                    eprintln!("art: {id}: {why}");
+                    record_failure(&data_dir, &key);
+                }
                 Ok(o) => eprintln!("art: {id}: {o:?}"),
                 Err(_) => eprintln!("art: {id}: task failed"),
             }
@@ -539,10 +575,43 @@ impl Art {
         })
     }
 
-    /// New games (a scan or an upload): look each up once.
+    /// Whether an automatic lookup should run: no art, no "none of these", nothing waiting in the
+    /// queue, and any earlier failure past its backoff. Never true for a game that has art.
+    fn due(&self, data_dir: &Path, id: &GameId) -> bool {
+        let Some(key) = key_of(id) else { return false };
+        let dir = dir_of(data_dir, &key);
+        if dir.join("done.json").is_file()
+            || dir.join("nomatch").is_file()
+            || load_pending(data_dir).items.contains_key(id.as_str())
+        {
+            return false;
+        }
+        read_json::<Tried>(&dir.join("tried.json"))
+            .is_none_or(|t| now_secs() >= t.at.saturating_add(backoff(t.fails)))
+    }
+
+    /// New games (a scan, an upload): look each up once, in the background. Quiet without a key.
     pub fn trigger_new(self: &Arc<Self>, cfg: &Config, ids: &[GameId]) {
         let recs = crate::emu::load(&cfg.data_dir);
-        for r in recs.iter().filter(|r| ids.contains(&r.id)) {
+        let recs = recs.iter().filter(|r| ids.contains(&r.id));
+        self.trigger(cfg, recs);
+    }
+
+    /// At startup: every library game still without art or a recorded answer gets one lookup.
+    pub fn sweep(self: &Arc<Self>, cfg: &Config) {
+        let recs = crate::emu::load(&cfg.data_dir);
+        self.trigger(cfg, recs.iter());
+    }
+
+    fn trigger<'a>(
+        self: &Arc<Self>,
+        cfg: &Config,
+        recs: impl Iterator<Item = &'a crate::emu::Record>,
+    ) {
+        if !self.has_key(&cfg.data_dir) {
+            return;
+        }
+        for r in recs.filter(|r| self.due(&cfg.data_dir, &r.id)) {
             self.spawn(
                 cfg.clone(),
                 r.id.clone(),

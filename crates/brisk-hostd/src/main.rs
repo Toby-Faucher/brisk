@@ -124,6 +124,10 @@ async fn main() -> std::process::ExitCode {
             .map_or(0, |d| d.as_secs()),
     ));
     state.files.clean_partials();
+    {
+        let (cfg, art) = (state.cfg.clone(), state.art.clone());
+        tokio::task::spawn_blocking(move || art.sweep(&cfg));
+    }
     state.uploads.clean_old();
     if state.cfg.scan_on_start {
         let cfg = state.cfg.clone();

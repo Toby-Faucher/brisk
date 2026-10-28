@@ -16,6 +16,7 @@ export function raView(a: Achievements | RaAnswer): RaView {
   const s: string = 'state' in a && a.state ? a.state : 'ok';
   if (s === 'ok') return { ach: a as Achievements, note: null };
   if (s === 'off') return { ach: null, note: null };
+  if (s === 'not-found' && 'reason' in a && a.reason) return { ach: null, note: a.reason };
   if (s === 'unsupported') return { ach: null, note: (a as { reason?: string }).reason || 'This game file cannot be checked.' };
   return { ach: null, note: NOTES[s] ?? NOTES.error };
 }
