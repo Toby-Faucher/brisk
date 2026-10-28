@@ -1191,6 +1191,30 @@ mod tests {
         }
     }
 
+    /// Stream screenshots go through the plain proxy (the mock upstream takes 2 MiB, hostd caps shots at 8 MiB, under the proxy 16 MiB).
+    #[tokio::test]
+    async fn proxy_passes_stream_screenshots() {
+        let (url, _) = upstream().await;
+        let r = rig(vec![("a", url, None)]);
+        for (m, tail, body) in [
+            ("POST", "screenshots", vec![0u8; 1 << 20]),
+            ("GET", "screenshots", vec![]),
+            ("DELETE", "screenshots/1730000000000.png", vec![]),
+        ] {
+            let (st, _, b) = send(
+                &r.app,
+                m,
+                &format!("/api/m/a/games/emu%3Adolphin%3Ax/{tail}"),
+                None,
+                body,
+            )
+            .await;
+            let v: Value = serde_json::from_slice(&b).unwrap();
+            assert_eq!(st, StatusCode::OK, "{m}");
+            assert_eq!(v["pq"], format!("/api/games/emu%3Adolphin%3Ax/{tail}"));
+        }
+    }
+
     #[tokio::test]
     async fn proxy_uploads_take_a_chunk_and_pass_answers_through() {
         let (url, _) = upstream().await;
