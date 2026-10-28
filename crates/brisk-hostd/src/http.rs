@@ -962,6 +962,7 @@ async fn launch_defaults_put(State(s): State<Arc<AppState>>, b: axum::body::Byte
     with_current(r, defaults_view(&s.launch.all()))
 }
 
+#[allow(clippy::result_large_err)]
 fn launch_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
     s.parse_id(raw)
         .ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad game id"))

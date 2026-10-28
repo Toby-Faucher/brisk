@@ -484,9 +484,10 @@ mod tests {
     }
 
     /// Records the whole spawn, env included.
+    type Spawn = (String, Vec<String>, Vec<(String, String)>);
     #[derive(Default)]
     struct Spawns(
-        Mutex<Vec<(String, Vec<String>, Vec<(String, String)>)>>,
+        Mutex<Vec<Spawn>>,
         Mutex<Vec<String>>, // programs that fail to start
     );
     impl Runner for Spawns {
@@ -525,8 +526,7 @@ mod tests {
                 &env,
                 Some(&lj)
             ));
-            let v = run.0.lock().unwrap().remove(0);
-            v
+            run.0.lock().unwrap().remove(0)
         };
         let file = f.to_str().unwrap().to_string();
         let ok = r#"{"allowCustomCommands":true,"defaults":{"wrappers":["mangohud","gamemode"],
