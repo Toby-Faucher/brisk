@@ -113,6 +113,10 @@ fn rig(base: Option<&str>) -> Rig {
 }
 
 fn rig_gap(base: Option<&str>, gap: Duration) -> Rig {
+    rig_full(base, gap, Duration::from_secs(600))
+}
+
+fn rig_full(base: Option<&str>, gap: Duration, cooldown: Duration) -> Rig {
     let t = tempfile::tempdir().unwrap();
     let mut cfg = Config::from_env(t.path().join("dist"));
     cfg.secret = SECRET.into();
@@ -136,6 +140,7 @@ fn rig_gap(base: Option<&str>, gap: Duration) -> Rig {
         |_, _| None,
     );
     art.refresh_gap = gap;
+    art.cooldown = cooldown;
     st.art = Arc::new(art);
     let state = Arc::new(st);
     Rig {
@@ -604,4 +609,70 @@ async fn one_task_per_game_at_a_time() {
         .spawn(r.state.cfg.clone(), id, "Mario Kart Wii".into(), None, None);
     assert!(a && !b);
     r.idle().await;
+}
+
+/// Waits for the art task of every id in the list.
+async fn idle_all(r: &Rig, ids: &[&str]) {
+    for id in ids {
+        let id = brisk_hostd::game::GameId::parse(id).unwrap();
+        for _ in 0..200 {
+            if !r.state.art.busy(&id) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn refresh_during_an_outage_keeps_the_old_art() {
+    let m = mock(|_| vec![("search/autocomplete/", 500, b"{}".to_vec())]).await;
+    let r = rig(Some(&m.base));
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.idle().await;
+    // art from an earlier good run
+    let dir = r.data.join("art/emu_dolphin_RMCE01");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("cover.png"), png()).unwrap();
+    std::fs::write(dir.join("done.json"), b"{}").unwrap();
+    std::fs::write(dir.join("match.json"), b"{\"id\":5,\"name\":\"x\"}").unwrap();
+    let (s, _) = r
+        .call("POST", &format!("/api/art/{ID}/refresh"), Value::Null)
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    r.idle().await;
+    assert!(m.count("search/autocomplete/") >= 1);
+    for f in ["cover.png", "done.json", "match.json"] {
+        assert!(dir.join(f).exists(), "{f} was lost");
+    }
+    assert!(!r.data.join("art/emu_dolphin_RMCE01.old").exists());
+    assert!(
+        r.game().await["cover"]
+            .as_str()
+            .unwrap()
+            .contains("/art/cover")
+    );
+}
+
+#[tokio::test]
+async fn a_revoked_key_stops_the_batch_after_one_call_and_retries_after_the_cool_down() {
+    let m = mock(|_| vec![("search/autocomplete/", 401, b"{}".to_vec())]).await;
+    let r = rig_full(Some(&m.base), Duration::ZERO, Duration::from_millis(400));
+    let ids = [
+        "emu:dolphin:RMCE01",
+        "emu:dolphin:RSBE01",
+        "emu:dolphin:GALE01",
+    ];
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.add(b"RSBE01", "Brawl").await;
+    r.add(b"GALE01", "Melee").await;
+    idle_all(&r, &ids).await;
+    assert_eq!(m.count("search/autocomplete/"), 1);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let (s, _) = r
+        .call("POST", &format!("/api/art/{ID}/refresh"), Value::Null)
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 2);
 }

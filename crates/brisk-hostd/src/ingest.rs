@@ -8,8 +8,8 @@ use crate::emu::{self, Record};
 use crate::files;
 use crate::game::GameId;
 use crate::registry;
-use std::fs::File;
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
@@ -335,7 +335,14 @@ pub fn register(
     source: &str,
     respect: bool,
 ) -> Merged {
-    register_with(data_dir, recs, found, source, respect, &mut Canon::new(&real_canon))
+    register_with(
+        data_dir,
+        recs,
+        found,
+        source,
+        respect,
+        &mut Canon::new(&real_canon),
+    )
 }
 
 fn register_with(

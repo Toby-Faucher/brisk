@@ -244,6 +244,8 @@ pub enum Outcome {
     Off,
     /// A network or key problem; nothing is stored, the next request tries again.
     Failed(String),
+    /// SteamGridDB refused the key or the rate lately; nothing was asked until the cool-down ends.
+    Halted,
 }
 
 type KeyLoader = Box<dyn Fn(&Path) -> Option<SgdbConfig> + Send + Sync>;
@@ -257,6 +259,9 @@ pub struct Art {
     pending_lock: Mutex<()>,
     refreshed: Mutex<HashMap<String, Instant>>,
     pub refresh_gap: Duration,
+    /// After a 401 or 429 no game asks SteamGridDB for this long.
+    pub cooldown: Duration,
+    halted_until: Mutex<Option<Instant>>,
 }
 
 fn real_tdb(cfg: &Config, id: &str) -> Option<gametdb::Entry> {
@@ -289,7 +294,25 @@ impl Art {
             pending_lock: Mutex::default(),
             refreshed: Mutex::default(),
             refresh_gap: Duration::from_secs(30),
+            cooldown: Duration::from_secs(600),
+            halted_until: Mutex::default(),
         }
+    }
+
+    /// Seconds left of the cool-down after a refused key or a rate limit; None when asking is fine.
+    pub fn halted(&self) -> Option<u64> {
+        let t = (*self.halted_until.lock().unwrap_or_else(|e| e.into_inner()))?;
+        let left = t.checked_duration_since(Instant::now())?;
+        Some(left.as_secs() + 1)
+    }
+
+    /// A failed call: a refused key or a rate limit opens the breaker.
+    fn failed(&self, e: &sg::Error) -> Outcome {
+        if matches!(e, sg::Error::Unauthorized | sg::Error::RateLimited) {
+            *self.halted_until.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(Instant::now() + self.cooldown);
+        }
+        Outcome::Failed(e.to_string())
     }
 
     pub fn has_key(&self, data_dir: &Path) -> bool {
@@ -340,6 +363,9 @@ impl Art {
         let Some(sgc) = (self.sgdb)(&cfg.data_dir) else {
             return Outcome::Off;
         };
+        if self.halted().is_some() {
+            return Outcome::Halted;
+        }
         let cand = match sg::load_match(&sgc, &key) {
             Some(c) => c,
             None => {
@@ -353,7 +379,7 @@ impl Art {
                 });
                 let hits = match sg::search(&sgc, &q) {
                     Ok(h) => h,
-                    Err(e) => return Outcome::Failed(e.to_string()),
+                    Err(e) => return self.failed(&e),
                 };
                 let r = sg::rank(&q, &hits);
                 match r.best {
@@ -387,7 +413,7 @@ impl Art {
             }
         };
         if let Err(e) = fetch_all(&sgc, &key, &dir, &cand) {
-            return Outcome::Failed(e.to_string());
+            return self.failed(&e);
         }
         if !meta.sources.iter().any(|s| s == CREDIT_SGDB) {
             meta.sources.push(CREDIT_SGDB.into());
@@ -400,6 +426,44 @@ impl Art {
         Outcome::Fetched
     }
 
+    /// A refresh: the old cache is set aside, the pipeline runs from scratch, and the old cache
+    /// comes back if the network did not deliver (it is dropped when the run got an answer).
+    /// shortcut: a crash mid-run leaves `<key>.old` behind and no cache; delete it by hand.
+    pub fn run_fresh(
+        &self,
+        cfg: &Config,
+        id: &GameId,
+        title: &str,
+        system: Option<&str>,
+        disc: Option<&str>,
+    ) -> Outcome {
+        let Some(key) = key_of(id) else {
+            return Outcome::Failed("game id too long for the art cache".into());
+        };
+        let dir = dir_of(&cfg.data_dir, &key);
+        let old = dir_of(&cfg.data_dir, &format!("{key}.old"));
+        let _ = std::fs::remove_dir_all(&old);
+        let moved = std::fs::rename(&dir, &old).is_ok();
+        let o = self.run(cfg, id, title, system, disc);
+        if moved {
+            if matches!(o, Outcome::Failed(_) | Outcome::Halted | Outcome::Off) {
+                let _ = std::fs::remove_dir_all(&dir);
+                let _ = std::fs::rename(&old, &dir);
+            } else {
+                let _ = std::fs::remove_dir_all(&old);
+            }
+        }
+        if !matches!(
+            o,
+            Outcome::Pending | Outcome::Failed(_) | Outcome::Halted | Outcome::Off
+        ) {
+            self.edit_pending(&cfg.data_dir, |p| {
+                p.items.remove(id.as_str());
+            });
+        }
+        o
+    }
+
     /// Queues the pipeline for a game: one task per game, one running at a time. False when this
     /// game is already queued or running.
     pub fn spawn(
@@ -409,6 +473,30 @@ impl Art {
         title: String,
         system: Option<String>,
         disc: Option<String>,
+    ) -> bool {
+        self.spawn_as(cfg, id, title, system, disc, false)
+    }
+
+    /// `spawn` for a refresh (`run_fresh`).
+    pub fn spawn_fresh(
+        self: &Arc<Self>,
+        cfg: Config,
+        id: GameId,
+        title: String,
+        system: Option<String>,
+        disc: Option<String>,
+    ) -> bool {
+        self.spawn_as(cfg, id, title, system, disc, true)
+    }
+
+    fn spawn_as(
+        self: &Arc<Self>,
+        cfg: Config,
+        id: GameId,
+        title: String,
+        system: Option<String>,
+        disc: Option<String>,
+        fresh: bool,
     ) -> bool {
         let Some(key) = key_of(&id) else { return false };
         if !self
@@ -424,10 +512,12 @@ impl Art {
             let _turn = me.gate.acquire().await;
             let (m2, id2) = (me.clone(), id.clone());
             let r = tokio::task::spawn_blocking(move || {
-                m2.run(&cfg, &id2, &title, system.as_deref(), disc.as_deref())
+                let run = if fresh { Art::run_fresh } else { Art::run };
+                run(&m2, &cfg, &id2, &title, system.as_deref(), disc.as_deref())
             })
             .await;
             match r {
+                Ok(Outcome::Halted) => {}
                 Ok(Outcome::Failed(why)) => eprintln!("art: {id}: {why}"),
                 Ok(o) => eprintln!("art: {id}: {o:?}"),
                 Err(_) => eprintln!("art: {id}: task failed"),
@@ -492,16 +582,6 @@ impl Art {
             p.items.remove(id.as_str());
         });
         Ok(())
-    }
-
-    /// Clears the match and the cache of a game, so the next run searches again.
-    pub fn clear(&self, data_dir: &Path, id: &GameId) {
-        if let Some(k) = key_of(id) {
-            let _ = std::fs::remove_dir_all(dir_of(data_dir, &k));
-        }
-        self.edit_pending(data_dir, |p| {
-            p.items.remove(id.as_str());
-        });
     }
 }
 
@@ -622,9 +702,15 @@ pub async fn answer(
 }
 
 fn start(s: &Arc<AppState>, id: &GameId) {
+    start_as(s, id, false);
+}
+
+fn start_as(s: &Arc<AppState>, id: &GameId, fresh: bool) {
     let recs = s.records();
     if let Some(r) = crate::emu::find(&recs, id) {
-        s.art.spawn(
+        let spawn = if fresh { Art::spawn_fresh } else { Art::spawn };
+        spawn(
+            &s.art,
             s.cfg.clone(),
             r.id.clone(),
             r.name.clone(),
@@ -650,6 +736,15 @@ pub async fn refresh(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Strin
     if s.art.busy(&id) {
         return err(StatusCode::CONFLICT, "already looking for art");
     }
+    if let Some(wait) = s.art.halted() {
+        let mut r = err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SteamGridDB refused the last request; try again later",
+        );
+        r.headers_mut()
+            .insert(header::RETRY_AFTER, header::HeaderValue::from(wait));
+        return r;
+    }
     {
         let mut m = s.art.refreshed.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(t) = m
@@ -667,9 +762,7 @@ pub async fn refresh(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Strin
         }
         m.insert(id.as_str().into(), Instant::now());
     }
-    let (st, dd, id2) = (s.clone(), s.cfg.data_dir.clone(), id.clone());
-    let _ = tokio::task::spawn_blocking(move || st.art.clear(&dd, &id2)).await;
-    start(&s, &id);
+    start_as(&s, &id, true);
     (
         StatusCode::ACCEPTED,
         axum::Json(serde_json::json!({ "state": "searching" })),
