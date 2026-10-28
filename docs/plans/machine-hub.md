@@ -120,3 +120,20 @@ Added after the first browser test.
   (3 panes: overview, installed games, game or sessions detail), Machines cards: no GPU row without a GPU
   temperature, CPU row = temperature else VM load else hidden, drag to reorder (as Home), motion when the
   selected machine changes.
+
+## v3: colour header cards
+
+Chosen from the mock-ups: each machine card has a coloured header (the machine's colour, picked by the user)
+holding the state word, the ping and compact gauges; the body is a row of chips and the buttons.
+
+- Prefs layout gains `machineColors: { [machineId]: "#rrggbb" }` beside `homeOrder` and `machinesOrder`.
+  Ids use the machine id rules; values are lowercase `#rrggbb` (the server accepts `#rgb` and uppercase and
+  stores the normalized form; anything else is a 400); at most 64 entries. `GET /api/prefs` answers
+  `machineColors` (always an object). `PUT /api/prefs/layout` accepts `machineColors?: { [id]: "#rrggbb" | null }`
+  merged into the stored map (null removes an id); the answer carries all three layout keys. `DELETE` resets all.
+- Web: `ui/color.ts` (`PALETTE`, `normalizeHex`, `onColor`, `defaultColor`), `machineHue: Readable<Record<id, hex>>`
+  (saved colour, else the palette colour for the machine's position in server order) and
+  `setMachineColor(id, hex | null)` in `state/machines.ts`.
+- Cards: header gradient from the colour, text colour from `onColor`, gauge rings (CPU, GPU, RAM) in the header
+  text colour that turn amber/red on trouble, no GPU gauge without a GPU temperature, RAM on a VM shown as
+  reserved in a neutral ring. The detail popup gets the colour picker.
