@@ -563,6 +563,11 @@ fn rig(mode: &str) -> Rig {
 
 /// `service`: hostd as under systemd (stdout = journal).
 fn rig_with(mode: &str, service: bool) -> Rig {
+    rig_at(mode, service, "http://127.0.0.1:1")
+}
+
+/// `base`: where the Steam Web API and Store calls go.
+fn rig_at(mode: &str, service: bool, base: &str) -> Rig {
     use brisk_hostd::steam::{Game, GamesResult};
     use std::os::unix::fs::PermissionsExt;
     let d = dist();
@@ -593,7 +598,8 @@ fn rig_with(mode: &str, service: bool) -> Rig {
     cfg.data_dir = d.path().join("data");
     cfg.steam_dir = d.path().join("nosteam");
     cfg.steam_key_file = d.path().join("nokey");
-    cfg.steam_api_base = "http://127.0.0.1:1".into();
+    cfg.steam_api_base = base.into();
+    cfg.steam_store_base = base.into();
     cfg.proc_dir = d.path().join("proc");
     let data = cfg.data_dir.clone();
     let runner = Arc::new(Calls(Default::default()));
@@ -1261,4 +1267,86 @@ async fn games_marks_running_game() {
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(find(&v, 620)["running"], true);
     assert_eq!(find(&v, 1091500)["running"], false);
+}
+
+/// A rig whose library also holds one Dolphin game (its file exists); returns the rig and its id.
+fn emu_rig(base: &str) -> (Rig, u32) {
+    let r = rig_at("", false, base);
+    let iso = r.data.join("mk.iso");
+    std::fs::create_dir_all(&r.data).unwrap();
+    std::fs::write(&iso, "x").unwrap();
+    let e = brisk_hostd::emu::Entry {
+        name: "Mario Kart Wii".into(),
+        emulator: "dolphin".into(),
+        file: iso,
+    };
+    let games = brisk_hostd::emu::games(std::slice::from_ref(&e), &r.proc);
+    r.state
+        .games
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .games
+        .extend(games);
+    std::fs::write(
+        r.data.join("emulators.json"),
+        serde_json::to_string(
+            &serde_json::json!([{"name": e.name, "emulator": "dolphin", "file": e.file}]),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let id = e.id();
+    (r, id)
+}
+
+#[tokio::test]
+async fn emulator_appid_stream_spawns_dolphin_and_never_steam() {
+    let (r, id) = emu_rig("http://127.0.0.1:1");
+    let (st, v) = r
+        .call(
+            "POST",
+            "/api/stream",
+            &format!(r#"{{"preset":"balanced","appid":{id}}}"#),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let spawned = |r: &Rig| {
+        r.runner
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("spawn dolphin-emu -b -e "))
+            .count()
+    };
+    assert!(eventually(|| spawned(&r) == 1).await);
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    assert!(
+        r.runner
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|c| !c.contains("spawn steam"))
+    );
+    assert_eq!(spawned(&r), 1);
+    r.call("DELETE", "/api/stream", "").await;
+}
+
+#[tokio::test]
+async fn emulator_appid_has_no_steam_details_and_no_outbound_call() {
+    let (base, hits) = mock_steam_hits(vec![]).await;
+    let (r, id) = emu_rig(&base);
+    for what in ["info", "achievements", "news"] {
+        let (st, v) = r.call("GET", &format!("/api/games/{id}/{what}"), "").await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{what}");
+        assert!(v["error"].is_string());
+    }
+    // The library listing warms Steam's caches in the background; it must skip the emulator game.
+    let (st, _) = r.call("GET", "/api/games", "").await;
+    assert_eq!(st, StatusCode::OK);
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }

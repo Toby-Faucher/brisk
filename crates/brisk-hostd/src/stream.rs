@@ -148,6 +148,7 @@ struct Running {
 pub struct Supervisor {
     bin: PathBuf,
     proc_dir: PathBuf,
+    data_dir: PathBuf,
     listen: Option<String>,
     app_id: u32,
     tls: PathBuf,
@@ -170,6 +171,7 @@ impl Supervisor {
         Supervisor {
             bin: cfg.bridge_bin.clone(),
             proc_dir: cfg.proc_dir.clone(),
+            data_dir: cfg.data_dir.clone(),
             listen: cfg.bridge_listen.clone(),
             app_id: cfg.app_id,
             tls: cfg.tls_dir.clone(),
@@ -293,7 +295,7 @@ impl Supervisor {
             self.runner.clone(),
         );
         let mut launch = req.appid;
-        let proc = self.proc_dir.clone();
+        let (proc, data) = (self.proc_dir.clone(), self.data_dir.clone());
         let quiet = self.quiet;
         let report = Arc::new(Mutex::new(Report::default()));
         let rep = report.clone();
@@ -319,7 +321,7 @@ impl Supervisor {
                             } else if l.starts_with("tap\tconnected")
                                 && let Some(id) = launch.take()
                             {
-                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), id));
+                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), data.clone(), id));
                             }
                             rep.lock().unwrap().line(&l);
                             forward(bridge_line(l, quiet, tok.as_deref()));
@@ -636,7 +638,21 @@ fn hostname() -> String {
 
 /// A running game is only brought to the front: `rungameid` on it does nothing useful and leaves
 /// its window small on the desktop. Then waits up to a minute for the window to fullscreen it.
-async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, id: u32) {
+async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf, id: u32) {
+    if crate::emu::is_emu_id(id) {
+        let (r, p) = (runner.clone(), proc);
+        let entries = crate::emu::load(&data);
+        let (env, e2) = (graphical_env(), entries.clone());
+        let ok = tokio::task::spawn_blocking(move || {
+            crate::emu::launch(&*r, &p, &e2, id, &graphical_env())
+        })
+        .await
+        .unwrap_or(false);
+        if ok {
+            crate::emu::focus(runner, &entries, id, env, Duration::from_secs(60)).await;
+        }
+        return;
+    }
     let (r, p) = (runner.clone(), proc.clone());
     let env = tokio::task::spawn_blocking(move || {
         if crate::running::running_appids(&p).contains(&id) {

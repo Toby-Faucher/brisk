@@ -108,8 +108,11 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
             .iter()
             .filter(|x| x.installed && x.playtime_min > 0)
             .map(|x| x.appid)
+            .filter(|&id| !crate::emu::is_emu_id(id))
             .collect(),
-        g.games.iter().map(|x| x.appid).collect(),
+        (g.games.iter().map(|x| x.appid))
+            .filter(|&id| !crate::emu::is_emu_id(id))
+            .collect(),
     );
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
@@ -130,6 +133,9 @@ async fn game_info(
     if !s.is_known_appid(id).await {
         return err(StatusCode::NOT_FOUND, "unknown game");
     }
+    if crate::emu::is_emu_id(id) {
+        return err(StatusCode::NOT_FOUND, "no Steam details for this game");
+    }
     let refresh = req
         .uri()
         .query()
@@ -147,6 +153,9 @@ async fn game_achievements(
     if !s.is_known_appid(id).await {
         return err(StatusCode::NOT_FOUND, "unknown game");
     }
+    if crate::emu::is_emu_id(id) {
+        return err(StatusCode::NOT_FOUND, "no Steam details for this game");
+    }
     let refresh = req
         .uri()
         .query()
@@ -163,6 +172,9 @@ async fn game_news(
 ) -> Response {
     if !s.is_known_appid(id).await {
         return err(StatusCode::NOT_FOUND, "unknown game");
+    }
+    if crate::emu::is_emu_id(id) {
+        return err(StatusCode::NOT_FOUND, "no Steam details for this game");
     }
     let refresh = req
         .uri()
