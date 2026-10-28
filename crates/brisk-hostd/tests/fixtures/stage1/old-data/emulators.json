@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Mario Kart Wii",
+    "emulator": "dolphin",
+    "file": "/games/Wii/mkw.iso"
+  },
+  {
+    "name": "Super Smash Bros. Melee",
+    "emulator": "dolphin",
+    "file": "/games/GameCube/melee.iso"
+  },
+  {
+    "name": "Mario Kart: Wii!",
+    "emulator": "dolphin",
+    "file": "/games/Wii/mkw-copy.iso"
+  }
+]

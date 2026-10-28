@@ -694,3 +694,28 @@ async fn emulator_game_that_is_not_running_is_409() {
     assert_eq!(st, StatusCode::CONFLICT);
     assert!(r.calls().is_empty());
 }
+
+#[tokio::test(start_paused = true)]
+async fn an_emulator_game_quits_by_its_old_number_too() {
+    // 3907440760 is what the first emulator version called "Mario Kart Wii".
+    let r = rig(Exits::OnClose);
+    let (st, v) = r.quit(r#"{"appid":3907440760}"#).await;
+    assert_eq!(
+        (st, v["state"].as_str()),
+        (StatusCode::OK, Some("closed")),
+        "{v}"
+    );
+    assert_eq!(r.calls(), [EMU_CLOSE]);
+    assert!(!r.alive(800) && r.alive(801) && r.alive(802));
+}
+
+#[tokio::test(start_paused = true)]
+async fn steam_games_quit_by_the_new_id_as_well() {
+    let r = rig(Exits::OnClose);
+    let (st, v) = r.quit(r#"{"id":"steam:10"}"#).await;
+    assert_eq!(
+        (st, v["state"].as_str()),
+        (StatusCode::OK, Some("closed")),
+        "{v}"
+    );
+}

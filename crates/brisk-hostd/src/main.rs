@@ -63,6 +63,8 @@ async fn main() -> std::process::ExitCode {
             cfg.allowed_users.join(", ")
         );
     }
+    // Game ids changed in Stage 1: rekey the data files before anything reads them (idempotent).
+    brisk_hostd::migrate::run(&cfg.data_dir);
     let l = match tokio::net::TcpListener::bind(cfg.listen).await {
         Ok(l) => l,
         Err(e) => {

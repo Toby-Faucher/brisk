@@ -61,16 +61,16 @@ pub fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
     let mut out = vec![];
     for e in entries {
         let base = slug(&e.name);
-        let id = (1..)
-            .map(|n| {
-                if n == 1 {
-                    base.clone()
-                } else {
-                    format!("{base}~{n}")
-                }
-            })
-            .filter_map(|s| GameId::emu(&e.emulator, &s))
-            .find(|id| !used.contains(id));
+        // An emulator name that cannot be part of an id would never find a free one.
+        let id = GameId::emu(&e.emulator, &base).and_then(|_| {
+            (1..)
+                .map(|n| match n {
+                    1 => base.clone(),
+                    _ => format!("{base}~{n}"),
+                })
+                .filter_map(|s| GameId::emu(&e.emulator, &s))
+                .find(|id| !used.contains(id))
+        });
         let Some(id) = id else {
             eprintln!(
                 "warn: {}: skipping {:?}, bad emulator name",
@@ -292,4 +292,165 @@ pub fn run(data_dir: &Path) {
     apply(data_dir, "prefs.json", |t| prefs(t, &legacy));
     apply(data_dir, "sessions.jsonl", |t| sessions(t, &legacy));
     apply(data_dir, "emu-played.json", |t| played(t, &legacy));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn lm(pairs: &[(u32, &str)]) -> LegacyMap {
+        pairs.iter().map(|(n, s)| (*n, s.to_string())).collect()
+    }
+
+    #[test]
+    fn slugs() {
+        assert_eq!(slug("Mario Kart Wii"), "mario-kart-wii");
+        assert_eq!(
+            slug("  Super Smash Bros. Melee!! "),
+            "super-smash-bros-melee"
+        );
+        assert_eq!(
+            slug("The Legend of Zelda: Twilight Princess"),
+            "the-legend-of-zelda-twilight-princess"
+        );
+        assert_eq!(slug(&"a".repeat(80)).len(), 48);
+        // nothing ASCII to keep: a stable fallback from the old hash
+        assert_eq!(slug("ゼルダ"), format!("g{:08x}", legacy_hash("ゼルダ")));
+        assert_eq!(slug("ゼルダ"), slug("ゼルダ"));
+        // always a valid id part
+        for n in ["", "-", "é", "a b", "x".repeat(100).as_str()] {
+            assert!(GameId::emu("dolphin", &slug(n)).is_some(), "{n:?}");
+        }
+    }
+
+    #[test]
+    fn library_from_old_list() {
+        let old = r#"[
+            {"name":"Mario Kart Wii","emulator":"dolphin","file":"/g/a.iso"},
+            {"name":"Mario Kart: Wii!","emulator":"dolphin","file":"/g/b.iso"},
+            {"name":"Mario Kart Wii?","emulator":"dolphin","file":"/g/c.iso"},
+            {"name":"Same name elsewhere","emulator":"other","file":"/g/d.iso"},
+            {"name":"Mario Kart Wii","emulator":"other","file":"/g/e.iso"},
+            {"name":"Bad","emulator":"Not An Id","file":"/g/f.iso"}]"#;
+        let l = library_from_emulators(old).unwrap();
+        let ids: Vec<_> = l.iter().map(|r| r.id.to_string()).collect();
+        assert_eq!(
+            ids,
+            [
+                "emu:dolphin:mario-kart-wii",
+                "emu:dolphin:mario-kart-wii~2",
+                "emu:dolphin:mario-kart-wii~3",
+                "emu:other:same-name-elsewhere",
+                "emu:other:mario-kart-wii",
+            ]
+        );
+        assert_eq!(l[0].legacy(), legacy_hash("Mario Kart Wii"));
+        assert_eq!(l[1].legacy(), legacy_hash("Mario Kart: Wii!"));
+        assert!(
+            l.iter()
+                .all(|r| r.source == "manual" && r.aliases.is_empty())
+        );
+        // order, names and files are kept
+        assert_eq!(l[2].file, Path::new("/g/c.iso"));
+        assert!(library_from_emulators("{not json").is_err());
+        assert!(
+            library_from_emulators(r#"[{"name":"A","emulator":"dolphin","file":"/a","extra":1}]"#)
+                .is_err()
+        );
+        assert_eq!(library_from_emulators("[]").unwrap(), vec![]);
+    }
+
+    #[test]
+    fn key_rules() {
+        let m = lm(&[(0xE000_0001, "emu:dolphin:a")]);
+        let n = notes(
+            r#"{"tags":{},"games":{"620":{"note":"x"},"steam:5":{"note":"y"},"3758096385":{"note":"z"},"3758096999":{"note":"u"},"emu:dolphin:q":{"note":"w"},"weird":{"note":"v"},"0":{"note":"d"}}}"#,
+            &m,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&n.text.unwrap()).unwrap();
+        let keys: Vec<&str> = v["games"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "3758096999",
+                "emu:dolphin:a",
+                "emu:dolphin:q",
+                "steam:0",
+                "steam:5",
+                "steam:620",
+                "weird"
+            ]
+        );
+        assert_eq!(n.unmapped, ["3758096999"]);
+    }
+
+    #[test]
+    fn a_new_key_already_there_wins_and_the_old_one_stays() {
+        let o = prefs(r#"{"620":{"a":1},"steam:620":{"a":2}}"#, &lm(&[])).unwrap();
+        assert_eq!(o.text, None);
+        assert_eq!(o.unmapped, ["620"]);
+    }
+
+    #[test]
+    fn prefs_keep_the_layout_and_unchanged_means_no_text() {
+        let o = prefs(r#"{"layout":{"v":1,"homeOrder":["a"]}}"#, &lm(&[])).unwrap();
+        assert_eq!(o, Out::default());
+        let o = prefs(r#"{"620":{"a":1},"layout":{"v":1}}"#, &lm(&[])).unwrap();
+        let v: Value = serde_json::from_str(&o.text.unwrap()).unwrap();
+        assert_eq!(v, json!({"steam:620":{"a":1},"layout":{"v":1}}));
+        assert!(prefs("[1]", &lm(&[])).is_err());
+        assert!(prefs("", &lm(&[])).is_err());
+        assert!(notes(r#"{"games":[]}"#, &lm(&[])).is_err());
+        assert_eq!(notes(r#"{"tags":{}}"#, &lm(&[])).unwrap(), Out::default());
+    }
+
+    #[test]
+    fn sessions_rows() {
+        let m = lm(&[(0xE000_0001, "emu:dolphin:a")]);
+        let old = concat!(
+            "{\"appid\":620,\"name\":\"P\"}\n",
+            "{\"appid\":null,\"name\":\"Desktop\"}\n",
+            "{\"appid\":3758096385,\"name\":\"A\"}\n",
+            "{\"appid\":5,\"name\":\"has\",\"gameId\":\"steam:5\"}\n",
+            "{\"appid\":3758096999,\"name\":\"gone\"}\n",
+            "not json at all\n",
+            "[1,2]\n",
+        );
+        let o = sessions(old, &m).unwrap();
+        let t = o.text.unwrap();
+        let lines: Vec<&str> = t.lines().collect();
+        assert_eq!(lines.len(), 7);
+        let id = |i: usize| {
+            serde_json::from_str::<Value>(lines[i])
+                .ok()
+                .and_then(|v| v["gameId"].as_str().map(String::from))
+        };
+        assert_eq!(id(0).as_deref(), Some("steam:620"));
+        assert_eq!(id(1), None);
+        assert_eq!(id(2).as_deref(), Some("emu:dolphin:a"));
+        assert_eq!(id(3).as_deref(), Some("steam:5"));
+        assert_eq!(id(4), None);
+        // lines it does not change are byte for byte
+        assert_eq!(lines[1], "{\"appid\":null,\"name\":\"Desktop\"}");
+        assert_eq!(lines[5], "not json at all");
+        assert!(t.ends_with('\n'));
+        assert_eq!(o.unmapped, ["3758096999"]);
+        // a second pass changes nothing
+        assert_eq!(sessions(&t, &m).unwrap().text, None);
+        // no trailing newline stays none
+        assert!(
+            !sessions("{\"appid\":1}", &m)
+                .unwrap()
+                .text
+                .unwrap()
+                .ends_with('\n')
+        );
+    }
 }

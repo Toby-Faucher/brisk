@@ -414,3 +414,53 @@ async fn machine_colors_round_trip_merge_and_reject() {
             .contains("layout")
     );
 }
+
+#[tokio::test]
+async fn prefs_take_new_ids_in_any_form_and_key_them_by_the_new_id() {
+    let t = t();
+    let b = json!({"preset":"fast","codec":"h264"});
+    for u in [
+        "steam:620",
+        "steam%3A621",
+        "622",
+        "emu:dolphin:mario-kart-wii",
+    ] {
+        assert_eq!(t.put(u, b.clone()).await, StatusCode::OK, "{u}");
+    }
+    let all = t.all().await;
+    let mut keys: Vec<_> = all.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "emu:dolphin:mario-kart-wii",
+            "steam:620",
+            "steam:621",
+            "steam:622"
+        ]
+    );
+    for u in ["steam%3A620", "622", "emu%3Adolphin%3Amario-kart-wii"] {
+        assert_eq!(
+            t.call("DELETE", &format!("/api/prefs/{u}"), true, None)
+                .await
+                .0,
+            StatusCode::NO_CONTENT,
+            "{u}"
+        );
+    }
+    assert_eq!(t.all().await.as_object().unwrap().len(), 1);
+    // the Desktop app is refused in the new form too (BRISK_APP defaults to 870779643)
+    for bad in [
+        "steam:0",
+        "steam:870779643",
+        "steam:0620",
+        "emu:x",
+        "3758096385",
+    ] {
+        assert_eq!(
+            t.put(bad, b.clone()).await,
+            StatusCode::BAD_REQUEST,
+            "{bad}"
+        );
+    }
+}

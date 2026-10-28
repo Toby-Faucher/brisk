@@ -406,3 +406,75 @@ async fn tag_pinned_roundtrips_and_defaults_false() {
     let t3 = t_in(t2.dir);
     assert_eq!(t3.all().await["tags"]["o"]["pinned"], false);
 }
+
+#[tokio::test]
+async fn game_notes_take_new_ids_in_any_form_and_a_bare_number_as_steam() {
+    let t = t();
+    for u in ["steam:620", "steam%3A620", "620"] {
+        let (st, _) = t
+            .call(
+                "PUT",
+                &format!("/api/notes/games/{u}"),
+                true,
+                Some(json!({"note": u}).to_string()),
+            )
+            .await;
+        assert_eq!(st, StatusCode::OK, "{u}");
+    }
+    // all three are one entry, under the new id
+    let all = t.all().await;
+    assert_eq!(all["games"].as_object().unwrap().len(), 1);
+    assert_eq!(all["games"]["steam:620"]["note"], "620");
+    let (st, _) = t
+        .call(
+            "PUT",
+            "/api/notes/games/emu:dolphin:mario-kart-wii",
+            true,
+            Some(json!({"note":"x"}).to_string()),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    for bad in [
+        "nope",
+        "steam:0620",
+        "emu:dolphin",
+        "3758096385",
+        "4294967296",
+        "-1",
+    ] {
+        let (st, _) = t
+            .call(
+                "PUT",
+                &format!("/api/notes/games/{bad}"),
+                true,
+                Some(json!({"note":"x"}).to_string()),
+            )
+            .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    assert_eq!(t.all().await["games"].as_object().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn an_old_emulator_number_reaches_the_game_when_the_library_has_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("emulators.json"),
+        r#"[{"name":"Mario Kart Wii","emulator":"dolphin","file":"/x.iso"}]"#,
+    )
+    .unwrap();
+    let t = t_in(dir);
+    let (st, _) = t
+        .call(
+            "PUT",
+            "/api/notes/games/3907440760",
+            true,
+            Some(json!({"note":"hi"}).to_string()),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(
+        t.all().await["games"]["emu:dolphin:mario-kart-wii"]["note"],
+        "hi"
+    );
+}

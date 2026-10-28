@@ -1057,7 +1057,15 @@ mod tests {
 
     #[test]
     fn path_rules() {
-        for ok in ["host", "games/1/info", "sessions/5/series", "a%20b"] {
+        for ok in [
+            "host",
+            "games/1/info",
+            "sessions/5/series",
+            "a%20b",
+            "games/steam:620/info",
+            "games/steam%3A620/info",
+            "games/emu:dolphin:mario-kart-wii/local",
+        ] {
             assert!(path_ok(ok), "{ok}");
         }
         for bad in [

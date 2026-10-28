@@ -1332,3 +1332,214 @@ async fn emulator_id_has_no_steam_details_and_no_outbound_call() {
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
+
+// ---- Stage 1: string ids, caps, compat for a mixed fleet ----
+
+const STAGE1: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/stage1");
+
+/// A Steam fixture library plus the stage 1 old data dir's emulators.json (no game files exist).
+fn stage1_steam(base: &str) -> Steam {
+    let s = steam(base, "http://127.0.0.1:1", Some(KEY));
+    std::fs::create_dir_all(&s.cfg.data_dir).unwrap();
+    std::fs::copy(
+        format!("{STAGE1}/old-data/emulators.json"),
+        s.cfg.data_dir.join("emulators.json"),
+    )
+    .unwrap();
+    s
+}
+
+fn keys(v: &serde_json::Value) -> Vec<String> {
+    let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+    k.sort();
+    k
+}
+
+fn fixture(name: &str) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(format!("{STAGE1}/{name}")).unwrap()).unwrap()
+}
+
+fn by_id<'a>(v: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+    v["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["id"] == id)
+        .unwrap()
+}
+
+#[tokio::test]
+async fn games_carry_old_and_new_fields_and_match_the_committed_fixtures() {
+    let s = stage1_steam(&owned_mock(200).await);
+    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    let (steam_g, emu_g) = (
+        by_id(&v, "steam:620"),
+        by_id(&v, "emu:dolphin:mario-kart-wii"),
+    );
+    // Steam: the old numeric appid stays, the new fields join it.
+    assert_eq!(steam_g["appid"], 620);
+    assert_eq!(steam_g["source"], "steam");
+    assert_eq!(steam_g["legacyId"], "620");
+    assert_eq!(steam_g["caps"]["install"], true);
+    assert_eq!(steam_g["caps"]["controls"], false);
+    // Emulator: appid is the old hash, so an older web build still finds the game.
+    assert_eq!(emu_g["appid"], 3907440760u64);
+    assert_eq!(emu_g["legacyId"], "3907440760");
+    assert_eq!(emu_g["source"], "emu");
+    assert_eq!(emu_g["emulator"], "dolphin");
+    assert_eq!(emu_g["caps"]["install"], false);
+    assert_eq!(emu_g["caps"]["controls"], true);
+    assert_eq!(emu_g["installed"], false, "the file is not there");
+    // The fixtures the web half reads have the same fields as the real answer.
+    let new = fixture("games-new.json");
+    assert_eq!(keys(&new["games"][0]), keys(steam_g));
+    assert_eq!(keys(&new["games"][1]), keys(emu_g));
+    assert_eq!(keys(&new["games"][0]["caps"]), keys(&steam_g["caps"]));
+    assert_eq!(keys(&new), keys(&v));
+    // The old shape is the new one minus the new fields (what an old hostd answers).
+    let old = fixture("games-old.json");
+    let mut minus = keys(steam_g);
+    minus.retain(|k| !["id", "source", "caps", "legacyId"].contains(&k.as_str()));
+    assert_eq!(keys(&old["games"][0]), minus);
+    assert_eq!(old["games"][0]["appid"], new["games"][0]["appid"]);
+}
+
+#[tokio::test]
+async fn game_paths_take_ids_with_a_colon_encoded_or_not_and_bare_numbers() {
+    let s = stage1_steam(&owned_mock(200).await);
+    let ok = [
+        "/api/games/steam:620/local",
+        "/api/games/steam%3A620/local",
+        "/api/games/steam%3a620/local",
+        "/api/games/620/local",
+        "/api/games/emu:dolphin:mario-kart-wii/local",
+        "/api/games/emu%3Adolphin%3Amario-kart-wii/local",
+        // the old emulator hash, known to this machine's library
+        "/api/games/3907440760/local",
+    ];
+    for u in ok {
+        assert_eq!(get_json(&s.cfg, u).await.0, StatusCode::OK, "{u}");
+    }
+    // 404: a good id this machine does not have, and bare numbers it does not know
+    for u in [
+        "/api/games/steam:999999/local",
+        "/api/games/emu:dolphin:nope/local",
+        "/api/games/999999/local",
+        "/api/games/3907440761/local",
+        "/api/games/4294967296/local",
+    ] {
+        assert_eq!(get_json(&s.cfg, u).await.0, StatusCode::NOT_FOUND, "{u}");
+    }
+    // 400: not an id at all, or not the canonical form
+    for u in [
+        "/api/games/nope/local",
+        "/api/games/steam:0620/local",
+        "/api/games/steam:/local",
+        "/api/games/emu:dolphin/local",
+        "/api/games/emu:Dolphin:x/local",
+        "/api/games/steam%3A620%3B/local",
+        "/api/games/-1/local",
+    ] {
+        assert_eq!(get_json(&s.cfg, u).await.0, StatusCode::BAD_REQUEST, "{u}");
+    }
+    // Steam details never answer for an emulator game, by either id.
+    for u in [
+        "/api/games/emu:dolphin:mario-kart-wii/info",
+        "/api/games/3907440760/achievements",
+    ] {
+        let (st, v) = get_json(&s.cfg, u).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{u}");
+        assert_eq!(v["error"], "no Steam details for this game");
+    }
+}
+
+#[tokio::test]
+async fn launch_install_and_stream_take_the_new_id_or_the_old_number() {
+    let r = rig("");
+    for b in [
+        r#"{"id":"steam:10"}"#,
+        r#"{"id":10}"#,
+        r#"{"id":"10"}"#,
+        r#"{"appid":10}"#,
+    ] {
+        assert_eq!(
+            r.call("POST", "/api/launch", b).await.0,
+            StatusCode::NO_CONTENT,
+            "{b}"
+        );
+    }
+    assert_eq!(r.steam_calls(), ["spawn steam steam://rungameid/10"; 4]);
+    for b in [
+        r#"{"id":"steam:999"}"#,
+        r#"{"id":"nope"}"#,
+        r#"{"id":"emu:dolphin:nope"}"#,
+        r#"{"id":true}"#,
+        r#"{"id":null}"#,
+        r#"{"appid":"10"}"#,
+        r#"{}"#,
+    ] {
+        for u in ["/api/launch", "/api/install", "/api/quit"] {
+            assert_eq!(
+                r.call("POST", u, b).await.0,
+                StatusCode::BAD_REQUEST,
+                "{u} {b}"
+            );
+        }
+    }
+    assert_eq!(r.steam_calls().len(), 4);
+    // a stream from a game records both ids
+    let (st, v) = r
+        .call(
+            "POST",
+            "/api/stream",
+            r#"{"preset":"fast","id":"steam:10"}"#,
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(
+        (v["appid"].as_u64(), v["gameId"].as_str()),
+        (Some(10), Some("steam:10"))
+    );
+    r.call("DELETE", "/api/stream", "").await;
+    let s = r.call("GET", "/api/sessions", "").await.1;
+    assert_eq!(s["sessions"][0]["appid"], 10);
+    assert_eq!(s["sessions"][0]["gameId"], "steam:10");
+}
+
+#[tokio::test]
+async fn emulator_games_launch_by_either_id_and_have_nothing_to_install() {
+    let (r, id) = emu_rig("http://127.0.0.1:1");
+    assert_eq!(id, "emu:dolphin:mario-kart-wii");
+    let (st, v) = r
+        .call("POST", "/api/install", &format!(r#"{{"id":"{id}"}}"#))
+        .await;
+    assert_eq!(
+        (st, v["error"].as_str()),
+        (
+            StatusCode::BAD_REQUEST,
+            Some("nothing to install for this game")
+        )
+    );
+    for b in [
+        format!(r#"{{"id":"{id}"}}"#),
+        r#"{"appid":3907440760}"#.to_string(),
+    ] {
+        assert_eq!(
+            r.call("POST", "/api/launch", &b).await.0,
+            StatusCode::NO_CONTENT,
+            "{b}"
+        );
+    }
+    let spawned = r
+        .runner
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|c| c.starts_with("spawn dolphin-emu -b -e "))
+        .count();
+    assert_eq!(spawned, 2);
+    // last-played is stamped under the new id
+    let played = std::fs::read_to_string(r.data.join("emu-played.json")).unwrap();
+    assert!(played.contains("emu:dolphin:mario-kart-wii"), "{played}");
+}

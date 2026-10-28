@@ -1,0 +1,66 @@
+{
+  "games": [
+    {
+      "id": "steam:620",
+      "source": "steam",
+      "appid": 620,
+      "legacyId": "620",
+      "caps": {
+        "install": true,
+        "controls": false,
+        "achievements": true,
+        "launchOptions": false,
+        "saves": false,
+        "screenshots": true
+      },
+      "name": "Portal 2",
+      "installed": true,
+      "sizeBytes": 12884901888,
+      "lastPlayed": 1700000500,
+      "playtimeMin": 600,
+      "playtime2wkMin": 30,
+      "cover": "https://cdn.cloudflare.steamstatic.com/steam/apps/620/library_600x900.jpg",
+      "hero": "https://cdn.cloudflare.steamstatic.com/steam/apps/620/library_hero.jpg",
+      "logo": "https://cdn.cloudflare.steamstatic.com/steam/apps/620/logo.png",
+      "running": false,
+      "achUnlocked": null,
+      "achTotal": null,
+      "updated": false,
+      "update": null,
+      "controller": null,
+      "coop": true
+    },
+    {
+      "id": "emu:dolphin:mario-kart-wii",
+      "source": "emu",
+      "appid": 3907440760,
+      "legacyId": "3907440760",
+      "caps": {
+        "install": false,
+        "controls": true,
+        "achievements": false,
+        "launchOptions": false,
+        "saves": false,
+        "screenshots": false
+      },
+      "name": "Mario Kart Wii",
+      "installed": true,
+      "sizeBytes": 4699979776,
+      "lastPlayed": 1700002000,
+      "playtimeMin": 0,
+      "playtime2wkMin": 0,
+      "cover": "",
+      "hero": "",
+      "logo": "",
+      "running": false,
+      "achUnlocked": null,
+      "achTotal": null,
+      "updated": false,
+      "update": null,
+      "controller": null,
+      "coop": false,
+      "emulator": "dolphin"
+    }
+  ],
+  "ownedAvailable": true
+}
