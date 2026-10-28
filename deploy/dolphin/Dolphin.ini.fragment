@@ -1,0 +1,5 @@
+# Added to Dolphin.ini by scripts/setup-dolphin.sh (only the key line below, only if absent).
+# Added while debugging the gamepad. It is not known yet whether it is needed. Remove it if the pad
+# works without it.
+[Input]
+BackgroundInput = True

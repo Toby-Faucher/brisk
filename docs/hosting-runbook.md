@@ -226,6 +226,25 @@ Before rebuilding, tag the running image for rollback: `docker tag brisk-hub:loc
 - Machine shuts down while you are away from the keyboard but connected: the hub only counts a live
   stream as activity; raise `idle_shutdown_min` or remove it.
 
+## Dolphin on the games VM
+Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolphin-emu -b -e <file>` on the host.
+
+1. Install Dolphin: `pacman -S dolphin-emu` (needs root).
+2. Install the gamepad profile as the games user: `scripts/setup-dolphin.sh`. It writes
+   `~/.config/dolphin-emu/WiimoteNew.ini` and adds `BackgroundInput = True` to `Dolphin.ini`. A file you
+   have changed is left alone. `--force` replaces it and keeps the old one as `<name>.before-brisk`.
+   `BackgroundInput` was added while debugging the pad and may not be needed.
+3. List the games in `emulators.json` in the hostd data dir (`~/.local/share/brisk` by default, see
+   `BRISK_DATA_DIR`): `[{"name": "Mario Kart Wii", "emulator": "dolphin", "file": "/path/to/game.iso"}]`.
+   Only `dolphin` works today. A game whose file is missing shows as not installed. A broken file is ignored
+   with a warning in the hostd log.
+4. Put the ROMs in any directory the games user can read. A separate disk mounted somewhere is fine.
+
+The profile maps the streamed Sunshine pad to a Wii Classic Controller. It names the pad
+`evdev/0/Sunshine (libvirtualhid) X-Box Series Controller`. The `0` is the index among pads with that
+name, so it assumes one such pad. With two, the index changes and the mapping misses.
+Dolphin reads input config only at start. After a change, quit Dolphin and start the game again.
+
 ## What needs root, and why
 | Step | Command | Why root |
 |---|---|---|
