@@ -10,6 +10,7 @@ pub mod game;
 pub mod host;
 pub mod http;
 pub mod idle;
+pub mod launch;
 pub mod machines;
 pub mod migrate;
 pub mod notes;
