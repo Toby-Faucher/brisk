@@ -660,11 +660,20 @@ async fn emulator_quit_closes_its_window_politely_and_touches_nothing_else() {
 #[tokio::test(start_paused = true)]
 async fn emulator_that_ignores_the_close_gets_sigterm_and_never_sigkill_without_force() {
     let r = rig(Exits::OnTerm);
+    let t = Instant::now();
     let (_, v) = r.quit(&format!(r#"{{"appid":{}}}"#, emu_id())).await;
+    assert!(
+        (Duration::from_secs(5)..Duration::from_secs(10)).contains(&t.elapsed()),
+        "an emulator waits 5 s for its own stop, then SIGTERM: {:?}",
+        t.elapsed()
+    );
     assert_eq!(v["state"], "closed", "{v}");
     assert_eq!(r.calls(), [EMU_CLOSE, "kill -TERM 800"]);
     let r = rig(Exits::OnKill);
+    let t = Instant::now();
     let (_, v) = r.quit(&format!(r#"{{"appid":{}}}"#, emu_id())).await;
+    // Close 5 s, SIGTERM 10 s, then it gives up: the UI offers Force quit.
+    assert!(t.elapsed() >= Duration::from_secs(15), "{:?}", t.elapsed());
     assert_eq!(v["state"], "still-running", "{v}");
     assert_eq!(r.calls(), [EMU_CLOSE, "kill -TERM 800"]);
     assert!(r.alive(800) && r.alive(801) && r.alive(802));

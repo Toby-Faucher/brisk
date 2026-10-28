@@ -391,7 +391,9 @@ pub struct Quitter {
     /// Where `emulators.json` lives: an emulator id is resolved to its process and window class there.
     data_dir: PathBuf,
     busy: Mutex<HashSet<u32>>,
-    /// How long each of the close and SIGTERM steps waits for the game to exit.
+    /// How long an emulator's polite close waits before SIGTERM (Steam games wait `wait`).
+    pub close_wait: Duration,
+    /// How long SIGTERM waits before the quit gives up (the UI then offers Force quit).
     pub wait: Duration,
     /// euid 0 at startup; tests set it.
     pub as_root: bool,
@@ -423,6 +425,7 @@ impl Quitter {
             proc,
             data_dir,
             busy: Mutex::default(),
+            close_wait: Duration::from_secs(5),
             wait: Duration::from_secs(10),
             as_root,
             signaller: Arc::new(Pidfd),
@@ -532,13 +535,16 @@ impl Quitter {
                     r.run("swaymsg", &a);
                 }
             }
-            Some((kids.is_empty(), closable))
+            Some((kids.is_empty(), closable, class.is_some()))
         });
-        let Some((lone, closable)) = asked.await.flatten() else {
+        let Some((lone, closable, emu)) = asked.await.flatten() else {
             return Err(QuitError::NotRunning);
         };
         if polite && closable {
-            if self.gone_within(appid, self.wait).await {
+            if self
+                .gone_within(appid, if emu { self.close_wait } else { self.wait })
+                .await
+            {
                 return Ok(Quit::Closed);
             }
             eprintln!("info: game {appid} still running after closing its windows; SIGTERM");
