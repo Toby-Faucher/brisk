@@ -279,16 +279,44 @@ pub struct Tomb {
     pub id: String,
 }
 
-/// The removed list; a missing or damaged file is an empty list.
-pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// The removed list. Missing is empty. Damaged: the file is moved to `removed.json.bad-<time>`
+/// and this is an error (the list is lost, so the caller must not guess). Unreadable: an error.
+pub fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
     #[derive(serde::Deserialize)]
     struct F {
         removed: Vec<Tomb>,
     }
-    std::fs::read_to_string(data_dir.join(TOMBS_FILE))
-        .ok()
-        .and_then(|t| serde_json::from_str::<F>(&t).ok())
-        .map_or_else(Vec::new, |f| f.removed)
+    let p = data_dir.join(TOMBS_FILE);
+    let text = match std::fs::read_to_string(&p) {
+        Ok(t) => t,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(format!("{TOMBS_FILE} unreadable: {e}")),
+    };
+    match serde_json::from_str::<F>(&text) {
+        Ok(f) => Ok(f.removed),
+        Err(_) => {
+            let bad = data_dir.join(format!("{TOMBS_FILE}.bad-{}", unix_now()));
+            let _ = std::fs::rename(&p, &bad);
+            Err(format!(
+                "{TOMBS_FILE} was damaged and was moved to {}; look at it, then scan again",
+                bad.display()
+            ))
+        }
+    }
+}
+
+/// `tombs_read` where a problem is a warning and an empty list (explicit adds and forgets).
+pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
+    tombs_read(data_dir).unwrap_or_else(|e| {
+        eprintln!("warning: {e}");
+        vec![]
+    })
 }
 
 /// Atomic 0600 write, the oldest entries dropped past the cap. A failed write is a warning only.
@@ -414,6 +442,37 @@ pub fn load_strict(data_dir: &Path) -> Result<Vec<Record>, String> {
     }
 }
 
+/// How many entries library.json lists, parseable or not.
+fn raw_count(data_dir: &Path) -> usize {
+    std::fs::read_to_string(data_dir.join(emu::LIBRARY_FILE))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v["games"].as_array().map(Vec::len))
+        .unwrap_or(0)
+}
+
+/// The next save drops records that did not parse: keep the original once as `library.json.bad-<time>`.
+fn keep_bad_copy(data_dir: &Path, skipped: usize) {
+    let prefix = format!("{}.bad-", emu::LIBRARY_FILE);
+    let have = std::fs::read_dir(data_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.file_name().to_string_lossy().starts_with(&prefix));
+    if have {
+        return;
+    }
+    let bad = data_dir.join(format!("{prefix}{}", unix_now()));
+    match std::fs::copy(data_dir.join(emu::LIBRARY_FILE), &bad) {
+        Ok(_) => eprintln!(
+            "warning: {skipped} record(s) in {} did not parse; the original is kept as {}",
+            emu::LIBRARY_FILE,
+            bad.display()
+        ),
+        Err(e) => eprintln!("warning: could not back up {}: {e}", emu::LIBRARY_FILE),
+    }
+}
+
 /// Load, change, save atomically, all under the lock. `f` returns whether it changed anything.
 pub fn update<R>(
     data_dir: &Path,
@@ -421,9 +480,13 @@ pub fn update<R>(
 ) -> Result<R, String> {
     let _l = lock(data_dir).map_err(|e| format!("library lock: {e}"))?;
     let mut recs = load_strict(data_dir)?;
+    let skipped = raw_count(data_dir).saturating_sub(recs.len());
     let (changed, r) = f(&mut recs);
     if changed {
         let p = data_dir.join(emu::LIBRARY_FILE);
+        if skipped > 0 {
+            keep_bad_copy(data_dir, skipped);
+        }
         emu::write_atomic(&p, &emu::library_json(&recs))
             .map_err(|e| format!("library save: {e}"))?;
     }
@@ -459,6 +522,10 @@ pub fn scan_library(cfg: &Config) -> Result<ScanReport, String> {
 
 /// `include_removed` ignores the removed list, so those games come back.
 pub fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
+    // Without the removed list a scan would bring removed games back: refuse instead.
+    if !include_removed {
+        tombs_read(&cfg.data_dir)?;
+    }
     let mut scan = scan(&cfg.games_dir);
     let found = std::mem::take(&mut scan.found);
     let merged = update(&cfg.data_dir, |recs| {

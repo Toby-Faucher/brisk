@@ -398,3 +398,58 @@ fn a_big_rescan_canonicalizes_each_path_once() {
     assert_eq!((m.added.len(), m.duplicates), (0, n));
     assert!(calls.get() <= 2 * n, "{} canonicalize calls", calls.get());
 }
+
+#[test]
+fn unparseable_records_are_backed_up_before_the_first_rewrite() {
+    let d = tempfile::tempdir().unwrap();
+    let text = r#"{"v":1,"games":[{"id":"emu:dolphin:AAAAAA","emulator":"dolphin","file":"/x/a.iso","name":"A","source":"scan"},{"from":"a newer version"}]}"#;
+    std::fs::write(d.path().join("library.json"), text).unwrap();
+    assert_eq!(load_strict(d.path()).unwrap().len(), 1);
+    update(d.path(), |_| (true, ())).unwrap();
+    let bads: Vec<_> = std::fs::read_dir(d.path())
+        .unwrap()
+        .flatten()
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("library.json.bad-")
+        })
+        .collect();
+    assert_eq!(bads.len(), 1);
+    assert_eq!(std::fs::read_to_string(bads[0].path()).unwrap(), text);
+    // the rewrite dropped the odd record, and a second rewrite makes no second copy
+    assert_eq!(raw_count(d.path()), 1);
+    update(d.path(), |_| (true, ())).unwrap();
+    assert_eq!(
+        std::fs::read_dir(d.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e
+                .file_name()
+                .to_string_lossy()
+                .starts_with("library.json.bad-"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_damaged_removed_list_is_set_aside_and_the_scan_refuses() {
+    let d = tempfile::tempdir().unwrap();
+    let c = cfg(d.path());
+    put(&c.games_dir, "wii/a.iso", &disc(b"RMCE01", true, "A"));
+    std::fs::create_dir_all(&c.data_dir).unwrap();
+    std::fs::write(c.data_dir.join("removed.json"), "{oops").unwrap();
+    let e = scan_library(&c).err().unwrap();
+    assert!(e.contains("removed.json"), "{e}");
+    assert!(emu::load(&c.data_dir).is_empty());
+    assert!(!c.data_dir.join("removed.json").exists());
+    assert!(std::fs::read_dir(&c.data_dir).unwrap().flatten().any(|e| {
+        e.file_name()
+            .to_string_lossy()
+            .starts_with("removed.json.bad-")
+    }));
+    // an explicit "include removed" scan does not need the list
+    std::fs::write(c.data_dir.join("removed.json"), "{oops").unwrap();
+    assert_eq!(scan_library_with(&c, true).unwrap().merged.added.len(), 1);
+}
