@@ -213,6 +213,7 @@ pub fn caps(emulator: &str) -> Caps {
         controls: registry::get(emulator).is_some_and(|e| !e.controller.is_empty()),
         launch_options: true,
         art: true,
+        screenshots: true,
         ..Caps::default()
     }
 }

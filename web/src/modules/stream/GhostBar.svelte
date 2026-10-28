@@ -29,6 +29,7 @@
     replaySeconds = 0,
     onshot,
     onreplay,
+    storesShots = false,
   }: {
     host: string;
     rttMs: number | null;
@@ -52,6 +53,8 @@
     replaySeconds?: number;
     onshot: () => void;
     onreplay: () => void;
+    /** The game's machine also keeps the screenshot (emulator games). */
+    storesShots?: boolean;
   } = $props();
 
   const PRESETS: { id: Preset; label: string; mbps: number }[] = [
@@ -174,7 +177,7 @@
     <Icon name="quality" /><span class="tip">Quality: {current?.label ?? 'Custom'}</span>
   </button>
   <button class="ic" aria-label="Screenshot" onclick={onshot} style="color:var(--c-stream)">
-    <Icon name="shot" /><span class="tip">Screenshot · Ctrl+Alt+S</span>
+    <Icon name="shot" /><span class="tip">Screenshot{storesShots ? ' · kept with the game' : ''} · Ctrl+Alt+S</span>
   </button>
   <button class="ic" aria-label={replaySeconds ? `Save last ${replaySeconds} s` : 'Save replay (off)'} disabled={!replaySeconds} onclick={onreplay} style="color:var(--c-lib)">
     <Icon name="replay" /><span class="tip">{replaySeconds ? `Save last ${replaySeconds} s · Ctrl+Alt+R` : 'Replay buffer is off (Settings)'}</span>

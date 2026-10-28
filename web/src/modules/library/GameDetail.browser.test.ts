@@ -1111,3 +1111,51 @@ describe('GameDetail RetroAchievements', () => {
     await expect.element(page.getByRole('button', { name: 'Refresh', exact: true })).not.toBeInTheDocument();
   });
 });
+
+describe('stored stream screenshots (emulator games)', () => {
+  const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: true, art: true };
+  const wii: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', id: 'emu:dolphin:mkw', source: 'emu', emulator: 'dolphin', caps };
+  const open = async (g: Game = wii) => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'screenshot').mockImplementation(async () => blobUrl());
+    await render(GameDetail, { props: props(g) });
+  };
+
+  it('lists them in the same grid, fetched by id, and deletes one only after a confirm', async () => {
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['300.png', '200.png'], saves: null });
+    const del = vi.spyOn(api, 'deleteShot').mockResolvedValue(undefined);
+    await render(Toasts);
+    await open();
+    await expect
+      .element(page.getByRole('img', { name: 'Mario Kart Wii screenshot 2 from this PC' }))
+      .toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    expect(api.screenshot).toHaveBeenCalledWith('emu:dolphin:mkw', '300.png');
+    await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
+    expect(del).not.toHaveBeenCalled(); // asked first
+    await page.getByRole('button', { name: 'Keep' }).click();
+    expect(del).not.toHaveBeenCalled();
+    await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
+    await page.getByRole('group', { name: 'Delete screenshot 1?' }).getByRole('button', { name: 'Delete' }).click();
+    expect(del).toHaveBeenCalledWith('emu:dolphin:mkw', '300.png');
+    await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 2 from this PC' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 1 from this PC' })).toBeInTheDocument();
+  });
+
+  it('a failed delete keeps the tile and says so', async () => {
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['300.png'], saves: null });
+    vi.spyOn(api, 'deleteShot').mockRejectedValue(new ApiError('nope', 500));
+    await render(Toasts);
+    await open();
+    await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
+    await page.getByRole('group', { name: 'Delete screenshot 1?' }).getByRole('button', { name: 'Delete' }).click();
+    await expect.element(page.getByText(/Couldn't delete the screenshot/)).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 1 from this PC' })).toBeInTheDocument();
+  });
+
+  it('Steam screenshots have no delete, and an old hostd emulator game asks for none', async () => {
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['a.jpg'], saves: null });
+    await open(game);
+    await expect.element(page.getByRole('button', { name: 'Open Portal 2 screenshot 1 from this PC' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /^Delete screenshot/ })).not.toBeInTheDocument();
+  });
+});
