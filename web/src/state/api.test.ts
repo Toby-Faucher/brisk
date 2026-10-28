@@ -119,3 +119,24 @@ describe('route', () => {
     expect(route('/api/emulators/dolphin/controls/classic')).toBe('/api/emulators/dolphin/controls/classic');
   });
 });
+
+describe('uploads and scan calls', () => {
+  it('go to the selected machine, or to the machine named, and send x-offset', async () => {
+    stubPage('http://localhost:8443/');
+    const { route, setRoute } = await import('./api');
+    setRoute('m1');
+    expect(route('/api/uploads/abc')).toBe('/api/m/m1/uploads/abc');
+    expect(route('/api/library/scan')).toBe('/api/m/m1/library/scan');
+    const f = stubFetch(200, { offset: 5 });
+    await api.uploadsFor(null).put('abc', 3, new Blob(['xy']));
+    await api.uploadsFor('m2').put('abc', 3, new Blob(['xy']));
+    await api.scanLibrary('m2', true);
+    await api.removeGame('emu:dolphin:RMCE01');
+    const urls = f.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(urls).toEqual(['/api/m/m1/uploads/abc', '/api/m/m2/uploads/abc', '/api/m/m2/library/scan?include_removed=1', '/api/m/m1/games/emu%3Adolphin%3ARMCE01']);
+    const init = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init[1].method).toBe('PUT');
+    expect((init[1].headers as Record<string, string>)['x-offset']).toBe('3');
+    setRoute(null);
+  });
+});

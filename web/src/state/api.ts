@@ -26,6 +26,9 @@ export type Game = {
   coop: boolean;
   /** Emulator games only (e.g. 'dolphin'): these have no art, so the cover is a title card with this badge. */
   emulator?: string;
+  /** Stage 1 string id (`emu:dolphin:RMCE01`); an older hostd leaves it out. */
+  id?: string;
+  source?: 'steam' | 'emu';
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
 export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
@@ -161,6 +164,31 @@ import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
 import type { Machine } from './machines';
 
+/** Stage 2 uploads (docs/plans/2026-10-28-stage2-upload.md). */
+export type UploadStart = { id: string; chunk: number; offset: number };
+export type UploadStatus = { id: string; name: string; offset: number; size: number; state: 'open' | 'busy' };
+export type UploadDone = { system: string; registered: boolean; duplicate: boolean; game: Game | null };
+/** What one machine's upload calls look like to the upload engine (state/uploads.ts). */
+export interface UploadApi {
+  create(name: string, size: number): Promise<UploadStart>;
+  put(id: string, offset: number, blob: Blob, signal?: AbortSignal): Promise<{ offset: number }>;
+  status(id: string): Promise<UploadStatus>;
+  finish(id: string): Promise<UploadDone>;
+  abort(id: string): Promise<void>;
+}
+/** POST /api/library/scan. `removed`: games you removed that the scan left out. */
+export type ScanResult = {
+  scanned: number;
+  added: Game[];
+  aliased: number;
+  duplicates: number;
+  unplayable: number;
+  removed: number;
+  unknown: number;
+  broken: number;
+  truncated: boolean;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -229,7 +257,7 @@ export function setRoute(machineId: string | null, known = true) {
 }
 
 /** Machine-scoped paths go through the hub's `/api/m/{id}/`; prefs, notes and machines stay on the hub itself. */
-const SCOPED = /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators)(?=[/?]|$)/;
+const SCOPED = /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators|uploads|library)(?=[/?]|$)/;
 export function route(path: string): string {
   return prefix && SCOPED.test(path) ? `/api/m/${encodeURIComponent(prefix)}/${path.slice(5)}` : path;
 }
@@ -301,6 +329,28 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
   });
 }
 
+/** Upload calls for one machine: `machineId` names it through the hub, null follows the selected machine (or a single host). */
+function uploadsFor(machineId: string | null): UploadApi {
+  const base = machineId ? `/api/m/${encodeURIComponent(machineId)}` : '/api';
+  const u = (id: string) => `${base}/uploads/${encodeURIComponent(id)}`;
+  return {
+    create: (name, size) => call<UploadStart>('POST', `${base}/uploads`, { name, size }),
+    async put(id, offset, blob, signal) {
+      const r = await send(u(id), { method: 'PUT', headers: auth({ 'x-offset': String(offset) }), body: blob, signal });
+      return (await r.json()) as { offset: number };
+    },
+    status: (id) => call<UploadStatus>('GET', u(id)),
+    finish: (id) => call<UploadDone>('POST', `${u(id)}/finish`),
+    abort: (id) => call<void>('DELETE', u(id)),
+  };
+}
+
+/** Scan the games folder of one machine (null: the selected one). `includeRemoved` brings back games you removed. */
+function scanLibrary(machineId: string | null, includeRemoved = false): Promise<ScanResult> {
+  const base = machineId ? `/api/m/${encodeURIComponent(machineId)}` : '/api';
+  return call<ScanResult>('POST', `${base}/library/scan${includeRemoved ? '?include_removed=1' : ''}`);
+}
+
 const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
 
 /** Calls for one machine through the hub, whichever machine is selected. */
@@ -322,6 +372,10 @@ export const api = {
   host: () => call<HostInfo>('GET', '/api/host'),
   /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
   games: (refresh?: boolean) => call<{ games: Game[]; ownedAvailable: boolean }>('GET', `/api/games${q(refresh)}`),
+  uploadsFor,
+  scanLibrary,
+  /** Forgets an emulator game's library record. The file stays on disk. Takes the Stage 1 string id. */
+  removeGame: (id: string) => call<void>('DELETE', `/api/games/${encodeURIComponent(id)}`),
   gameInfo: (appid: number, refresh?: boolean) => call<GameInfo>('GET', `/api/games/${appid}/info${q(refresh)}`),
   gameAchievements: (appid: number, refresh?: boolean) => call<Achievements>('GET', `/api/games/${appid}/achievements${q(refresh)}`),
   gameNews: (appid: number, refresh?: boolean) => call<News>('GET', `/api/games/${appid}/news${q(refresh)}`),
