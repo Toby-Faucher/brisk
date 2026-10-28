@@ -120,6 +120,8 @@ export type GameInfo = {
 };
 /** GET /api/games/{appid}/local: screenshot file names on the host (newest first, at most 60) and a cloud-save summary. */
 export type GameLocal = { screenshots: string[]; saves: { files: number; bytes: number; modified: number /* unix s */ } | null };
+/** A stream screenshot stored by hostd (`takenAt` is unix ms). */
+export type StoredShot = { name: string; width: number; height: number; size: number; takenAt: number };
 /** GET /api/games/{id}/saves (emulator games with `caps.saves`): read-only. `path` is relative to the emulator's user folder. */
 export type SaveItem = {
   kind: 'state' | 'memory-card' | 'nand-save';
@@ -420,6 +422,12 @@ async function screenshot(key: string, name: string): Promise<string> {
   return URL.createObjectURL(await r.blob());
 }
 
+/** POST one PNG from the stream to the machine playing the game (8 MiB cap, checked by hostd too). */
+async function postShot(key: string, png: Blob): Promise<StoredShot> {
+  const r = await send(gamePath(key, '/screenshots'), { method: 'POST', headers: auth({ 'content-type': 'image/png' }), body: png });
+  return (await r.json()) as StoredShot;
+}
+
 const artBlobs = new Map<string, Promise<string>>();
 /** An object URL for cached art (`/api/games/{id}/art/{kind}?v=`): fetched with the auth headers an `<img src>` cannot send.
  *  Kept per machine and url for the page's life (art is small and the url changes when the art does). */
@@ -518,6 +526,8 @@ export const api = {
   putGameLaunch: (key: string, b: { rev?: string; override: LaunchOverride }) => call<GameLaunch>('PUT', gamePath(key, '/launch'), b),
   resetGameLaunch: (key: string) => call<GameLaunch>('DELETE', gamePath(key, '/launch')),
   gameLocal: (key: string) => call<GameLocal>('GET', gamePath(key, '/local')),
+  postShot,
+  deleteShot: (key: string, name: string) => call<void>('DELETE', gamePath(key, `/screenshots/${encodeURIComponent(name)}`)),
   gameSaves: (key: string) => call<GameSaves>('GET', gamePath(key, '/saves')),
   screenshot,
   artImage,

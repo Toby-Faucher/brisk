@@ -18,6 +18,10 @@ export function gameCaps(g: GameRef): Caps {
   return { install: !emu, controls: emu, achievements: !emu, launchOptions: false, saves: false, screenshots: !emu, art: false };
 }
 
+/** Stream screenshots are stored on the machine for emulator games with `caps.screenshots`. Steam games keep Steam's own
+ *  folder, and an old hostd sends no caps, so `gameCaps` says false for its emulator games: nothing is uploaded. */
+export const storesShots = (g: GameRef): boolean => g.source === 'emu' && gameCaps(g).screenshots;
+
 /** A key as a Steam number text, when it is one (`steam:620` or `620`). */
 const steamNum = (k: string) => /^(?:steam:)?([1-9]\d*)$/.exec(k)?.[1];
 const isSteamNum = (n: string | undefined): n is string => n !== undefined && Number(n) < OLD_EMU_FROM;

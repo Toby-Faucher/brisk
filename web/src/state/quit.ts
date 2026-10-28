@@ -4,7 +4,8 @@ import { gameKey } from './gameId';
 import type { CommandItem } from '../shell/registry';
 
 export type QuitState = 'closed' | 'still-running';
-export type ToastOpts = { error?: boolean; ms?: number; action?: { label: string; run: () => void } };
+/** `thumb`: an object URL shown small beside the text (decorative: the text says what happened). */
+export type ToastOpts = { error?: boolean; ms?: number; thumb?: string; action?: { label: string; run: () => void } };
 export type QuitDeps = {
   quit: (key: string, force: boolean) => Promise<{ state: QuitState }>;
   refresh: () => Promise<unknown>;

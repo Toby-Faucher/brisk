@@ -183,6 +183,20 @@
     io.observe(node);
     return () => io.disconnect();
   };
+  // Stored stream screenshots (emulator games) can be deleted, after a confirm on the tile.
+  let delAsk = $state<string | null>(null);
+  async function deleteShot(name: string) {
+    delAsk = null;
+    try {
+      await api.deleteShot(key, name);
+      if (shotUrl[name]) URL.revokeObjectURL(shotUrl[name]);
+      delete shotUrl[name];
+      if (local) local = { ...local, screenshots: local.screenshots.filter((n) => n !== name) };
+      toast('Screenshot deleted');
+    } catch (e) {
+      toast(`Couldn't delete the screenshot: ${(e as Error).message}`, { error: true });
+    }
+  }
   const saves = $derived(savesLine(local?.saves ?? null));
 
   // Emulator saves and save states (read-only). Only games with caps.saves ask; an old hostd never does.
@@ -267,6 +281,16 @@
                     <button class="shot" aria-label="Open {localShots[i].alt}" aria-haspopup="dialog" onclick={() => show('local', i)}>
                       {#if shotUrl[name]}<img src={shotUrl[name]} alt={localShots[i].alt} decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
                     </button>
+                    {#if emu}
+                      {#if delAsk === name}
+                        <div class="del" role="group" aria-label="Delete screenshot {i + 1}?">
+                          <button class="btn ghost" onclick={() => deleteShot(name)}>Delete</button>
+                          <button class="btn ghost" onclick={() => (delAsk = null)}>Keep</button>
+                        </div>
+                      {:else}
+                        <button class="btn ghost delbtn" aria-label="Delete screenshot {i + 1}" onclick={() => (delAsk = name)}>Delete</button>
+                      {/if}
+                    {/if}
                     {#if shotBad[name]}<button class="btn ghost retry" aria-label="Retry loading screenshot {i + 1}" onclick={(e) => retryShot(e, name)}>Retry</button>{/if}
                   </div>
                 {/each}
@@ -365,6 +389,8 @@
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
   .tile { position: relative; }
+  .delbtn, .del { position: absolute; inset: 8px 8px auto auto; padding: 4px 8px; min-height: 24px; background: var(--panel2); display: flex; gap: 6px; }
+  .del { padding: 4px; }
   .retry { position: absolute; inset: auto 8px 8px auto; padding: 4px 10px; font-size: 12.5px; min-height: 24px; background: var(--panel2); }
   .shot { width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; display: block; }
   .shot img, .shot .ph { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); transition: filter .2s; }
