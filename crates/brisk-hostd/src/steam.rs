@@ -285,6 +285,16 @@ pub(crate) fn https_get(url: &str) -> Result<Vec<u8>, String> {
 /// `https_get` with an optional bearer token (sent only as the Authorization header, never in the
 /// URL) and a caller-chosen body cap. Errors still carry only the kind of failure.
 pub(crate) fn get_limited(url: &str, bearer: Option<&str>, max: u64) -> Result<Vec<u8>, String> {
+    get_limited_for(url, bearer, max, Duration::from_secs(15))
+}
+
+/// `get_limited` with its own total time limit (a database download needs minutes, not 15 s).
+pub(crate) fn get_limited_for(
+    url: &str,
+    bearer: Option<&str>,
+    max: u64,
+    total: Duration,
+) -> Result<Vec<u8>, String> {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     let tls = TlsConfig::builder()
         .provider(TlsProvider::Rustls)
@@ -298,7 +308,7 @@ pub(crate) fn get_limited(url: &str, bearer: Option<&str>, max: u64) -> Result<V
         .proxy(None)
         .max_redirects(0)
         .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_global(Some(Duration::from_secs(15)))
+        .timeout_global(Some(total))
         .build()
         .into();
     let mut req = agent.get(url);

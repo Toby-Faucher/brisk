@@ -5,16 +5,18 @@
 //! link back to it: show "Data and art from GameTDB (gametdb.com)" wherever this is shown.
 
 use crate::config::Config;
-use crate::steam::{base_ok, get_limited, now};
+use crate::steam::{base_ok, get_limited, get_limited_for, now};
 
 fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
     get_limited(url, None, limit)
 }
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 /// Env: URL of a plain `wiitdb.xml` (no default, see the notes: the zip needs a decision).
 pub const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
@@ -30,6 +32,10 @@ const MAX_ART: u64 = 4 << 20;
 const MAX_GAME: usize = 64 << 10;
 const MAX_GAMES: usize = 200_000;
 const TTL_S: u64 = 7 * 86_400;
+/// After a failed database download nobody tries again for this long.
+const FAIL_COOLDOWN_S: u64 = 3600;
+/// The database is 20 MB or more; the shared helper's 15 s total limit cannot fetch it.
+const DB_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -378,12 +384,38 @@ fn write_atomic(path: &Path, data: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-fn read_cache(path: &Path) -> Option<Cache> {
-    let len = std::fs::metadata(path).ok()?.len();
-    if len > MAX_DB {
+#[cfg(test)]
+thread_local! { static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
+type Mem = Vec<(PathBuf, (u64, std::time::SystemTime), Arc<Cache>)>;
+static MEM: Mutex<Mem> = Mutex::new(Vec::new());
+
+/// The parsed index; re-read only when the file's size or modified time changed.
+fn read_cache(path: &Path) -> Option<Arc<Cache>> {
+    let m = std::fs::metadata(path).ok()?;
+    if m.len() > MAX_DB {
         return None;
     }
-    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+    let key = (m.len(), m.modified().ok()?);
+    let mut mem = MEM.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, _, c)) = mem.iter().find(|(p, k, _)| p == path && *k == key) {
+        return Some(c.clone());
+    }
+    #[cfg(test)]
+    PARSES.with(|n| n.set(n.get() + 1));
+    let c: Arc<Cache> = Arc::new(serde_json::from_slice(&std::fs::read(path).ok()?).ok()?);
+    // one path in real use; the few slots only keep tests apart
+    mem.retain(|(p, ..)| p != path);
+    mem.truncate(7);
+    mem.push((path.to_path_buf(), key, c.clone()));
+    Some(c)
+}
+
+fn failed_recently(dir: &Path, at: u64) -> bool {
+    std::fs::read_to_string(dir.join("fetch-failed"))
+        .ok()
+        .and_then(|t| t.trim().parse::<u64>().ok())
+        .is_some_and(|t| at.saturating_sub(t) < FAIL_COOLDOWN_S)
 }
 
 fn lookup_at(data_dir: &Path, xml_url: Option<&str>, id: &str, at: u64) -> Result<Entry, Error> {
@@ -397,23 +429,36 @@ fn lookup_at(data_dir: &Path, xml_url: Option<&str>, id: &str, at: u64) -> Resul
         .is_some_and(|c| at.saturating_sub(c.fetched) < TTL_S);
     let cache = if fresh {
         cached.ok_or(Error::BadContent)?
+    } else if failed_recently(&data_dir.join("gametdb"), at) {
+        // The last download failed lately: stale (or nothing) until the cool-down ends.
+        cached.ok_or_else(|| Error::Network("database download failed lately".into()))?
     } else {
         match fetch_index(xml_url, at) {
             Ok(c) => {
+                let _ = std::fs::remove_file(data_dir.join("gametdb/fetch-failed"));
                 // Failing to cache is not fatal: the answer is still good.
                 if let Ok(b) = serde_json::to_vec(&c) {
                     let _ = write_atomic(&path, &b);
                 }
-                c
+                Arc::new(c)
             }
-            // Stale beats nothing when the site is down.
-            Err(e) => cached.ok_or(e)?,
+            Err(e) => {
+                if matches!(e, Error::Network(_) | Error::TooLarge | Error::BadContent) {
+                    let _ = write_atomic(
+                        &data_dir.join("gametdb/fetch-failed"),
+                        at.to_string().as_bytes(),
+                    );
+                }
+                // Stale beats nothing when the site is down.
+                cached.ok_or(e)?
+            }
         }
     };
     cache
         .games
-        .into_iter()
+        .iter()
         .find(|g| g.id == id)
+        .cloned()
         .ok_or(Error::NotFound)
 }
 
@@ -426,7 +471,7 @@ fn fetch_index(xml_url: Option<&str>, at: u64) -> Result<Cache, Error> {
     {
         return Err(Error::ZipUnsupported);
     }
-    let body = https_get_limit(url, MAX_DB).map_err(net)?;
+    let body = get_limited_for(url, None, MAX_DB, DB_TIMEOUT).map_err(net)?;
     let text = String::from_utf8_lossy(&body);
     let games = build_index(&text);
     if games.is_empty() {
@@ -665,6 +710,32 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_download_is_not_retried_per_game_and_the_index_is_parsed_once() {
+        let (base, hits) = serve(HashMap::from([
+            ("/ok", (200, XML.as_bytes().to_vec())),
+            ("/500", (500, vec![])),
+        ]));
+        let d = tempfile::tempdir().unwrap();
+        lookup_at(d.path(), Some(&format!("{base}/ok")), "RSBP01", 1000).unwrap();
+        let p0 = PARSES.with(std::cell::Cell::get);
+        let dead = format!("{base}/500");
+        let at = 1000 + 2 * TTL_S;
+        for id in ["RSBP01", "GM8E01", "RMCE01", "RSBP01"] {
+            let _ = lookup_at(d.path(), Some(&dead), id, at);
+        }
+        // one failed download (after the one good one), the stale cache answered, parsed once
+        assert_eq!(hits.load(Ordering::SeqCst), 2);
+        assert!(PARSES.with(std::cell::Cell::get) - p0 <= 1);
+        // after the cool-down it tries again; no cache and a recent failure is an error, not a fetch
+        let _ = lookup_at(d.path(), Some(&dead), "RSBP01", at + FAIL_COOLDOWN_S + 1);
+        assert_eq!(hits.load(Ordering::SeqCst), 3);
+        let e = tempfile::tempdir().unwrap();
+        assert!(lookup_at(e.path(), Some(&dead), "RSBP01", 5).is_err());
+        assert!(lookup_at(e.path(), Some(&dead), "GM8E01", 6).is_err());
+        assert_eq!(hits.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
     fn lookup_errors() {
         let d = tempfile::tempdir().unwrap();
         assert_eq!(
@@ -704,15 +775,30 @@ mod tests {
             ("/big", (200, vec![b'x'; (MAX_DB + 1) as usize])),
         ]));
         assert_eq!(
-            lookup_at(d.path(), Some(&format!("{base}/500")), "RMCE01", 0),
+            lookup_at(
+                tempfile::tempdir().unwrap().path(),
+                Some(&format!("{base}/500")),
+                "RMCE01",
+                0
+            ),
             Err(Error::Network("HTTP 500".into()))
         );
         assert_eq!(
-            lookup_at(d.path(), Some(&format!("{base}/junk")), "RMCE01", 0),
+            lookup_at(
+                tempfile::tempdir().unwrap().path(),
+                Some(&format!("{base}/junk")),
+                "RMCE01",
+                0
+            ),
             Err(Error::BadContent)
         );
         assert_eq!(
-            lookup_at(d.path(), Some(&format!("{base}/big")), "RMCE01", 0),
+            lookup_at(
+                tempfile::tempdir().unwrap().path(),
+                Some(&format!("{base}/big")),
+                "RMCE01",
+                0
+            ),
             Err(Error::TooLarge)
         );
     }
