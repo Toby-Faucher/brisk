@@ -4,13 +4,14 @@
   // and saves, achievements, news, stream history). Under 760 px it is one scrolling column.
   import { Dialog } from 'bits-ui';
   import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
-  import { savesLine } from './library';
+  import { isEmulatorGame, savesLine } from './library';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
   import StreamHistory from './StreamHistory.svelte';
   import Lightbox from './Lightbox.svelte';
   import AchievementsDialog from './AchievementsDialog.svelte';
+  import ControlsPanel from './controls/ControlsPanel.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -185,6 +186,8 @@
 
       <div class="gd-main">
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>
+        <!-- emulator games: the Classic Controller mapping; hides itself when hostd has none -->
+        {#if isEmulatorGame(game)}{#key appid}<ControlsPanel {appid} name={game.name} />{/key}{/if}
         <!-- store description and screenshots -->
         <section class="sec" aria-busy={info === null}>
           {#if info === null}

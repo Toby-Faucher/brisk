@@ -758,4 +758,41 @@ describe('GameDetail', () => {
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByRole('button', { name: 'Open Portal 2 screenshot 2' })).toBeInTheDocument();
   });
+
+  describe('Controls section', () => {
+    const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii' };
+    const fx = async () => (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/get.json')).default;
+
+    it('shows for an emulator id and not for a Steam id', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const c = vi.spyOn(api, 'controls').mockResolvedValue((await fx()) as never);
+      await render(GameDetail, { props: props(emu) });
+      await expect.element(page.getByRole('heading', { name: 'Controls' })).toBeInTheDocument();
+      await expect.element(page.getByRole('group', { name: 'Classic Controller' })).toBeInTheDocument();
+      expect(c).toHaveBeenCalledWith(0xe0000001);
+    });
+
+    it('is absent for a Steam game and never asks hostd', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      const c = vi.spyOn(api, 'controls');
+      await render(GameDetail, { props: props(game) });
+      await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+      expect(page.getByRole('heading', { name: 'Controls' }).elements()).toHaveLength(0);
+      expect(c).not.toHaveBeenCalled();
+    });
+
+    it('Esc while listening cancels the listen and leaves the panel open', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'controls').mockResolvedValue((await fx()) as never);
+      await render(GameDetail, { props: props(emu) });
+      const a = page.getByRole('button', { name: /^A, bound to B/ });
+      await expect.element(a).toBeInTheDocument();
+      (a.element() as HTMLElement).focus();
+      await userEvent.keyboard('{Enter}');
+      await expect.element(page.getByRole('button', { name: /^A, listening/ })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      await expect.element(page.getByRole('button', { name: /^A, bound to B/ })).toBeInTheDocument();
+      await expect.element(page.getByRole('dialog', { name: 'Mario Kart Wii' })).toBeInTheDocument();
+    });
+  });
 });

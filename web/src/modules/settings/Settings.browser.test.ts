@@ -25,4 +25,10 @@ describe('Settings tabs', () => {
       expect(location.hash, key).toBe(hash);
     }
   });
+
+  it('the Controller tab points to the emulator game editor', async () => {
+    history.replaceState(null, '', '#controller');
+    await render(Settings);
+    await expect.element(page.getByText(/open an emulator game in the Library/)).toBeInTheDocument();
+  });
 });
