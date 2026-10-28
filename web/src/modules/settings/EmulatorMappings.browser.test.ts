@@ -470,4 +470,18 @@ describe('PadDiagram', () => {
     await userEvent.keyboard(' ');
     expect(onpick.mock.calls.map((c) => c[0])).toEqual(['A', 'X', 'X']);
   });
+
+  it('two instances on one page share no ids and each keeps its own drawing', async () => {
+    await render(PadDiagram, { props: { view, dz: 0, trails: ['', ''] } });
+    await render(PadDiagram, { props: { view, dz: 0, trails: ['', ''], select: { current: null, onpick: vi.fn(), labels: {} } } });
+    const ids = [...document.querySelectorAll('[id]')].map((e) => e.id);
+    expect(ids.length).toBeGreaterThan(40);
+    expect(new Set(ids).size).toBe(ids.length);
+    const svgs = document.querySelectorAll('svg.pad');
+    expect(svgs).toHaveLength(2);
+    for (const svg of svgs) {
+      expect(svg.querySelector('[id$="-pad-body"]')).not.toBeNull();
+      expect(svg.querySelectorAll('text.t').length).toBeGreaterThan(15);
+    }
+  });
 });

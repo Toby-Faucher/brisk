@@ -12,6 +12,7 @@
     hint?: string | null;
   };
   let { view, dz, trails, select }: { view: PadView; dz: number; trails: [string, string]; select?: Select } = $props();
+  const uid = $props.id(); // ids must stay unique when the diagram is on the page twice
   const on = (i?: number) => i !== undefined && !!view.buttons[i]?.pressed;
   const sticks = $derived([view.left, view.right]);
   const trig = $derived([view.lt, view.rt]);
@@ -52,9 +53,9 @@
 
 <figure class="pd">
   <svg class="pad" class:pick={!!select} viewBox={VIEWBOX} focusable="false" {...svgAttrs}>
-    <g id="pad-triggers">
+    <g id={`${uid}-pad-triggers`}>
       {#each TRIGGERS as t, k (t.id)}
-        <g id={t.id} data-button={t.button} class:on={on(t.button)} class:sel={isSel(t.id)} class:free={isFree(t.id)} {...ia(t.id)}>
+        <g id={`${uid}-${t.id}`} data-button={t.button} class:on={on(t.button)} class:sel={isSel(t.id)} class:free={isFree(t.id)} {...ia(t.id)}>
           <rect class="trk" x={t.x} y={t.y} width={t.w} height={t.h} rx="1.6" />
           {#if select}<rect class="hit" x={t.x} y={t.y} width={t.w} height={t.h} rx="1.6" />{/if}
           <rect class="fill" x={t.x} y={t.y} width={t.w * trig[k]} height={t.h} rx="1.6" />
@@ -63,22 +64,22 @@
         {@render bound(t.id)}
       {/each}
       {#each EXTRA_BOXES.slice(0, 2) as b (b.id)}
-        <g id={b.id} class="extra"><rect x={b.x} y={b.y} width={b.w} height={b.h} rx="1.4" /><text class="t" x={b.x + b.w / 2} y={b.y + b.h / 2}>{b.label}</text></g>
+        <g id={`${uid}-${b.id}`} class="extra"><rect x={b.x} y={b.y} width={b.w} height={b.h} rx="1.4" /><text class="t" x={b.x + b.w / 2} y={b.y + b.h / 2}>{b.label}</text></g>
       {/each}
     </g>
-    <path id="pad-body" class="body" d={BODY} />
-    <rect id={USBC.id} class="port" x={USBC.x} y={USBC.y} width={USBC.w} height={USBC.h} rx="1.6" />
+    <path id={`${uid}-pad-body`} class="body" d={BODY} />
+    <rect id={`${uid}-${USBC.id}`} class="port" x={USBC.x} y={USBC.y} width={USBC.w} height={USBC.h} rx="1.6" />
     {#each PADDLES as p (p.id)}
-      <g id={p.id} class="extra back"><path d={p.d} /><text class="t" x={p.lx} y={p.ly}>{p.label}</text></g>
+      <g id={`${uid}-${p.id}`} class="extra back"><path d={p.d} /><text class="t" x={p.lx} y={p.ly}>{p.label}</text></g>
     {/each}
     {#each BUMPERS as b (b.id)}
-      <g id={b.id} data-button={b.button} class="key" class:on={on(b.button)} class:sel={isSel(b.id)} class:free={isFree(b.id)} {...ia(b.id)}><path d={b.d} />{#if select}<path class="hit" d={b.d} />{/if}<text class="t" x={b.lx} y={b.ly}>{b.label}</text>{@render bound(b.id)}</g>
+      <g id={`${uid}-${b.id}`} data-button={b.button} class="key" class:on={on(b.button)} class:sel={isSel(b.id)} class:free={isFree(b.id)} {...ia(b.id)}><path d={b.d} />{#if select}<path class="hit" d={b.d} />{/if}<text class="t" x={b.lx} y={b.ly}>{b.label}</text>{@render bound(b.id)}</g>
     {/each}
-    {#each EXTRA_CIRCLES as c (c.id)}<circle id={c.id} class="extra" cx={c.x} cy={c.y} r={c.r} />{/each}
-    {#each EXTRA_BOXES.slice(2) as b (b.id)}<rect id={b.id} class="extra" x={b.x} y={b.y} width={b.w} height={b.h} rx="2" />{/each}
+    {#each EXTRA_CIRCLES as c (c.id)}<circle id={`${uid}-${c.id}`} class="extra" cx={c.x} cy={c.y} r={c.r} />{/each}
+    {#each EXTRA_BOXES.slice(2) as b (b.id)}<rect id={`${uid}-${b.id}`} class="extra" x={b.x} y={b.y} width={b.w} height={b.h} rx="2" />{/each}
     {#each STICKS as s, k (s.id)}
       {@const v = sticks[k]}
-      <g id={s.id} data-button={s.button} class="key stick" class:on={on(s.button)} class:sel={isSel(s.id)} class:free={isFree(s.id)} {...ia(s.id)}>
+      <g id={`${uid}-${s.id}`} data-button={s.button} class="key stick" class:on={on(s.button)} class:sel={isSel(s.id)} class:free={isFree(s.id)} {...ia(s.id)}>
         <circle class="well" cx={s.x} cy={s.y} r={s.ring} />
         {#if select}<circle class="hit" cx={s.x} cy={s.y} r={s.ring} />{/if}
         <circle class="cap" cx={s.x + v.x * s.travel} cy={s.y + v.y * s.travel} r={s.r} />
@@ -93,15 +94,15 @@
         {@render bound(s.id)}
       </g>
     {/each}
-    <g id="pad-dpad">
+    <g id={`${uid}-pad-dpad`}>
       <circle class="dish" cx={DPAD_C.x} cy={DPAD_C.y} r={DPAD_C.dish} />
       {#each DPAD as a (a.id)}
-        <g id={a.id} data-button={a.button} class="key" class:on={on(a.button)} class:sel={isSel(a.id)} class:free={isFree(a.id)} {...ia(a.id)}><path d={a.d} />{#if select}<path class="hit" d={a.d} />{/if}<text class="t" x={a.lx} y={a.ly}>{a.label}</text></g>
+        <g id={`${uid}-${a.id}`} data-button={a.button} class="key" class:on={on(a.button)} class:sel={isSel(a.id)} class:free={isFree(a.id)} {...ia(a.id)}><path d={a.d} />{#if select}<path class="hit" d={a.d} />{/if}<text class="t" x={a.lx} y={a.ly}>{a.label}</text></g>
       {/each}
       {@render bound('pad-up')}
     </g>
     {#each [...FACE, ...MIDDLE] as c (c.id)}
-      <g id={c.id} data-button={c.button} class="key" class:on={on(c.button)} class:small={c.r < 4} class:sel={isSel(c.id)} class:free={isFree(c.id)} {...ia(c.id)}>
+      <g id={`${uid}-${c.id}`} data-button={c.button} class="key" class:on={on(c.button)} class:small={c.r < 4} class:sel={isSel(c.id)} class:free={isFree(c.id)} {...ia(c.id)}>
         <circle cx={c.x} cy={c.y} r={c.r} />
         {#if select}<circle class="hit" cx={c.x} cy={c.y} r={c.r} />{/if}
         <text class="t" x={c.x} y={c.r < 4 ? c.y - c.r - 2.2 : c.y}>{c.label}</text>
@@ -148,8 +149,8 @@
   .key.small .t, .key.small.on .t { font-size: 2.9px; fill: var(--muted); }
   .key.small.on .t { fill: var(--accent); }
   .trk ~ .t { fill: var(--fg); font-size: 3px; stroke: var(--bg); stroke-width: 2.5px; paint-order: stroke; }
-  #pad-lb .t, #pad-rb .t { font-size: 2.6px; }
-  #pad-home .t { font-size: 2.5px; }
+  [id$="-pad-lb"] .t, [id$="-pad-rb"] .t { font-size: 2.6px; }
+  [id$="-pad-home"] .t { font-size: 2.5px; }
   .extra .t { fill: var(--dim); font-size: 2.8px; }
   /* select mode */
   .pick [role='button'] { cursor: pointer; }
