@@ -271,7 +271,7 @@ async fn home_order_put_get_delete_and_survives_restart() {
     assert_eq!(st, StatusCode::OK);
     assert_eq!(
         body,
-        json!({"homeOrder":["recent","host","library"],"machinesOrder":[]})
+        json!({"homeOrder":["recent","host","library"],"machinesOrder":[],"machineColors":{}})
     );
     assert_eq!(t.home().await, json!(["recent", "host", "library"]));
     // per-game prefs are untouched by it and still work next to it
@@ -331,11 +331,14 @@ async fn machines_order_partial_put_empty_put_and_delete() {
     let put = |b: Value| t.call("PUT", "/api/prefs/layout", true, Some(b));
     let (st, body) = put(json!({"machinesOrder":["vm-1","Bad","vm-1","pc"]})).await;
     assert_eq!(st, StatusCode::OK);
-    assert_eq!(body, json!({"homeOrder":[],"machinesOrder":["vm-1","pc"]}));
+    assert_eq!(
+        body,
+        json!({"homeOrder":[],"machinesOrder":["vm-1","pc"],"machineColors":{}})
+    );
     let (_, body) = put(json!({"homeOrder":["host"]})).await;
     assert_eq!(
         body,
-        json!({"homeOrder":["host"],"machinesOrder":["vm-1","pc"]})
+        json!({"homeOrder":["host"],"machinesOrder":["vm-1","pc"],"machineColors":{}})
     );
     let got = t.call("GET", "/api/prefs", true, None).await.1;
     assert_eq!(got["machinesOrder"], json!(["vm-1", "pc"]));
@@ -352,5 +355,59 @@ async fn machines_order_partial_put_empty_put_and_delete() {
     assert_eq!(
         (&got["homeOrder"], &got["machinesOrder"]),
         (&json!([]), &json!([]))
+    );
+}
+
+#[tokio::test]
+async fn machine_colors_round_trip_merge_and_reject() {
+    let t = t();
+    let put = |b: Value| t.call("PUT", "/api/prefs/layout", true, Some(b));
+    let got = t.call("GET", "/api/prefs", true, None).await.1;
+    assert_eq!(got["machineColors"], json!({}));
+    let (st, body) = put(json!({"machineColors":{"vm-1":"#ABC","pc":"#00FF7f"}})).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({"homeOrder":[],"machinesOrder":[],"machineColors":{"vm-1":"#aabbcc","pc":"#00ff7f"}})
+    );
+    // merge: set one, remove one, remove an unknown id
+    let (_, body) = put(json!({"machineColors":{"pc":null,"nope":null,"nas":"#123456"}})).await;
+    assert_eq!(
+        body["machineColors"],
+        json!({"vm-1":"#aabbcc","nas":"#123456"})
+    );
+    // bad bodies change nothing
+    for b in [
+        json!({"machineColors":{"ok":"#fff","Bad":"#fff"}}),
+        json!({"machineColors":{"ok":"#fff","x":"red"}}),
+        json!({"machineColors":{"ok":"#fff","x":"javascript:1"}}),
+        json!({"machineColors":{"x":5}}),
+        json!({"machineColors":[]}),
+    ] {
+        assert_eq!(put(b.clone()).await.0, StatusCode::BAD_REQUEST, "{b}");
+    }
+    let over: serde_json::Map<String, Value> =
+        (0..64).map(|i| (format!("m{i}"), json!("#000"))).collect();
+    assert_eq!(
+        put(json!({"machineColors":over})).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let got = t.call("GET", "/api/prefs", true, None).await.1;
+    assert_eq!(
+        got["machineColors"],
+        json!({"vm-1":"#aabbcc","nas":"#123456"})
+    );
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
+    assert_eq!(on_disk["layout"]["machineColors"], got["machineColors"]);
+    assert_eq!(
+        t.call("DELETE", "/api/prefs/layout", true, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let got = t.call("GET", "/api/prefs", true, None).await.1;
+    assert_eq!(got["machineColors"], json!({}));
+    assert!(
+        !std::fs::read_to_string(t.file())
+            .unwrap()
+            .contains("layout")
     );
 }

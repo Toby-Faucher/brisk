@@ -1,5 +1,6 @@
 import { derived, get, writable, type Readable, type Writable } from 'svelte/store';
 import { api, setRoute, type HostInfo } from './api';
+import { defaultColor, normalizeHex } from '../ui/color';
 
 export type MachineState = 'off' | 'starting' | 'stopping' | 'ready' | 'unreachable';
 export type Machine = {
@@ -148,12 +149,34 @@ const orderW = writable<string[]>([]);
 export const machinesOrder: Readable<string[]> = { subscribe: orderW.subscribe };
 export const orderedMachines: Readable<Machine[]> = derived([machinesW, orderW], ([$m, $o]) => [...$o.flatMap((id) => $m.find((m) => m.id === id) ?? []), ...$m.filter((m) => !$o.includes(m.id))]);
 
+const colorsW = writable<Record<string, string>>({});
+/** Saved machine colours (`#rrggbb`), from the same prefs fetch as the order. */
+export const machineColors: Readable<Record<string, string>> = { subscribe: colorsW.subscribe };
+/** Every machine's colour: the saved one, else the palette colour for its position in server order. */
+export const machineHue: Readable<Record<string, string>> = derived([machinesW, colorsW], ([$m, $c]) => Object.fromEntries($m.map((m, i) => [m.id, $c[m.id] ?? defaultColor(i)])));
+
+/** Normalizes what the server sent; absent or bad entries are dropped. */
+function cleanColors(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (raw && typeof raw === 'object') for (const [id, v] of Object.entries(raw)) {
+    const hex = typeof v === 'string' ? normalizeHex(v) : null;
+    if (hex) out[id] = hex;
+  }
+  return out;
+}
+
 // Loaded once, on hub detection, with its own GET /api/prefs (keeps this module free of prefs.ts).
 let orderLoaded = false;
 function loadOrder() {
   if (orderLoaded) return;
   orderLoaded = true;
-  api.prefs().then((r) => orderW.set(r.machinesOrder ?? []), () => (orderLoaded = false));
+  api.prefs().then(
+    (r) => {
+      orderW.set(r.machinesOrder ?? []);
+      colorsW.set(cleanColors(r.machineColors));
+    },
+    () => (orderLoaded = false),
+  );
 }
 
 /** Optimistic; hostd cleans the ids and its answer wins. A failure restores the old order and rethrows. */
@@ -164,6 +187,22 @@ export async function setMachinesOrder(ids: string[]): Promise<void> {
     orderW.set((await api.putLayout({ machinesOrder: ids })).machinesOrder ?? ids);
   } catch (e) {
     orderW.set(prev);
+    throw e;
+  }
+}
+
+/** Sets one machine's colour (null resets it to the default). Optimistic; hostd's answer wins. A failure restores the old colours and rethrows. */
+export async function setMachineColor(id: string, hex: string | null): Promise<void> {
+  const norm = hex === null ? null : normalizeHex(hex);
+  if (hex !== null && !norm) throw new Error(`invalid colour: ${hex}`);
+  const prev = get(colorsW);
+  const { [id]: _, ...rest } = prev;
+  const next = norm ? { ...rest, [id]: norm } : rest;
+  colorsW.set(next);
+  try {
+    colorsW.set(cleanColors((await api.putLayout({ machineColors: { [id]: norm } })).machineColors ?? next));
+  } catch (e) {
+    colorsW.set(prev);
     throw e;
   }
 }

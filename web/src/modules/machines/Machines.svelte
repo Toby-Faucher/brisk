@@ -9,7 +9,9 @@
   import { host as hostStore, refreshHost } from '../../state/host';
   import { toast } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
-  import LatencyLayers from '../../ui/LatencyLayers.svelte';
+  import HeaderSpark from '../../ui/HeaderSpark.svelte';
+  import Ring from '../../ui/Ring.svelte';
+  import { defaultColor, headerBg, onColor } from '../../ui/color';
   import Icon from '../../ui/Icon.svelte';
   import StatusDot from '../../ui/StatusDot.svelte';
   import ConnPath from './ConnPath.svelte';
@@ -18,10 +20,9 @@
   import { count, fadeOnChange } from '../../ui/motion';
   import { DASH, fmtUptime, reconcileOrder } from '../home/home';
   import { reorder } from '../home/drag';
-  import { hub, orderedMachines, pings, startPings, selected, selectMachine, setMachinesOrder, powerMachine } from '../../state/machines';
-  import { isTap, machinesFrom, restartError, dimmed, dotState, powerWhy, statRows, STATE_LABEL, type Vm } from './machines';
+  import { hub, machineHue, orderedMachines, pings, startPings, selected, selectMachine, setMachinesOrder, powerMachine } from '../../state/machines';
+  import { isTap, machinesFrom, restartError, dimmed, dotState, powerWhy, statRows, chipData, gauges, headerVars, networkText, pingText, STATE_LABEL, SUN_LABEL, type Vm } from './machines';
 
-  const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
   let stream = $state<StreamInfo | null>(null);
   let confirming = $state(false);
   let busy = $state(false);
@@ -138,66 +139,108 @@
 </div>
 {#if modal}<MachineModal machineId={modal.id} origin={modal.origin} onclose={closeModal} />{/if}
 
+{#snippet actions(m: Entry)}
+  {@const i = m.info}
+  {@const here = !hubOn || m.id === $selected}
+  {@const why = powerWhy(m.state)}
+  <div class="actions" class:pin={hubOn}>
+    {#if hubOn && !here}<button class="btn" onclick={() => void selectMachine(m.id)}>Use</button>{/if}
+    {#if hubOn && m.canPower && m.state === 'off'}<button class="btn" onclick={() => void start(m)}>Start</button>{/if}
+    {#if hubOn && m.canPower && m.state !== 'off'}
+      <button class="btn ghost" aria-disabled={!!why || m.state !== 'ready'} aria-describedby={why ? `why-${m.id}` : undefined} onclick={() => m.state === 'ready' && (shutting = m)}>Shut down</button>
+    {/if}
+    {#if why}<span class="lab" id="why-{m.id}">{why}</span>{/if}
+    {#if i && here}
+      <Dialog.Root bind:open={confirming}>
+        <Dialog.Trigger class="btn ghost">Restart Sunshine</Dialog.Trigger>
+        <Dialog.Portal>
+          <Dialog.Overlay class="cm-dim" />
+          <Dialog.Content class="rs glass">
+            <Dialog.Title class="rs-t">Restart Sunshine?</Dialog.Title>
+            <Dialog.Description class="lab">A live stream will drop.</Dialog.Description>
+            <div class="rs-a">
+              <button class="btn ghost" disabled={busy} onclick={() => (confirming = false)}>Cancel</button>
+              <button class="btn" disabled={busy} onclick={restart}>Restart</button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    {/if}
+    {#if !hubOn}<button class="btn ghost" disabled title="Not in v1">Wake-on-LAN · later</button>{/if}
+  </div>
+{/snippet}
+
+{#snippet runningApps(here: boolean)}
+  {#if here && running.length}
+    <h5 class="lab">Running apps</h5>
+    <ul class="apps">
+      {#each running as g (g.appid)}
+        {@const q = $quitting.has(g.appid)}
+        <li><span>{g.name}</span><button class="btn ghost sm" aria-disabled={q} onclick={() => askQuit(g)} aria-label={q ? `Quitting ${g.name}` : `Quit ${g.name}`}>{q ? 'Quitting…' : 'Quit'}</button></li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
+
 {#snippet card(m: Entry)}
     {@const i = m.info}
     {@const here = !hubOn || m.id === $selected}
-    {@const why = powerWhy(m.state)}
-    <Card cols={2} rows={2} class={hubOn && here ? 'on' : dimmed(hubOn, machines.length, $selected, m.id) ? 'dim' : ''}>
+    {@const state = i ? dotState({ state: m.state, sunshine: i.sunshine }) : dotState({ state: m.state, sunshine: null })}
+    {@const hue = $machineHue[m.id] ?? defaultColor(0)}
+    {@const big = i ? (i.sunshine === 'down' ? 'Sunshine is down' : 'Online') : STATE_LABEL[m.state]}
+    <Card cols={2} rows={2} style={hubOn ? headerVars(hue, onColor(hue), !!i, headerBg(hue)) : ''} class={(hubOn ? 'hc ' : '') + (hubOn && here ? 'on' : dimmed(hubOn, machines.length, $selected, m.id) ? 'dim' : '')}>
       <!-- the card's one tab stop: visually hidden, the card shows its focus ring; mouse clicks are handled on the grid -->
       {#if hubOn}<button type="button" class="fill" aria-label="Open {m.name} details" onclick={(e) => openModal(e.currentTarget)}></button>{/if}
-      <h4><Icon name="host" color="var(--c-host)" size={16} /> {m.name} <StatusDot state={i ? dotState({ state: m.state, sunshine: i.sunshine }) : dotState({ state: m.state, sunshine: null })} />{#if hubOn && here}<span class="sel">Selected</span>{/if}</h4>
-      {#if hubOn && !i}
-        <div class="big">{STATE_LABEL[m.state]}</div>
-        <p class="lab">{m.state === 'off' ? `${m.name} is switched off. Start it when you want to play.` : m.state === 'starting' ? `${m.name} is waking up. This takes a minute or two.` : m.state === 'stopping' ? `${m.name} is shutting down.` : `Brisk cannot reach ${m.name} right now.`}</p>
-      {:else if i}
-      {@const big = i.sunshine === 'down' ? 'Sunshine is down' : 'Online'}
+      {#if hubOn}
+        {@const g = i ? gauges(i, m.vm) : []}
+        {@const p = pingText($pings[m.id] ?? [])}
+        <!-- the header is the machine's colour; a machine that is not up keeps it muted, with no rings or ping -->
+        <div class="hd" class:idle={!i}>
+          <h4><Icon name="host" color="var(--on)" size={16} /> <span class="nm">{m.name}</span> <StatusDot state={state} />{#if here}<span class="sel">Selected</span>{/if}</h4>
+          <div class="word" {@attach fadeOnChange(big)}>{big}</div>
+          {#if i}
+            <div class="hflex">
+              <div class="hrings">
+                {#each g as r (r.key)}
+                  <div class="hr"><Ring pct={r.pct} text={r.text} level={r.level} /><span class="sr">{r.label} {r.text}</span><span class="k" aria-hidden="true">{r.label}</span></div>
+                {/each}
+              </div>
+              <div class="lat" role="img" aria-label="Ping {p.direct}, hub {p.hub}"><em>{p.direct}</em>hub {p.hub}</div>
+            </div>
+            <div class="hsp"><HeaderSpark samples={$pings[m.id] ?? []} /></div>
+          {/if}
+        </div>
+        <div class="bd">
+          {#if i}
+            <div class="chips">
+              {#each chipData(i, here ? (app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)) : DASH) as c (c.label)}
+                <span>{c.label}<b {@attach fadeOnChange(c.value)}>{c.value}</b></span>
+              {/each}
+            </div>
+            {@render runningApps(here)}
+          {:else}
+            <p class="lab calm">{m.state === 'off' ? `${m.name} is switched off. Start it when you want to play.` : m.state === 'starting' ? `${m.name} is waking up. This takes a minute or two.` : m.state === 'stopping' ? `${m.name} is shutting down.` : `Brisk cannot reach ${m.name} right now.`}</p>
+          {/if}
+        </div>
+      {:else}
+      <h4><Icon name="host" color="var(--c-host)" size={16} /> {m.name} <StatusDot {state} /></h4>
+      {#if i}
       {@const up = fmtUptime(i.uptimeS)}
       <div class="big" {@attach fadeOnChange(big)}>{big}</div>
-      {#if hubOn}<LatencyLayers samples={$pings[m.id] ?? []} height={72} />{:else}<ConnPath path={i.path} />{/if}
+      <ConnPath path={i.path} />
       <dl>
-        <dt>Sunshine</dt><dd {@attach fadeOnChange(SUN[i.sunshine])}>{SUN[i.sunshine]}</dd>
+        <dt>Sunshine</dt><dd {@attach fadeOnChange(SUN_LABEL[i.sunshine])}>{SUN_LABEL[i.sunshine]}</dd>
         <dt>Uptime</dt><dd {@attach fadeOnChange(up)}>{up}</dd>
         {#each statRows(i, m.vm, hubOn) as r (r.label)}
           <dt>{r.label}</dt><dd {@attach r.n == null ? undefined : count(r.n, r.fmt)}>{r.text}</dd>
         {/each}
-        <dt>Network</dt><dd>{i.path === 'relay' ? `Relay${i.relay ? ` · ${i.relay}` : ''}` : i.path === 'direct' ? 'Direct' : DASH}</dd>
-        <dt>Running</dt><dd>{here ? (app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)) : DASH}</dd>
+        <dt>Network</dt><dd>{networkText(i)}</dd>
+        <dt>Running</dt><dd>{app ?? (stream?.state === 'live' ? 'Streaming' : stream ? 'Nothing' : DASH)}</dd>
       </dl>
-      {#if here && running.length}
-        <h5 class="lab">Running apps</h5>
-        <ul class="apps">
-          {#each running as g (g.appid)}
-            {@const q = $quitting.has(g.appid)}
-            <li><span>{g.name}</span><button class="btn ghost sm" aria-disabled={q} onclick={() => askQuit(g)} aria-label={q ? `Quitting ${g.name}` : `Quit ${g.name}`}>{q ? 'Quitting…' : 'Quit'}</button></li>
-          {/each}
-        </ul>
+      {@render runningApps(here)}
       {/if}
       {/if}
-      <div class="actions">
-        {#if hubOn && !here}<button class="btn" onclick={() => void selectMachine(m.id)}>Use</button>{/if}
-        {#if hubOn && m.canPower && m.state === 'off'}<button class="btn" onclick={() => void start(m)}>Start</button>{/if}
-        {#if hubOn && m.canPower && m.state !== 'off'}
-          <button class="btn ghost" aria-disabled={!!why || m.state !== 'ready'} aria-describedby={why ? `why-${m.id}` : undefined} onclick={() => m.state === 'ready' && (shutting = m)}>Shut down</button>
-        {/if}
-        {#if why}<span class="lab" id="why-{m.id}">{why}</span>{/if}
-        {#if i && here}
-          <Dialog.Root bind:open={confirming}>
-            <Dialog.Trigger class="btn ghost">Restart Sunshine</Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay class="cm-dim" />
-              <Dialog.Content class="rs glass">
-                <Dialog.Title class="rs-t">Restart Sunshine?</Dialog.Title>
-                <Dialog.Description class="lab">A live stream will drop.</Dialog.Description>
-                <div class="rs-a">
-                  <button class="btn ghost" disabled={busy} onclick={() => (confirming = false)}>Cancel</button>
-                  <button class="btn" disabled={busy} onclick={restart}>Restart</button>
-                </div>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
-        {/if}
-        {#if !hubOn}<button class="btn ghost" disabled title="Not in v1">Wake-on-LAN · later</button>{/if}
-      </div>
+      {@render actions(m)}
     </Card>
 {/snippet}
 
@@ -243,6 +286,7 @@
   .apps li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .apps span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sel { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .hd .sel { color: var(--on); background: color-mix(in srgb, var(--on) 18%, transparent); padding: 2px 9px; border-radius: 999px; font-weight: 700; }
   /* the drag handle sits in the card's top-right corner (28 px at 8 px): keep the label clear of it */
   .hub .sel { margin-right: 28px; }
   /* Spotlight: the selected card is lit, the others rest dimmed (their content, not .actions, so Use/Start stay full contrast) */
@@ -256,5 +300,30 @@
   .hub :global(.card.dim:not([data-lifted]):hover > :not(.actions, .grip, .fill)) { opacity: .85; }
   @keyframes sel-in { from { opacity: 0; } }
   .sm { padding: 4px 10px; font-size: 13px; }
+  /* V5 card: the header bleeds to the card edge (Card pads 16), the body pads itself, the buttons sit at the bottom of any height */
+  .hub :global(.card.hc) { padding: 0; display: flex; flex-direction: column; }
+  :global(.hub .card.hc .grip) { color: var(--on); }
+  .hd { position: relative; padding: 14px 16px 12px; overflow: hidden; color: var(--on); background: var(--hbg); }
+  /* not up: the colour only tints a grey block, and the text is the page's own */
+  .hd.idle { background: linear-gradient(135deg, color-mix(in srgb, var(--h) 18%, #2b303b), color-mix(in srgb, var(--h) 6%, #171a22)); }
+  /* the dot keeps a ring in the text colour so it reads on a header of its own colour */
+  .hd :global(.dot) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--on) 60%, transparent); }
+  .hd h4 { font-size: 14px; color: inherit; min-width: 0; }
+  .hd .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .word { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; margin-top: 6px; }
+  .hflex { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .hrings { display: flex; gap: 14px; align-items: center; margin-top: 10px; min-width: 0; flex-wrap: wrap; }
+  .hr { display: grid; justify-items: center; gap: 3px; }
+  .hr .k { font: 500 9.5px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; opacity: .85; }
+  .lat { margin-left: auto; font: 600 12px var(--mono); text-align: right; white-space: nowrap; }
+  .lat em { display: block; font-style: normal; font-size: 22px; line-height: 1; }
+  .hsp { margin: 8px -16px -12px; opacity: .85; }
+  .bd { padding: 12px 16px 0; display: grid; gap: 10px; }
+  .bd h5 { margin: 4px 0 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips span { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: color-mix(in srgb, #fff 4%, transparent); font-size: 12px; color: var(--muted); }
+  .chips b { color: var(--fg); font-weight: 600; margin-left: 4px; }
+  .calm { margin: 0; }
+  .actions.pin { margin-top: auto; padding: 12px 16px 16px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
 </style>

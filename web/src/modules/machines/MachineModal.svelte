@@ -3,7 +3,7 @@
   import { navigate } from 'astro:transitions/client';
   import { Dialog } from 'bits-ui';
   import { api, type Game, type SessionRec } from '../../state/api';
-  import { ensureReady, machines, pings, powerMachine, selected, selectMachine, startPings, wake } from '../../state/machines';
+  import { ensureReady, machineHue, machines, pings, setMachineColor, powerMachine, selected, selectMachine, startPings, wake } from '../../state/machines';
   import { startGame } from '../../state/prefs';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { toast } from '../../shell/Toasts.svelte';
@@ -16,7 +16,8 @@
   import { fmtSize } from '../library/library';
   import { DASH, fmtAgo, fmtTemp, fmtUptime } from '../home/home';
   import { fmtWhen } from '../history/history';
-  import { dotState, powerWhy, restartError, STATE_LABEL } from './machines';
+  import { PALETTE, normalizeHex } from '../../ui/color';
+  import { COLOR_NAMES, dotState, powerWhy, restartError, STATE_LABEL } from './machines';
   import { fmtPlayed, fmtPlaytime, gamesHeader, layoutFor, listGames, loadSort, saveSort, SORTS, stepIndex, type SortKey } from './modal';
 
   let { machineId, onclose, origin }: { machineId: string; onclose: () => void; origin?: DOMRect } = $props();
@@ -142,6 +143,17 @@
   const samples = $derived($pings[machineId] ?? []);
   const cpu = $derived(host?.cpuTempC != null ? fmtTemp(host.cpuTempC) : m?.vm ? `${Math.round(m.vm.cpuPct)} % load` : null);
   const gb = (b: number) => `${(b / 2 ** 30).toFixed(1)} GB`;
+  // ---- card colour: applies at once (the store is optimistic); a failed save puts the old colour back and says so here ----
+  const hue = $derived($machineHue[machineId] ?? null);
+  let colorErr = $state('');
+  async function paint(c: string | null) {
+    colorErr = '';
+    try {
+      await setMachineColor(machineId, c);
+    } catch (e) {
+      colorErr = `Could not save the colour: ${(e as Error).message}`;
+    }
+  }
   const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
 </script>
 
@@ -152,7 +164,7 @@
     <Dialog.Overlay class="cm-dim" />
     <Dialog.Content class="mp mm glass" style={toOrigin} {@attach swell} aria-describedby={undefined}>
       <header class="mm-h">
-        <Dialog.Title class="mm-t">{m?.name ?? 'Machine'}</Dialog.Title>
+        <Dialog.Title class="mm-t">{#if hue}<i class="tsw" style:background={hue} aria-hidden="true"></i>{/if}{m?.name ?? 'Machine'}</Dialog.Title>
         <Dialog.Close class="btn ghost sm" aria-label="Close">Close</Dialog.Close>
       </header>
 
@@ -182,6 +194,17 @@
               {#if host?.gpuTempC != null}<dt>GPU</dt><dd>{fmtTemp(host.gpuTempC)}</dd>{/if}
               {#if host}<dt>Network</dt><dd>{host.path === 'relay' ? `Relay${host.relay ? ` · ${host.relay}` : ''}` : host.path === 'direct' ? 'Direct' : DASH}</dd>{/if}
             </dl>
+            <div class="pick" role="group" aria-label="Card colour">
+              <span class="lab">Card colour</span>
+              <div class="sws">
+                {#each PALETTE as c, k (c)}
+                  <button type="button" class="sw" style:background={c} aria-label={COLOR_NAMES[k]} aria-pressed={normalizeHex(hue ?? '') === normalizeHex(c)} onclick={() => void paint(c)}></button>
+                {/each}
+              </div>
+              <label class="cust">Custom <input type="color" value={hue ?? PALETTE[0]} onchange={(e) => void paint(e.currentTarget.value)} /></label>
+              <button type="button" class="btn ghost sm" onclick={() => void paint(null)}>Reset</button>
+              {#if colorErr}<p class="lab err" role="status">{colorErr}</p>{/if}
+            </div>
             {#if !host}<p class="lab">{m.state === 'off' ? `${m.name} is switched off. Start it when you want to play.` : m.state === 'starting' ? `${m.name} is waking up. This takes a minute or two.` : m.state === 'stopping' ? `${m.name} is shutting down.` : `Brisk cannot reach ${m.name} right now.`}</p>{/if}
             <h4 class="lab">Connection speed</h4>
             <LatencyLayers {samples} height={110} />
@@ -307,6 +330,16 @@
   :global(.mm.mp) { position: fixed; left: 0; right: 0; top: 6vh; margin-inline: auto; width: min(1180px, calc(100vw - 32px)); max-height: 88vh; padding: 22px 26px; z-index: 41; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
   .mm-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   :global(.mm-t) { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+  :global(.mm-t) { display: inline-flex; align-items: center; gap: 8px; }
+  .tsw { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, #fff 30%, transparent); }
+  .pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 4px; }
+  .sws { display: flex; gap: 6px; }
+  .sw { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 1px color-mix(in srgb, #fff 25%, transparent) inset; }
+  .sw[aria-pressed='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .sw:focus-visible, .cust:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cust { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); border-radius: 6px; }
+  .cust input { width: 28px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .err { flex-basis: 100%; margin: 0; color: var(--bad); }
   .sm { padding: 4px 10px; font-size: 13px; }
   .tabs { display: flex; gap: 6px; }
   .tab { flex: 1; padding: 7px; border: 0; border-radius: 9px; background: var(--panel2); color: var(--fg); font: inherit; cursor: pointer; }

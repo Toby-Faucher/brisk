@@ -513,6 +513,7 @@ async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
         "prefs": s.prefs.all(),
         "homeOrder": s.prefs.home_order(),
         "machinesOrder": s.prefs.machines_order(),
+        "machineColors": s.prefs.machine_colors(),
     }))
     .into_response()
 }
@@ -522,29 +523,48 @@ async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
 struct LayoutBody {
     home_order: Option<Vec<String>>,
     machines_order: Option<Vec<String>>,
+    machine_colors: Option<std::collections::BTreeMap<String, Option<String>>>,
 }
 
-/// The Home card and Machines page orders: at least one, each an array of strings (else 400);
-/// bad, duplicate and surplus ids are dropped (prefs::clean_ids), the one not sent keeps its
-/// value, and both stored lists are returned.
+/// The Home card and Machines page orders plus the machine colours: at least one key, orders
+/// arrays of strings (else 400); bad, duplicate and surplus ids are dropped (prefs::clean_ids),
+/// a key not sent keeps its value. `machineColors` is merged (null removes an id) and a bad id,
+/// bad colour or more than 64 entries is a 400 that stores nothing. All three are returned.
 async fn layout_put(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -> Response {
     match parse::<LayoutBody>(&b) {
-        Ok(b) if b.home_order.is_none() && b.machines_order.is_none() => err(
-            StatusCode::BAD_REQUEST,
-            "homeOrder or machinesOrder required",
-        ),
-        Ok(b) => {
-            let (home, machines) = s.prefs.set_layout(b.home_order, b.machines_order);
-            axum::Json(serde_json::json!({ "homeOrder": home, "machinesOrder": machines }))
-                .into_response()
+        Ok(b)
+            if b.home_order.is_none()
+                && b.machines_order.is_none()
+                && b.machine_colors.is_none() =>
+        {
+            err(
+                StatusCode::BAD_REQUEST,
+                "homeOrder, machinesOrder or machineColors required",
+            )
         }
+        Ok(b) => match s
+            .prefs
+            .set_layout(b.home_order, b.machines_order, b.machine_colors)
+        {
+            Ok((home, machines, colors)) => axum::Json(serde_json::json!({
+                "homeOrder": home, "machinesOrder": machines, "machineColors": colors
+            }))
+            .into_response(),
+            Err(e) => err(StatusCode::BAD_REQUEST, e),
+        },
         Err(r) => r,
     }
 }
 
-/// Reset layout: forget both saved orders (Home and Machines fall back to their defaults).
+/// Reset layout: forget the saved orders and colours (Home and Machines fall back to their defaults).
 async fn layout_delete(State(s): State<Arc<AppState>>) -> Response {
-    s.prefs.set_layout(Some(vec![]), Some(vec![]));
+    let all = s
+        .prefs
+        .machine_colors()
+        .into_keys()
+        .map(|k| (k, None))
+        .collect();
+    let _ = s.prefs.set_layout(Some(vec![]), Some(vec![]), Some(all));
     StatusCode::NO_CONTENT.into_response()
 }
 

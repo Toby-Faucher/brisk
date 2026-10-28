@@ -4,6 +4,10 @@ import { get } from 'svelte/store';
 type M = { id: string; state: string; rttMs?: number | null };
 const mk = (id: string, state = 'ready') => ({ id, name: id, state, canPower: true, sunshine: null, host: null, url: `http://${id}.test:8443`, rttMs: 5, vm: null });
 
+/** hostd's answer to a layout PUT: the cleaned order, or the colours as stored (a null removes one). */
+const layoutAnswer = (b: { machinesOrder?: string[]; machineColors?: Record<string, string | null> }) =>
+  b.machineColors ? { homeOrder: [], machineColors: Object.fromEntries(Object.entries(b.machineColors).flatMap(([k, v]) => (v ? [[k, v]] : []))) } : { homeOrder: [], machinesOrder: b.machinesOrder!.filter((i) => i !== 'bad') };
+
 /** Fresh module graph per test (the stores are module state), a stubbed hub and in-memory localStorage. */
 async function setup(opts: { list?: M[]; stored?: string; machinesStatus?: number } = {}) {
   vi.resetModules();
@@ -11,14 +15,14 @@ async function setup(opts: { list?: M[]; stored?: string; machinesStatus?: numbe
   vi.stubGlobal('localStorage', { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => void local.set(k, v), removeItem: (k: string) => void local.delete(k) });
   vi.stubGlobal('sessionStorage', { getItem: () => null, setItem() {} });
   vi.stubGlobal('location', { href: 'http://localhost/' });
-  const state = { list: opts.list ?? [mk('a'), mk('b')], status: opts.machinesStatus ?? 200, fail: false, order: [] as string[], putFail: false, ping: 'ok' as 'ok' | 'fail' | 'hang', pingMs: 20 };
+  const state = { list: opts.list ?? [mk('a'), mk('b')], status: opts.machinesStatus ?? 200, fail: false, order: [] as string[], colors: undefined as unknown, putFail: false, ping: 'ok' as 'ok' | 'fail' | 'hang', pingMs: 20 };
   const f = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/machines') {
       if (state.fail) throw new TypeError('network');
       return new Response(JSON.stringify(state.status === 200 ? { machines: state.list } : { error: 'nope' }), { status: state.status });
     }
-    if (url === '/api/prefs') return new Response(JSON.stringify({ prefs: {}, machinesOrder: state.order }), { status: 200 });
-    if (url === '/api/prefs/layout') return state.putFail ? new Response('{"error":"nope"}', { status: 500 }) : new Response(JSON.stringify({ homeOrder: [], machinesOrder: JSON.parse(init!.body as string).machinesOrder.filter((i: string) => i !== 'bad') }), { status: 200 });
+    if (url === '/api/prefs') return new Response(JSON.stringify({ prefs: {}, machinesOrder: state.order, machineColors: state.colors }), { status: 200 });
+    if (url === '/api/prefs/layout') return state.putFail ? new Response('{"error":"nope"}', { status: 500 }) : new Response(JSON.stringify(layoutAnswer(JSON.parse(init!.body as string))), { status: 200 });
     if (url.startsWith('http')) {
       if (state.ping === 'fail') throw new TypeError('network');
       await new Promise<void>((ok, no) => {
@@ -271,6 +275,67 @@ describe('machine order', () => {
     state.putFail = true;
     await expect(m.setMachinesOrder(['b', 'a'])).rejects.toMatchObject({ status: 500 });
     expect(get(m.machinesOrder)).toEqual(['a', 'b']);
+  });
+});
+
+describe('machine colours', () => {
+  const boot = async (o: Parameters<typeof setup>[0] = {}, colors?: unknown) => {
+    const r = await setup({ list: [mk('a'), mk('b'), mk('c')], ...o });
+    r.state.colors = colors;
+    r.m.startMachines();
+    await vi.advanceTimersByTimeAsync(0);
+    return r;
+  };
+  const putBody = (f: ReturnType<typeof vi.fn>) => JSON.parse((f.mock.calls.find((c) => c[0] === '/api/prefs/layout')![1] as RequestInit).body as string);
+
+  it('hue_defaults_to_the_palette_by_server_position', async () => {
+    const { m } = await boot();
+    expect(get(m.machineColors)).toEqual({});
+    expect(get(m.machineHue)).toEqual({ a: '#60a5fa', b: '#a78bfa', c: '#f472b6' });
+  });
+
+  it('hue_prefers_a_saved_colour_and_normalizes_it', async () => {
+    const { m } = await boot({}, { b: '#ABC', c: 'nope', z: '#00ff00', d: 5 });
+    expect(get(m.machineColors)).toEqual({ b: '#aabbcc', z: '#00ff00' });
+    expect(get(m.machineHue)).toEqual({ a: '#60a5fa', b: '#aabbcc', c: '#f472b6' });
+  });
+
+  it('tolerates_absent_or_garbage_colours', async () => {
+    for (const bad of [undefined, null, 'x', ['#fff']]) {
+      const { m } = await boot({}, bad);
+      expect(get(m.machineHue).a).toBe('#60a5fa');
+    }
+  });
+
+  it('sets_optimistically_and_takes_the_answer', async () => {
+    const { m, f } = await boot();
+    const p = m.setMachineColor('b', '#FA0');
+    expect(get(m.machineHue).b).toBe('#ffaa00');
+    await p;
+    expect(get(m.machineColors)).toEqual({ b: '#ffaa00' });
+    expect(putBody(f)).toEqual({ machineColors: { b: '#ffaa00' } });
+  });
+
+  it('null_resets_to_the_default', async () => {
+    const { m, f } = await boot({}, { b: '#112233' });
+    await m.setMachineColor('b', null);
+    expect(get(m.machineColors)).toEqual({});
+    expect(get(m.machineHue).b).toBe('#a78bfa');
+    expect(putBody(f)).toEqual({ machineColors: { b: null } });
+  });
+
+  it('rejects_an_invalid_colour_before_any_request', async () => {
+    const { m, f } = await boot();
+    await expect(m.setMachineColor('b', 'red')).rejects.toBeInstanceOf(Error);
+    expect(calls(f, /layout/)).toBe(0);
+    expect(get(m.machineColors)).toEqual({});
+  });
+
+  it('reverts_and_rethrows_on_failure', async () => {
+    const { m, state } = await boot({}, { a: '#112233' });
+    state.putFail = true;
+    await expect(m.setMachineColor('b', '#445566')).rejects.toMatchObject({ status: 500 });
+    expect(get(m.machineColors)).toEqual({ a: '#112233' });
   });
 });
 

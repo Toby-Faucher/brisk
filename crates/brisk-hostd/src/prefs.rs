@@ -1,7 +1,8 @@
 //! Per-game quality in `data_dir/prefs.json` (`{"<appid>": Entry}`): written whole to a 0600 temp
 //! file and renamed over the old one, read tolerantly (a missing or corrupt file is just empty).
 //! The Home card order and the Machines page order ride along under
-//! `"layout": {"v": 1, "homeOrder": [...], "machinesOrder": [...]}` (each key absent when empty).
+//! `"layout": {"v": 1, "homeOrder": [...], "machinesOrder": [...], "machineColors": {id: "#rrggbb"}}`
+//! (each key absent when empty).
 
 use crate::sessions::now_ms;
 use crate::stream::{Codec, Preset};
@@ -17,6 +18,7 @@ pub const MAX_ENTRIES: usize = 500;
 pub const HOME_MAX: usize = 32;
 pub const HOME_ID_MAX: usize = 32;
 pub const MACHINES_MAX: usize = 64;
+pub const COLORS_MAX: usize = 64;
 const LAYOUT_KEY: &str = "layout";
 const LAYOUT_V: u64 = 1;
 
@@ -30,12 +32,33 @@ pub fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
     clean_ids(ids, MACHINES_MAX)
 }
 
+fn valid_id(s: &str) -> bool {
+    (1..=HOME_ID_MAX).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// `#rgb` or `#rrggbb` in any case -> lowercase `#rrggbb`; anything else is None.
+pub fn normalize_color(c: &str) -> Option<String> {
+    let h = c.strip_prefix('#')?;
+    if !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    match h.len() {
+        6 => Some(c.to_ascii_lowercase()),
+        3 => Some(format!(
+            "#{}",
+            h.chars()
+                .flat_map(|d| [d, d])
+                .collect::<String>()
+                .to_ascii_lowercase()
+        )),
+        _ => None,
+    }
+}
+
 fn clean_ids(ids: Vec<String>, max: usize) -> Vec<String> {
-    let ok = |s: &str| {
-        (1..=HOME_ID_MAX).contains(&s.len())
-            && s.bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-    };
+    let ok = valid_id;
     let mut out: Vec<String> = Vec::new();
     for id in ids {
         if out.len() == max {
@@ -53,6 +76,7 @@ struct Inner {
     map: BTreeMap<u32, Entry>,
     home: Vec<String>,
     machines: Vec<String>,
+    colors: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -71,6 +95,9 @@ pub struct Entry {
     /// Unix milliseconds of the last write; the oldest go first when the file is full.
     pub updated: u64,
 }
+
+/// (homeOrder, machinesOrder, machineColors)
+pub type Layout = (Vec<String>, Vec<String>, BTreeMap<String, String>);
 
 pub struct Prefs {
     path: PathBuf,
@@ -96,6 +123,20 @@ impl Prefs {
         };
         let home = list("homeOrder", clean_home_order);
         let machines = list("machinesOrder", clean_machines_order);
+        // invalid entries drop silently, the cap keeps the first ids in key order
+        let colors = layout
+            .as_ref()
+            .and_then(|l| {
+                serde_json::from_value::<BTreeMap<String, serde_json::Value>>(
+                    l["machineColors"].clone(),
+                )
+                .ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(k, v)| valid_id(&k).then_some((k.clone(), normalize_color(v.as_str()?)?)))
+            .take(COLORS_MAX)
+            .collect();
         let mut map: BTreeMap<u32, Entry> = raw
             .into_iter()
             .filter_map(|(k, v)| Some((k.parse().ok()?, serde_json::from_value(v).ok()?)))
@@ -107,6 +148,7 @@ impl Prefs {
                 map,
                 home,
                 machines,
+                colors,
             }),
         }
     }
@@ -123,14 +165,37 @@ impl Prefs {
         self.inner.lock().unwrap().machines.clone()
     }
 
+    pub fn machine_colors(&self) -> BTreeMap<String, String> {
+        self.inner.lock().unwrap().colors.clone()
+    }
+
     /// Cleans, stores and writes the lists that are `Some` (the other keeps its value); an empty
-    /// list clears that order. Returns (home, machines) as stored.
+    /// list clears that order. `colors` is merged into the stored map (None removes an id). A bad
+    /// id or colour, or more than COLORS_MAX entries after the merge, is an Err and stores nothing.
+    /// Returns (home, machines, colors) as stored.
     pub fn set_layout(
         &self,
         home: Option<Vec<String>>,
         machines: Option<Vec<String>>,
-    ) -> (Vec<String>, Vec<String>) {
+        colors: Option<BTreeMap<String, Option<String>>>,
+    ) -> Result<Layout, &'static str> {
         let mut m = self.inner.lock().unwrap();
+        let mut merged = m.colors.clone();
+        for (id, c) in colors.unwrap_or_default() {
+            if !valid_id(&id) {
+                return Err("bad machine id in machineColors");
+            }
+            match c {
+                None => merged.remove(&id),
+                Some(c) => {
+                    merged.insert(id, normalize_color(&c).ok_or("bad colour, want #rrggbb")?)
+                }
+            };
+        }
+        if merged.len() > COLORS_MAX {
+            return Err("too many machineColors");
+        }
+        m.colors = merged;
         if let Some(h) = home {
             m.home = clean_home_order(h);
         }
@@ -138,7 +203,7 @@ impl Prefs {
             m.machines = clean_machines_order(x);
         }
         self.save(&m);
-        (m.home.clone(), m.machines.clone())
+        Ok((m.home.clone(), m.machines.clone(), m.colors.clone()))
     }
 
     /// Stores `e` with its `updated` as given and writes the file.
@@ -171,13 +236,16 @@ impl Prefs {
     fn save(&self, m: &Inner) {
         let write = || -> std::io::Result<()> {
             let mut doc = serde_json::to_value(&m.map)?;
-            if !m.home.is_empty() || !m.machines.is_empty() {
+            if !m.home.is_empty() || !m.machines.is_empty() || !m.colors.is_empty() {
                 let mut l = serde_json::json!({ "v": LAYOUT_V });
                 if !m.home.is_empty() {
                     l["homeOrder"] = m.home.clone().into();
                 }
                 if !m.machines.is_empty() {
                     l["machinesOrder"] = m.machines.clone().into();
+                }
+                if !m.colors.is_empty() {
+                    l["machineColors"] = serde_json::to_value(&m.colors)?;
                 }
                 doc[LAYOUT_KEY] = l;
             }
@@ -285,11 +353,14 @@ mod tests {
         let p = d.path().join("prefs.json");
         let prefs = Prefs::load(p.clone());
         assert_eq!(
-            prefs.set_layout(Some(v(&["b", "a", "b"])), None).0,
+            prefs
+                .set_layout(Some(v(&["b", "a", "b"])), None, None)
+                .unwrap()
+                .0,
             v(&["b", "a"])
         );
         assert_eq!(Prefs::load(p.clone()).home_order(), v(&["b", "a"]));
-        prefs.set_layout(Some(vec![]), None);
+        prefs.set_layout(Some(vec![]), None, None).unwrap();
         let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
         assert!(raw.get("layout").is_none(), "{raw}");
         assert!(Prefs::load(p).home_order().is_empty());
@@ -311,22 +382,24 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("prefs.json");
         let prefs = Prefs::load(p.clone());
-        prefs.set_layout(Some(v(&["h"])), Some(v(&["b", "a", "b", "BAD"])));
+        prefs
+            .set_layout(Some(v(&["h"])), Some(v(&["b", "a", "b", "BAD"])), None)
+            .unwrap();
         let l = Prefs::load(p.clone());
         assert_eq!(
             (l.home_order(), l.machines_order()),
             (v(&["h"]), v(&["b", "a"]))
         );
-        let (h, m) = prefs.set_layout(None, Some(v(&["z"])));
+        let (h, m, _) = prefs.set_layout(None, Some(v(&["z"])), None).unwrap();
         assert_eq!((h, m), (v(&["h"]), v(&["z"])));
-        let (h, m) = prefs.set_layout(Some(vec![]), None);
+        let (h, m, _) = prefs.set_layout(Some(vec![]), None, None).unwrap();
         assert_eq!((h, m), (vec![], v(&["z"])));
         let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
         assert_eq!(
             raw["layout"],
             serde_json::json!({"v":1,"machinesOrder":["z"]})
         );
-        prefs.set_layout(None, Some(vec![]));
+        prefs.set_layout(None, Some(vec![]), None).unwrap();
         let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
         assert!(raw.get("layout").is_none(), "{raw}");
     }
@@ -366,6 +439,123 @@ mod tests {
                 (home, machines),
                 "{raw}"
             );
+        }
+    }
+
+    fn cm(pairs: &[(&str, Option<&str>)]) -> Option<BTreeMap<String, Option<String>>> {
+        Some(
+            pairs
+                .iter()
+                .map(|(k, c)| (k.to_string(), c.map(String::from)))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn normalize_color_table() {
+        for (i, o) in [
+            ("#FFF", Some("#ffffff")),
+            ("#AbC123", Some("#abc123")),
+            ("#a1b", Some("#aa11bb")),
+            ("#12345", None),
+            ("#1234", None),
+            ("#1234567", None),
+            ("#", None),
+            ("ffffff", None),
+            ("fff", None),
+            ("red", None),
+            ("#ggg", None),
+            ("#ff ", None),
+            ("javascript:alert(1)", None),
+            ("#fff;x", None),
+            ("", None),
+        ] {
+            assert_eq!(normalize_color(i).as_deref(), o, "{i}");
+        }
+    }
+
+    #[test]
+    fn colors_merge_remove_reject_atomically_and_cap() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("prefs.json");
+        let prefs = Prefs::load(p.clone());
+        prefs
+            .set_layout(
+                None,
+                None,
+                cm(&[("a", Some("#FFF")), ("b", Some("#000000"))]),
+            )
+            .unwrap();
+        prefs
+            .set_layout(
+                None,
+                None,
+                cm(&[("b", None), ("zz", None), ("c", Some("#123"))]),
+            )
+            .unwrap();
+        let want: BTreeMap<String, String> = [("a", "#ffffff"), ("c", "#112233")]
+            .map(|(k, c)| (k.into(), c.into()))
+            .into();
+        assert_eq!(prefs.machine_colors(), want);
+        assert_eq!(Prefs::load(p.clone()).machine_colors(), want);
+        // a bad id or colour anywhere stores nothing
+        for bad in [("Bad", "#fff"), ("a b", "#fff"), ("", "#fff"), ("d", "red")] {
+            assert!(
+                prefs
+                    .set_layout(
+                        None,
+                        None,
+                        cm(&[("d2", Some("#000")), (bad.0, Some(bad.1))])
+                    )
+                    .is_err()
+            );
+        }
+        assert_eq!(prefs.machine_colors(), want);
+        // the cap counts the merged map
+        let many: Vec<(String, Option<&str>)> = (0..COLORS_MAX)
+            .map(|i| (format!("m{i}"), Some("#000")))
+            .collect();
+        let many: Vec<(&str, Option<&str>)> = many.iter().map(|(k, c)| (k.as_str(), *c)).collect();
+        assert!(prefs.set_layout(None, None, cm(&many)).is_err());
+        assert_eq!(prefs.machine_colors(), want);
+        prefs
+            .set_layout(None, None, cm(&many[..COLORS_MAX - 2]))
+            .unwrap();
+        assert_eq!(prefs.machine_colors().len(), COLORS_MAX);
+        // empty map leaves no key; clearing everything leaves no layout
+        let ids: Vec<(String, Option<&str>)> = prefs
+            .machine_colors()
+            .into_keys()
+            .map(|k| (k, None))
+            .collect();
+        let ids: Vec<(&str, Option<&str>)> = ids.iter().map(|(k, c)| (k.as_str(), *c)).collect();
+        prefs.set_layout(None, Some(v(&["x"])), cm(&ids)).unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        assert_eq!(
+            raw["layout"],
+            serde_json::json!({"v":1,"machinesOrder":["x"]})
+        );
+    }
+
+    #[test]
+    fn colors_load_leniently() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("prefs.json");
+        let big: BTreeMap<String, String> = (0..COLORS_MAX + 5)
+            .map(|i| (format!("m{i:03}"), "#000".into()))
+            .collect();
+        let big = serde_json::json!({"layout":{"v":1,"machineColors":big}}).to_string();
+        for (raw, n) in [
+            (r#"{"layout":{"v":1,"homeOrder":["a"]}}"#.to_string(), 0),
+            (r##"{"layout":{"v":1,"machineColors":7}}"##.to_string(), 0),
+            (r##"{"layout":{"v":1,"machineColors":["#fff"]}}"##.to_string(), 0),
+            (r##"{"layout":{"v":2,"machineColors":{"a":"#fff"}}}"##.to_string(), 0),
+            (r##"{"layout":{"v":1,"machineColors":{"a":"#FFF","B":"#fff","c":"red","d":5,"e":null}}}"##.to_string(), 1),
+            (big, COLORS_MAX),
+            ("not json {".to_string(), 0),
+        ] {
+            std::fs::write(&p, &raw).unwrap();
+            assert_eq!(Prefs::load(p.clone()).machine_colors().len(), n, "{raw}");
         }
     }
 }

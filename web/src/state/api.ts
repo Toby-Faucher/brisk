@@ -282,10 +282,10 @@ export const api = {
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
   quit: (appid: number, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { appid, force }),
   restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
-  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[] }>('GET', '/api/prefs'),
-  /** Card orders (hostd cleans them and answers with what it kept); a bare array is the Home order. The omitted one keeps its value. Reset forgets both. */
-  putLayout: (l: string[] | { homeOrder?: string[]; machinesOrder?: string[] }) =>
-    call<{ homeOrder: string[]; machinesOrder?: string[] }>('PUT', '/api/prefs/layout', Array.isArray(l) ? { homeOrder: l } : l),
+  prefs: () => call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('GET', '/api/prefs'),
+  /** Card orders and machine colours (hostd cleans them and answers with what it kept); a bare array is the Home order. An omitted key keeps its value; a colour of null removes that machine's. Reset forgets all. */
+  putLayout: (l: string[] | { homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string | null> }) =>
+    call<{ homeOrder: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>('PUT', '/api/prefs/layout', Array.isArray(l) ? { homeOrder: l } : l),
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
   putPrefs: (appid: number, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${appid}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (appid: number) => call<void>('DELETE', `/api/prefs/${appid}`),
