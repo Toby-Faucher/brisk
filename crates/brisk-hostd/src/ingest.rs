@@ -388,17 +388,29 @@ fn copy_new(src: &Path, dst: &Path) -> io::Result<()> {
 /// Puts `src` at `dir/name` (a free ` (n)` name on a clash, never overwriting). Move uses a hard
 /// link and then unlinks `src` (a copy when they are on different disks).
 pub fn place(src: &Path, dir: &Path, name: &str, mode: Mode) -> io::Result<PathBuf> {
+    place_with(src, dir, name, mode, &|a, b| std::fs::hard_link(a, b))
+}
+
+/// `place` with the hard-link call injectable (exFAT, FAT and some network mounts refuse it).
+fn place_with(
+    src: &Path,
+    dir: &Path,
+    name: &str,
+    mode: Mode,
+    link: &dyn Fn(&Path, &Path) -> io::Result<()>,
+) -> io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
     for i in 0..10_000 {
         let p = dir.join(files::candidate(name, i));
         let r = match mode {
             Mode::Link => std::os::unix::fs::symlink(src, &p),
             Mode::Copy => copy_new(src, &p),
-            Mode::Move => std::fs::hard_link(src, &p).or_else(|e| {
-                if e.raw_os_error() == Some(libc::EXDEV) {
-                    copy_new(src, &p)
-                } else {
+            // Any link failure but a name clash falls back to a copy (the source is removed below).
+            Mode::Move => link(src, &p).or_else(|e| {
+                if e.kind() == io::ErrorKind::AlreadyExists {
                     Err(e)
+                } else {
+                    copy_new(src, &p)
                 }
             }),
         };

@@ -339,3 +339,19 @@ fn removed_list_is_tolerant_and_bounded() {
     let m = std::fs::metadata(d.path().join("removed.json")).unwrap();
     assert_eq!(m.permissions().mode() & 0o777, 0o600);
 }
+
+#[test]
+fn move_copies_when_hard_links_are_refused_but_retries_a_name_clash() {
+    let d = tempfile::tempdir().unwrap();
+    let src = put(d.path(), "in/a.iso", b"data");
+    let dir = d.path().join("out");
+    let eperm = |_: &Path, _: &Path| Err(io::Error::from_raw_os_error(libc::EPERM));
+    let p = place_with(&src, &dir, "a.iso", Mode::Move, &eperm).unwrap();
+    assert_eq!(std::fs::read(&p).unwrap(), b"data");
+    assert!(!src.exists());
+    // a clash stays a retry with a suffix
+    let src2 = put(d.path(), "in/b.iso", b"two");
+    let p2 = place(&src2, &dir, "a.iso", Mode::Move).unwrap();
+    assert_eq!(p2, dir.join("a (1).iso"));
+    assert_eq!(std::fs::read(&p).unwrap(), b"data");
+}
