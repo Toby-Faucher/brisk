@@ -3,6 +3,7 @@ pub mod clipboard;
 pub mod config;
 #[cfg(feature = "embed")]
 pub mod embed;
+pub mod emu;
 pub mod files;
 pub mod host;
 pub mod http;

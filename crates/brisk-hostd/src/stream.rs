@@ -475,6 +475,11 @@ impl Supervisor {
     pub fn steam(&self, verb: &str, id: u32) -> bool {
         steam(&*self.runner, verb, id)
     }
+
+    /// Starts an emulator game from `emu::load` in the graphical session. Blocking.
+    pub fn emulator(&self, entries: &[crate::emu::Entry], id: u32) -> bool {
+        crate::emu::launch(&*self.runner, entries, id, &graphical_env())
+    }
 }
 
 /// The bridge's address: `BRISK_LISTEN`, else this machine's tailscale IPv4 on :4433, asked at

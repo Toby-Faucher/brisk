@@ -317,6 +317,22 @@ async fn steam_cmd(s: Arc<AppState>, b: &[u8], verb: &'static str) -> Response {
         return r;
     }
     let s2 = s.clone();
+    if crate::emu::is_emu_id(id) {
+        if verb != "rungameid" {
+            return err(StatusCode::BAD_REQUEST, "nothing to install for this game");
+        }
+        let started = tokio::task::spawn_blocking(move || {
+            s2.stream.emulator(&crate::emu::load(&s2.cfg.data_dir), id)
+        })
+        .await;
+        return match started {
+            Ok(true) => StatusCode::NO_CONTENT.into_response(),
+            _ => err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the emulator didn't start (is the game file there?)",
+            ),
+        };
+    }
     match tokio::task::spawn_blocking(move || s2.stream.steam(verb, id)).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         _ => err(

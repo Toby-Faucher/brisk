@@ -586,6 +586,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }
     }
+    games.extend(crate::emu::games(&crate::emu::load(&cfg.data_dir)));
     games.sort_by(|a, b| {
         b.last_played
             .cmp(&a.last_played)
