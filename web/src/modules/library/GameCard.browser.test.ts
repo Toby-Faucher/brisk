@@ -109,3 +109,22 @@ describe('GameCard', () => {
     notes.set({ tags: {}, games: {} });
   });
 });
+
+describe('GameCard lift', () => {
+  // The harness runs with reduced motion, so the lift itself is off here (and must stay off for Quit too).
+  it('Quit sits inside the element that lifts, which is off under reduced motion', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, running: true }, onpick: vi.fn() } });
+    const card = page.getByRole('button', { name: /^Portal, running/ }).element() as HTMLElement;
+    const quit = page.getByRole('button', { name: 'Quit Portal' }).element() as HTMLElement;
+    const wrap = quit.closest('.wrap') as HTMLElement;
+    expect(wrap.contains(card)).toBe(true);
+    const rules = [...document.styleSheets].flatMap((s) => [...s.cssRules]);
+    const lift = (r: CSSRule): r is CSSStyleRule =>
+      r instanceof CSSStyleRule && r.selectorText.includes('.wrap') && r.selectorText.includes(':hover');
+    expect(rules.some((r) => lift(r) && r.style.transform.includes('scale'))).toBe(true);
+    await userEvent.hover(quit);
+    expect(getComputedStyle(wrap).transform).toBe('none');
+    await userEvent.tab();
+    expect(getComputedStyle(wrap).transform).toBe('none');
+  });
+});
