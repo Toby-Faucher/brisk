@@ -229,6 +229,41 @@ Before rebuilding, tag the running image for rollback: `docker tag brisk-hub:loc
 - Machine shuts down while you are away from the keyboard but connected: the hub only counts a live
   stream as activity; raise `idle_shutdown_min` or remove it.
 
+## Launch options (MangoHud, GameMode, gamescope, env vars, your own command)
+
+Defaults live in Settings and each game can override single fields (a field left alone inherits). The data is
+`launch.json` in the data directory on the machine that runs the game. Allowed: the MangoHud, GameMode and
+gamescope wrappers (gamescope takes only `-W -H -w -h -r -f -b --fsr`), environment variables from a fixed
+list, extra arguments, and your own command. Your own command stays off until Settings has Allow custom
+commands switched on. Nothing goes through a shell; every entry is one argument.
+
+**Emulator games** need nothing: brisk wraps the emulator command itself on Play.
+
+**Steam games** are set once per game. In Steam, open the game's Properties, General, Launch Options and paste
+the line the game's panel shows (`GET /api/games/steam:<appid>/launch`, field `steamLine`):
+
+```
+<path-to>/brisk-hostd wrap steam:<appid> -- %command%
+```
+
+After that, everything is changed in brisk and takes effect on the next start. If hostd runs with a
+`BRISK_DATA_DIR`, put the same `BRISK_DATA_DIR=<dir>` in front of the line; Steam's own environment is what the
+shim sees. Brisk never edits Steam's config files.
+
+What `wrap` does: reads `launch.json` directly (no network, no secret), works out the options for that game,
+puts the wrappers around the command Steam passes and `exec`s it. One line goes to stderr, for example
+`brisk-wrap: steam:620: starting through gamemoderun`.
+
+**A bad setting never stops a game.** If `launch.json` is missing, unreadable or invalid (for example custom
+commands were switched off after a custom command was saved), the game starts with no options, and the log says
+why (`launch options for steam:620 ignored: ...` on the shim's stderr, `warn: launch options ...` in hostd's
+log for emulators). If a wrapper program is not installed, the plain command runs instead.
+
+Check it works: run `<path-to>/brisk-hostd wrap steam:<appid> -- /bin/echo hello` in a terminal (it should print
+`hello`, or with options set, run `echo` under the wrappers), then start the game from Steam and look at
+`ps -ef` for the wrapper above the game. Steam's launch log: `STEAM_LINUX_RUNTIME_LOG=1` in the same option
+line writes to `~/.local/share/Steam/logs`.
+
 ## Dolphin on the games VM
 Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolphin-emu -b -e <file>` on the host.
 

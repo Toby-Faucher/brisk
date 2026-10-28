@@ -1,6 +1,6 @@
 # Launch options: the Steam `brisk-wrap` shim
 
-The shim is not built yet. `crates/brisk-hostd/src/launch.rs` is the logic it would reuse.
+The shim is built as a hostd subcommand: `brisk-hostd wrap <gameid> -- <command...>` (`wrap.rs`), using `launch.rs` and `launchstore.rs`. The list below is the original design; the line is pasted per game, see docs/hosting-runbook.md.
 
 1. Each Steam game gets one Launch Option, set once: `brisk-wrap %command%`.
 2. Steam runs `brisk-wrap <the real command...>` with `SteamAppId` in its environment.
