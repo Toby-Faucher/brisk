@@ -295,3 +295,47 @@ fn forget_keeps_the_file_and_is_idempotent() {
     assert_eq!(forget(&c.data_dir, &id), Ok(false));
     assert!(a.exists() && emu::load(&c.data_dir).is_empty());
 }
+
+#[test]
+fn removed_list_skips_scan_and_add_clears_it() {
+    let d = tempfile::tempdir().unwrap();
+    let c = cfg(d.path());
+    let a = put(&c.games_dir, "wii/a.iso", &disc(b"RMCE01", true, "A"));
+    scan_library(&c).unwrap();
+    let id = emu::load(&c.data_dir)[0].id.clone();
+    assert!(forget(&c.data_dir, &id).unwrap());
+    let r = scan_library(&c).unwrap();
+    assert_eq!((r.merged.removed, r.merged.added.len()), (1, 0));
+    assert!(emu::load(&c.data_dir).is_empty());
+    // the same file under another name is skipped by id
+    let b = put(&c.games_dir, "wii/b.iso", &disc(b"RMCE01", true, "A"));
+    std::fs::remove_file(&a).unwrap();
+    assert_eq!(scan_library(&c).unwrap().merged.removed, 1);
+    // the command is deliberate: it clears the entry
+    assert_eq!(add_cmd(&c, &args(&[b.to_str().unwrap()])).0, 0);
+    assert_eq!(emu::load(&c.data_dir).len(), 1);
+    assert!(tombs_load(&c.data_dir).is_empty());
+}
+
+#[test]
+fn removed_list_is_tolerant_and_bounded() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(d.path().join("removed.json"), "{oops").unwrap();
+    assert!(tombs_load(d.path()).is_empty());
+    let t: Vec<Tomb> = (0..MAX_TOMBS + 10)
+        .map(|i| Tomb {
+            path: format!("/x/{i}").into(),
+            id: format!("emu:dolphin:{i}"),
+        })
+        .collect();
+    tombs_save(d.path(), t);
+    let l = tombs_load(d.path());
+    assert_eq!(l.len(), MAX_TOMBS);
+    assert_eq!(
+        l.last().unwrap().path,
+        PathBuf::from(format!("/x/{}", MAX_TOMBS + 9))
+    );
+    use std::os::unix::fs::PermissionsExt;
+    let m = std::fs::metadata(d.path().join("removed.json")).unwrap();
+    assert_eq!(m.permissions().mode() & 0o777, 0o600);
+}

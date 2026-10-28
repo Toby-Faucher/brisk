@@ -738,7 +738,50 @@ async fn remove_forgets_the_record_and_keeps_the_file() {
         r.call("DELETE", "/api/games/banana", Value::Null).await.0,
         StatusCode::BAD_REQUEST
     );
-    // the next scan brings it back, under the same id
-    let (_, v) = r.call("POST", "/api/library/scan", Value::Null).await;
+    // a plain scan leaves it out; asking for removed games brings it back, under the same id
+    let (_, v) = r
+        .call("POST", "/api/library/scan?include_removed=1", Value::Null)
+        .await;
     assert_eq!(v["added"][0]["id"], "emu:dolphin:RMCE01");
+}
+
+#[tokio::test]
+async fn a_removed_game_stays_gone_until_added_on_purpose() {
+    let r = rig();
+    let f = r.games.join("wii/a.iso");
+    write(f.clone(), &disc(b"RMCE01", true, "Mario Kart Wii"));
+    r.call("POST", "/api/library/scan", Value::Null).await;
+    r.call("DELETE", "/api/games/emu:dolphin:RMCE01", Value::Null)
+        .await;
+    assert!(r.data.join("removed.json").is_file());
+    // a plain scan skips it and counts it
+    let (_, v) = r.call("POST", "/api/library/scan", Value::Null).await;
+    assert_eq!(
+        (v["added"].as_array().unwrap().len(), v["removed"].as_u64()),
+        (0, Some(1))
+    );
+    // include_removed ignores the list, and the game is back for good
+    let (_, v) = r
+        .call("POST", "/api/library/scan?include_removed=1", Value::Null)
+        .await;
+    assert_eq!(v["added"][0]["id"], "emu:dolphin:RMCE01");
+    let (_, v) = r.call("POST", "/api/library/scan", Value::Null).await;
+    assert_eq!(
+        (v["removed"].as_u64(), v["duplicates"].as_u64()),
+        (Some(0), Some(1))
+    );
+    // remove again, then upload the same disc: an explicit add un-removes it
+    r.call("DELETE", "/api/games/emu:dolphin:RMCE01", Value::Null)
+        .await;
+    let id = r
+        .upload("b.iso", &disc(b"RMCE01", true, "Mario Kart Wii"), 1 << 20)
+        .await;
+    let (st, v) = r
+        .call("POST", &format!("/api/uploads/{id}/finish"), Value::Null)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["registered"], true);
+    assert_eq!(v["game"]["id"], "emu:dolphin:RMCE01");
+    let (_, v) = r.call("POST", "/api/library/scan", Value::Null).await;
+    assert_eq!(v["removed"].as_u64(), Some(0));
 }

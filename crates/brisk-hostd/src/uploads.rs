@@ -351,9 +351,9 @@ fn place_and_register(
             duplicate: false,
         });
     };
-    let f = [ingest::Found { path, id }];
+    let f = vec![ingest::Found { path, id }];
     ingest::update(data_dir, |recs| {
-        let m = ingest::merge(recs, &f, "upload");
+        let m = ingest::register(data_dir, recs, f, "upload", false);
         let game = crate::emu::find(recs, &rec.id).map(|r| r.id.clone());
         (
             !m.added.is_empty() || m.aliased > 0,

@@ -50,10 +50,10 @@ skips names starting with `.` (so `.uploads`), `*.part`, and anything whose exte
 `iso gcm wbfs rvz wia nes sfc smc gb gbc gba md gen`. Reads the header with `discid::identify`; a Wii/GC disc
 reads a few KB, a cartridge is hashed (streamed, whole file). One scan at a time (409 while one runs) and at
 least 5 seconds between scans (429 with `retryAfterS`). Answer:
-`{scanned, added: [Game], aliased, duplicates, unplayable, unknown, broken, truncated}`. `broken` counts known
+`{scanned, added: [Game], aliased, duplicates, unplayable, removed, unknown, broken, truncated}`. `broken` counts known
 formats with a damaged header. `BRISK_SCAN_ON_START=1` runs one scan at startup.
-A game that was removed comes back at the next scan (the file is still there). Keep the file out of the
-games folder, or move it, if it must stay gone.
+A removed game does not come back (see Remove): the scan skips it and counts it as `removed`.
+`POST /api/library/scan?include_removed=1` ignores the removed list.
 
 ## Resumable upload
 
@@ -98,8 +98,11 @@ starts.
 ## Remove
 
 `DELETE /api/games/{id}` -> 204. Emulator games only; `steam:*` is 400 `not supported`. It forgets the library
-record. The file stays on disk. Notes, tags, prefs and playtime stay under the same id, so a re-add (a scan, the
-same disc ID) brings them back. An unknown or already removed id is 204 too. A malformed id is 400.
+record. The file stays on disk. Notes, tags, prefs and playtime stay under the same id, so a re-add brings them back.
+The record's canonical path and id go into `removed.json` in the data dir (atomic, 0600, at most 5000 entries, the
+oldest dropped; a damaged file reads as empty). A scan skips a file whose path or id is on that list. A deliberate
+add clears the entry: `POST /api/uploads/{id}/finish` of that file, `brisk-hostd add <file>`, or a scan with
+`?include_removed=1`. An unknown or already removed id is 204 too. A malformed id is 400.
 
 ## Script path on the machine
 

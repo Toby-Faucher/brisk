@@ -173,6 +173,8 @@ pub struct Merged {
     pub aliased: usize,
     pub duplicates: usize,
     pub unplayable: usize,
+    /// Skipped because the owner removed them from the library.
+    pub removed: usize,
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -205,6 +207,66 @@ pub fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
             m.added.push(new.id.clone());
             recs.push(new);
         }
+    }
+    m
+}
+
+const MAX_TOMBS: usize = 5000;
+const TOMBS_FILE: &str = "removed.json";
+
+/// A game the owner removed: its file stays on disk, so a scan must not bring it back.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Tomb {
+    pub path: PathBuf,
+    pub id: String,
+}
+
+/// The removed list; a missing or damaged file is an empty list.
+pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
+    #[derive(serde::Deserialize)]
+    struct F {
+        removed: Vec<Tomb>,
+    }
+    std::fs::read_to_string(data_dir.join(TOMBS_FILE))
+        .ok()
+        .and_then(|t| serde_json::from_str::<F>(&t).ok())
+        .map_or_else(Vec::new, |f| f.removed)
+}
+
+/// Atomic 0600 write, the oldest entries dropped past the cap. A failed write is a warning only.
+pub fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
+    t.drain(..t.len().saturating_sub(MAX_TOMBS));
+    let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
+    if let Err(e) = emu::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
+        eprintln!("warning: removed list: {e}");
+    }
+}
+
+fn tombed(t: &Tomb, f: &Found, source: &str) -> bool {
+    same_path(&t.path, &f.path)
+        || record(&f.path, &f.id, source).is_some_and(|r| r.id.to_string() == t.id)
+}
+
+/// `merge` with the removed list (call under `update`). `respect`: a scan skips removed games
+/// and counts them; an explicit add (`respect` false) clears the entry instead. Whatever gets
+/// registered is cleared from the list.
+pub fn register(
+    data_dir: &Path,
+    recs: &mut Vec<Record>,
+    found: Vec<Found>,
+    source: &str,
+    respect: bool,
+) -> Merged {
+    let mut tombs = tombs_load(data_dir);
+    let (skip, keep): (Vec<_>, Vec<_>) = found
+        .into_iter()
+        .partition(|f| respect && tombs.iter().any(|t| tombed(t, f, source)));
+    let mut m = merge(recs, &keep, source);
+    m.removed = skip.len();
+    let n = tombs.len();
+    tombs.retain(|t| !keep.iter().any(|f| tombed(t, f, source)));
+    if tombs.len() != n {
+        tombs_save(data_dir, tombs);
     }
     m
 }
@@ -267,9 +329,17 @@ pub fn update<R>(
 /// Forgets the record `id` names (the file stays). False when there was none.
 pub fn forget(data_dir: &Path, id: &GameId) -> Result<bool, String> {
     update(data_dir, |recs| {
-        let n = recs.len();
+        let gone: Vec<_> = recs.iter().filter(|r| r.is(id)).cloned().collect();
         recs.retain(|r| !r.is(id));
-        (recs.len() != n, recs.len() != n)
+        if !gone.is_empty() {
+            let mut t = tombs_load(data_dir);
+            t.extend(gone.iter().map(|r| Tomb {
+                path: r.file.canonicalize().unwrap_or_else(|_| r.file.clone()),
+                id: r.id.to_string(),
+            }));
+            tombs_save(data_dir, t);
+        }
+        (!gone.is_empty(), !gone.is_empty())
     })
 }
 
@@ -280,9 +350,15 @@ pub struct ScanReport {
 
 /// Scans `cfg.games_dir` and registers what is new. The walk runs outside the lock.
 pub fn scan_library(cfg: &Config) -> Result<ScanReport, String> {
-    let scan = scan(&cfg.games_dir);
+    scan_library_with(cfg, false)
+}
+
+/// `include_removed` ignores the removed list, so those games come back.
+pub fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
+    let mut scan = scan(&cfg.games_dir);
+    let found = std::mem::take(&mut scan.found);
     let merged = update(&cfg.data_dir, |recs| {
-        let m = merge(recs, &scan.found, "scan");
+        let m = register(&cfg.data_dir, recs, found, "scan", !include_removed);
         (!m.added.is_empty() || m.aliased > 0, m)
     })?;
     Ok(ScanReport { scan, merged })
@@ -393,9 +469,9 @@ pub fn add_cmd(cfg: &Config, args: &[String]) -> (i32, String) {
             }
         }
     };
-    let f = [Found { path, id }];
+    let f = vec![Found { path, id }];
     match update(&cfg.data_dir, |recs| {
-        let m = merge(recs, &f, "add");
+        let m = register(&cfg.data_dir, recs, f, "add", false);
         (!m.added.is_empty() || m.aliased > 0, m)
     }) {
         Ok(m) if !m.added.is_empty() => (0, format!("added {}", m.added[0])),

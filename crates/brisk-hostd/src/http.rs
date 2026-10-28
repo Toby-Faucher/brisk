@@ -879,7 +879,11 @@ fn cards(s: &AppState, ids: &[GameId]) -> Vec<Game> {
 }
 
 /// POST /api/library/scan: registers the games found in the games folder.
-async fn library_scan(State(s): State<Arc<AppState>>) -> Response {
+async fn library_scan(
+    State(s): State<Arc<AppState>>,
+    axum::extract::RawQuery(q): axum::extract::RawQuery,
+) -> Response {
+    let include_removed = q.is_some_and(|q| q.split('&').any(|p| p == "include_removed=1"));
     {
         let mut g = s.scan_gate.lock().unwrap();
         if g.running {
@@ -897,13 +901,18 @@ async fn library_scan(State(s): State<Arc<AppState>>) -> Response {
     }
     let _slot = ScanSlot(&s.scan_gate);
     let cfg = s.cfg.clone();
-    match tokio::task::spawn_blocking(move || crate::ingest::scan_library(&cfg)).await {
+    match tokio::task::spawn_blocking(move || {
+        crate::ingest::scan_library_with(&cfg, include_removed)
+    })
+    .await
+    {
         Ok(Ok(r)) => axum::Json(serde_json::json!({
             "scanned": r.scan.scanned,
             "added": cards(&s, &r.merged.added),
             "aliased": r.merged.aliased,
             "duplicates": r.merged.duplicates,
             "unplayable": r.merged.unplayable,
+            "removed": r.merged.removed,
             "unknown": r.scan.unknown,
             "broken": r.scan.broken,
             "truncated": r.scan.truncated,
