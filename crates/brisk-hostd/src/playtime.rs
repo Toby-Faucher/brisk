@@ -66,7 +66,11 @@ impl Store {
         }
         if e.sessions.len() > MAX_SESSIONS {
             let extra = e.sessions.len() - MAX_SESSIONS;
-            e.folded += e.sessions.drain(..extra).map(|(s, e)| e - s).sum::<u64>();
+            e.folded += e
+                .sessions
+                .drain(..extra)
+                .map(|(s, e)| e.saturating_sub(s))
+                .sum::<u64>();
         }
         while self.games.len() > MAX_GAMES {
             let oldest = self
@@ -80,7 +84,12 @@ impl Store {
 
     pub fn total_minutes(&self, id: &str) -> u64 {
         self.games.get(id).map_or(0, |e| {
-            (e.folded + e.sessions.iter().map(|(s, e)| e - s).sum::<u64>()) / 60
+            (e.folded
+                + e.sessions
+                    .iter()
+                    .map(|(s, e)| e.saturating_sub(*s))
+                    .sum::<u64>())
+                / 60
         })
     }
 
@@ -124,9 +133,14 @@ pub fn tick(store: &mut Store, recs: &[Record], proc: &Path, now: u64) -> HashSe
     up
 }
 
-/// The poll interval from `BRISK_PLAYTIME_POLL_S`: default 15 s, at least 5 s.
+/// The poll interval from `BRISK_PLAYTIME_POLL_S`: default 15 s, between 5 s and `GAP_S / 2`
+/// (a longer poll would put every tick in a session of its own).
 pub fn poll_from(raw: Option<&str>) -> Duration {
-    Duration::from_secs(raw.and_then(|v| v.trim().parse().ok()).unwrap_or(15).max(5))
+    Duration::from_secs(
+        raw.and_then(|v| v.trim().parse().ok())
+            .unwrap_or(15)
+            .clamp(5, GAP_S / 2),
+    )
 }
 
 /// Background watcher, never returns. `base` is the unix time at start; later times follow the
@@ -144,12 +158,28 @@ pub async fn watch(data_dir: PathBuf, proc: PathBuf, every: Duration, base: u64)
     loop {
         tick_at.tick().await;
         let now = base + t0.elapsed().as_secs();
-        let recs = emu::load(&data_dir);
-        let now_up = tick(&mut store, &recs, &proc, now);
-        if now_up != up || (!now_up.is_empty() && now - flushed >= FLUSH_S) {
-            store.save(&data_dir);
-            flushed = now;
-            up = now_up;
+        // the /proc scan and the fsync'd save block: keep them off the async workers
+        let (dd, pp, prev) = (data_dir.clone(), proc.clone(), up.clone());
+        let r = tokio::task::spawn_blocking(move || {
+            let recs = emu::load(&dd);
+            let now_up = tick(&mut store, &recs, &pp, now);
+            let save =
+                now_up != prev || (!now_up.is_empty() && now.saturating_sub(flushed) >= FLUSH_S);
+            if save {
+                store.save(&dd);
+            }
+            (store, now_up, save)
+        })
+        .await;
+        match r {
+            Ok((st, now_up, saved)) => {
+                store = st;
+                if saved {
+                    flushed = now;
+                    up = now_up;
+                }
+            }
+            Err(_) => store = Store::load(&data_dir),
         }
     }
 }
@@ -231,7 +261,25 @@ mod tests {
         assert_eq!(poll_from(None), s(15));
         assert_eq!(poll_from(Some("junk")), s(15));
         assert_eq!(poll_from(Some("1")), s(5));
-        assert_eq!(poll_from(Some("20")), s(20));
+        assert_eq!(poll_from(Some("10")), s(10));
+        // above GAP_S / 2 every tick would start a new session and playtime would stay 0
+        assert_eq!(poll_from(Some("20")), s(15));
+        assert_eq!(poll_from(Some("3600")), s(15));
+    }
+
+    #[test]
+    fn a_hand_edited_file_with_start_after_end_does_not_panic() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(
+            d.path().join(FILE),
+            r#"{"v":1,"games":{"g":{"folded":0,"sessions":[[900,100]]}}}"#,
+        )
+        .unwrap();
+        let mut s = Store::load(d.path());
+        assert_eq!(s.total_minutes("g"), 0);
+        for i in 0..=MAX_SESSIONS as u64 {
+            s.add("g", 10_000 + i * 1000, 10_000 + i * 1000 + 60);
+        }
     }
 
     // Watcher tests: a fake proc dir changes under a task running on paused time.
