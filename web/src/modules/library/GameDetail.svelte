@@ -182,7 +182,7 @@
         }
       }}
     >
-      <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} /></div>
+      <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} onremoved={() => (open = false)} /></div>
 
       <div class="gd-main">
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>

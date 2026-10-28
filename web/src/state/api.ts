@@ -257,7 +257,8 @@ export function setRoute(machineId: string | null, known = true) {
 }
 
 /** Machine-scoped paths go through the hub's `/api/m/{id}/`; prefs, notes and machines stay on the hub itself. */
-const SCOPED = /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators|uploads|library)(?=[/?]|$)/;
+const SCOPED =
+  /^\/api\/(host|games|friends|stream|launch|install|quit|sessions|sunshine|clipboard|files|emulators|uploads|library)(?=[/?]|$)/;
 export function route(path: string): string {
   return prefix && SCOPED.test(path) ? `/api/m/${encodeURIComponent(prefix)}/${path.slice(5)}` : path;
 }

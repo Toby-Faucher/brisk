@@ -138,7 +138,7 @@ export function createUploader(o: Options = {}) {
         } catch (e) {
           if (j.cancelled) return null;
           if (e instanceof ApiError && e.status === 409) {
-            offset = ((e.body as { offset?: number } | undefined)?.offset ?? 0);
+            offset = (e.body as { offset?: number } | undefined)?.offset ?? 0;
             return 'again' as const;
           }
           if (!transient(e)) throw e;
@@ -187,8 +187,13 @@ export function createUploader(o: Options = {}) {
         set(j, { state: 'sending', offset });
         continue;
       }
-      if (r === 'unsure') return void set(j, { state: 'done', offset: file.size, etaS: null, note: 'Sent. Scan the games folder to be sure it is listed.' });
-      const note = !r.registered ? 'Stored, but no emulator can play it yet.' : r.duplicate ? 'This game was already in the library.' : undefined;
+      if (r === 'unsure')
+        return void set(j, { state: 'done', offset: file.size, etaS: null, note: 'Sent. Scan the games folder to be sure it is listed.' });
+      const note = !r.registered
+        ? 'Stored, but no emulator can play it yet.'
+        : r.duplicate
+          ? 'This game was already in the library.'
+          : undefined;
       return void set(j, { state: 'done', offset: file.size, etaS: null, result: r, note });
     }
   }
@@ -202,7 +207,8 @@ export function createUploader(o: Options = {}) {
       if (!j.cancelled) {
         set(j, { state: 'failed', error: uploadError(e), etaS: null });
         // A refusal frees the machine's upload slot; no room (507) and a dropped line keep it for a retry.
-        if (j.id && !transient(e) && !(e instanceof ApiError && e.status === 507)) (void j.api.abort(j.id).catch(() => {}), (j.id = undefined));
+        if (j.id && !transient(e) && !(e instanceof ApiError && e.status === 507))
+          void j.api.abort(j.id).catch(() => {}), (j.id = undefined);
       }
     }
     if (j.cancelled) {
@@ -218,13 +224,14 @@ export function createUploader(o: Options = {}) {
       if (running >= limit) break;
       if (j.item.state === 'queued' && !j.cancelled) void run(j);
     }
-    if (!running && !jobs.some((j) => j.item.state === 'queued')) (idle.forEach((f) => f()), (idle = []));
+    if (!running && !jobs.some((j) => j.item.state === 'queued')) idle.forEach((f) => f()), (idle = []);
   }
 
   return {
     /** Queues files for one machine's api. */
     add(files: File[], api: UploadApi) {
-      for (const file of files) jobs.push({ file, api, item: { key: ++seq, name: file.name, size: file.size, state: 'queued', offset: 0, speed: 0, etaS: null } });
+      for (const file of files)
+        jobs.push({ file, api, item: { key: ++seq, name: file.name, size: file.size, state: 'queued', offset: 0, speed: 0, etaS: null } });
       emit();
       pump();
     },
@@ -254,3 +261,8 @@ export function createUploader(o: Options = {}) {
     settled: () => (running || jobs.some((j) => j.item.state === 'queued') ? new Promise<void>((r) => idle.push(r)) : Promise.resolve()),
   };
 }
+
+/** "12 MB/s". */
+export const fmtSpeed = (bps: number) => `${bps >= 1e8 ? Math.round(bps / 1e6) : (bps / 1e6).toFixed(1)} MB/s`;
+/** "2 min left", "40 s left". */
+export const fmtEta = (s: number) => (s >= 90 ? `${Math.round(s / 60)} min left` : `${Math.max(1, Math.round(s))} s left`);

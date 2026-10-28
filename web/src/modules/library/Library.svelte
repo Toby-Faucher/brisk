@@ -11,6 +11,7 @@
   import Icon from '../../ui/Icon.svelte';
   import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap, splitIn } from '../../ui/motion';
+  import AddGame from './AddGame.svelte';
   import GameDetail from './GameDetail.svelte';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
@@ -180,6 +181,7 @@
 <div class="top reveal">
   <h2>Library</h2>
   <label class="search"><Icon name="search" size={16} /><input type="search" bind:value={q} oninput={fade} onkeydown={(e) => e.key === 'Escape' && q && ((q = ''), e.currentTarget.blur(), fade())} placeholder="Search games" aria-label="Search games" /></label>
+  <AddGame />
   <button class="btn ghost" aria-disabled={!shown.length} title={shown.length ? 'Open a random game from the list below' : 'No game matches the current filters'} onclick={() => shown.length && surprise()}>Surprise me</button>
 </div>
 <div class="filters reveal" role="group" aria-label="Filter games" bind:this={chips}>

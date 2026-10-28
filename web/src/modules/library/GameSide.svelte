@@ -8,11 +8,12 @@
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { hue } from './Cover.svelte';
-  import { badgeLabel, installLabel, playLabel, smartTags } from './library';
+  import { badgeLabel, canRemove, installLabel, playLabel, smartTags } from './library';
+  import RemoveGame from './RemoveGame.svelte';
   import GameNotes from './GameNotes.svelte';
   import TagChip from './TagChip.svelte';
 
-  let { game, busy, info, ach, onplay, oninstall }: { game: Game; busy: boolean; info: GameInfo | null | 'none'; ach: Achievements | null; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
+  let { game, busy, info, ach, onplay, oninstall, onremoved }: { game: Game; busy: boolean; info: GameInfo | null | 'none'; ach: Achievements | null; onplay: (g: Game) => void; oninstall: (g: Game) => void; onremoved?: () => void } = $props();
 
   let heroBad = $state('');
   let logoLoaded = $state('');
@@ -39,6 +40,7 @@
   {#if game.running}
     <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
   {/if}
+  {#if canRemove(game)}<RemoveGame {game} onremoved={() => onremoved?.()} />{/if}
   <Dialog.Close class="btn ghost close">Close</Dialog.Close>
 </div>
 

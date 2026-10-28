@@ -794,6 +794,52 @@ describe('GameDetail', () => {
   });
 });
 
+describe('Remove from library', () => {
+  const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', id: 'emu:dolphin:RMCE01', source: 'emu', emulator: 'dolphin' };
+  beforeEach(() => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'emulatorControls').mockRejectedValue(new ApiError('no', 404));
+    vi.spyOn(api, 'games').mockResolvedValue({ games: [], ownedAvailable: true });
+  });
+
+  it('is only on emulator games', async () => {
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByRole('button', { name: 'Close' }).first()).toBeInTheDocument();
+    expect(page.getByRole('button', { name: 'Remove from library' }).elements()).toHaveLength(0);
+  });
+
+  it('asks first, says the file stays, offers no delete option, then forgets the game', async () => {
+    const rm = vi.spyOn(api, 'removeGame').mockResolvedValue(undefined);
+    const onclose = vi.fn();
+    await render(Toasts);
+    await render(GameDetail, { props: props(emu, { onclose }) });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await expect.element(page.getByText(/The file stays on disk/)).toBeInTheDocument();
+    expect(rm).not.toHaveBeenCalled();
+    expect(page.getByRole('checkbox').elements()).toHaveLength(0);
+    await userEvent.click(page.getByRole('button', { name: 'Remove', exact: true }));
+    await expect.poll(() => rm.mock.calls).toEqual([['emu:dolphin:RMCE01']]);
+    await expect.element(page.getByText('Removed Mario Kart Wii from the library. The file stays on disk.')).toBeInTheDocument();
+    await expect.poll(() => onclose.mock.calls.length).toBe(1);
+  });
+
+  it('Cancel keeps the game and says nothing to hostd', async () => {
+    const rm = vi.spyOn(api, 'removeGame').mockResolvedValue(undefined);
+    await render(GameDetail, { props: props(emu) });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await userEvent.click(page.getByRole('button', { name: 'Cancel' }));
+    expect(rm).not.toHaveBeenCalled();
+  });
+
+  it('shows the failure and stays open', async () => {
+    vi.spyOn(api, 'removeGame').mockRejectedValue(new ApiError('library.json is damaged', 500));
+    await render(GameDetail, { props: props(emu) });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await userEvent.click(page.getByRole('button', { name: 'Remove', exact: true }));
+    await expect.element(page.getByRole('alert')).toHaveTextContent('Could not remove it: library.json is damaged');
+  });
+});
+
 describe('GameDetail with the Quit confirm', () => {
   it('puts the confirm above the panel; Esc closes the confirm first, then the panel; focus returns to Quit', async () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(none);

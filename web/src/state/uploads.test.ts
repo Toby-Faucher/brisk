@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, type UploadApi, type UploadDone } from './api';
-import { createUploader, scanRows, uploadError, type Item } from './uploads';
+import { createUploader, fmtEta, fmtSpeed, scanRows, uploadError, type Item } from './uploads';
 
 const MB = 1 << 20;
 const done: UploadDone = { system: 'wii', registered: true, duplicate: false, game: null };
@@ -25,7 +25,14 @@ function file(name: string, size: number) {
 type F = ReturnType<typeof file>;
 
 /** An in-memory machine. `script` can fail a PUT call by number (1-based). */
-function fake(opts: { chunk?: number; putFail?: Record<number, unknown | (() => Promise<void>)>; createFail?: unknown; finish?: UploadDone | unknown } = {}) {
+function fake(
+  opts: {
+    chunk?: number;
+    putFail?: Record<number, unknown | (() => Promise<void>)>;
+    createFail?: unknown;
+    finish?: UploadDone | unknown;
+  } = {},
+) {
   const s = {
     api: null as unknown as UploadApi,
     ups: new Map<string, { size: number; offset: number }>(),
@@ -346,7 +353,17 @@ describe('uploadError', () => {
 
 describe('scanRows', () => {
   it('lists the counts in plain words and leaves out zeros but added', () => {
-    const r = { scanned: 9, added: [{}, {}], aliased: 1, duplicates: 2, unplayable: 0, removed: 1, unknown: 1, broken: 0, truncated: false };
+    const r = {
+      scanned: 9,
+      added: [{}, {}],
+      aliased: 1,
+      duplicates: 2,
+      unplayable: 0,
+      removed: 1,
+      unknown: 1,
+      broken: 0,
+      truncated: false,
+    };
     expect(scanRows(r as never)).toEqual([
       ['Added', 2],
       ['Already there', 3],
@@ -354,5 +371,12 @@ describe('scanRows', () => {
       ['Not recognised', 1],
     ]);
     expect(scanRows({ ...r, added: [], aliased: 0, duplicates: 0, removed: 0, unknown: 0 } as never)).toEqual([['Added', 0]]);
+  });
+});
+
+describe('formatting', () => {
+  it('speed and time left', () => {
+    expect([fmtSpeed(12.34e6), fmtSpeed(120e6)]).toEqual(['12.3 MB/s', '120 MB/s']);
+    expect([fmtEta(0.2), fmtEta(40), fmtEta(89), fmtEta(300)]).toEqual(['1 s left', '40 s left', '89 s left', '5 min left']);
   });
 });

@@ -129,14 +129,21 @@ each PUT is at most 32 MiB, so a bounded buffer is enough. Exact change in `prox
 
 The browser's hub session must send chunks one at a time per upload (the machine refuses a second).
 
-## What the web half builds
+## The web half (built)
 
-- Library "Add game" button: pick the machine (default: the one shown), pick files.
-- Per file: `POST /api/uploads`, then loop `PUT` of 8 to 32 MiB slices with `x-offset`; on a network error or 409,
-  `GET` the upload and continue from its `offset`; on 507 show "not enough free space (5 GB is kept free)"; on
-  415 "not a game file"; at the end `POST .../finish` and show the card (or the `registered: false` note:
-  "stored, but no emulator for this system yet").
-- Progress from `offset / size`; cancel = `DELETE`. Two files at a time at most.
-- "Remove" in the game detail menu -> `DELETE /api/games/{id}`, with the text that the file is kept.
-- A "Scan games folder" button -> `POST /api/library/scan`, then refresh the list.
-- Through the hub (`/api/m/{id}/uploads...`) only after the hub change above.
+- Engine: `web/src/state/uploads.ts` (`createUploader`). Per file: `POST /api/uploads`, then `PUT` slices of 8 MiB
+  (or the machine's `chunk` if smaller) one at a time with `x-offset`, then `finish`. A network error, a 502/503/504
+  or a 409 asks `GET /api/uploads/{id}` and goes on from its `offset` (5 tries in a row, back-off 0.5 s up to 8 s,
+  then the file fails and "Try again" resumes the same upload). Two files at a time. One slice is cut from the
+  `File` at a time (`Blob.slice`), so memory holds one slice per running file. Progress is the confirmed offset,
+  so it moves once per slice. Cancel sends `DELETE`.
+- Library header "Add game": a dialog with the machine picker (on a hub), Choose files, drop, a list with a bar,
+  speed and time left, Cancel and Try again per file, and a live status line. Closing the dialog does not stop
+  the uploads. The page asks before it is left mid-upload.
+- "Scan games folder" sits in that dialog and in Settings > Emulators > Dolphin > Games folders, with the counts
+  (added, already there, skipped because removed, no emulator yet, not recognised, damaged) and a box to also
+  bring back removed games (`?include_removed=1`).
+- "Remove from library" in the game panel, for emulator games with a string id only. It says the file stays on
+  disk and offers no delete option.
+- Through a hub the calls go to `/api/m/{id}/uploads...` and `/api/m/{id}/library/scan`.
+- The Games folders section does not show the folder path: no route tells it yet.

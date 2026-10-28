@@ -12,6 +12,7 @@ import {
   fmtFortnight,
   installLabel,
   isEmulatorGame,
+  canRemove,
   playLabel,
   savesLine,
   searchGames,
@@ -278,5 +279,15 @@ describe('isEmulatorGame', () => {
     expect(isEmulatorGame({ appid: 0xe0000001 })).toBe(true);
     expect(isEmulatorGame({ appid: 0xdfffffff })).toBe(false);
     expect(isEmulatorGame({ appid: 730 })).toBe(false);
+  });
+});
+
+describe('canRemove', () => {
+  it('is for emulator games on a hostd that has string ids', () => {
+    expect(canRemove({ id: 'emu:dolphin:RMCE01', source: 'emu', emulator: 'dolphin' })).toBe(true);
+    expect(canRemove({ id: 'steam:620', source: 'steam' })).toBe(false);
+    expect(canRemove({ id: 'emu:dolphin:RMCE01', emulator: 'dolphin' })).toBe(true);
+    expect(canRemove({ emulator: 'dolphin' })).toBe(false);
+    expect(canRemove({})).toBe(false);
   });
 });

@@ -126,6 +126,9 @@ export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.siz
 /** Emulator games get ids from 0xE0000000 up (hostd keeps them away from Steam appids). */
 export const isEmulatorGame = (g: Pick<Game, 'appid'>) => g.appid >= 0xe0000000;
 
+/** Remove from library applies to emulator games on a hostd with the Stage 1 ids (an older one has no remove route). */
+export const canRemove = (g: Pick<Game, 'id' | 'source' | 'emulator'>) => !!g.id && (g.source ? g.source === 'emu' : !!g.emulator);
+
 export const playLabel = (g: Game) => (g.running ? 'Resume' : 'Play');
 export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'Installed' : (fmtSize(g.sizeBytes) ?? 'Not installed'));
 

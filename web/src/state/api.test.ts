@@ -133,7 +133,12 @@ describe('uploads and scan calls', () => {
     await api.scanLibrary('m2', true);
     await api.removeGame('emu:dolphin:RMCE01');
     const urls = f.mock.calls.map((c) => (c as unknown as [string])[0]);
-    expect(urls).toEqual(['/api/m/m1/uploads/abc', '/api/m/m2/uploads/abc', '/api/m/m2/library/scan?include_removed=1', '/api/m/m1/games/emu%3Adolphin%3ARMCE01']);
+    expect(urls).toEqual([
+      '/api/m/m1/uploads/abc',
+      '/api/m/m2/uploads/abc',
+      '/api/m/m2/library/scan?include_removed=1',
+      '/api/m/m1/games/emu%3Adolphin%3ARMCE01',
+    ]);
     const init = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(init[1].method).toBe('PUT');
     expect((init[1].headers as Record<string, string>)['x-offset']).toBe('3');
