@@ -1,6 +1,7 @@
 //! brisk-hostd: the host agent behind the Brisk web UI. Binds 127.0.0.1:8443 only; reach it with
 //! `ssh -N -L 8443:127.0.0.1:8443 bawn` or through `tailscale serve` (docs/ui-notes.md, Hosting).
 //!   brisk-hostd [DIST_DIR]      (default ./web/dist, or BRISK_DIST)
+//!   brisk-hostd wrap <game id> -- <command...>   Steam launch option shim (wrap.rs)
 //! BRISK_STATIC=embed serves the build compiled in with `--features embed` (default: disk).
 //!
 //! Environment (read in config.rs unless noted):
@@ -34,6 +35,13 @@ use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::process::ExitCode {
+    // The Steam launch option shim (wrap.rs): no server, no secret.
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.first().is_some_and(|a| a == "wrap") {
+        let data_dir = Config::from_env(PathBuf::new()).data_dir;
+        let code = brisk_hostd::wrap::run(&argv[1..], &data_dir, &mut brisk_hostd::wrap::real_exec);
+        return std::process::ExitCode::from(code);
+    }
     let dist = std::env::args_os()
         .nth(1)
         .or_else(|| std::env::var_os("BRISK_DIST"))

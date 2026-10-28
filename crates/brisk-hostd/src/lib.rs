@@ -27,3 +27,4 @@ pub(crate) mod source;
 pub mod steam;
 pub mod steam_info; // pub for tests
 pub mod stream;
+pub mod wrap;
