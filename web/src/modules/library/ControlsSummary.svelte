@@ -16,7 +16,7 @@
   <section class="sec" aria-labelledby="ctl-h">
     <h3 id="ctl-h">Controls</h3>
     <p class="lab">Dolphin uses one mapping for every game on this machine. Wii games use the Classic Controller mapping. GameCube games use the GameCube controller mapping.</p>
-    <p class="lab"><a class="link" href="/settings#controller/dolphin">Edit mappings</a></p>
+    <p class="lab"><a class="link" href="/settings#emulators/dolphin/controllers">Edit mappings</a></p>
   </section>
 {/if}
 

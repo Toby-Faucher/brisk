@@ -769,7 +769,9 @@ describe('GameDetail', () => {
       await render(GameDetail, { props: props(emu) });
       await expect.element(page.getByRole('heading', { name: 'Controls' })).toBeInTheDocument();
       await expect.element(page.getByText(/Dolphin uses one mapping for every game on this machine/)).toBeInTheDocument();
-      await expect.element(page.getByRole('link', { name: 'Edit mappings' })).toHaveAttribute('href', '/settings#controller/dolphin');
+      await expect
+        .element(page.getByRole('link', { name: 'Edit mappings' }))
+        .toHaveAttribute('href', '/settings#emulators/dolphin/controllers');
       expect(c).toHaveBeenCalledWith('classic');
       expect(document.querySelector('svg[aria-label="Pad buttons"]')).toBeNull(); // text only, no drawing
     });
