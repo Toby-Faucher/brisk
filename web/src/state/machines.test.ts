@@ -114,7 +114,7 @@ describe('routing', () => {
       '/api/other',
     ])
       expect(a.route(p)).toBe(p);
-    await a.api.gameInfo(5, true);
+    await a.api.gameInfo('5', true);
     expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/games/5/info?refresh=1');
     await a.api.prefs();
     expect(f.mock.calls.at(-1)![0]).toBe('/api/prefs');

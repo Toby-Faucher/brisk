@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { cssSafe, findGame, gameKey } from '../../state/gameId';
   import { enter } from '../../shell/reveal';
   import { navigate } from 'astro:transitions/client';
   import { api, type Game } from '../../state/api';
   import { games, gamesFailed, refreshGames, watchGames } from '../../state/games';
   import { startGame, watchPrefs } from '../../state/prefs';
   import { notes, watchNotes } from '../../state/notes';
+  import { watchRemap } from '../../state/remap';
   import TagChip from './TagChip.svelte';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
@@ -21,10 +23,10 @@
   let q = $state('');
   let sort = $state<Sort>('default');
   let f = $state<Filter>('all');
-  let busy = $state<number | null>(null);
+  let busy = $state<string | null>(null);
   // The game in the detail panel; looked up in the live list so a refresh updates it (running, installed) in place.
   let open = $state<Game | null>(null);
-  const shownGame = $derived(open && ($games?.games.find((g) => g.appid === open!.appid) ?? open));
+  const shownGame = $derived(open && (findGame($games?.games ?? [], gameKey(open)) ?? open));
 
   // Tag filter: one tag at a time, on top of the filter chips and search. A tag that is gone stops filtering.
   let tagPick = $state<string | null>(null);
@@ -72,7 +74,7 @@
     body.animate({ opacity: [0.3, 1] }, { duration: 140, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
 
-  // Filter chips: a view transition. Cards in an open "Show all" grid that are on screen get a name (vt-<appid>) and
+  // Filter chips: a view transition. Cards in an open "Show all" grid that are on screen get a name (vt-<id>) and
   // glide to their new place; virtualised shelf rows are never named. Names come off when it ends. Skipped (plain
   // swap) without support, with reduced motion or during the router's own transition. A second click skips ours first.
   // Not on search: measured in headless Chrome it made the slowest key 3-4x slower (docs/ui-notes.md, Platform features).
@@ -80,11 +82,11 @@
   const named = new Set<HTMLElement>();
   const unname = () => (named.forEach((el) => (el.style.viewTransitionName = '')), named.clear());
   const nameCards = () => {
-    const els = [...(body?.querySelectorAll<HTMLElement>('.grid [data-appid]') ?? [])].filter((el) => {
+    const els = [...(body?.querySelectorAll<HTMLElement>('.grid [data-gid]') ?? [])].filter((el) => {
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < innerHeight;
     });
-    for (const el of els.filter((e) => !named.has(e)).slice(0, 60 - named.size)) (el.style.viewTransitionName = `vt-${el.dataset.appid}`), named.add(el);
+    for (const el of els.filter((e) => !named.has(e)).slice(0, 60 - named.size)) (el.style.viewTransitionName = `vt-${cssSafe(el.dataset.gid ?? '')}`), named.add(el);
   };
   function pickFilter(id: Filter) {
     const update = () => glideSwap(chips, '[aria-pressed="true"]', () => ((f = id), popCards()));
@@ -101,9 +103,9 @@
     t.finished.then(done, done);
   }
 
-  // ?tag= (Home tag card, command menu): an unknown id filters nothing (tagF). ?open=<appid> (command menu) opens that
+  // ?tag= (Home tag card, command menu): an unknown id filters nothing (tagF). ?open=<id> (command menu) opens that
   // game's panel once its list is known, then drops the param so a reload does not reopen it.
-  let wantOpen = $state<number | null>(null);
+  let wantOpen = $state<string | null>(null);
   // A chip change keeps ?tag= in step (same entry, other params and hash kept) so a reload does not bring the old filter back.
   function pickTag(id: string | null) {
     tagPick = id;
@@ -117,7 +119,7 @@
     const p = new URLSearchParams(location.search);
     tagPick = p.get('tag');
     if (p.has('open')) {
-      wantOpen = Number(p.get('open'));
+      wantOpen = p.get('open');
       p.delete('open');
       const qs = p.toString();
       history.replaceState(history.state, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
@@ -127,7 +129,7 @@
     if (wantOpen == null) return;
     if ($gamesFailed && !$games) return void (wantOpen = null); // no usable list; a failed refresh that left the old list still opens it
     if (!$games) return;
-    open = $games.games.find((x) => x.appid === wantOpen) ?? open; // an unknown appid is ignored
+    open = findGame($games.games, wantOpen) ?? open; // an unknown id is ignored; a number finds a Steam game under its id too
     wantOpen = null;
   });
 
@@ -136,7 +138,8 @@
     const offGames = watchGames();
     const offPrefs = watchPrefs();
     const offNotes = watchNotes();
-    return () => (offGames(), offPrefs(), offNotes());
+    const offRemap = watchRemap();
+    return () => (offGames(), offPrefs(), offNotes(), offRemap());
   });
 
   let refreshing = $state(false);
@@ -149,7 +152,7 @@
 
   async function run(g: Game, verb: string, task: () => Promise<unknown>) {
     if (busy != null) return;
-    busy = g.appid;
+    busy = gameKey(g);
     try {
       await task();
     } catch (e) {
@@ -165,13 +168,13 @@
 
   const play = (g: Game) =>
     run(g, 'start', async () => {
-      await startGame(g.appid, toast);
+      await startGame(g, toast);
       await navigate('/stream');
     });
 
   const install = (g: Game) =>
     run(g, 'install', async () => {
-      await api.install(g.appid);
+      await api.install(gameKey(g));
       toast(`Installing ${g.name}. Steam will show progress`);
       void refreshGames();
     });
@@ -214,7 +217,7 @@
   {:else if !$games.games.length}
     <div class="empty"><b>No games yet</b><p class="lab">Games you own on Steam show up here.</p></div>
   {:else}
-    {#if hero}<Hero game={hero} busy={busy === hero.appid} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
+    {#if hero}<Hero game={hero} busy={busy === gameKey(hero)} onplay={play} ondetails={pick} titleIn={titleIn} />{/if}
     {#if s.fortnight.length && bare}<Shelf title="Played this fortnight" games={s.fortnight} onpick={pick} showFortnight {pop} />{/if}
     {#if s.installed.length}<Shelf title="Installed" games={s.installed} onpick={pick} {pop} />{/if}
     {#if almostShelf.length}<Shelf title="Almost done" games={almostShelf} onpick={pick} {pop} />{/if}
@@ -228,7 +231,7 @@
   {/if}
 </div>
 
-{#if shownGame}<GameDetail game={shownGame} busy={busy === shownGame.appid} onclose={() => (open = null)} onplay={play} oninstall={install} />{/if}
+{#if shownGame}<GameDetail game={shownGame} busy={busy === gameKey(shownGame)} onclose={() => (open = null)} onplay={play} oninstall={install} />{/if}
 
 <style>
   .top { display: flex; align-items: center; gap: 12px; padding: 0 2px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }

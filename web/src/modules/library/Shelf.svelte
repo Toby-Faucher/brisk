@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Game } from '../../state/api';
+  import { gameKey } from '../../state/gameId';
   import GameCard from './GameCard.svelte';
   import Icon from '../../ui/Icon.svelte';
   import { cardsIn } from '../../ui/motion';
@@ -55,7 +56,7 @@
     let stop = false; // a newer pop or an unmount before tick(): never start a tween nobody can cancel
     void tick().then(() => {
       if (stop) return;
-      const els = [...(section?.querySelectorAll<HTMLElement>('.slot, .grid > [data-appid]') ?? [])].filter((e) => {
+      const els = [...(section?.querySelectorAll<HTMLElement>('.slot, .grid > [data-gid]') ?? [])].filter((e) => {
         const r = e.getBoundingClientRect();
         return !e.style.viewTransitionName && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
       });
@@ -84,14 +85,14 @@
   </h4>
   {#if grid}
     <div class="grid">
-      {#each games.slice(0, shown) as g (g.appid)}<GameCard game={g} {onpick} {showFortnight} />{/each}
+      {#each games.slice(0, shown) as g (gameKey(g))}<GameCard game={g} {onpick} {showFortnight} />{/each}
     </div>
     {#if shown < games.length}<button class="btn ghost page" onclick={() => (shown += PAGE)}>Show {Math.min(PAGE, games.length - shown)} more</button>{/if}
   {:else}
     <!-- Only the cards near the viewport are mounted; the track keeps the full scroll width. -->
     <div class="row" {@attach track}>
       <div class="track" style:width="{full}px" style:padding-left="{r.start * (CARD + GAP)}px">
-        {#each games.slice(r.start, r.end) as g (g.appid)}
+        {#each games.slice(r.start, r.end) as g (gameKey(g))}
           <div class="slot"><GameCard game={g} {onpick} {showFortnight} /></div>
         {/each}
       </div>

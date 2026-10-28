@@ -4,7 +4,8 @@
   // and saves, achievements, news, stream history). Under 760 px it is one scrolling column.
   import { Dialog } from 'bits-ui';
   import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
-  import { isEmulatorGame, savesLine } from './library';
+  import { savesLine } from './library';
+  import { gameCaps, gameKey } from '../../state/gameId';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
@@ -19,36 +20,38 @@
   let open = $state(true);
   const back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-  // Store facts load when the panel opens (never for the grid); keyed by appid so a games refresh does not refetch.
-  const appid = $derived(game.appid);
+  // Store facts load when the panel opens (never for the grid); keyed by key so a games refresh does not refetch.
+  const key = $derived(gameKey(game));
+  const caps = $derived(gameCaps(game));
   let info = $state<GameInfo | null | 'none'>(null);
   $effect(() => {
-    const id = appid;
+    const id = key;
     info = null;
     api.gameInfo(id).then(
-      (v) => id === appid && (info = v.available ? v : 'none'),
-      () => id === appid && (info = 'none'),
+      (v) => id === key && (info = v.available ? v : 'none'),
+      () => id === key && (info = 'none'),
     );
   });
 
   // Achievements load alongside; a failure or total 0 just hides the section.
   let ach = $state<Achievements | null>(null);
   $effect(() => {
-    const id = appid;
+    const id = key;
     ach = null;
-    api.gameAchievements(id).then(
-      (v) => id === appid && (ach = v),
-      () => {},
-    );
+    if (caps.achievements)
+      api.gameAchievements(id).then(
+        (v) => id === key && (ach = v),
+        () => {},
+      );
   });
 
   // Patch notes: same pattern; no items hides the section.
   let news = $state<News | null>(null);
   $effect(() => {
-    const id = appid;
+    const id = key;
     news = null;
     api.gameNews(id).then(
-      (v) => id === appid && (news = v),
+      (v) => id === key && (news = v),
       () => {},
     );
   });
@@ -59,7 +62,7 @@
   let coolTimer: ReturnType<typeof setTimeout> | undefined;
   let rgen = 0; // bumped per game: a refresh of the previous game neither cools nor blocks this one
   $effect(() => {
-    appid;
+    key;
     rgen++;
     clearTimeout(coolTimer);
     cool = reloading = false;
@@ -69,17 +72,17 @@
     if (cool || reloading || info === null) return; // not while the plain load runs: its slower answer could overwrite ours
     cool = reloading = true;
     coolTimer = setTimeout(() => (cool = false), 10_000);
-    const id = appid;
+    const id = key;
     const rg = rgen;
     let fails = 0;
-    const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === appid && set(v), () => void fails++); // a failure keeps what is shown
+    const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === key && set(v), () => void fails++); // a failure keeps what is shown
     await Promise.all([
       mine(api.gameInfo(id, true), (v) => (info = v.available ? v : 'none')),
-      mine(api.gameAchievements(id, true), (v) => (ach = v)),
+      ...(caps.achievements ? [mine(api.gameAchievements(id, true), (v) => (ach = v))] : []),
       mine(api.gameNews(id, true), (v) => (news = v)),
     ]);
     if (rg === rgen) reloading = false;
-    if (fails && id === appid) toast('Could not refresh Steam data', { error: true });
+    if (fails && id === key) toast('Could not refresh Steam data', { error: true });
   }
 
   // Screenshots and saves from the host's Steam folder. Images need the auth headers, so each is fetched to an
@@ -93,13 +96,14 @@
   let active = 0;
   const asked = new Set<string>();
   $effect(() => {
-    const id = appid;
+    const id = key;
     const g = ++gen;
     local = null;
-    api.gameLocal(id).then(
-      (v) => g === gen && (local = v),
-      () => {},
-    );
+    if (caps.screenshots)
+      api.gameLocal(id).then(
+        (v) => g === gen && (local = v),
+        () => {},
+      );
     return () => {
       gen++;
       queue = [];
@@ -116,7 +120,7 @@
       const g = gen;
       active++;
       api
-        .screenshot(appid, name)
+        .screenshot(key, name)
         .then(
           (u) => (g === gen ? (made.push(u), (shotUrl[name] = u)) : URL.revokeObjectURL(u)),
           () => g === gen && (asked.delete(name), (shotBad[name] = true)),
@@ -187,7 +191,7 @@
       <div class="gd-main">
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>
         <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no Dolphin -->
-        {#if isEmulatorGame(game)}{#key appid}<ControlsSummary />{/key}{/if}
+        {#if caps.controls}{#key key}<ControlsSummary />{/key}{/if}
         <!-- store description and screenshots -->
         <section class="sec" aria-busy={info === null}>
           {#if info === null}
@@ -252,7 +256,7 @@
           </section>
         {/if}
 
-        <StreamHistory {appid} />
+        <StreamHistory {game} />
       </div>
 
       {#if box}

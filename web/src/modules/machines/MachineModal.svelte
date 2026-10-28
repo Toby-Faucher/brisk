@@ -5,6 +5,7 @@
   import { api, type Game, type SessionRec } from '../../state/api';
   import { ensureReady, machineHue, machines, pings, setMachineColor, powerMachine, selected, selectMachine, startPings, wake } from '../../state/machines';
   import { startGame } from '../../state/prefs';
+  import { findGame, gameKey } from '../../state/gameId';
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { toast } from '../../shell/Toasts.svelte';
@@ -73,11 +74,11 @@
   const SORT_OPTS = SORTS.map((s): [SortKey, string] => [s.key, s.label]);
   let q = $state('');
   let sort = $state<SortKey>(loadSort());
-  let pick = $state<number | null>(null);
+  let pick = $state<string | null>(null);
   const list = $derived(listGames(gl.data ?? [], q, sort));
-  const game = $derived(pick === null ? null : ((gl.data ?? []).find((g) => g.appid === pick) ?? null));
+  const game = $derived(pick === null ? null : (findGame(gl.data ?? [], pick) ?? null));
   const recent = $derived(sl.data ?? []);
-  const choose = (g: Game) => ((pick = g.appid), (tab = 'details'));
+  const choose = (g: Game) => ((pick = gameKey(g)), (tab = 'details'));
   const unpick = () => ((pick = null), (tab = 'games'));
 
   function onkeys(e: KeyboardEvent) {
@@ -113,7 +114,7 @@
     try {
       if (!here) await selectMachine(machineId);
       else if (!ready) await ensureReady(machineId);
-      await startGame(g.appid, toast); // readyFirst wakes a sleeping machine
+      await startGame(g, toast); // readyFirst wakes a sleeping machine
       open = false;
       onclose();
       await navigate('/stream');
@@ -244,9 +245,9 @@
             {#if gl.state === 'error'}<p class="lab">Could not refresh: {gl.error} <button class="link" onclick={() => void loadGames(true)}>Retry</button></p>{/if}
             {#if list.length}
               <ul class="games" role="listbox" aria-label="Installed games" tabindex="-1" onkeydown={onkeys}>
-                {#each list as g (g.appid)}
+                {#each list as g (gameKey(g))}
                   <li role="presentation">
-                    <button data-row class="row" role="option" aria-selected={pick === g.appid} onclick={() => choose(g)}>
+                    <button data-row class="row" role="option" aria-selected={pick === gameKey(g)} onclick={() => choose(g)}>
                       <Cover game={g} style="width:34px;border-radius:7px" />
                       <span class="nm">{g.name}</span>
                       <span class="meta">{fmtSize(g.sizeBytes) ?? DASH} · {fmtPlayed(g.lastPlayed)}</span>
@@ -284,7 +285,7 @@
             <div class="actions">
               <button class="btn" aria-disabled={playing} onclick={() => !playing && void play(game)}>{playing ? 'Starting…' : here ? 'Play here' : `Play on ${m?.name ?? 'this machine'}`}</button>
               {#if game.running && here}
-                {@const qd = $quitting.has(game.appid)}
+                {@const qd = $quitting.has(gameKey(game))}
                 <button class="btn ghost" aria-disabled={qd} aria-busy={qd} onclick={() => !qd && askQuit(game)}><QuitLabel busy={qd} label="Quit" /></button>
               {/if}
             </div>

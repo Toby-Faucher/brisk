@@ -8,7 +8,7 @@ import { bind } from './mapping';
 import { CONFLICT, createMappings, LOAD_FAILED, SAVE_FAILED, SAVED } from './store';
 
 const data = (over: Partial<ControlsData> = {}) => structuredClone({ ...(fixture as unknown as ControlsData), ...over });
-const T = { appid: 0xe0000001, name: 'Mario Kart Wii' };
+const T = { key: 'emu:dolphin:mario-kart-wii', name: 'Mario Kart Wii' };
 const later = <T>() => {
   let ok!: (v: T) => void;
   let no!: (e: unknown) => void;
@@ -30,8 +30,8 @@ function mocks() {
         data({ bindings: b.bindings, deadZone: b.deadZone, rev: `r${Math.random()}` }),
     ),
     resetEmulatorControls: vi.fn(async (_: string) => data({ rev: 'reset' })),
-    quit: vi.fn(async (_: number, __?: boolean): Promise<{ state: 'closed' | 'still-running' }> => ({ state: 'closed' })),
-    launch: vi.fn(async (_: number) => undefined),
+    quit: vi.fn(async (_: string, __?: boolean): Promise<{ state: 'closed' | 'still-running' }> => ({ state: 'closed' })),
+    launch: vi.fn(async (_: string) => undefined),
   };
 }
 
@@ -189,7 +189,7 @@ describe('restart', () => {
     expect(toast.mock.calls[0][0]).toBe('Still running: Mario Kart Wii (try Force quit)');
     opts.action.run();
     await vi.waitFor(() => expect(order).toEqual(['quit', 'get', 'put', 'launch']));
-    expect(m.quit).toHaveBeenLastCalledWith(0xe0000001, true);
+    expect(m.quit).toHaveBeenLastCalledWith('emu:dolphin:mario-kart-wii', true);
   });
 
   it('names the step that failed and Try again repeats the flow', async () => {

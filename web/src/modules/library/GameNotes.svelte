@@ -4,26 +4,29 @@
   // edited until the notes have loaded, so a save never replaces a note or tags it has not seen.
   import { onMount } from 'svelte';
   import { gameNoteSaver as saver, gameTags, notes, notesLoaded, refreshNotes } from '../../state/notes';
+  import type { Game } from '../../state/api';
+  import { gameKey, pick } from '../../state/gameId';
   import TagChip from './TagChip.svelte';
   import TagEditor from './TagEditor.svelte';
 
-  let { appid, name }: { appid: number; name: string } = $props();
+  let { game }: { game: Game } = $props();
+  const key = $derived(gameKey(game));
 
   const status = saver.status;
   let draft = $state('');
   let touched = false;
   // the store can arrive after the panel opened: follow it until you type
   $effect(() => {
-    const n = $notes.games[appid]?.note ?? '';
+    const n = pick($notes.games, game)?.note ?? '';
     if (!touched) draft = n;
   });
-  const tags = $derived(gameTags($notes, appid));
+  const tags = $derived(gameTags($notes, game));
   const others = $derived(Object.entries($notes.tags).filter(([id]) => !tags.some((t) => t.id === id)));
   let picking = $state(false);
   /** The tag in the editor: undefined closed, null a new one. */
   let editing = $state<string | null | undefined>(undefined);
 
-  const save = (ids: string[]) => saver.save(appid, { note: draft, tags: ids });
+  const save = (ids: string[]) => saver.save(key, { note: draft, tags: ids });
   const ids = () => tags.map((t) => t.id);
   function setTags(next: string[]) {
     picking = false;
@@ -45,7 +48,7 @@
   });
 
   const off = $derived($notesLoaded !== true);
-  const mine = $derived($status[appid]);
+  const mine = $derived($status[key]);
   const line = $derived(
     $notesLoaded === false ? 'Loading notes…'
     : $notesLoaded === 'failed' ? 'Could not load notes. Will try again when you come back to this tab.'
@@ -65,7 +68,7 @@
     bind:value={draft}
     bind:this={box}
     disabled={off}
-    aria-label="Note for {name}"
+    aria-label="Note for {game.name}"
     placeholder="Anything to remember about this game"
     maxlength={4000}
     rows="3"

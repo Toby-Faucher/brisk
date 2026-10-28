@@ -61,11 +61,11 @@ describe('parseBackup', () => {
     ['long tag note', file({ tags: { a: tag({ note: 'x'.repeat(501) }) }, games: {} }), /note/],
     ['note not a string', file({ tags: { a: tag({ note: 4 }) }, games: {} }), /note/],
     ['pinned not a boolean', file({ tags: { a: tag({ pinned: 'yes' }) }, games: {} }), /pinned/],
-    ['appid zero', file({ tags: {}, games: { 0: { note: 'n', tags: [] } } }), /appid/],
-    ['appid not a number', file({ tags: {}, games: { abc: { note: 'n', tags: [] } } }), /appid/],
-    ['appid with a sign', file({ tags: {}, games: { '-5': { note: 'n', tags: [] } } }), /appid/],
-    ['appid beyond safe integers', file({ tags: {}, games: { '99999999999999999999': { note: 'n', tags: [] } } }), /appid/],
-    ['appid above u32', file({ tags: {}, games: { 4294967296: { note: 'n', tags: [] } } }), /appid/],
+    ['appid zero', file({ tags: {}, games: { 0: { note: 'n', tags: [] } } }), /game id/],
+    ['appid not a number', file({ tags: {}, games: { abc: { note: 'n', tags: [] } } }), /game id/],
+    ['appid with a sign', file({ tags: {}, games: { '-5': { note: 'n', tags: [] } } }), /game id/],
+    ['appid beyond safe integers', file({ tags: {}, games: { '99999999999999999999': { note: 'n', tags: [] } } }), /game id/],
+    ['appid above u32', file({ tags: {}, games: { 4294967296: { note: 'n', tags: [] } } }), /game id/],
     ['raw tag note too long', file({ tags: { a: tag({ note: ` ${' '.repeat(2000)}` }) }, games: {} }), /too long/],
     ['raw game note too long', file({ tags: {}, games: { 5: { note: `x${' '.repeat(16000)}`, tags: [] } } }), /too long/],
     ['game not an object', file({ tags: {}, games: { 5: null } }), /Game 5/],
@@ -89,6 +89,13 @@ describe('parseBackup', () => {
   });
   it('does not count trailing whitespace, as the server does', () => {
     expect(parseBackup(file({ tags: { a: tag({ note: `${'x'.repeat(500)}   \n` }) }, games: {} })).ok).toBe(true);
+  });
+  it('accepts steam: and emu: ids as game keys', () => {
+    const games = { 'steam:620': { note: 'n', tags: [] }, 'emu:dolphin:mario-kart-wii': { note: 'm', tags: [] } };
+    const r = parseBackup(file({ tags: {}, games }));
+    expect(r.ok && Object.keys(r.games)).toEqual(['steam:620', 'emu:dolphin:mario-kart-wii']);
+    for (const bad of ['steam:0620', 'emu:dolphin', 'emu:Dolphin:x', 'emu:dolphin:a/b'])
+      expect(err(file({ tags: {}, games: { [bad]: { note: 'n', tags: [] } } }))).toMatch(/game id/);
   });
   it('accepts the largest u32 appid', () => {
     expect(parseBackup(file({ tags: {}, games: { 4294967295: { note: 'n', tags: [] } } })).ok).toBe(true);

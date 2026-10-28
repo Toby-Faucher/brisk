@@ -14,25 +14,25 @@ const P = (o: Partial<GamePrefs> = {}): GamePrefs => ({ preset: 'crisp', codec: 
 describe('prefsFor', () => {
   it('uses the saved prefs of that game, else the defaults (balanced, h264)', () => {
     const map: PrefsMap = { '10': P(), '20': P({ preset: 'fast', codec: 'h264' }) };
-    expect(prefsFor(10, map, 'balanced')).toEqual({ preset: 'crisp', codec: 'hevc', appid: 10 });
-    expect(prefsFor(20, map, 'crisp')).toEqual({ preset: 'fast', codec: 'h264', appid: 20 });
-    expect(prefsFor(30, map, 'crisp')).toEqual({ preset: 'crisp', codec: 'h264', appid: 30 });
-    expect(prefsFor(30, {}, 'balanced')).toEqual({ preset: 'balanced', codec: 'h264', appid: 30 });
+    expect(prefsFor('10', map, 'balanced')).toEqual({ preset: 'crisp', codec: 'hevc', game: '10' });
+    expect(prefsFor('20', map, 'crisp')).toEqual({ preset: 'fast', codec: 'h264', game: '20' });
+    expect(prefsFor('30', map, 'crisp')).toEqual({ preset: 'crisp', codec: 'h264', game: '30' });
+    expect(prefsFor('30', {}, 'balanced')).toEqual({ preset: 'balanced', codec: 'h264', game: '30' });
   });
   it('carries the custom fields only for custom', () => {
     const c = P({ preset: 'custom', codec: 'h264', width: 2560, height: 1440, fps: 120, bitrateKbps: 50000 });
-    expect(prefsFor(1, { '1': c }, 'fast')).toEqual({
+    expect(prefsFor('1', { '1': c }, 'fast')).toEqual({
       preset: 'custom',
       codec: 'h264',
       width: 2560,
       height: 1440,
       fps: 120,
       bitrateKbps: 50000,
-      appid: 1,
+      game: '1',
     });
-    expect(prefsFor(1, { '1': P({ width: 5 }) }, 'fast')).not.toHaveProperty('width');
+    expect(prefsFor('1', { '1': P({ width: 5 }) }, 'fast')).not.toHaveProperty('width');
   });
-  it('without an appid (Desktop) never looks anything up', () => {
+  it('without a game (Desktop) never looks anything up', () => {
     expect(prefsFor(undefined, { '0': P(), undefined: P() } as PrefsMap, 'fast')).toEqual({ preset: 'fast', codec: 'h264' });
   });
 });
@@ -60,8 +60,8 @@ describe('prefsChip', () => {
 
 describe('prefSaver', () => {
   const rig = () => {
-    const put = vi.fn(async (_id: number, b: { preset: string }) => P({ preset: b.preset as 'fast' }));
-    const saved: [number, GamePrefs][] = [];
+    const put = vi.fn(async (_id: string, b: { preset: string }) => P({ preset: b.preset as 'fast' }));
+    const saved: [string, GamePrefs][] = [];
     const s = prefSaver({ put, onSaved: (id, p) => saved.push([id, p]) });
     return { put, saved, s };
   };
@@ -69,18 +69,18 @@ describe('prefSaver', () => {
   it('saves once, 1 s after the last change, and the last one wins', async () => {
     vi.useFakeTimers();
     const { put, saved, s } = rig();
-    s.save(7, { preset: 'fast', codec: 'h264' });
+    s.save('7', { preset: 'fast', codec: 'h264' });
     await vi.advanceTimersByTimeAsync(600);
-    s.save(7, { preset: 'balanced', codec: 'h264' });
+    s.save('7', { preset: 'balanced', codec: 'h264' });
     await vi.advanceTimersByTimeAsync(600);
     expect(put).not.toHaveBeenCalled(); // the second change restarted the wait
-    s.save(7, { preset: 'crisp', codec: 'hevc' });
+    s.save('7', { preset: 'crisp', codec: 'hevc' });
     await vi.advanceTimersByTimeAsync(999);
     expect(put).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(put).toHaveBeenCalledTimes(1);
-    expect(put).toHaveBeenCalledWith(7, { preset: 'crisp', codec: 'hevc' });
-    expect(saved.map((x) => x[0])).toEqual([7]);
+    expect(put).toHaveBeenCalledWith('7', { preset: 'crisp', codec: 'hevc' });
+    expect(saved.map((x) => x[0])).toEqual(['7']);
     await vi.advanceTimersByTimeAsync(5000);
     expect(put).toHaveBeenCalledTimes(1);
   });
@@ -88,21 +88,21 @@ describe('prefSaver', () => {
   it('a change for another game saves the pending one at once', async () => {
     vi.useFakeTimers();
     const { put, s } = rig();
-    s.save(1, { preset: 'fast', codec: 'h264' });
-    s.save(2, { preset: 'crisp', codec: 'h264' });
-    expect(put).toHaveBeenCalledWith(1, { preset: 'fast', codec: 'h264' });
+    s.save('1', { preset: 'fast', codec: 'h264' });
+    s.save('2', { preset: 'crisp', codec: 'h264' });
+    expect(put).toHaveBeenCalledWith('1', { preset: 'fast', codec: 'h264' });
     await vi.advanceTimersByTimeAsync(1000);
-    expect(put).toHaveBeenCalledWith(2, { preset: 'crisp', codec: 'h264' });
+    expect(put).toHaveBeenCalledWith('2', { preset: 'crisp', codec: 'h264' });
   });
 
   it('flush saves a pending change now (leaving the page); cancel drops it (forget)', async () => {
     vi.useFakeTimers();
     const { put, s } = rig();
-    s.save(1, { preset: 'fast', codec: 'h264' });
+    s.save('1', { preset: 'fast', codec: 'h264' });
     s.flush();
     expect(put).toHaveBeenCalledTimes(1);
-    s.save(1, { preset: 'crisp', codec: 'h264' });
-    s.cancel(1);
+    s.save('1', { preset: 'crisp', codec: 'h264' });
+    s.cancel('1');
     await vi.advanceTimersByTimeAsync(2000);
     s.flush();
     expect(put).toHaveBeenCalledTimes(1);
@@ -112,7 +112,7 @@ describe('prefSaver', () => {
     vi.useFakeTimers();
     const onSaved = vi.fn();
     const s = prefSaver({ put: async () => Promise.reject(new Error('503')), onSaved });
-    s.save(1, { preset: 'fast', codec: 'h264' });
+    s.save('1', { preset: 'fast', codec: 'h264' });
     await vi.advanceTimersByTimeAsync(1000);
     expect(onSaved).not.toHaveBeenCalled();
   });
@@ -129,10 +129,10 @@ describe('forget vs an in-flight save', () => {
       return P();
     });
     const s = prefSaver({ put, onSaved: (id, p) => prefs.update((m) => ({ ...m, [id]: p })) });
-    s.save(5, { preset: 'fast', codec: 'h264' });
+    s.save('5', { preset: 'fast', codec: 'h264' });
     s.flush(); // PUT is now in flight
     const del = vi.fn(async () => void order.push('delete'));
-    const forgot = forgetPrefs(5, { del, cancel: s.cancel, settled: s.settled });
+    const forgot = forgetPrefs('5', { del, cancel: s.cancel, settled: s.settled });
     await Promise.resolve();
     expect(del).not.toHaveBeenCalled(); // still waiting for the PUT
     release();
@@ -147,11 +147,13 @@ describe('forgetPrefs', () => {
     prefs.set({ '5': P(), '6': P() });
     const del = vi.fn(async () => {});
     const cancel = vi.fn();
-    await forgetPrefs(5, { del, cancel, settled: async () => {} });
-    expect(del).toHaveBeenCalledWith(5);
-    expect(cancel).toHaveBeenCalledWith(5);
+    await forgetPrefs('5', { del, cancel, settled: async () => {} });
+    expect(del).toHaveBeenCalledWith('5');
+    expect(cancel).toHaveBeenCalledWith('5');
     expect(Object.keys(get(prefs))).toEqual(['6']);
-    await expect(forgetPrefs(6, { del: async () => Promise.reject(new Error('x')), cancel, settled: async () => {} })).rejects.toThrow('x');
+    await expect(forgetPrefs('6', { del: async () => Promise.reject(new Error('x')), cancel, settled: async () => {} })).rejects.toThrow(
+      'x',
+    );
     expect(Object.keys(get(prefs))).toEqual(['6']);
   });
 });
@@ -165,10 +167,10 @@ describe('startGame (Library, Resume card, Stream Start)', () => {
   it("starts with that game's saved quality, else the default preset", async () => {
     prefs.set({ '10': P({ preset: 'crisp', codec: 'hevc' }) });
     const { startStream, notify, d } = rig();
-    await startGame(10, notify, d);
-    expect(startStream).toHaveBeenLastCalledWith({ preset: 'crisp', codec: 'hevc', appid: 10 });
-    await startGame(11, notify, d);
-    expect(startStream).toHaveBeenLastCalledWith({ preset: 'fast', codec: 'h264', appid: 11 });
+    await startGame('10', notify, d);
+    expect(startStream).toHaveBeenLastCalledWith({ preset: 'crisp', codec: 'hevc', game: '10' });
+    await startGame('11', notify, d);
+    expect(startStream).toHaveBeenLastCalledWith({ preset: 'fast', codec: 'h264', game: '11' });
     await startGame(undefined, notify, d);
     expect(startStream).toHaveBeenLastCalledWith({ preset: 'fast', codec: 'h264' }); // Desktop: no appid
     expect(notify).not.toHaveBeenCalled();
@@ -176,8 +178,8 @@ describe('startGame (Library, Resume card, Stream Start)', () => {
   it('a saved HEVC falls back to H.264 with a notice when the browser cannot decode it; the entry stays', async () => {
     prefs.set({ '10': P({ preset: 'crisp', codec: 'hevc' }) });
     const { startStream, notify, d } = rig(false);
-    await startGame(10, notify, d);
-    expect(startStream).toHaveBeenLastCalledWith({ preset: 'crisp', codec: 'h264', appid: 10 });
+    await startGame('10', notify, d);
+    expect(startStream).toHaveBeenLastCalledWith({ preset: 'crisp', codec: 'h264', game: '10' });
     expect(notify).toHaveBeenCalledWith('This browser cannot decode HEVC, starting in H.264');
     expect(get(prefs)['10'].codec).toBe('hevc');
   });
@@ -220,7 +222,7 @@ describe('putPrefs', () => {
     const f = vi.fn(async () => new Response(JSON.stringify(P())));
     vi.stubGlobal('fetch', f);
     const { api } = await import('./api');
-    await api.putPrefs(1, { preset: 'fast', codec: 'h264' });
+    await api.putPrefs('1', { preset: 'fast', codec: 'h264' });
     expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].keepalive).toBe(true);
   });
 });
