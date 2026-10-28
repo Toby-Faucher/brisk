@@ -172,6 +172,11 @@ describe('GameCard with a new hostd game', () => {
     quitting.set(new Set());
   });
 
+  it('labels a title card with the disc system, not the emulator', async () => {
+    const { container } = await render(GameCard, { props: { game: { ...emu, running: false, system: 'gamecube' }, onpick: vi.fn() } });
+    expect(container.querySelector('.badge')?.textContent).toBe('GameCube');
+  });
+
   it('reads its tags from a note kept under the old number until the hub remaps it', async () => {
     notes.set({
       tags: { a: { name: 'Party', color: 'teal', symbol: 'users', note: '' } },

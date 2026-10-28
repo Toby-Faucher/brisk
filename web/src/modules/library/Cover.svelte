@@ -9,7 +9,8 @@
   import type { Snippet } from 'svelte';
 
   let { game, style = '', children }: { game: Game; style?: string; children?: Snippet } = $props();
-  const SYSTEMS: Record<string, string> = { dolphin: 'Wii' };
+  // The disc's own system when hostd knows it (Dolphin plays both); else a name for the emulator.
+  const SYSTEMS: Record<string, string> = { wii: 'Wii', gamecube: 'GameCube', dolphin: 'Wii' };
   let failed = $state(false);
   const h = $derived(hue(game));
   $effect(() => {
@@ -22,7 +23,7 @@
   {#if game.cover && !failed}
     <img {@attach artSrc(game.cover)} alt="" loading="lazy" decoding="async" onerror={() => (failed = true)} />
   {:else if game.emulator}
-    <span class="card"><i class="badge">{SYSTEMS[game.emulator] ?? game.emulator}</i><b class="name">{game.name}</b></span>
+    <span class="card"><i class="badge">{SYSTEMS[game.system ?? ''] ?? SYSTEMS[game.emulator] ?? game.emulator}</i><b class="name">{game.name}</b></span>
   {:else}
     <span class="shape a"></span><span class="shape b"></span><b>{game.name.trim().charAt(0).toUpperCase() || '?'}</b>
   {/if}

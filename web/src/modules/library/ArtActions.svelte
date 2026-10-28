@@ -43,7 +43,8 @@
 {/if}
 
 <style>
-  .art { display: grid; gap: 8px; justify-items: start; }
+  /* GameSide's .sec padding is scoped to it, so repeat it here or the block touches the panel edge */
+  .art { padding: 14px 22px 0; display: grid; gap: 8px; justify-items: start; }
   .lab { margin: 0; }
   .credit { margin: 0; font-size: 12px; color: var(--muted); }
 </style>

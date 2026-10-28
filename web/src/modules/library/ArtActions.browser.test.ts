@@ -32,6 +32,11 @@ const game: Game = {
 afterEach(() => vi.restoreAllMocks());
 
 describe('art actions in the game panel', () => {
+  it('keeps the same side padding as the other panel sections', async () => {
+    const { container } = await render(ArtActions, { props: { game } });
+    expect(getComputedStyle(container.querySelector('section.art') as Element).paddingLeft).toBe('22px');
+  });
+
   it('Find art asks hostd to look, once', async () => {
     const r = vi.spyOn(api, 'artRefresh').mockResolvedValue({ state: 'searching' });
     await render(ArtActions, { props: { game } });
