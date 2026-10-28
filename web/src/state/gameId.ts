@@ -15,7 +15,7 @@ export const gameKey = (g: Pick<Game, 'appid'> & Partial<Pick<Game, 'id'>>): str
 export function gameCaps(g: GameRef): Caps {
   if (g.caps) return g.caps;
   const emu = g.source ? g.source === 'emu' : g.emulator !== undefined || g.appid >= OLD_EMU_FROM;
-  return { install: !emu, controls: emu, achievements: !emu, launchOptions: false, saves: false, screenshots: !emu };
+  return { install: !emu, controls: emu, achievements: !emu, launchOptions: false, saves: false, screenshots: !emu, art: false };
 }
 
 /** A key as a Steam number text, when it is one (`steam:620` or `620`). */

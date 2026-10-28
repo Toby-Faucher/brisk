@@ -5,6 +5,7 @@
 </script>
 
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   import type { Snippet } from 'svelte';
 
   let { game, style = '', children }: { game: Game; style?: string; children?: Snippet } = $props();
@@ -19,7 +20,7 @@
 
 <div class="cover" style="background:{game.emulator && !(game.cover && !failed) ? `linear-gradient(160deg,hsl(${h} 45% 26%),#12151c)` : `linear-gradient(145deg,hsl(${h} 62% 48%),hsl(${(h + 50) % 360} 55% 24%))`};{style}">
   {#if game.cover && !failed}
-    <img src={game.cover} alt="" loading="lazy" decoding="async" onerror={() => (failed = true)} />
+    <img {@attach artSrc(game.cover)} alt="" loading="lazy" decoding="async" onerror={() => (failed = true)} />
   {:else if game.emulator}
     <span class="card"><i class="badge">{SYSTEMS[game.emulator] ?? game.emulator}</i><b class="name">{game.name}</b></span>
   {:else}

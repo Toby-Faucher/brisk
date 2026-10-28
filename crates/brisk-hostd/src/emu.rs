@@ -212,6 +212,7 @@ pub fn caps(emulator: &str) -> Caps {
     Caps {
         controls: registry::get(emulator).is_some_and(|e| !e.controller.is_empty()),
         launch_options: true,
+        art: true,
         ..Caps::default()
     }
 }
@@ -224,6 +225,7 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
+    let pending = crate::art::load_pending(data_dir);
     recs.iter()
         .map(|r| {
             let mut g = Game::steam(r.legacy(), &r.name);
@@ -246,6 +248,7 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
             g.playtime2wk_min = pt.last_two_weeks_minutes(r.id.as_str(), now);
             g.emulator = Some(r.emulator.clone());
             g.running = !pids(&ps, r).is_empty();
+            crate::art::decorate(&mut g, data_dir, &pending);
             g
         })
         .collect()

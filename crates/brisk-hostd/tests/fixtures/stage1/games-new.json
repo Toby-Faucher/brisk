@@ -11,7 +11,8 @@
         "achievements": true,
         "launchOptions": true,
         "saves": false,
-        "screenshots": true
+        "screenshots": true,
+        "art": false
       },
       "name": "Portal 2",
       "installed": true,
@@ -41,7 +42,8 @@
         "achievements": false,
         "launchOptions": true,
         "saves": false,
-        "screenshots": false
+        "screenshots": false,
+        "art": true
       },
       "name": "Mario Kart Wii",
       "installed": true,

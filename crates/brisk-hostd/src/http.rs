@@ -61,6 +61,8 @@ pub struct AppState {
     pub hub: Option<Arc<Hub>>,
     /// When `?refresh=1` last went through for each emulator game (RetroAchievements), 30 s apart.
     pub ra_refresh: Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    /// Art and details lookups for emulator games (`art.rs`).
+    pub art: Arc<crate::art::Art>,
 }
 
 #[derive(Default)]
@@ -96,6 +98,7 @@ impl AppState {
             shots: steam_info::ShotCache::default(),
             hub: None,
             ra_refresh: Mutex::default(),
+            art: Arc::new(crate::art::Art::default()),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -373,7 +376,7 @@ async fn sunshine_restart(State(s): State<Arc<AppState>>) -> Response {
     (code, axum::Json(serde_json::json!({ "error": msg }))).into_response()
 }
 
-fn err(code: StatusCode, msg: &str) -> Response {
+pub(crate) fn err(code: StatusCode, msg: &str) -> Response {
     (code, axum::Json(serde_json::json!({ "error": msg }))).into_response()
 }
 
@@ -990,18 +993,21 @@ async fn library_scan(
     })
     .await
     {
-        Ok(Ok(r)) => axum::Json(serde_json::json!({
-            "scanned": r.scan.scanned,
-            "added": cards(&s, &r.merged.added),
-            "aliased": r.merged.aliased,
-            "duplicates": r.merged.duplicates,
-            "unplayable": r.merged.unplayable,
-            "removed": r.merged.removed,
-            "unknown": r.scan.unknown,
-            "broken": r.scan.broken,
-            "truncated": r.scan.truncated,
-        }))
-        .into_response(),
+        Ok(Ok(r)) => {
+            s.art.trigger_new(&s.cfg, &r.merged.added);
+            axum::Json(serde_json::json!({
+                "scanned": r.scan.scanned,
+                "added": cards(&s, &r.merged.added),
+                "aliased": r.merged.aliased,
+                "duplicates": r.merged.duplicates,
+                "unplayable": r.merged.unplayable,
+                "removed": r.merged.removed,
+                "unknown": r.scan.unknown,
+                "broken": r.scan.broken,
+                "truncated": r.scan.truncated,
+            }))
+            .into_response()
+        }
         Ok(Err(e)) => err(StatusCode::INTERNAL_SERVER_ERROR, &e),
         Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "scan task failed"),
     }
@@ -1081,6 +1087,9 @@ async fn upload_abort(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<Strin
 async fn upload_finish(State(s): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> Response {
     match s.uploads.finish(&s.cfg.data_dir, &id).await {
         Ok(f) => {
+            if let Some(g) = &f.game {
+                s.art.trigger_new(&s.cfg, std::slice::from_ref(g));
+            }
             let game = f
                 .game
                 .as_ref()
@@ -1281,6 +1290,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/games/{id}/local", get(game_local))
         .route("/games/{id}/saves", get(game_saves))
         .route("/games/{id}/screenshots/{name}", get(game_screenshot))
+        .route("/games/{id}/art/{kind}", get(crate::art::serve))
+        .route("/art/pending", get(crate::art::pending))
+        .route(
+            "/art/{id}/match",
+            post(crate::art::answer).layer(DefaultBodyLimit::max(4 << 10)),
+        )
+        .route("/art/{id}/refresh", post(crate::art::refresh))
         .route(
             "/emulators/dolphin/controls/{kind}",
             get(controls_get)

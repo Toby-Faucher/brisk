@@ -120,6 +120,8 @@ pub struct Caps {
     pub launch_options: bool,
     pub saves: bool,
     pub screenshots: bool,
+    /// Art and details come from the cache the `art` module fills (emulator games).
+    pub art: bool,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -164,6 +166,28 @@ pub struct Game {
     /// Emulator games only (e.g. "dolphin"): the card's system badge.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emulator: Option<String>,
+    /// Description fields from the art cache (emulator games, only what a source gave).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Details>,
+    /// Who the cached art and details came from, for the credit line (`SteamGridDB`, `GameTDB`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub credits: Vec<String>,
+    /// Art lookup found several possible games and waits for a pick.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub needs_match: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Details {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<u16>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub publisher: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub developer: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
 }
 
 pub const STEAM_CAPS: Caps = Caps {
@@ -173,6 +197,7 @@ pub const STEAM_CAPS: Caps = Caps {
     launch_options: true,
     saves: false,
     screenshots: true,
+    art: false,
 };
 
 impl Game {
@@ -202,6 +227,9 @@ impl Game {
             controller: None,
             coop: false,
             emulator: None,
+            details: None,
+            credits: vec![],
+            needs_match: false,
         }
     }
 }

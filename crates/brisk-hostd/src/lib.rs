@@ -1,3 +1,4 @@
+pub mod art;
 pub mod auth;
 pub mod clipboard;
 pub mod config;
@@ -8,6 +9,7 @@ pub mod embed;
 pub mod emu;
 pub mod files;
 pub mod game;
+pub mod gametdb;
 pub mod host;
 pub mod http;
 pub mod idle;
@@ -32,6 +34,7 @@ pub mod site;
 pub(crate) mod source;
 pub mod steam;
 pub mod steam_info; // pub for tests
+pub mod steamgriddb;
 pub mod stream;
 pub mod uploads;
 pub mod wrap;
