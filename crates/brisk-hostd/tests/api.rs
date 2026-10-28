@@ -623,6 +623,7 @@ fn rig_at(mode: &str, service: bool, base: &str) -> Rig {
             update: None,
             controller: None,
             coop: false,
+            emulator: None,
         }],
         owned_available: true,
     });
@@ -1280,7 +1281,7 @@ fn emu_rig(base: &str) -> (Rig, u32) {
         emulator: "dolphin".into(),
         file: iso,
     };
-    let games = brisk_hostd::emu::games(std::slice::from_ref(&e), &r.proc);
+    let games = brisk_hostd::emu::games(std::slice::from_ref(&e), &r.proc, &r.data);
     r.state
         .games
         .lock()

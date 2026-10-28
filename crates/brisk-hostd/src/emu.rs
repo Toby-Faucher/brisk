@@ -2,6 +2,8 @@
 //! `/api/games` next to Steam's, under ids no Steam appid reaches (0xE0000000 and up, from a hash of
 //! the name), and Play starts the emulator on the host like `steam()` starts Steam. Read tolerantly:
 //! a missing or corrupt file is just no emulator games.
+//! Last-played times (unix seconds, by entry id) live in `data_dir/emu-played.json`, written at launch.
+//! Playtime is not tracked here (roadmap Stage 6a).
 //! A game is running when a process of the emulator's command has the game file as an argument (a
 //! scan of the proc dir, so it survives a hostd restart). Play on a running game only focuses it.
 //! shortcut: Dolphin only (one table row in `spec`), one window class per emulator; add a row per
@@ -11,7 +13,9 @@ use crate::host::Runner;
 use crate::running::{Proc, procs};
 use crate::steam::Game;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -73,6 +77,49 @@ pub fn is_emu_id(id: u32) -> bool {
     id >= ID_BASE
 }
 
+const PLAYED_FILE: &str = "emu-played.json";
+const PLAYED_MAX: usize = 500;
+
+/// `{"<id>": unix seconds}`; a missing or corrupt file is empty.
+fn played(data_dir: &Path) -> BTreeMap<String, u64> {
+    std::fs::read(data_dir.join(PLAYED_FILE))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+/// Records now as the game's last-played time: atomic 0600 write, the oldest entries dropped
+/// past a cap. A failed write is a warning only.
+pub fn mark_played(data_dir: &Path, id: u32) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let mut m = played(data_dir);
+    m.insert(id.to_string(), now);
+    while m.len() > PLAYED_MAX {
+        let oldest = m.iter().min_by_key(|(_, t)| **t).map(|(k, _)| k.clone());
+        m.remove(&oldest.unwrap());
+    }
+    let path = data_dir.join(PLAYED_FILE);
+    let tmp = data_dir.join(format!(".emu-played.{}.tmp", std::process::id()));
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(data_dir)?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        f.write_all(&serde_json::to_vec(&m)?)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, &path)
+    };
+    if let Err(e) = write() {
+        let _ = std::fs::remove_file(&tmp);
+        eprintln!("warning: {}: {e}", path.display());
+    }
+}
+
 pub fn load(data_dir: &Path) -> Vec<Entry> {
     let Ok(text) = std::fs::read_to_string(data_dir.join("emulators.json")) else {
         return vec![];
@@ -84,8 +131,9 @@ pub fn load(data_dir: &Path) -> Vec<Entry> {
 }
 
 /// One card per entry; `installed` means the game file exists, so a missing ISO reads as "not installed".
-pub fn games(entries: &[Entry], proc: &Path) -> Vec<Game> {
+pub fn games(entries: &[Entry], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let ps = procs(proc);
+    let played = played(data_dir);
     entries
         .iter()
         .map(|e| Game {
@@ -93,7 +141,8 @@ pub fn games(entries: &[Entry], proc: &Path) -> Vec<Game> {
             name: e.name.clone(),
             installed: e.file.is_file(),
             size_bytes: std::fs::metadata(&e.file).ok().map(|m| m.len()),
-            last_played: None,
+            last_played: played.get(&e.id().to_string()).copied(),
+            emulator: Some(e.emulator.clone()),
             playtime_min: 0,
             playtime2wk_min: 0,
             cover: String::new(),
@@ -242,7 +291,7 @@ mod tests {
     fn missing_file_reads_not_installed_and_will_not_launch() {
         let e = entry("Mario Kart Wii", "dolphin", Path::new("/nope/mkwii.iso"));
         let none = fake_proc(&[]);
-        assert!(!games(std::slice::from_ref(&e), none.path())[0].installed);
+        assert!(!games(std::slice::from_ref(&e), none.path(), none.path())[0].installed);
         let r = Rec::new(0);
         assert!(!launch(
             &*r,
@@ -262,7 +311,7 @@ mod tests {
         let none = fake_proc(&[]);
         let r = Rec::new(0);
         let both = [ok.clone(), other.clone()];
-        assert!(games(std::slice::from_ref(&ok), none.path())[0].installed);
+        assert!(games(std::slice::from_ref(&ok), none.path(), none.path())[0].installed);
         assert!(launch(&*r, none.path(), &both, ok.id(), &[]));
         assert!(!launch(&*r, none.path(), &both, other.id(), &[]));
         assert!(!launch(
@@ -290,7 +339,7 @@ mod tests {
             (11, "vim", &["vim", sb]),
         ]);
         let es = [ea.clone(), eb.clone()];
-        let g = games(&es, p.path());
+        let g = games(&es, p.path(), p.path());
         assert_eq!((g[0].running, g[1].running), (true, false));
         let r = Rec::new(0);
         // A is running: Play succeeds without a spawn. B is not: it spawns.
@@ -336,6 +385,23 @@ mod tests {
         .await;
         assert!(r.log().is_empty(), "nothing is focused: {:?}", r.log());
         assert!(*r.trees.lock().unwrap() >= 60);
+    }
+
+    #[test]
+    fn mark_played_feeds_games_and_a_corrupt_file_is_tolerated() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let e = entry("MKW", "dolphin", Path::new("/x.iso"));
+        let none = fake_proc(&[]);
+        let g = |d: &Path| games(std::slice::from_ref(&e), none.path(), d).remove(0);
+        assert_eq!(g(d.path()).last_played, None);
+        std::fs::write(d.path().join(PLAYED_FILE), "{not json").unwrap();
+        assert_eq!(g(d.path()).last_played, None);
+        mark_played(d.path(), e.id());
+        assert!(g(d.path()).last_played.unwrap() > 1_700_000_000);
+        let mode = std::fs::metadata(d.path().join(PLAYED_FILE)).unwrap();
+        assert_eq!(mode.permissions().mode() & 0o777, 0o600);
+        assert_eq!(g(d.path()).emulator.as_deref(), Some("dolphin"));
     }
 
     #[test]

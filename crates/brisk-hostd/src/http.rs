@@ -338,7 +338,11 @@ async fn steam_cmd(s: Arc<AppState>, b: &[u8], verb: &'static str) -> Response {
             return err(StatusCode::BAD_REQUEST, "nothing to install for this game");
         }
         let started = tokio::task::spawn_blocking(move || {
-            s2.stream.emulator(crate::emu::load(&s2.cfg.data_dir), id)
+            let ok = s2.stream.emulator(crate::emu::load(&s2.cfg.data_dir), id);
+            if ok {
+                crate::emu::mark_played(&s2.cfg.data_dir, id);
+            }
+            ok
         })
         .await;
         return match started {

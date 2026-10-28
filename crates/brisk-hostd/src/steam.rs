@@ -37,6 +37,9 @@ pub struct Game {
     pub controller: Option<String>,
     /// Co-op or Remote Play Together, from the info cache.
     pub coop: bool,
+    /// Emulator games only (e.g. "dolphin"): the card's system badge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emulator: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -493,6 +496,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
                 update: None,
                 controller: None,
                 coop: false,
+                emulator: None,
             },
         );
     }
@@ -532,6 +536,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             update: None,
             controller: None,
             coop: false,
+            emulator: None,
         });
         g.installed = i.state_flags & 4 != 0;
         g.update = i.update.clone();
@@ -589,6 +594,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     games.extend(crate::emu::games(
         &crate::emu::load(&cfg.data_dir),
         &cfg.proc_dir,
+        &cfg.data_dir,
     ));
     games.sort_by(|a, b| {
         b.last_played

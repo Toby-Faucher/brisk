@@ -649,6 +649,7 @@ async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf,
         .await
         .unwrap_or(false);
         if ok {
+            crate::emu::mark_played(&data, id);
             crate::emu::focus(runner, &entries, id, env, Duration::from_secs(60)).await;
         }
         return;
