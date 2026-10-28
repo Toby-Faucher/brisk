@@ -46,9 +46,36 @@ export type Game = {
   emulator?: string;
 };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
-export type Ach = { id: string; name: string; description: string; icon: string; unlockedAt: number | null };
+export type Ach = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  unlockedAt: number | null;
+  points?: number;
+  hardcore?: boolean;
+};
 /** GET /api/games/{appid}/achievements. `available` false (no stats, private profile): total is 0. */
-export type Achievements = { available: boolean; unlocked: number; total: number; list: Ach[] };
+export type Achievements = {
+  available: boolean;
+  unlocked: number;
+  total: number;
+  list: Ach[];
+  /** RetroAchievements (state 'ok') only. */
+  source?: 'retroachievements';
+  state?: 'ok';
+  unlockedHardcore?: number;
+  pointsUnlocked?: number;
+  pointsTotal?: number;
+  gameId?: number;
+  title?: string;
+  url?: string;
+};
+/** The other answers an emulator game's route gives (always status 200). A Steam answer has no `state`. */
+export type RaAnswer =
+  | Achievements
+  | { state: 'off' | 'not-found' | 'rate-limited' | 'bad-credentials' | 'error' }
+  | { state: 'unsupported'; reason?: string };
 /** One headline; `title` is text only, `url` is https or empty. `patch`: the game's own announcements feed. */
 export type NewsItem = { title: string; url: string; date: number; patch: boolean };
 /** GET /api/games/{appid}/news; an empty list when Steam had nothing. */
@@ -443,7 +470,7 @@ export const api = {
   /** Forgets an emulator game's library record. The file stays on disk. Sends the id form this machine speaks. */
   removeGame: (key: string) => call<void>('DELETE', gamePath(key, '')),
   gameInfo: (key: string, refresh?: boolean) => call<GameInfo>('GET', gamePath(key, `/info${q(refresh)}`)),
-  gameAchievements: (key: string, refresh?: boolean) => call<Achievements>('GET', gamePath(key, `/achievements${q(refresh)}`)),
+  gameAchievements: (key: string, refresh?: boolean) => call<Achievements | RaAnswer>('GET', gamePath(key, `/achievements${q(refresh)}`)),
   gameNews: (key: string, refresh?: boolean) => call<News>('GET', gamePath(key, `/news${q(refresh)}`)),
   emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
   putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),

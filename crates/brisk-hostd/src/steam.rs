@@ -246,7 +246,7 @@ pub(crate) fn now() -> u64 {
 const MAX_BODY: u64 = 8 << 20;
 
 /// HTTPS only, except plain http to loopback (the tests' mock server).
-fn base_ok(base: &str) -> bool {
+pub(crate) fn base_ok(base: &str) -> bool {
     if base.starts_with("https://") {
         return true;
     }
@@ -278,7 +278,7 @@ fn safe_err(e: &ureq::Error) -> String {
 /// Key safety: ureq logs every request through the `log` crate, and at trace level (and in some
 /// debug lines) with the full path and query, i.e. `key=`. hostd installs no `log` logger, so
 /// nothing is printed; never add one (env_logger, tracing-log, ...) without filtering ureq out.
-fn https_get(url: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn https_get(url: &str) -> Result<Vec<u8>, String> {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     let tls = TlsConfig::builder()
         .provider(TlsProvider::Rustls)
@@ -538,11 +538,13 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }
     }
-    games.extend(crate::emu::games(
+    let mut emu = crate::emu::games(
         &crate::emu::load(&cfg.data_dir),
         &cfg.proc_dir,
         &cfg.data_dir,
-    ));
+    );
+    crate::ra_game::caps_on(cfg, &mut emu);
+    games.extend(emu);
     games.sort_by(|a, b| {
         b.last_played
             .cmp(&a.last_played)

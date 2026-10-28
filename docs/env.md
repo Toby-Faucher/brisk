@@ -29,6 +29,8 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_GAMES_DIR` | Games folder: one sub-folder per system (`wii`, `gamecube`, `nes`, ...), plus `.uploads/` for partial uploads. Scanned for games; uploads and `brisk-hostd add` put files here. | `~/Games` | `hostd/src/config.rs` `games_dir`, `ingest.rs` |
 | `BRISK_SCAN_ON_START` | `1` scans the games folder once when hostd starts. | unset | `hostd/src/config.rs`, `main.rs` |
 | `BRISK_DOLPHIN_DIR` | Dolphin's config directory; the controller editor reads and rewrites `WiimoteNew.ini`, `GCPadNew.ini` and `Dolphin.ini` there (`controls.rs`). | `${XDG_CONFIG_HOME:-~/.config}/dolphin-emu` | `hostd/src/config.rs` `dolphin_dir` |
+| `BRISK_RA_KEY_FILE` | RetroAchievements login for the read-only progress panel: line 1 user name, line 2 Web API key, mode 600. No file = the feature is off. | `~/.config/brisk/retroachievements` | `hostd/src/config.rs` `ra_key_file`, `retroachievements.rs` |
+| `BRISK_RA_BASE` | RetroAchievements API base (https, or http to loopback for tests). | `https://retroachievements.org/API` | `hostd/src/config.rs` `ra_base` |
 | `BRISK_PLAYTIME_POLL_S` | How often hostd checks which emulator games run, to count playtime into `playtime.json` (seconds, at least 5). | `15` | `hostd/src/config.rs`, `playtime.rs` |
 | `BRISK_SPAWN_SCOPE` | `1` starts spawned programs (Steam launches) in their own `systemd-run --user --scope`. Set by `deploy/brisk-hostd.service`. | unset | `hostd/src/host.rs` |
 | `BRISK_TAP_SOCK` | Unix socket where Sunshine's tap sends encoded frames. | `$XDG_RUNTIME_DIR/brisk/tap.sock` | `brisk-client/src/tap.rs` (used by `brisk-bridge` and `brisk-probe`) |

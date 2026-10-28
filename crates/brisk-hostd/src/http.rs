@@ -59,6 +59,8 @@ pub struct AppState {
     pub shots: steam_info::ShotCache,
     /// Set when machines.json exists (main.rs); None = single host, no hub routes answer.
     pub hub: Option<Arc<Hub>>,
+    /// When `?refresh=1` last went through for each emulator game (RetroAchievements), 30 s apart.
+    pub ra_refresh: Mutex<std::collections::HashMap<String, std::time::Instant>>,
 }
 
 #[derive(Default)]
@@ -93,6 +95,7 @@ impl AppState {
             friends: Mutex::new(None),
             shots: steam_info::ShotCache::default(),
             hub: None,
+            ra_refresh: Mutex::default(),
             cfg,
             restarter: Restarter::new(runner, clock),
         }
@@ -199,14 +202,59 @@ async fn game_achievements(
         Ok(g) => g,
         Err(r) => return r,
     };
-    let Some(id) = g.id.steam_appid() else {
-        return err(StatusCode::NOT_FOUND, "no Steam details for this game");
-    };
     let refresh = req
         .uri()
         .query()
         .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    let Some(id) = g.id.steam_appid() else {
+        return emu_achievements(&s, &g, refresh).await;
+    };
     axum::Json(steam_info::achievements(&s.cfg, id, refresh).await).into_response()
+}
+
+/// RetroAchievements progress for an emulator game, always a 200 whose `state` says what the
+/// panel should show (see `ra_game`). `refresh` skips the 5 minute cache, at most once per 30 s a game.
+async fn emu_achievements(s: &AppState, g: &Game, refresh: bool) -> Response {
+    let recs = crate::emu::load(&s.cfg.data_dir);
+    let Some(r) = crate::emu::find(&recs, &g.id) else {
+        return err(StatusCode::NOT_FOUND, "unknown game");
+    };
+    let fresh = refresh && {
+        let mut m = s.ra_refresh.lock().unwrap();
+        let now = std::time::Instant::now();
+        let ok = m
+            .get(g.id.as_str())
+            .is_none_or(|t| now.duration_since(*t) >= std::time::Duration::from_secs(30));
+        if ok {
+            m.insert(g.id.to_string(), now);
+        }
+        ok
+    };
+    let body = crate::ra_game::state_json(&s.cfg, &r.file, fresh).await;
+    ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
+}
+
+/// Debug: the RetroAchievements hash brisk computes for an emulator game, as
+/// `{console, hash, container, computedAt}`, so it can be looked up on retroachievements.org by
+/// hand. The Wii routine is verified only against a synthetic image, not a real disc.
+/// 422 `{error, reason}` for a container it cannot hash.
+async fn game_ra_hash(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String>) -> Response {
+    let g = match path_game(&s, &raw).await {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    let recs = crate::emu::load(&s.cfg.data_dir);
+    let Some(r) = crate::emu::find(&recs, &g.id) else {
+        return err(StatusCode::NOT_FOUND, "no disc hash for this game");
+    };
+    let res = match crate::ra_game::hash_blocking(&s.cfg, &r.file).await {
+        Ok(h) => axum::Json(h).into_response(),
+        Err(crate::ra_game::HashErr::Unsupported(why)) => {
+            err(StatusCode::UNPROCESSABLE_ENTITY, &why)
+        }
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "game file unreadable"),
+    };
+    ([(header::CACHE_CONTROL, "no-store")], res).into_response()
 }
 
 /// Latest headlines for the detail panel; 404 for an unknown game before any upstream call. An
@@ -1197,6 +1245,7 @@ pub fn router(state: Arc<AppState>) -> Router {
                 .layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route("/games/{id}/achievements", get(game_achievements))
+        .route("/games/{id}/ra-hash", get(game_ra_hash))
         .route("/games/{id}/news", get(game_news))
         .route("/games/{id}/local", get(game_local))
         .route("/games/{id}/screenshots/{name}", get(game_screenshot))

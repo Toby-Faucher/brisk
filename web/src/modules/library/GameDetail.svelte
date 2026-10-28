@@ -3,9 +3,10 @@
   // quick facts, notes and tags) stays put and the right pane scrolls (description, screenshots, the host's screenshots
   // and saves, achievements, news, stream history). Under 760 px it is one scrolling column.
   import { Dialog } from 'bits-ui';
-  import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
+  import { api, type Game, type GameInfo, type Achievements, type RaAnswer, type News, type GameLocal } from '../../state/api';
   import { savesLine } from './library';
   import { gameCaps, gameKey } from '../../state/gameId';
+  import { raView, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
@@ -34,17 +35,46 @@
     );
   });
 
-  // Achievements load alongside; a failure or total 0 just hides the section.
+  // Achievements load alongside; a failure or total 0 just hides the section. An emulator game (no Install) asks
+  // RetroAchievements: the answer carries a `state`, shown as `ach` (ok) or `raNote` (anything else but off).
+  const emu = $derived(!caps.install);
   let ach = $state<Achievements | null>(null);
+  let raNote = $state<string | null>(null);
+  const showRa = (v: Achievements | RaAnswer) => ((({ ach, note: raNote } = raView(v))), v);
   $effect(() => {
     const id = key;
     ach = null;
+    raNote = null;
     if (caps.achievements)
       api.gameAchievements(id).then(
-        (v) => id === key && (ach = v),
+        (v) => id === key && showRa(v),
         () => {},
       );
   });
+  // While an emulator game runs, re-read its progress every 45 s (read-only; stops with the panel or the game).
+  $effect(() => {
+    const id = key;
+    if (!(caps.achievements && emu && game.running)) return;
+    return startPoll(() => api.gameAchievements(id).then((v) => (id === key ? showRa(v) : v)));
+  });
+  // The RetroAchievements Refresh: 30 s between clicks, as the host allows.
+  let raCool = $state(false);
+  let raTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    key;
+    raCool = false;
+    return () => clearTimeout(raTimer);
+  });
+  function raRefresh() {
+    if (raCool) return;
+    raCool = true;
+    raTimer = setTimeout(() => (raCool = false), REFRESH_COOLDOWN_MS);
+    const id = key;
+    api.gameAchievements(id, true).then(
+      (v) => id === key && showRa(v),
+      () => id === key && toast('Could not refresh RetroAchievements', { error: true }),
+    );
+  }
 
   // Patch notes: same pattern; no items hides the section.
   let news = $state<News | null>(null);
@@ -79,7 +109,7 @@
     const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === key && set(v), () => void fails++); // a failure keeps what is shown
     await Promise.all([
       mine(api.gameInfo(id, true), (v) => (info = v.available ? v : 'none')),
-      ...(caps.achievements ? [mine(api.gameAchievements(id, true), (v) => (ach = v))] : []),
+      ...(caps.achievements && !emu ? [mine(api.gameAchievements(id, true), (v) => (ach = v as Achievements))] : []),
       mine(api.gameNews(id, true), (v) => (news = v)),
     ]);
     if (rg === rgen) reloading = false;
@@ -233,14 +263,21 @@
         {/if}
 
         <!-- achievements: the first few, the rest in their own modal -->
+        {#snippet raBtn()}<button class="btn ghost rf" aria-disabled={raCool} title={raCool ? 'Just refreshed. Wait 30 seconds to refresh again.' : 'Ask RetroAchievements for fresh progress'} onclick={raRefresh}><Icon name="replay" size={14} /> Refresh</button>{/snippet}
+        {#if emu && raNote}
+          <section class="sec ach"><div class="h"><h3>Achievements</h3>{@render raBtn()}</div><p class="lab" role="status">{raNote}</p></section>
+        {/if}
         {#if ach && ach.total > 0}
           <section class="sec ach">
             <div class="h"><h3>Achievements</h3>{#if ach.list.length > PREVIEW}<button class="btn ghost more" aria-haspopup="dialog" aria-label="View all {ach.list.length} achievements" onclick={() => (allAch = true)}>View all</button>{/if}</div>
+            {#if ach.source === 'retroachievements'}
+              <p class="lab ra">{ach.unlocked} of {ach.total} unlocked, {ach.pointsUnlocked ?? 0} of {ach.pointsTotal ?? 0} points · <a href={ach.url} target="_blank" rel="noopener noreferrer">RetroAchievements</a> {@render raBtn()}</p>
+            {/if}
             <ul class="alist">
               {#each ach.list.slice(0, PREVIEW) as a (a.id)}
                 <li class:locked={a.unlockedAt === null}>
                   {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}
-                  <span><b>{a.name}</b>{#if a.description}<small>{a.description}</small>{/if}</span>
+                  <span><b>{a.name}</b>{#if a.hardcore}<small class="hc">Hardcore</small>{/if}{#if a.description}<small>{a.description}</small>{/if}</span>
                 </li>
               {/each}
             </ul>
@@ -309,5 +346,7 @@
   .news { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
   .news li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; line-height: 1.4; }
   .news a:hover { text-decoration: underline; }
+  .hc { font-size: 11px; font-weight: 600; color: var(--accent, var(--fg)); }
+  .ra { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .pb { flex: none; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); }
 </style>
