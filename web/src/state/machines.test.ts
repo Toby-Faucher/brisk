@@ -80,11 +80,14 @@ afterEach(() => {
 describe('routing', () => {
   it('routes_machine_scoped_paths_only_in_hub_mode', async () => {
     const { m, a, f } = await setup();
-    await a.api.host().catch(() => {});
-    expect(f.mock.calls.at(-1)![0]).toBe('/api/host'); // before the probe: untouched
+    const early = a.api.host(); // before the probe the route is unknown: held, never sent to the hub's own /api/host
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls(f, /\/api\/host/)).toBe(0);
     const stop = m.startMachines();
     await vi.advanceTimersByTimeAsync(0);
     expect(get(m.hub)).toBe(true);
+    await early;
+    expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/host');
     const routed = [
       '/api/host',
       '/api/games',
@@ -111,7 +114,7 @@ describe('routing', () => {
       '/api/other',
     ])
       expect(a.route(p)).toBe(p);
-    await a.api.gameInfo(5, true);
+    await a.api.gameInfo('5', true);
     expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/games/5/info?refresh=1');
     await a.api.prefs();
     expect(f.mock.calls.at(-1)![0]).toBe('/api/prefs');
@@ -130,6 +133,7 @@ describe('routing', () => {
 
   it('503_machine_is_off_is_an_error_not_denied', async () => {
     const { a, f } = await setup();
+    a.setRoute(null);
     f.mockImplementationOnce(async () => new Response('{"error":"machine is off"}', { status: 503 }));
     await expect(a.api.host()).rejects.toMatchObject({ status: 503, message: 'machine is off' });
     expect(get(a.denied)).toBe(false);

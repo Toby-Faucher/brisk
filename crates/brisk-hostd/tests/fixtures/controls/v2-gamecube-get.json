@@ -1,0 +1,21 @@
+{
+  "emulator": "dolphin",
+  "type": "gamecube",
+  "controller": "GameCube controller, port 1",
+  "source": "default",
+  "rev": "none",
+  "running": false,
+  "appliesOn": "next-launch",
+  "portReady": false,
+  "bindings": {
+    "a": "A", "b": "X", "x": "B", "y": "Y", "z": "RB", "start": "Menu",
+    "l": "LT", "r": "RT",
+    "ms": "Left stick", "cs": "Right stick", "dp": "D-pad"
+  },
+  "deadZone": { "ms": 0, "cs": 0 },
+  "custom": {
+    "a": false, "b": false, "x": false, "y": false, "z": false, "start": false,
+    "l": false, "r": false,
+    "ms": false, "cs": false, "dp": false
+  }
+}

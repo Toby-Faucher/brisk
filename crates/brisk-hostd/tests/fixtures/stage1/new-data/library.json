@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "games": [
+    {
+      "id": "emu:dolphin:mario-kart-wii",
+      "emulator": "dolphin",
+      "file": "/games/Wii/mkw.iso",
+      "name": "Mario Kart Wii",
+      "source": "manual",
+      "legacyId": 3907440760
+    },
+    {
+      "id": "emu:dolphin:super-smash-bros-melee",
+      "emulator": "dolphin",
+      "file": "/games/GameCube/melee.iso",
+      "name": "Super Smash Bros. Melee",
+      "source": "manual",
+      "legacyId": 3947673316
+    },
+    {
+      "id": "emu:dolphin:mario-kart-wii~2",
+      "emulator": "dolphin",
+      "file": "/games/Wii/mkw-copy.iso",
+      "name": "Mario Kart: Wii!",
+      "source": "manual",
+      "legacyId": 3800863331
+    }
+  ]
+}

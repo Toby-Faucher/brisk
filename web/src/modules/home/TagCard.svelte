@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   import { games } from '../../state/games';
+  import { gameKey } from '../../state/gameId';
   import { notes } from '../../state/notes';
   import Card from '../../ui/Card.svelte';
   import { filterByTag } from '../library/library';
@@ -19,7 +21,7 @@
     <h4><TagChip color={tag.color} symbol={tag.symbol} name={tag.name} /></h4>
     {#if tag.note.trim()}<p class="note">{tag.note}</p>{/if}
     {#if list.length}
-      <div class="covers">{#each list.slice(0, 8) as g (g.appid)}<img src={g.cover} alt="" loading="lazy" decoding="async" />{/each}</div>
+      <div class="covers">{#each list.slice(0, 8) as g (gameKey(g))}<img {@attach artSrc(g.cover)} alt="" loading="lazy" decoding="async" />{/each}</div>
       <div class="lab">{list.length} {list.length === 1 ? 'game' : 'games'}</div>
     {:else}
       <div class="lab">No games yet</div>

@@ -1,9 +1,10 @@
 import type { Game } from '../state/api';
+import { gameKey } from '../state/gameId';
 import type { Notes } from '../state/notes';
 import { filterByTag, fold, pickRandom, searchGames, SMART_TAGS } from '../modules/library/library';
 import type { CommandItem } from './registry';
 
-const openGame = (appid: number) => `/library?open=${appid}`;
+const openGame = (g: Game) => `/library?open=${encodeURIComponent(gameKey(g))}`;
 const backlogGames = (games: Game[]) => filterByTag(games, { tags: {}, games: {} }, 'auto-backlog');
 
 /** "Smart tag: <name> (n)" only while a game matches, then "Tag: <yours>" for every tag you made. Both open the Library filtered. */
@@ -28,7 +29,7 @@ export function surpriseEntry(games: Game[], go: (path: string) => void, rnd: ()
     label: 'Surprise me',
     hint: 'Backlog',
     icon: 'search',
-    run: () => go(openGame(pickRandom(backlogGames(games), rnd)!.appid)),
+    run: () => go(openGame(pickRandom(backlogGames(games), rnd)!)),
   };
 }
 
@@ -37,5 +38,5 @@ export function openEntries(games: Game[], query: string, go: (path: string) => 
   if (!fold(query)) return [];
   return searchGames(games, query)
     .slice(0, cap)
-    .map((g) => ({ id: `open:${g.appid}`, label: `Open ${g.name}`, icon: 'lib', run: () => go(openGame(g.appid)) }));
+    .map((g) => ({ id: `open:${gameKey(g)}`, label: `Open ${g.name}`, icon: 'lib', run: () => go(openGame(g)) }));
 }

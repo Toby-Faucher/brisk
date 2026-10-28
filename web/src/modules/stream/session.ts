@@ -116,12 +116,12 @@ export class StreamSession {
     if (!(await this.open(info, gen)) && gen === this.gen) await this.retry(gen);
   }
 
-  /** New launch parameters: hostd restarts the bridge (same game, so no appid) and we reconnect. */
+  /** New launch parameters: hostd restarts the bridge (same game, so no game) and we reconnect. */
   async changeQuality(req: StreamReq) {
     const gen = ++this.gen;
     this.end();
     this.state.set('connecting');
-    const { appid: _, ...rest } = req;
+    const { game: _, ...rest } = req;
     // A preset change keeps the live codec; only the Advanced panel names one.
     const codec = rest.codec ?? this.info?.codec ?? undefined;
     let info: StreamInfo;

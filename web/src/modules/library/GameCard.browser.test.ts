@@ -5,6 +5,7 @@ import { navigate } from 'astro:transitions/client';
 import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 import { notes } from '../../state/notes';
+import { quitting } from '../../shell/QuitDialog.svelte';
 
 const game: Game = {
   appid: 400,
@@ -106,6 +107,83 @@ describe('GameCard', () => {
     expect(chip.querySelectorAll('.tc')).toHaveLength(3);
     expect(chip.textContent).toContain('+2');
     expect(chip.querySelector('.nm')).not.toBeNull();
+    notes.set({ tags: {}, games: {} });
+  });
+});
+
+describe('GameCard lift', () => {
+  // The harness runs with reduced motion, so the lift itself is off here (and must stay off for Quit too).
+  it('Quit sits inside the element that lifts, which is off under reduced motion', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, running: true }, onpick: vi.fn() } });
+    const card = page.getByRole('button', { name: /^Portal, running/ }).element() as HTMLElement;
+    const quit = page.getByRole('button', { name: 'Quit Portal' }).element() as HTMLElement;
+    const wrap = quit.closest('.wrap') as HTMLElement;
+    expect(wrap.contains(card)).toBe(true);
+    const rules = [...document.styleSheets].flatMap((s) => [...s.cssRules]);
+    const lift = (r: CSSRule): r is CSSStyleRule =>
+      r instanceof CSSStyleRule && r.selectorText.includes('.wrap') && r.selectorText.includes(':hover');
+    expect(rules.some((r) => lift(r) && r.style.transform.includes('scale'))).toBe(true);
+    await userEvent.hover(quit);
+    expect(getComputedStyle(wrap).transform).toBe('none');
+    await userEvent.tab();
+    expect(getComputedStyle(wrap).transform).toBe('none');
+  });
+});
+
+describe('GameCard quit spinner', () => {
+  it('shows a spinner while the quit is pending and keeps the button size', async () => {
+    await render(GameCard, { props: { game: { ...game, installed: true, running: true }, onpick: vi.fn() } });
+    const btn = page.getByRole('button', { name: 'Quit Portal' }).element() as HTMLElement;
+    const before = btn.getBoundingClientRect();
+    expect(btn.querySelector('[data-testid=quit-spinner]')).toBeNull();
+    quitting.set(new Set(['400']));
+    await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    expect(btn.getAttribute('aria-label')).toBe('Quitting Portal');
+    const after = btn.getBoundingClientRect();
+    expect([after.width, after.height]).toEqual([before.width, before.height]);
+    quitting.set(new Set());
+  });
+});
+
+describe('GameCard with a new hostd game', () => {
+  const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false };
+  const emu: Game = {
+    ...game,
+    appid: 3907440760,
+    id: 'emu:dolphin:mario-kart-wii',
+    source: 'emu',
+    caps,
+    emulator: 'dolphin',
+    name: 'Mario Kart Wii',
+    installed: true,
+    running: true,
+  };
+
+  it('is keyed by its id, shows Quit, and the spinner follows the id key, not the number', async () => {
+    const { container } = await render(GameCard, { props: { game: emu, onpick: vi.fn() } });
+    expect(container.querySelector('[data-gid="emu:dolphin:mario-kart-wii"]')).not.toBeNull();
+    const btn = page.getByRole('button', { name: 'Quit Mario Kart Wii' }).element() as HTMLElement;
+    quitting.set(new Set(['3907440760']));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(btn.querySelector('[data-testid=quit-spinner]')).toBeNull(); // the old number is not its key
+    quitting.set(new Set(['emu:dolphin:mario-kart-wii']));
+    await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
+    quitting.set(new Set());
+  });
+
+  it('labels a title card with the disc system, not the emulator', async () => {
+    const { container } = await render(GameCard, { props: { game: { ...emu, running: false, system: 'gamecube' }, onpick: vi.fn() } });
+    expect(container.querySelector('.badge')?.textContent).toBe('GameCube');
+  });
+
+  it('reads its tags from a note kept under the old number until the hub remaps it', async () => {
+    notes.set({
+      tags: { a: { name: 'Party', color: 'teal', symbol: 'users', note: '' } },
+      games: { '3907440760': { note: 'n', tags: ['a'] } },
+    });
+    await render(GameCard, { props: { game: { ...emu, legacyId: '3907440760', running: false }, onpick: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: /tags: Party.*, note/ })).toBeInTheDocument();
     notes.set({ tags: {}, games: {} });
   });
 });

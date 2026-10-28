@@ -21,7 +21,11 @@ pub type Point = [f64; 4];
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionRec {
+    /// Old numeric id (an emulator game's old hash), kept for one release.
     pub appid: Option<u32>,
+    /// `steam:620`, `emu:dolphin:...`; absent on rows from before the new ids until startup adds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_id: Option<String>,
     pub name: String,
     /// Unix milliseconds.
     pub started: u64,

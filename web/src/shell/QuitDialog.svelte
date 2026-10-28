@@ -31,9 +31,9 @@
 
 <Dialog.Root bind:open={() => !!$ask, (v) => !v && flow.cancel()}>
   <Dialog.Portal>
-    <Dialog.Overlay class="cm-dim" />
+    <Dialog.Overlay class="cm-dim rs-dim" />
     <Dialog.Content
-      class="rs glass"
+      class="rs rs-q glass"
       onCloseAutoFocus={(e) => {
         if (back?.isConnected) {
           e.preventDefault();
@@ -57,6 +57,9 @@
   /* Confirm dialogs (this one and Machines' restart). Mounted on every page, so global here. */
   :global(.rs) { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 20px; z-index: 41; display: grid; gap: 6px; }
   /* enter/exit: base.css (CSS only, so fine on /stream too) */
+  /* above any panel that opens it (the game detail is .rs at 41, its dim 40; the Achievements dim 42): the confirm's portal can sit earlier in <body> than the panel's */
+  :global(.cm-dim.rs-dim) { z-index: 50; }
+  :global(.rs.rs-q) { z-index: 51; }
   :global(.rs-t) { font-size: 16px; font-weight: 700; /* rendered as 700 with the old static fonts; 650 would be a new, lighter weight */ }
   :global(.rs-a) { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 </style>

@@ -3,14 +3,18 @@
   // quick facts, notes and tags) stays put and the right pane scrolls (description, screenshots, the host's screenshots
   // and saves, achievements, news, stream history). Under 760 px it is one scrolling column.
   import { Dialog } from 'bits-ui';
-  import { api, type Game, type GameInfo, type Achievements, type News, type GameLocal } from '../../state/api';
-  import { savesLine } from './library';
+  import { api, type Game, type GameInfo, type Achievements, type RaAnswer, type News, type GameLocal, type GameSaves } from '../../state/api';
+  import { savesLine, saveRow } from './library';
+  import { gameCaps, gameKey } from '../../state/gameId';
+  import { raView, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
   import { toast } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
   import StreamHistory from './StreamHistory.svelte';
   import Lightbox from './Lightbox.svelte';
   import AchievementsDialog from './AchievementsDialog.svelte';
+  import ControlsSummary from './ControlsSummary.svelte';
+  import GameLaunch from '../launch/GameLaunch.svelte';
 
   let { game, busy, onclose, onplay, oninstall }: { game: Game; busy: boolean; onclose: () => void; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
 
@@ -18,36 +22,67 @@
   let open = $state(true);
   const back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-  // Store facts load when the panel opens (never for the grid); keyed by appid so a games refresh does not refetch.
-  const appid = $derived(game.appid);
+  // Store facts load when the panel opens (never for the grid); keyed by key so a games refresh does not refetch.
+  const key = $derived(gameKey(game));
+  const caps = $derived(gameCaps(game));
   let info = $state<GameInfo | null | 'none'>(null);
   $effect(() => {
-    const id = appid;
+    const id = key;
     info = null;
     api.gameInfo(id).then(
-      (v) => id === appid && (info = v.available ? v : 'none'),
-      () => id === appid && (info = 'none'),
+      (v) => id === key && (info = v.available ? v : 'none'),
+      () => id === key && (info = 'none'),
     );
   });
 
-  // Achievements load alongside; a failure or total 0 just hides the section.
+  // Achievements load alongside; a failure or total 0 just hides the section. An emulator game (no Install) asks
+  // RetroAchievements: the answer carries a `state`, shown as `ach` (ok) or `raNote` (anything else but off).
+  const emu = $derived(!caps.install);
   let ach = $state<Achievements | null>(null);
+  let raNote = $state<string | null>(null);
+  const showRa = (v: Achievements | RaAnswer) => ((({ ach, note: raNote } = raView(v))), v);
   $effect(() => {
-    const id = appid;
+    const id = key;
     ach = null;
-    api.gameAchievements(id).then(
-      (v) => id === appid && (ach = v),
-      () => {},
-    );
+    raNote = null;
+    if (caps.achievements)
+      api.gameAchievements(id).then(
+        (v) => id === key && showRa(v),
+        () => {},
+      );
   });
+  // While an emulator game runs, re-read its progress every 45 s (read-only; stops with the panel or the game).
+  $effect(() => {
+    const id = key;
+    if (!(caps.achievements && emu && game.running)) return;
+    return startPoll(() => api.gameAchievements(id).then((v) => (id === key ? showRa(v) : v)));
+  });
+  // The RetroAchievements Refresh: 30 s between clicks, as the host allows.
+  let raCool = $state(false);
+  let raTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    key;
+    raCool = false;
+    return () => clearTimeout(raTimer);
+  });
+  function raRefresh() {
+    if (raCool) return;
+    raCool = true;
+    raTimer = setTimeout(() => (raCool = false), REFRESH_COOLDOWN_MS);
+    const id = key;
+    api.gameAchievements(id, true).then(
+      (v) => id === key && showRa(v),
+      () => id === key && toast('Could not refresh RetroAchievements', { error: true }),
+    );
+  }
 
   // Patch notes: same pattern; no items hides the section.
   let news = $state<News | null>(null);
   $effect(() => {
-    const id = appid;
+    const id = key;
     news = null;
     api.gameNews(id).then(
-      (v) => id === appid && (news = v),
+      (v) => id === key && (news = v),
       () => {},
     );
   });
@@ -58,7 +93,7 @@
   let coolTimer: ReturnType<typeof setTimeout> | undefined;
   let rgen = 0; // bumped per game: a refresh of the previous game neither cools nor blocks this one
   $effect(() => {
-    appid;
+    key;
     rgen++;
     clearTimeout(coolTimer);
     cool = reloading = false;
@@ -68,17 +103,17 @@
     if (cool || reloading || info === null) return; // not while the plain load runs: its slower answer could overwrite ours
     cool = reloading = true;
     coolTimer = setTimeout(() => (cool = false), 10_000);
-    const id = appid;
+    const id = key;
     const rg = rgen;
     let fails = 0;
-    const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === appid && set(v), () => void fails++); // a failure keeps what is shown
+    const mine = <T,>(p: Promise<T>, set: (v: T) => void) => p.then((v) => id === key && set(v), () => void fails++); // a failure keeps what is shown
     await Promise.all([
       mine(api.gameInfo(id, true), (v) => (info = v.available ? v : 'none')),
-      mine(api.gameAchievements(id, true), (v) => (ach = v)),
+      ...(caps.achievements && !emu ? [mine(api.gameAchievements(id, true), (v) => (ach = v as Achievements))] : []),
       mine(api.gameNews(id, true), (v) => (news = v)),
     ]);
     if (rg === rgen) reloading = false;
-    if (fails && id === appid) toast('Could not refresh Steam data', { error: true });
+    if (fails && id === key) toast('Could not refresh Steam data', { error: true });
   }
 
   // Screenshots and saves from the host's Steam folder. Images need the auth headers, so each is fetched to an
@@ -92,13 +127,14 @@
   let active = 0;
   const asked = new Set<string>();
   $effect(() => {
-    const id = appid;
+    const id = key;
     const g = ++gen;
     local = null;
-    api.gameLocal(id).then(
-      (v) => g === gen && (local = v),
-      () => {},
-    );
+    if (caps.screenshots)
+      api.gameLocal(id).then(
+        (v) => g === gen && (local = v),
+        () => {},
+      );
     return () => {
       gen++;
       queue = [];
@@ -115,7 +151,7 @@
       const g = gen;
       active++;
       api
-        .screenshot(appid, name)
+        .screenshot(key, name)
         .then(
           (u) => (g === gen ? (made.push(u), (shotUrl[name] = u)) : URL.revokeObjectURL(u)),
           () => g === gen && (asked.delete(name), (shotBad[name] = true)),
@@ -147,7 +183,35 @@
     io.observe(node);
     return () => io.disconnect();
   };
+  // Stored stream screenshots (emulator games) can be deleted, after a confirm on the tile.
+  let delAsk = $state<string | null>(null);
+  async function deleteShot(name: string) {
+    delAsk = null;
+    try {
+      await api.deleteShot(key, name);
+      if (shotUrl[name]) URL.revokeObjectURL(shotUrl[name]);
+      delete shotUrl[name];
+      if (local) local = { ...local, screenshots: local.screenshots.filter((n) => n !== name) };
+      toast('Screenshot deleted');
+    } catch (e) {
+      toast(`Couldn't delete the screenshot: ${(e as Error).message}`, { error: true });
+    }
+  }
   const saves = $derived(savesLine(local?.saves ?? null));
+
+  // Emulator saves and save states (read-only). Only games with caps.saves ask; an old hostd never does.
+  let emuSaves = $state<GameSaves | null>(null);
+  $effect(() => {
+    const id = key;
+    let live = true;
+    emuSaves = null;
+    if (caps.saves)
+      api.gameSaves(id).then(
+        (v) => live && (emuSaves = v),
+        () => {},
+      );
+    return () => (live = false);
+  });
 
 
   // The lightbox: which list and where in it. Store shots use the full-size URL when the server sent one; the host's
@@ -181,10 +245,14 @@
         }
       }}
     >
-      <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} /></div>
+      <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} onremoved={() => (open = false)} /></div>
 
       <div class="gd-main">
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>
+        <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no Dolphin -->
+        {#if caps.controls}{#key key}<ControlsSummary />{/key}{/if}
+        <!-- Steam and emulator games: wrappers, environment and arguments, per field default or override -->
+        {#if caps.launchOptions}{#key key}<GameLaunch {game} />{/key}{/if}
         <!-- store description and screenshots -->
         <section class="sec" aria-busy={info === null}>
           {#if info === null}
@@ -213,6 +281,16 @@
                     <button class="shot" aria-label="Open {localShots[i].alt}" aria-haspopup="dialog" onclick={() => show('local', i)}>
                       {#if shotUrl[name]}<img src={shotUrl[name]} alt={localShots[i].alt} decoding="async" />{:else}<span class="ph" {@attach lazy(name)}></span>{/if}
                     </button>
+                    {#if emu}
+                      {#if delAsk === name}
+                        <div class="del" role="group" aria-label="Delete screenshot {i + 1}?">
+                          <button class="btn ghost" onclick={() => deleteShot(name)}>Delete</button>
+                          <button class="btn ghost" onclick={() => (delAsk = null)}>Keep</button>
+                        </div>
+                      {:else}
+                        <button class="btn ghost delbtn" aria-label="Delete screenshot {i + 1}" onclick={() => (delAsk = name)}>Delete</button>
+                      {/if}
+                    {/if}
                     {#if shotBad[name]}<button class="btn ghost retry" aria-label="Retry loading screenshot {i + 1}" onclick={(e) => retryShot(e, name)}>Retry</button>{/if}
                   </div>
                 {/each}
@@ -222,15 +300,42 @@
           </section>
         {/if}
 
+        <!-- emulator saves and save states, read-only -->
+        {#if caps.saves && emuSaves}
+          <section class="sec">
+            <h3>Saves</h3>
+            {#if emuSaves.items.length}
+              <ul class="alist saves" aria-label="Saves">
+                {#each emuSaves.items as it (it.path)}
+                  {@const r = saveRow(it)}
+                  <li>
+                    <Icon name={r.icon} size={20} />
+                    <span><b>{r.title}</b><small>{r.detail}</small>{#if r.note}<small>{r.note}</small>{/if}</span>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="lab">Save states and saves show up here after you play.</p>
+            {/if}
+          </section>
+        {/if}
+
         <!-- achievements: the first few, the rest in their own modal -->
+        {#snippet raBtn()}<button class="btn ghost rf" aria-disabled={raCool} title={raCool ? 'Just refreshed. Wait 30 seconds to refresh again.' : 'Ask RetroAchievements for fresh progress'} onclick={raRefresh}><Icon name="replay" size={14} /> Refresh</button>{/snippet}
+        {#if emu && raNote}
+          <section class="sec ach"><div class="h"><h3>Achievements</h3>{@render raBtn()}</div><p class="lab" role="status">{raNote}</p></section>
+        {/if}
         {#if ach && ach.total > 0}
           <section class="sec ach">
             <div class="h"><h3>Achievements</h3>{#if ach.list.length > PREVIEW}<button class="btn ghost more" aria-haspopup="dialog" aria-label="View all {ach.list.length} achievements" onclick={() => (allAch = true)}>View all</button>{/if}</div>
+            {#if ach.source === 'retroachievements'}
+              <p class="lab ra">{ach.unlocked} of {ach.total} unlocked, {ach.pointsUnlocked ?? 0} of {ach.pointsTotal ?? 0} points · <a href={ach.url} target="_blank" rel="noopener noreferrer">RetroAchievements</a> {@render raBtn()}</p>
+            {/if}
             <ul class="alist">
               {#each ach.list.slice(0, PREVIEW) as a (a.id)}
                 <li class:locked={a.unlockedAt === null}>
                   {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}
-                  <span><b>{a.name}</b>{#if a.description}<small>{a.description}</small>{/if}</span>
+                  <span><b>{a.name}</b>{#if a.hardcore}<small class="hc">Hardcore</small>{/if}{#if a.description}<small>{a.description}</small>{/if}</span>
                 </li>
               {/each}
             </ul>
@@ -249,7 +354,7 @@
           </section>
         {/if}
 
-        <StreamHistory {appid} />
+        <StreamHistory {game} />
       </div>
 
       {#if box}
@@ -284,6 +389,8 @@
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
   .tile { position: relative; }
+  .delbtn, .del { position: absolute; inset: 8px 8px auto auto; padding: 4px 8px; min-height: 24px; background: var(--panel2); display: flex; gap: 6px; }
+  .del { padding: 4px; }
   .retry { position: absolute; inset: auto 8px 8px auto; padding: 4px 10px; font-size: 12.5px; min-height: 24px; background: var(--panel2); }
   .shot { width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; display: block; }
   .shot img, .shot .ph { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--panel); transition: filter .2s; }
@@ -292,6 +399,7 @@
   .more { padding: 4px 10px; font-size: 12.5px; min-height: 24px; }
   .alist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
   .alist li { display: flex; gap: 10px; align-items: center; }
+  .alist.saves { grid-template-columns: 1fr; }
   .alist li.locked { opacity: .6; }
   .alist img, .alist .ph { width: 40px; height: 40px; flex: none; border-radius: 6px; background: var(--panel); }
   .alist span:not(.ph) { display: grid; min-width: 0; }
@@ -299,5 +407,7 @@
   .news { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
   .news li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; line-height: 1.4; }
   .news a:hover { text-decoration: underline; }
+  .hc { font-size: 11px; font-weight: 600; color: var(--accent, var(--fg)); }
+  .ra { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .pb { flex: none; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); }
 </style>

@@ -76,7 +76,7 @@
     if (!p) return;
     const jobs: (() => Promise<unknown>)[] = [
       ...Object.entries(p.tags).map(([id, t]) => () => api.putTag(id, t)),
-      ...Object.entries(p.games).map(([appid, g]) => () => api.putGameNote(Number(appid), g)),
+      ...Object.entries(p.games).map(([key, g]) => () => api.putGameNote(key, g)),
     ];
     busy = running = true;
     stop = false;

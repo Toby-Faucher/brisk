@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { Game } from '../../state/api';
 import Hero from './Hero.svelte';
+import { quitting } from '../../shell/QuitDialog.svelte';
 
 const game: Game = {
   appid: 620,
@@ -45,5 +46,36 @@ describe('Hero art', () => {
     await expect.poll(() => logo.classList.contains('on')).toBe(true);
     expect(hero.querySelector('h3')!.classList.contains('vh')).toBe(true);
     expect(hero.querySelector('h3')!.textContent).toContain('Portal 2');
+  });
+});
+
+describe('Hero quit spinner', () => {
+  it('swaps the Quit label for a spinner without resizing the button', async () => {
+    const { container } = await render(Hero, {
+      props: { game: { ...game, running: true }, busy: false, onplay: () => {}, ondetails: () => {} },
+    });
+    const btn = container.querySelector('button[aria-label="Quit Portal 2"]') as HTMLElement;
+    const before = btn.getBoundingClientRect();
+    quitting.set(new Set(['620']));
+    await expect.poll(() => btn.querySelector('[data-testid=quit-spinner]')).not.toBeNull();
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    expect(btn.getAttribute('aria-label')).toBe('Quitting Portal 2');
+    expect(btn.textContent).not.toContain('Quitting');
+    const after = btn.getBoundingClientRect();
+    expect([after.width, after.height]).toEqual([before.width, before.height]);
+    quitting.set(new Set());
+  });
+});
+
+describe('Hero without art (emulator game)', () => {
+  const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', hero: '', cover: '', logo: '', emulator: 'dolphin' };
+  it('shows a title card cover with the system badge, the name as text, and no images', async () => {
+    const { container } = await render(Hero, { props: { game: emu, busy: false, onplay: () => {}, ondetails: () => {} } });
+    const hero = container.querySelector('.hero')!;
+    expect(hero.querySelector('img')).toBeNull();
+    expect(hero.querySelector('.art')).toBeNull();
+    expect(hero.querySelector('.cover .badge')!.textContent).toBe('Wii');
+    expect(hero.querySelector('.cover .name')!.textContent).toBe('Mario Kart Wii');
+    expect(hero.querySelector('h3')!.textContent).toContain('Mario Kart Wii');
   });
 });

@@ -45,6 +45,7 @@
               {#if a.icon}<img src={a.icon} alt="" loading="lazy" decoding="async" />{:else}<span class="ph"></span>{/if}
               <span class="t">
                 <b>{a.name}</b>
+                {#if a.hardcore}<small class="hc">Hardcore</small>{/if}
                 {#if a.description}<small>{a.description}</small>{/if}
                 <small class="when">{a.unlockedAt === null ? 'Locked' : `Unlocked ${day(a.unlockedAt)}`}</small>
               </span>

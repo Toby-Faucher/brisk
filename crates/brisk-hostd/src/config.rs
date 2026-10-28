@@ -30,8 +30,24 @@ pub struct Config {
     pub downloads_dir: PathBuf,
     /// Where running games are looked up; tests point it at a fake.
     pub proc_dir: PathBuf,
+    /// Games folder with one sub-folder per system (`BRISK_GAMES_DIR`, default `~/Games`).
+    pub games_dir: PathBuf,
+    /// Scan the games folder once at startup (`BRISK_SCAN_ON_START=1`).
+    pub scan_on_start: bool,
     /// Hub machine list (`BRISK_MACHINES_FILE`); read by main.rs, absent = single host.
     pub machines_file: PathBuf,
+    /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
+    pub dolphin_dir: PathBuf,
+    /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
+    pub dolphin_user_dir: PathBuf,
+    /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
+    pub playtime_poll: std::time::Duration,
+    /// RetroAchievements: line 1 user name, line 2 Web API key (`BRISK_RA_KEY_FILE`). Missing = off.
+    pub ra_key_file: PathBuf,
+    /// `BRISK_RA_BASE`.
+    pub ra_base: String,
+    /// Least gap between two RetroAchievements requests; tests set it to zero.
+    pub ra_min_interval: std::time::Duration,
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
@@ -68,9 +84,36 @@ impl Config {
             service: std::env::var_os("INVOCATION_ID").is_some(),
             downloads_dir: env_path("BRISK_DOWNLOADS_DIR")
                 .unwrap_or_else(|| home.join("Downloads/brisk")),
+            games_dir: env_path("BRISK_GAMES_DIR").unwrap_or_else(|| home.join("Games")),
+            scan_on_start: std::env::var("BRISK_SCAN_ON_START").is_ok_and(|v| v == "1"),
             proc_dir: "/proc".into(),
             machines_file: env_path("BRISK_MACHINES_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/machines.json")),
+            dolphin_dir: env_path("BRISK_DOLPHIN_DIR").unwrap_or_else(|| {
+                env_path("XDG_CONFIG_HOME")
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or_else(|| home.join(".config"))
+                    .join("dolphin-emu")
+            }),
+            // Dolphin's own rule: ~/.dolphin-emu if it exists, else XDG data home.
+            dolphin_user_dir: env_path("BRISK_DOLPHIN_USER_DIR").unwrap_or_else(|| {
+                let legacy = home.join(".dolphin-emu");
+                if legacy.is_dir() {
+                    return legacy;
+                }
+                env_path("XDG_DATA_HOME")
+                    .filter(|p| p.is_absolute())
+                    .unwrap_or_else(|| home.join(".local/share"))
+                    .join("dolphin-emu")
+            }),
+            playtime_poll: crate::playtime::poll_from(
+                std::env::var("BRISK_PLAYTIME_POLL_S").ok().as_deref(),
+            ),
+            ra_key_file: env_path("BRISK_RA_KEY_FILE")
+                .unwrap_or_else(|| home.join(".config/brisk/retroachievements")),
+            ra_base: std::env::var("BRISK_RA_BASE")
+                .unwrap_or_else(|_| crate::retroachievements::DEFAULT_BASE.into()),
+            ra_min_interval: std::time::Duration::from_secs(1),
         }
     }
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   import { onMount } from 'svelte';
   import { navigate } from 'astro:transitions/client';
   import { games } from '../../state/games';
@@ -18,7 +19,7 @@
     if (!g) return;
     busy = true;
     try {
-      await startGame(g.appid, toast);
+      await startGame(g, toast);
       await navigate('/stream');
     } catch (e) {
       toast(`Could not start ${g.name}: ${(e as Error).message}`, { error: true });
@@ -31,7 +32,7 @@
 <Card cols={3}>
   <h4><Icon name="stream" color="var(--c-stream)" size={16} /> Resume</h4>
   <div class="row" class:fade-in={g}>
-    {#if g}<img class="cover" src={g.cover} alt="" />{:else}<div class="cover"></div>{/if}
+    {#if g}<img class="cover" {@attach artSrc(g.cover)} alt="" />{:else}<div class="cover"></div>{/if}
     <div class="txt">
       <b>{g?.name ?? DASH}</b>
       <div class="lab">{g ? (g.running ? 'Running' : `Played ${fmtAgo(g.lastPlayed! * 1000)}`) : 'Last game is not available here'}</div>

@@ -2,6 +2,8 @@
 //! The API key is read from `cfg.steam_key_file` per fetch, never stored or logged.
 
 use crate::config::Config;
+pub use crate::game::Game;
+use crate::game::GameId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -9,46 +11,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const OWNED_TTL_S: u64 = 6 * 3600;
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Game {
-    pub appid: u32,
-    pub name: String,
-    pub installed: bool,
-    pub size_bytes: Option<u64>,
-    pub last_played: Option<u64>,
-    pub playtime_min: u64,
-    /// Minutes played in the last two weeks (Steam leaves the field out when 0).
-    pub playtime2wk_min: u64,
-    pub cover: String,
-    /// Wide library art (404s for some games: the UI falls back) and the title logo.
-    pub hero: String,
-    pub logo: String,
-    /// Steam is running it now (its launcher reaper is alive).
-    pub running: bool,
-    /// Achievement counts from the cache (filled by the background warm); None until known.
-    pub ach_unlocked: Option<u32>,
-    pub ach_total: Option<u32>,
-    /// Installed, and a patch note newer than the last play (from the news cache).
-    pub updated: bool,
-    /// Steam's own update state of an installed game: "needed" or "running" (from StateFlags).
-    pub update: Option<String>,
-    /// "full" or "partial", from the info cache (None until warmed or when the Store has none).
-    pub controller: Option<String>,
-    /// Co-op or Remote Play Together, from the info cache.
-    pub coop: bool,
-}
-
 #[derive(Clone, Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GamesResult {
     pub games: Vec<Game>,
     pub owned_available: bool,
+    /// 1: games carry string `id`s and the id routes work. An older hostd leaves it out.
+    pub id_scheme: u32,
 }
 
 impl GamesResult {
-    pub fn is_known_appid(&self, id: u32) -> bool {
-        self.games.iter().any(|g| g.appid == id)
+    pub fn find(&self, id: &GameId) -> Option<&Game> {
+        self.games.iter().find(|g| g.id == *id)
     }
 }
 
@@ -272,7 +246,7 @@ pub(crate) fn now() -> u64 {
 const MAX_BODY: u64 = 8 << 20;
 
 /// HTTPS only, except plain http to loopback (the tests' mock server).
-fn base_ok(base: &str) -> bool {
+pub(crate) fn base_ok(base: &str) -> bool {
     if base.starts_with("https://") {
         return true;
     }
@@ -285,7 +259,7 @@ fn base_ok(base: &str) -> bool {
 
 /// Error text safe to log: only the kind of failure. ureq's own messages can embed the URL, and
 /// the URL carries the key, so they are never passed on.
-fn safe_err(e: &ureq::Error) -> String {
+pub(crate) fn safe_err(e: &ureq::Error) -> String {
     match e {
         ureq::Error::StatusCode(c) => format!("HTTP {c}"),
         ureq::Error::Timeout(_) => "timed out".into(),
@@ -304,7 +278,23 @@ fn safe_err(e: &ureq::Error) -> String {
 /// Key safety: ureq logs every request through the `log` crate, and at trace level (and in some
 /// debug lines) with the full path and query, i.e. `key=`. hostd installs no `log` logger, so
 /// nothing is printed; never add one (env_logger, tracing-log, ...) without filtering ureq out.
-fn https_get(url: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn https_get(url: &str) -> Result<Vec<u8>, String> {
+    get_limited(url, None, MAX_BODY)
+}
+
+/// `https_get` with an optional bearer token (sent only as the Authorization header, never in the
+/// URL) and a caller-chosen body cap. Errors still carry only the kind of failure.
+pub(crate) fn get_limited(url: &str, bearer: Option<&str>, max: u64) -> Result<Vec<u8>, String> {
+    get_limited_for(url, bearer, max, Duration::from_secs(15))
+}
+
+/// `get_limited` with its own total time limit (a database download needs minutes, not 15 s).
+pub(crate) fn get_limited_for(
+    url: &str,
+    bearer: Option<&str>,
+    max: u64,
+    total: Duration,
+) -> Result<Vec<u8>, String> {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     let tls = TlsConfig::builder()
         .provider(TlsProvider::Rustls)
@@ -318,16 +308,20 @@ fn https_get(url: &str) -> Result<Vec<u8>, String> {
         .proxy(None)
         .max_redirects(0)
         .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_global(Some(Duration::from_secs(15)))
+        .timeout_global(Some(total))
         .build()
         .into();
-    let mut r = agent.get(url).call().map_err(|e| safe_err(&e))?;
+    let mut req = agent.get(url);
+    if let Some(t) = bearer {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+    let mut r = req.call().map_err(|e| safe_err(&e))?;
     if r.status() != 200 {
         return Err(format!("HTTP {}", r.status().as_u16()));
     }
     r.body_mut()
         .with_config()
-        .limit(MAX_BODY)
+        .limit(max)
         .read_to_vec()
         .map_err(|e| safe_err(&e))
 }
@@ -458,6 +452,16 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
     }
 }
 
+/// `(cover, hero, logo)` URLs on Steam's CDN.
+fn steam_art(id: u32) -> (String, String, String) {
+    let art = |file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
+    (
+        art("library_600x900.jpg"),
+        art("library_hero.jpg"),
+        art("logo.png"),
+    )
+}
+
 pub async fn load_games(cfg: &Config) -> GamesResult {
     load_games_with(cfg, false).await
 }
@@ -470,31 +474,13 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let (owned, owned_available) = owned(cfg, refresh).await;
 
     let mut by_id: HashMap<u32, Game> = HashMap::new();
-    let art =
-        |id, file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
     for o in owned {
-        by_id.insert(
-            o.appid,
-            Game {
-                appid: o.appid,
-                name: o.name,
-                installed: false,
-                size_bytes: None,
-                last_played: (o.rtime_last_played > 0).then_some(o.rtime_last_played),
-                playtime_min: o.playtime_forever,
-                playtime2wk_min: o.playtime_2weeks,
-                cover: art(o.appid, "library_600x900.jpg"),
-                hero: art(o.appid, "library_hero.jpg"),
-                logo: art(o.appid, "logo.png"),
-                running: false,
-                ach_unlocked: None,
-                ach_total: None,
-                updated: false,
-                update: None,
-                controller: None,
-                coop: false,
-            },
-        );
+        let mut g = Game::steam(o.appid, &o.name);
+        g.last_played = (o.rtime_last_played > 0).then_some(o.rtime_last_played);
+        g.playtime_min = o.playtime_forever;
+        g.playtime2wk_min = o.playtime_2weeks;
+        (g.cover, g.hero, g.logo) = steam_art(o.appid);
+        by_id.insert(o.appid, g);
     }
     for i in installed {
         // Steam tools (runtimes, Proton) have manifests but are not games: the owned list is the
@@ -514,24 +500,10 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
         } {
             continue;
         }
-        let g = by_id.entry(i.appid).or_insert_with(|| Game {
-            appid: i.appid,
-            name: i.name.clone(),
-            installed: false,
-            size_bytes: None,
-            last_played: None,
-            playtime_min: 0,
-            playtime2wk_min: 0,
-            cover: art(i.appid, "library_600x900.jpg"),
-            hero: art(i.appid, "library_hero.jpg"),
-            logo: art(i.appid, "logo.png"),
-            running: false,
-            ach_unlocked: None,
-            ach_total: None,
-            updated: false,
-            update: None,
-            controller: None,
-            coop: false,
+        let g = by_id.entry(i.appid).or_insert_with(|| {
+            let mut g = Game::steam(i.appid, &i.name);
+            (g.cover, g.hero, g.logo) = steam_art(i.appid);
+            g
         });
         g.installed = i.state_flags & 4 != 0;
         g.update = i.update.clone();
@@ -586,6 +558,13 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }
     }
+    let mut emu = crate::emu::games(
+        &crate::emu::load(&cfg.data_dir),
+        &cfg.proc_dir,
+        &cfg.data_dir,
+    );
+    crate::ra_game::caps_on(cfg, &mut emu);
+    games.extend(emu);
     games.sort_by(|a, b| {
         b.last_played
             .cmp(&a.last_played)
@@ -594,6 +573,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     GamesResult {
         games,
         owned_available,
+        id_scheme: 1,
     }
 }
 

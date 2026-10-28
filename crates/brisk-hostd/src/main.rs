@@ -1,6 +1,7 @@
 //! brisk-hostd: the host agent behind the Brisk web UI. Binds 127.0.0.1:8443 only; reach it with
 //! `ssh -N -L 8443:127.0.0.1:8443 bawn` or through `tailscale serve` (docs/ui-notes.md, Hosting).
 //!   brisk-hostd [DIST_DIR]      (default ./web/dist, or BRISK_DIST)
+//!   brisk-hostd wrap <game id> -- <command...>   Steam launch option shim (wrap.rs)
 //! BRISK_STATIC=embed serves the build compiled in with `--features embed` (default: disk).
 //!
 //! Environment (read in config.rs unless noted):
@@ -17,9 +18,12 @@
 //!   BRISK_TLS_DIR          bridge certificate directory (default ~/.config/brisk/tls)
 //!   BRISK_DATA_DIR         sessions, prefs and caches (default ~/.local/share/brisk)
 //!   BRISK_DOWNLOADS_DIR    file drop target (default ~/Downloads/brisk)
+//!   BRISK_GAMES_DIR        games folder, one sub-folder per system (default ~/Games)
+//!   BRISK_SCAN_ON_START    `1` scans the games folder at startup
 //!   BRISK_STEAM_DIR        Steam install (default ~/.local/share/Steam)
 //!   BRISK_STEAM_KEY_FILE   Steam API key file (default ~/.config/brisk/steam-api-key)
 //!   BRISK_STEAM_API_BASE   Steam Web API base URL (default https://api.steampowered.com)
+//!   BRISK_PLAYTIME_POLL_S  playtime watcher poll seconds (default 15, min 5)
 //!   BRISK_SPAWN_SCOPE      `1` starts spawned programs in a systemd scope (host.rs)
 
 use brisk_hostd::config::{Config, load_secret, load_users, page_line};
@@ -33,6 +37,25 @@ use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::process::ExitCode {
+    // `brisk-hostd add <file> [--move|--copy|--link]` registers a local file and exits.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "add") {
+        let (code, msg) =
+            brisk_hostd::ingest::add_cmd(&Config::from_env("web/dist".into()), &args[1..]);
+        if code == 0 {
+            println!("{msg}");
+        } else {
+            eprintln!("{msg}");
+        }
+        return std::process::ExitCode::from(code as u8);
+    }
+    // The Steam launch option shim (wrap.rs): no server, no secret.
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.first().is_some_and(|a| a == "wrap") {
+        let data_dir = Config::from_env(PathBuf::new()).data_dir;
+        let code = brisk_hostd::wrap::run(&argv[1..], &data_dir, &mut brisk_hostd::wrap::real_exec);
+        return std::process::ExitCode::from(code);
+    }
     let dist = std::env::args_os()
         .nth(1)
         .or_else(|| std::env::var_os("BRISK_DIST"))
@@ -63,6 +86,8 @@ async fn main() -> std::process::ExitCode {
             cfg.allowed_users.join(", ")
         );
     }
+    // Game ids changed in Stage 1: rekey the data files before anything reads them (idempotent).
+    brisk_hostd::migrate::run(&cfg.data_dir);
     let l = match tokio::net::TcpListener::bind(cfg.listen).await {
         Ok(l) => l,
         Err(e) => {
@@ -90,7 +115,27 @@ async fn main() -> std::process::ExitCode {
     }
     state.hosts.refresh().await;
     state.clip.start_watch();
+    tokio::spawn(brisk_hostd::playtime::watch(
+        state.cfg.data_dir.clone(),
+        state.cfg.proc_dir.clone(),
+        state.cfg.playtime_poll,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    ));
     state.files.clean_partials();
+    state.uploads.clean_old();
+    if state.cfg.scan_on_start {
+        let cfg = state.cfg.clone();
+        let art = state.art.clone();
+        tokio::task::spawn_blocking(move || match brisk_hostd::ingest::scan_library(&cfg) {
+            Ok(r) => {
+                eprintln!("scan: {} new games", r.merged.added.len());
+                art.trigger_new(&cfg, &r.merged.added);
+            }
+            Err(e) => eprintln!("warning: startup scan: {e}"),
+        });
+    }
     let app = router(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
     // systemd (Type=notify): READY only once the router answers on the socket, then the watchdog.
     // Manual runs (no NOTIFY_SOCKET) skip all of it.

@@ -52,7 +52,8 @@ pub struct Notes {
     #[serde(default)]
     pub tags: BTreeMap<String, Tag>,
     #[serde(default)]
-    pub games: BTreeMap<u32, GameNote>,
+    /// Keyed by game id (`steam:620`).
+    pub games: BTreeMap<String, GameNote>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -169,7 +170,7 @@ impl NotesStore {
 
     /// Stores one game's note and tags (unknown and repeated tag ids dropped); a blank note with no
     /// tags removes the entry. Returns what was stored.
-    pub fn put_game(&self, appid: u32, g: GameNote) -> Result<GameNote, NotesError> {
+    pub fn put_game(&self, id: &str, g: GameNote) -> Result<GameNote, NotesError> {
         check_note(&g.note, GAME_NOTE_MAX)?;
         let mut out = GameNote {
             note: g.note,
@@ -185,15 +186,38 @@ impl NotesStore {
                 return Err(NotesError::Bad("a game can have at most 16 tags"));
             }
             if !keep(&out) {
-                n.games.remove(&appid);
-            } else if !n.games.contains_key(&appid) && n.games.len() >= self.max_games {
+                n.games.remove(id);
+            } else if !n.games.contains_key(id) && n.games.len() >= self.max_games {
                 return Err(NotesError::Full);
             } else {
-                n.games.insert(appid, out.clone());
+                n.games.insert(id.into(), out.clone());
             }
             Ok(())
         })?;
         Ok(out)
+    }
+
+    /// Moves entries from old game keys to new ones (`{old: new}`), keeping the file's `.pre-ids`
+    /// copy first. A new key that is already there wins and the old entry stays. Returns how many moved.
+    pub fn rekey(&self, map: &BTreeMap<String, String>) -> Result<usize, NotesError> {
+        let hit = |n: &Notes| map.keys().any(|k| n.games.contains_key(k));
+        if !hit(&self.inner.lock().unwrap()) {
+            return Ok(0);
+        }
+        crate::migrate::backup_once(&self.path).map_err(|_| NotesError::Io)?;
+        let mut moved = 0;
+        self.change(|n| {
+            for (old, new) in map {
+                if !n.games.contains_key(new)
+                    && let Some(g) = n.games.remove(old)
+                {
+                    n.games.insert(new.clone(), g);
+                    moved += 1;
+                }
+            }
+            Ok(())
+        })?;
+        Ok(moved)
     }
 
     /// Applies `f` to a copy, writes it, and only then keeps it: a failed write changes nothing.
@@ -257,7 +281,7 @@ mod tests {
         let s = NotesStore::load(p.clone());
         assert_eq!(s.put_tag("a", tag(" A ")).unwrap().name, "A");
         s.put_game(
-            1,
+            "steam:1",
             GameNote {
                 note: "x".into(),
                 tags: vec!["a".into()],
@@ -266,7 +290,7 @@ mod tests {
         .unwrap();
         let back = NotesStore::load(p).all();
         assert_eq!(back.tags["a"], tag("A"));
-        assert_eq!(back.games[&1].tags, vec!["a".to_string()]);
+        assert_eq!(back.games["steam:1"].tags, vec!["a".to_string()]);
     }
 
     #[test]
@@ -286,9 +310,9 @@ mod tests {
             note: "é".repeat(n),
             tags: vec![],
         };
-        assert!(s.put_game(1, g(GAME_NOTE_MAX)).is_ok());
+        assert!(s.put_game("steam:1", g(GAME_NOTE_MAX)).is_ok());
         assert_eq!(
-            s.put_game(1, g(GAME_NOTE_MAX + 1)),
+            s.put_game("steam:1", g(GAME_NOTE_MAX + 1)),
             Err(NotesError::Bad("note is too long"))
         );
     }
@@ -310,12 +334,12 @@ mod tests {
         let p = d.path().join("notes.json");
         std::fs::write(
             &p,
-            r#"{"tags":{"a":{"name":"A","color":"red","symbol":"star","note":""}},"games":{"1":{"note":"","tags":["a","gone"]},"2":{"note":" ","tags":["gone"]}}}"#,
+            r#"{"tags":{"a":{"name":"A","color":"red","symbol":"star","note":""}},"games":{"steam:1":{"note":"","tags":["a","gone"]},"2":{"note":" ","tags":["gone"]}}}"#,
         )
         .unwrap();
         let games = NotesStore::load(p).all().games;
-        assert_eq!(games[&1].tags, vec!["a".to_string()]);
-        assert!(!games.contains_key(&2), "left empty, so dropped");
+        assert_eq!(games["steam:1"].tags, vec!["a".to_string()]);
+        assert!(!games.contains_key("2"), "left empty, so dropped");
     }
 
     #[test]

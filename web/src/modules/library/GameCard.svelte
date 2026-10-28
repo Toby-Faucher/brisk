@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { Game } from '../../state/api';
+  import { gameKey, pick } from '../../state/gameId';
   import { prefs, prefsChip } from '../../state/prefs';
   import { gameTags, notes } from '../../state/notes';
   import TagChip from './TagChip.svelte';
-  import Icon from '../../ui/Icon.svelte';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { fmtAgo } from '../home/home';
   import Cover from './Cover.svelte';
@@ -11,9 +12,9 @@
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
 
   let { game, onpick, showFortnight = false }: { showFortnight?: boolean; game: Game; onpick: (g: Game) => void } = $props();
-  const saved = $derived($prefs[game.appid]);
-  const tags = $derived(gameTags($notes, game.appid));
-  const hasNote = $derived(!!$notes.games[game.appid]?.note);
+  const saved = $derived(pick($prefs, game));
+  const tags = $derived(gameTags($notes, game));
+  const hasNote = $derived(!!pick($notes.games, game)?.note);
   // Your tags first, then the automatic ones (not Updated, it has its chip); names go into the aria-label, at most 3 symbols are drawn.
   const all = $derived([...tags, ...smartTags(game).filter((t) => t.id !== 'auto-updated')]);
   const tagNames = $derived(all.map((t) => t.name).join(', '));
@@ -32,7 +33,7 @@
   );
 </script>
 
-<div class="wrap" data-appid={game.appid}>
+<div class="wrap" data-gid={gameKey(game)}>
   <!-- opens the detail panel (GameDetail); Play and Install live there -->
   <button class="g" class:off={!game.installed} aria-haspopup="dialog" onclick={() => onpick(game)} aria-label={label}>
     <Cover {game}>
@@ -60,17 +61,18 @@
     {#if game.achTotal}<span class="ach" aria-hidden="true"><i style="width:{((game.achUnlocked ?? 0) / game.achTotal) * 100}%"></i></span>{/if}
   </button>
   {#if game.running}
-    {@const q = $quitting.has(game.appid)}
-    <button class="btn ghost quit" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={13} />{q ? ' Quitting…' : ''}</button><Tip label="Quit game" />
+    {@const q = $quitting.has(gameKey(game))}
+    <button class="btn ghost quit" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={13} /></button><Tip label="Quit game" />
   {/if}
 </div>
 
 <style>
-  .wrap { position: relative; }
+  /* the wrap lifts, so the Quit sibling (outside the card button) moves with the card: same transform, transition and origin */
+  .wrap { position: relative; transition: transform var(--spring-soft-dur) var(--spring-soft); }
+  .wrap:hover, .wrap:has(:focus-visible) { transform: translateY(-5px) scale(1.02); }
   /* a long name must not widen the card: no min-content from the text, so every cover keeps the slot's width */
   .name, .sub { contain: inline-size; }
-  .g { display: block; width: 100%; text-align: left; padding: 0; border: 0; background: none; cursor: pointer; transition: transform var(--spring-soft-dur) var(--spring-soft); border-radius: 16px; }
-  .g:hover, .g:focus-visible { transform: translateY(-5px) scale(1.02); }
+  .g { display: block; width: 100%; text-align: left; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 16px; }
   .name { display: block; margin-top: 8px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { display: block; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ach { display: block; height: 3px; margin-top: 5px; border-radius: 2px; background: var(--line); overflow: hidden; }
@@ -92,5 +94,5 @@
   .quit { position: absolute; right: 8px; top: 8px; z-index: 5; padding: 5px 8px; min-height: 24px; /* WCAG 2.2 target size */ font-size: 12px; border-radius: 9px; }
   .off :global(.cover) { filter: saturate(.35) brightness(.7); transition: filter .3s; }
   .off:hover :global(.cover), .off:focus-visible :global(.cover) { filter: saturate(.8) brightness(.9); }
-  @media (prefers-reduced-motion: reduce) { .g:hover, .g:focus-visible { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .wrap:hover, .wrap:has(:focus-visible) { transform: none; } }
 </style>

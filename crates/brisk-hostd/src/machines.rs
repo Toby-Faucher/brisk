@@ -17,6 +17,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const CAP: usize = 16 << 20;
+/// An upload chunk is at most 32 MiB; the rest is slack.
+const UPLOAD_CAP: usize = 33 << 20;
 const PROBE_TTL: Duration = Duration::from_secs(3);
 const STOPPING_FOR: Duration = Duration::from_secs(120);
 /// Proxmox takes a few seconds to report a started VM as running; until then the machine is `starting`, not `off`.
@@ -304,6 +306,7 @@ struct Up {
     status: u16,
     ctype: Option<String>,
     seq: Option<String>,
+    retry_after: Option<String>,
     body: Vec<u8>,
 }
 
@@ -349,7 +352,12 @@ fn call(
             .and_then(|v| v.to_str().ok())
             .map(String::from)
     };
-    let (ctype, seq, status) = (h("content-type"), h("x-brisk-seq"), r.status().as_u16());
+    let (ctype, seq, retry_after, status) = (
+        h("content-type"),
+        h("x-brisk-seq"),
+        h("retry-after"),
+        r.status().as_u16(),
+    );
     let body = r
         .body_mut()
         .with_config()
@@ -360,6 +368,7 @@ fn call(
         status,
         ctype,
         seq,
+        retry_after,
         body,
     })
 }
@@ -549,17 +558,27 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
         None => path.to_string(),
     };
     let method = parts.method.as_str().to_string();
-    let hv = |n| {
+    let hv = |n: &str| {
         parts
             .headers
             .get(n)
             .and_then(|v| v.to_str().ok())
             .map(String::from)
     };
-    let (ct, accept) = (hv(header::CONTENT_TYPE), hv(header::ACCEPT));
-    let Ok(body) = axum::body::to_bytes(body, CAP).await else {
-        return err(StatusCode::PAYLOAD_TOO_LARGE, "request body is over 16 MiB");
+    let (ct, accept, offset) = (hv("content-type"), hv("accept"), hv("x-offset"));
+    let upload = first == "uploads";
+    let cap = if upload { UPLOAD_CAP } else { CAP };
+    let Ok(body) = axum::body::to_bytes(body, cap).await else {
+        return err(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            if upload {
+                "request body is over 33 MiB"
+            } else {
+                "request body is over 16 MiB"
+            },
+        );
     };
+    let timeout = Duration::from_secs(if upload { 300 } else { 40 });
     let r = tokio::task::spawn_blocking(move || {
         let mut heads = vec![];
         if let Some(c) = &ct {
@@ -568,7 +587,10 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
         if let Some(a) = &accept {
             heads.push(("accept", a.as_str()));
         }
-        call(&e, &method, &pq, &heads, &body, Duration::from_secs(40)).map_err(|f| match f {
+        if let Some(o) = &offset {
+            heads.push(("x-offset", o.as_str()));
+        }
+        call(&e, &method, &pq, &heads, &body, timeout).map_err(|f| match f {
             Fail::Local => (
                 StatusCode::BAD_GATEWAY,
                 "hub cannot use this machine's secret file",
@@ -593,6 +615,7 @@ pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
             for (n, v) in [
                 (header::CONTENT_TYPE.as_str(), up.ctype),
                 ("x-brisk-seq", up.seq),
+                (header::RETRY_AFTER.as_str(), up.retry_after),
             ] {
                 if let Some(v) = v.and_then(|v| HeaderValue::from_str(&v).ok()) {
                     r.headers_mut().insert(n, v);
@@ -726,7 +749,36 @@ mod tests {
             .route(
                 "/api/boom",
                 any(|| async {
-                    (StatusCode::CONFLICT, [("content-type", "application/json")], r#"{"error":"nope"}"#)
+                    (StatusCode::CONFLICT, [("content-type", "application/json"), ("retry-after", "7")], r#"{"error":"nope"}"#)
+                }),
+            )
+            .route(
+                "/api/emulators/dolphin/controls/{kind}",
+                any(|req: Rq<Body>| async move {
+                    axum::Json(json!({ "method": req.method().to_string(), "pq": req.uri().to_string() }))
+                }),
+            )
+            .route("/api/games/{id}/screenshots", any(|req: Rq<Body>| async move {
+                    let (m, uri) = (req.method().to_string(), req.uri().to_string());
+ let _ = axum::body::to_bytes(req.into_body(), 1 << 24).await;
+ axum::Json(json!({ "method": m, "pq": uri }))
+                }))
+            .route("/api/games/{id}/screenshots/{name}", any(|req: Rq<Body>| async move {
+                    let (m, uri) = (req.method().to_string(), req.uri().to_string());
+ let _ = axum::body::to_bytes(req.into_body(), 1 << 24).await;
+ axum::Json(json!({ "method": m, "pq": uri }))
+                }))
+            .route(
+                "/api/uploads/{id}",
+                any(|axum::extract::Path(id): axum::extract::Path<String>, req: Rq<Body>| async move {
+                    let off = req.headers().get("x-offset").and_then(|v| v.to_str().ok()).map(String::from);
+                    let n = axum::body::to_bytes(req.into_body(), 1 << 26).await.unwrap().len();
+                    let code = match id.as_str() {
+                        "full" => StatusCode::INSUFFICIENT_STORAGE,
+                        "busy" => StatusCode::CONFLICT,
+                        _ => StatusCode::OK,
+                    };
+                    (code, axum::Json(json!({ "body": n, "offset": off })))
                 }),
             )
             .route(
@@ -1051,7 +1103,15 @@ mod tests {
 
     #[test]
     fn path_rules() {
-        for ok in ["host", "games/1/info", "sessions/5/series", "a%20b"] {
+        for ok in [
+            "host",
+            "games/1/info",
+            "sessions/5/series",
+            "a%20b",
+            "games/steam:620/info",
+            "games/steam%3A620/info",
+            "games/emu:dolphin:mario-kart-wii/local",
+        ] {
             assert!(path_ok(ok), "{ok}");
         }
         for bad in [
@@ -1120,12 +1180,113 @@ mod tests {
         assert_eq!(st, StatusCode::CONFLICT);
         assert_eq!(h["content-type"], "application/json");
         assert_eq!(b, br#"{"error":"nope"}"#);
+        assert_eq!(h["retry-after"], "7");
         // An upstream 404 is an upstream 404.
         assert_eq!(
             send(&r.app, "GET", "/api/m/a/nothing", None, vec![])
                 .await
                 .0,
             StatusCode::NOT_FOUND
+        );
+    }
+
+    /// The hub has no path allowlist (only `files` is refused), so the emulator mapping routes pass.
+    #[tokio::test]
+    async fn proxy_passes_emulator_controls() {
+        let (url, _) = upstream().await;
+        let r = rig(vec![("a", url, None)]);
+        for m in ["GET", "PUT"] {
+            let (st, _, b) = send(
+                &r.app,
+                m,
+                "/api/m/a/emulators/dolphin/controls/gamecube",
+                None,
+                vec![],
+            )
+            .await;
+            let v: Value = serde_json::from_slice(&b).unwrap();
+            assert_eq!(st, StatusCode::OK, "{m}");
+            assert_eq!(v["pq"], "/api/emulators/dolphin/controls/gamecube");
+        }
+    }
+
+    /// Stream screenshots go through the plain proxy (the mock upstream takes 2 MiB, hostd caps shots at 8 MiB, under the proxy 16 MiB).
+    #[tokio::test]
+    async fn proxy_passes_stream_screenshots() {
+        let (url, _) = upstream().await;
+        let r = rig(vec![("a", url, None)]);
+        for (m, tail, body) in [
+            ("POST", "screenshots", vec![0u8; 1 << 20]),
+            ("GET", "screenshots", vec![]),
+            ("DELETE", "screenshots/1730000000000.png", vec![]),
+        ] {
+            let (st, _, b) = send(
+                &r.app,
+                m,
+                &format!("/api/m/a/games/emu%3Adolphin%3Ax/{tail}"),
+                None,
+                body,
+            )
+            .await;
+            let v: Value = serde_json::from_slice(&b).unwrap();
+            assert_eq!(st, StatusCode::OK, "{m}");
+            assert_eq!(v["pq"], format!("/api/games/emu%3Adolphin%3Ax/{tail}"));
+        }
+    }
+
+    #[tokio::test]
+    async fn proxy_uploads_take_a_chunk_and_pass_answers_through() {
+        let (url, _) = upstream().await;
+        let r = rig(vec![("a", url, None)]);
+        let put = |id: &str, n: usize, off: &str| {
+            let (app, uri, off) = (
+                r.app.clone(),
+                format!("/api/m/a/uploads/{id}"),
+                off.to_string(),
+            );
+            async move {
+                let q = Rq::builder()
+                    .method("PUT")
+                    .uri(uri)
+                    .header("host", "localhost:8443")
+                    .header("x-brisk-secret", HUB_SECRET)
+                    .header("x-offset", off)
+                    .body(Body::from(vec![7u8; n]))
+                    .unwrap();
+                let res = app.oneshot(q).await.unwrap();
+                let st = res.status();
+                let b = axum::body::to_bytes(res.into_body(), 1 << 20)
+                    .await
+                    .unwrap();
+                (st, serde_json::from_slice::<Value>(&b).unwrap_or_default())
+            }
+        };
+        // 20 MiB passes, with its x-offset
+        let (st, v) = put("abc", 20 << 20, "12345").await;
+        assert_eq!(
+            (st, v["body"].as_u64(), v["offset"].as_str()),
+            (StatusCode::OK, Some(20 << 20), Some("12345"))
+        );
+        // a full 32 MiB chunk passes; 34 MiB does not
+        assert_eq!(put("abc", 32 << 20, "0").await.0, StatusCode::OK);
+        assert_eq!(
+            put("abc", 34 << 20, "0").await.0,
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        // 409 and 507 come back as they are
+        assert_eq!(put("busy", 10, "0").await.0, StatusCode::CONFLICT);
+        assert_eq!(
+            put("full", 10, "0").await.0,
+            StatusCode::INSUFFICIENT_STORAGE
+        );
+        // other paths keep the 16 MiB cap
+        let (st, _, _) = send(&r.app, "POST", "/api/m/a/echo", None, vec![0; 20 << 20]).await;
+        assert_eq!(st, StatusCode::PAYLOAD_TOO_LARGE);
+        let (st, _, _) = send(&r.app, "PUT", "/api/m/a/uploads/abc/../x", None, vec![]).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            getj(&r.app, "/api/m/a/files/x").await.0,
+            StatusCode::NOT_IMPLEMENTED
         );
     }
 

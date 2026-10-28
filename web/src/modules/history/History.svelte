@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   import { flushSync, onMount, tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import type { TransitionBeforePreparationEvent } from 'astro:transitions/client';
   import { enter } from '../../shell/reveal';
   import { api, type SeriesPoint, type SessionRec } from '../../state/api';
   import { games, watchGames } from '../../state/games';
+  import { findGame, rowKey } from '../../state/gameId';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import Tip from '../../ui/Tip.svelte';
@@ -24,8 +26,8 @@
   const visible = $derived(filterSessions(list ?? [], q));
   const detail = $derived(selected === null ? undefined : details[selected]); // only read while a session is selected
   const bad = new SvelteSet<string>(); // cover URLs that failed to load: the placeholder shows, in the list and the header
-  const cover = (appid: number | null) => {
-    const c = $games?.games.find((g) => g.appid === appid)?.cover;
+  const cover = (s: SessionRec) => {
+    const c = findGame($games?.games ?? [], rowKey(s))?.cover;
     return c && !bad.has(c) ? c : undefined;
   };
 
@@ -102,14 +104,14 @@
 
 {#if selected !== null}
   {@const s = detail && detail !== 'none' ? detail.session : list?.find((r) => r.started === selected)}
-  {@const c = s && cover(s.appid)}
+  {@const c = s && cover(s)}
   <div class:swap-in={swapped}>
   <div class="top">
     <button class="btn ghost back" onclick={() => open(null)}><Icon name="chev" size={14} /> History</button>
   </div>
   <!-- fixed-size cover box: the header keeps its height when the image or the record arrives -->
   <div class="dh">
-    {#if c}<img class="hcover" data-cover={selected} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="hcover" data-cover={selected}></div>{/if}
+    {#if c}<img class="hcover" data-cover={selected} {@attach artSrc(c)} alt="" onerror={() => bad.add(c)} />{:else}<div class="hcover" data-cover={selected}></div>{/if}
     <div class="dt">
       <div class="dn">
         <h2 id="session-title" tabindex="-1">{s?.name ?? (detail === 'none' ? 'Session' : 'Loading…')}</h2>
@@ -156,11 +158,11 @@
     <div class="grid">
       {#each visible as s (s.started)}
         {@const path = sparkPath(s.spark ?? [], 120, 28)}
-        {@const c = cover(s.appid)}
+        {@const c = cover(s)}
         <Card cols={1}>
           <a class="fill" href="/history?session={s.started}" data-session={s.started} onclick={(e) => (e.preventDefault(), open(s.started))} aria-label="{s.name}, {fmtWhen(s.started)}"></a>
           <div class="head">
-            {#if c}<img class="cover" data-cover={s.started} src={c} alt="" onerror={() => bad.add(c)} />{:else}<div class="cover" data-cover={s.started}></div>{/if}
+            {#if c}<img class="cover" data-cover={s.started} {@attach artSrc(c)} alt="" onerror={() => bad.add(c)} />{:else}<div class="cover" data-cover={s.started}></div>{/if}
             <div class="txt"><b>{s.name}</b><div class="lab">{fmtWhen(s.started)}</div></div>
             {#if s.stats?.gate}<span class="gate {s.stats.gate}">{s.stats.gate === 'pass' ? 'PASS' : 'FAIL'}</span>{/if}
           </div>

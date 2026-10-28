@@ -29,6 +29,11 @@ describe('home', () => {
     expect(pickResume([])).toBeNull();
   });
 
+  it('resume_can_pick_a_recently_launched_emulator_game_over_an_older_steam_one', () => {
+    const emu = { ...g(0xe0000001, true, 900), emulator: 'dolphin' };
+    expect(pickResume([g(1, true, 100), emu])?.appid).toBe(0xe0000001);
+  });
+
   it('resume_prefers_the_running_game', () => {
     expect(pickResume([g(1, true, 900), g(2, true, 100, true), g(3, true, 500)])?.appid).toBe(2);
   });

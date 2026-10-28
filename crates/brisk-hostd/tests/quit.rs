@@ -60,6 +60,35 @@ const ZOMBIE: u32 = 520;
 const GAME_10: &[u32] = &[500, 501, 502, 505, 510, 511, ZOMBIE];
 const KIDS_10: &str = "501 502 505 510 511 520";
 
+/// Dolphin on `EMU_FILE` (800), a Dolphin on another file (801) and a non-Dolphin that has the
+/// file in its argv (802): only 800 may ever be touched by quitting the emulator game.
+const EMU_FILE: &str = "/games/mkw.iso";
+fn emu_id() -> String {
+    // What emulators.json's "Mario Kart Wii" becomes (library.json is made from it).
+    "emu:dolphin:mario-kart-wii".into()
+}
+
+fn fake_emu_procs(root: &Path) {
+    for (pid, comm, argv) in [
+        (
+            800,
+            "dolphin-emu",
+            vec!["dolphin-emu", "-b", "-e", EMU_FILE],
+        ),
+        (
+            801,
+            "dolphin-emu",
+            vec!["dolphin-emu", "-b", "-e", "/games/other.iso"],
+        ),
+        (802, "vim", vec!["vim", EMU_FILE]),
+    ] {
+        let d = root.join(pid.to_string());
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("cmdline"), argv.join("\0") + "\0").unwrap();
+        std::fs::write(d.join("stat"), stat(pid, comm, 'S', 1, 1000 + pid)).unwrap();
+    }
+}
+
 fn fake_procs(root: &Path, procs: &[(u32, u32, &[&str])]) {
     for (pid, ppid, argv) in procs {
         let d = root.join(pid.to_string());
@@ -132,10 +161,21 @@ impl brisk_hostd::host::Runner for Fake {
             });
         self.calls.lock().unwrap().push(line);
         if p == "swaymsg" && a.ends_with(&["-t", "get_tree"]) {
-            return Some(std::fs::read_to_string(SWAY_TREE).unwrap());
+            // Plus Dolphin's Xwayland window: no app_id, only an X11 class.
+            let mut t: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(SWAY_TREE).unwrap()).unwrap();
+            t["nodes"].as_array_mut().unwrap().push(serde_json::json!({
+                "id": 40, "type": "con", "pid": 800, "app_id": null,
+                "window_properties": {"class": "dolphin-emu"}
+            }));
+            return Some(t.to_string());
         }
-        if p == "swaymsg" && self.exits == Exits::OnClose && a.last() == Some(&"[con_id=16] kill") {
-            self.gone(GAME_10);
+        if p == "swaymsg" && self.exits == Exits::OnClose {
+            match a.last() {
+                Some(&"[con_id=16] kill") => self.gone(GAME_10),
+                Some(&"[con_id=40] kill") => self.gone(&[800]),
+                _ => {}
+            }
         }
         Some(String::new())
     }
@@ -200,25 +240,9 @@ impl brisk_hostd::host::Clock for Clock0 {
 }
 
 fn game(appid: u32, name: &str) -> Game {
-    Game {
-        appid,
-        name: name.into(),
-        installed: true,
-        size_bytes: None,
-        last_played: None,
-        playtime_min: 0,
-        playtime2wk_min: 0,
-        cover: String::new(),
-        hero: String::new(),
-        logo: String::new(),
-        running: false,
-        ach_unlocked: None,
-        ach_total: None,
-        updated: false,
-        update: None,
-        controller: None,
-        coop: false,
-    }
+    let mut g = Game::steam(appid, name);
+    g.installed = true;
+    g
 }
 
 fn rig_with(exits: Exits, fail: Fail, as_root: bool) -> Rig {
@@ -229,6 +253,13 @@ fn rig_full(exits: Exits, fail: Fail, recycle: Option<u32>, as_root: bool) -> Ri
     let d = tempfile::tempdir().unwrap();
     let proc = d.path().join("proc");
     fake_procs(&proc, PROCS);
+    fake_emu_procs(&proc);
+    std::fs::create_dir_all(d.path().join("data")).unwrap();
+    std::fs::write(
+        d.path().join("data/emulators.json"),
+        format!(r#"[{{"name":"Mario Kart Wii","emulator":"dolphin","file":"{EMU_FILE}"}}]"#),
+    )
+    .unwrap();
     let mut cfg = Config::from_env(d.path().to_path_buf());
     cfg.secret = SECRET.into();
     cfg.data_dir = d.path().join("data");
@@ -244,17 +275,24 @@ fn rig_full(exits: Exits, fail: Fail, recycle: Option<u32>, as_root: bool) -> Ri
         calls: Mutex::default(),
         delivered: Mutex::default(),
     });
+    let (cfg_data, proc2) = (cfg.data_dir.clone(), cfg.proc_dir.clone());
     let mut st = AppState::with_host(cfg, fake.clone(), Arc::new(Clock0));
     st.quit.as_root = as_root;
     st.quit.signaller = fake.clone();
+    let emu = brisk_hostd::emu::games(&brisk_hostd::emu::load(&cfg_data), &proc2, &cfg_data);
     *st.games.lock().unwrap() = Some(GamesResult {
-        games: vec![
-            game(10, "Pepper Grinder"),
-            game(20, "Other"),
-            game(30, "Idle"),
-            game(40, "Orphan"),
-        ],
+        games: [
+            vec![
+                game(10, "Pepper Grinder"),
+                game(20, "Other"),
+                game(30, "Idle"),
+                game(40, "Orphan"),
+            ],
+            emu,
+        ]
+        .concat(),
         owned_available: true,
+        id_scheme: 1,
     });
     Rig {
         app: router(Arc::new(st)),
@@ -588,4 +626,97 @@ async fn a_client_that_hangs_up_does_not_stop_the_quit() {
     }
     assert!(!r.alive(502));
     assert!(r.calls().ends_with(&term10()));
+}
+
+const EMU_CLOSE: &str = "swaymsg [con_id=40] kill";
+
+#[tokio::test(start_paused = true)]
+async fn emulator_quit_closes_its_window_politely_and_touches_nothing_else() {
+    let r = rig(Exits::OnClose);
+    let (st, v) = r.quit(&format!(r#"{{"id":"{}"}}"#, emu_id())).await;
+    assert_eq!(
+        (st, v["state"].as_str()),
+        (StatusCode::OK, Some("closed")),
+        "{v}"
+    );
+    assert_eq!(r.calls(), [EMU_CLOSE]);
+    assert!(!r.alive(800) && r.alive(801) && r.alive(802));
+}
+
+#[tokio::test(start_paused = true)]
+async fn emulator_that_ignores_the_close_gets_sigterm_and_never_sigkill_without_force() {
+    let r = rig(Exits::OnTerm);
+    let t = Instant::now();
+    let (_, v) = r.quit(&format!(r#"{{"id":"{}"}}"#, emu_id())).await;
+    assert!(
+        (Duration::from_secs(5)..Duration::from_secs(10)).contains(&t.elapsed()),
+        "an emulator waits 5 s for its own stop, then SIGTERM: {:?}",
+        t.elapsed()
+    );
+    assert_eq!(v["state"], "closed", "{v}");
+    assert_eq!(r.calls(), [EMU_CLOSE, "kill -TERM 800"]);
+    let r = rig(Exits::OnKill);
+    let t = Instant::now();
+    let (_, v) = r.quit(&format!(r#"{{"id":"{}"}}"#, emu_id())).await;
+    // Close 5 s, SIGTERM 10 s, then it gives up: the UI offers Force quit.
+    assert!(t.elapsed() >= Duration::from_secs(15), "{:?}", t.elapsed());
+    assert_eq!(v["state"], "still-running", "{v}");
+    assert_eq!(r.calls(), [EMU_CLOSE, "kill -TERM 800"]);
+    assert!(r.alive(800) && r.alive(801) && r.alive(802));
+}
+
+#[tokio::test(start_paused = true)]
+async fn forced_emulator_quit_skips_the_close_and_sigkills_after_sigterm() {
+    let r = rig(Exits::OnKill);
+    let (_, v) = r
+        .quit(&format!(r#"{{"id":"{}","force":true}}"#, emu_id()))
+        .await;
+    assert_eq!(v["state"], "closed", "{v}");
+    assert_eq!(r.calls(), ["kill -TERM 800", "kill -KILL 800"]);
+    assert!(r.alive(801) && r.alive(802));
+}
+
+#[tokio::test(start_paused = true)]
+async fn emulator_pid_reused_after_the_scan_is_not_signalled() {
+    let r = rig_full(Exits::OnTerm, Fail::No, Some(800), false);
+    let (_, v) = r
+        .quit(&format!(r#"{{"id":"{}","force":true}}"#, emu_id()))
+        .await;
+    // The pid now belongs to an unrelated process, so the emulator counts as gone.
+    assert_eq!(v["state"], "closed", "{v}");
+    assert!(r.alive(800) && r.fake.delivered.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn emulator_game_that_is_not_running_is_409() {
+    let r = rig(Exits::Never);
+    std::fs::remove_dir_all(r.fake.proc.join("800")).unwrap();
+    let (st, _) = r.quit(&format!(r#"{{"id":"{}"}}"#, emu_id())).await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    assert!(r.calls().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_emulator_game_quits_by_its_old_number_too() {
+    // 3907440760 is what the first emulator version called "Mario Kart Wii".
+    let r = rig(Exits::OnClose);
+    let (st, v) = r.quit(r#"{"appid":3907440760}"#).await;
+    assert_eq!(
+        (st, v["state"].as_str()),
+        (StatusCode::OK, Some("closed")),
+        "{v}"
+    );
+    assert_eq!(r.calls(), [EMU_CLOSE]);
+    assert!(!r.alive(800) && r.alive(801) && r.alive(802));
+}
+
+#[tokio::test(start_paused = true)]
+async fn steam_games_quit_by_the_new_id_as_well() {
+    let r = rig(Exits::OnClose);
+    let (st, v) = r.quit(r#"{"id":"steam:10"}"#).await;
+    assert_eq!(
+        (st, v["state"].as_str()),
+        (StatusCode::OK, Some("closed")),
+        "{v}"
+    );
 }

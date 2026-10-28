@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { homeOrder, prefs } from '../../state/prefs';
-import { api, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
+import { api, ApiError, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
 
@@ -189,7 +189,7 @@ describe('GameDetail refresh across games', () => {
     vi.useRealTimers();
     i.mockClear();
     await userEvent.click(b);
-    expect(i).toHaveBeenCalledWith(400, true);
+    expect(i).toHaveBeenCalledWith('400', true);
   });
 
   it('an in-flight refresh of game A does not block game B', async () => {
@@ -204,7 +204,7 @@ describe('GameDetail refresh across games', () => {
     expect((b.element() as HTMLElement).getAttribute('aria-disabled')).not.toBe('true');
     i.mockClear();
     await userEvent.click(b);
-    expect(i).toHaveBeenCalledWith(400, true);
+    expect(i).toHaveBeenCalledWith('400', true);
   });
 });
 
@@ -219,9 +219,9 @@ describe('GameDetail', () => {
     n.mockResolvedValue({ items: [{ title: 'Fresh patch', url: 'https://n.example.test/f', date: 1, patch: true }] });
     const b = page.getByRole('button', { name: 'Refresh Steam data' });
     await userEvent.click(b);
-    expect(i).toHaveBeenLastCalledWith(620, true);
-    expect(a).toHaveBeenLastCalledWith(620, true);
-    expect(n).toHaveBeenLastCalledWith(620, true);
+    expect(i).toHaveBeenLastCalledWith('620', true);
+    expect(a).toHaveBeenLastCalledWith('620', true);
+    expect(n).toHaveBeenLastCalledWith('620', true);
     await expect.element(page.getByRole('link', { name: 'Fresh patch' })).toBeInTheDocument();
     await expect.element(page.getByText('First Steps')).toBeInTheDocument();
     await expect.element(b).toHaveAttribute('aria-disabled', 'true');
@@ -277,7 +277,7 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('First Steps')).toBeInTheDocument();
     await expect.element(page.getByText('Take a step.')).toBeInTheDocument();
     await expect.element(page.getByText('Hidden One')).toBeInTheDocument();
-    expect(spy).toHaveBeenCalledExactlyOnceWith(620);
+    expect(spy).toHaveBeenCalledExactlyOnceWith('620');
   });
 
   it('hides the section when total is 0', async () => {
@@ -297,7 +297,7 @@ describe('GameDetail', () => {
     await expect.element(page.getByText('Puzzle', { exact: true })).toBeInTheDocument();
     await expect.element(page.getByText('Remote Play Together')).toBeInTheDocument();
     await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-    expect(spy).toHaveBeenCalledExactlyOnceWith(620);
+    expect(spy).toHaveBeenCalledExactlyOnceWith('620');
   });
 
   it('shows "No store details" when available is false', async () => {
@@ -361,8 +361,8 @@ describe('GameDetail', () => {
     const img = page.getByRole('img', { name: 'Portal 2 screenshot 1 from this PC' });
     await expect.element(img).toHaveAttribute('src', expect.stringMatching(/^blob:/));
     await expect.poll(() => shot.mock.calls.length).toBe(2);
-    expect(shot).toHaveBeenCalledWith(620, 'b.png');
-    expect(shot).toHaveBeenCalledWith(620, 'a.jpg');
+    expect(shot).toHaveBeenCalledWith('620', 'b.png');
+    expect(shot).toHaveBeenCalledWith('620', 'a.jpg');
     expect(
       page
         .getByRole('img')
@@ -444,7 +444,7 @@ describe('GameDetail', () => {
       .toBeInTheDocument();
     expect(put).not.toHaveBeenCalled();
     await userEvent.click(page.getByRole('button', { name: 'Use Balanced' }));
-    expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'hevc' });
+    expect(put).toHaveBeenCalledWith('620', { preset: 'balanced', codec: 'hevc' });
     await vi.waitFor(() => expect(get(prefs)[620]).toEqual(saved));
     await expect.element(page.getByRole('button', { name: 'Use Balanced' })).not.toBeInTheDocument();
   });
@@ -476,7 +476,7 @@ describe('GameDetail', () => {
     const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
     await render(GameDetail, { props: props(game) });
     await userEvent.click(sugg());
-    await vi.waitFor(() => expect(put).toHaveBeenCalledWith(620, { preset: 'balanced', codec: 'h264' }));
+    await vi.waitFor(() => expect(put).toHaveBeenCalledWith('620', { preset: 'balanced', codec: 'h264' }));
   });
 
   it('toasts and keeps the button on a failed save', async () => {
@@ -757,5 +757,405 @@ describe('GameDetail', () => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue({ ...info, screenshots: [dup, dup] });
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByRole('button', { name: 'Open Portal 2 screenshot 2' })).toBeInTheDocument();
+  });
+
+  describe('Controls section', () => {
+    const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii' };
+    const fx = async () => (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-get.json')).default;
+
+    it('an emulator id shows the summary and the Edit mappings link into Settings', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const c = vi.spyOn(api, 'emulatorControls').mockResolvedValue((await fx()) as never);
+      await render(GameDetail, { props: props(emu) });
+      await expect.element(page.getByRole('heading', { name: 'Controls' })).toBeInTheDocument();
+      await expect.element(page.getByText(/Dolphin uses one mapping for every game on this machine/)).toBeInTheDocument();
+      await expect
+        .element(page.getByRole('link', { name: 'Edit mappings' }))
+        .toHaveAttribute('href', '/settings#emulators/dolphin/controllers');
+      expect(c).toHaveBeenCalledWith('classic');
+      expect(document.querySelector('svg[aria-label="Pad buttons"]')).toBeNull(); // text only, no drawing
+    });
+
+    it('is hidden when hostd has no Dolphin (404)', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'emulatorControls').mockRejectedValue(new ApiError('no controls on this machine', 404));
+      await render(GameDetail, { props: props(emu) });
+      await expect.poll(() => page.getByRole('heading', { name: 'Controls' }).elements().length).toBe(0);
+    });
+
+    // what a new hostd sends for the same game: id, source and caps decide, not the number
+    const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false };
+    const newEmu: Game = { ...emu, id: 'emu:dolphin:mario-kart-wii', source: 'emu', legacyId: '3758096385', emulator: 'dolphin', caps };
+
+    it('a new hostd emulator game shows the link, asks hostd by id, and has Play and Quit but no Install', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'emulatorControls').mockResolvedValue((await fx()) as never);
+      const ach = vi.mocked(api.gameAchievements);
+      const loc = vi.mocked(api.gameLocal);
+      await render(GameDetail, { props: props({ ...newEmu, running: true, installed: false }) });
+      await expect.element(page.getByRole('link', { name: 'Edit mappings' })).toBeInTheDocument();
+      await expect.element(page.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+      await expect.element(page.getByRole('button', { name: 'Quit Mario Kart Wii' })).toBeInTheDocument();
+      expect(page.getByRole('button', { name: /^Install/ }).elements()).toHaveLength(0);
+      expect(ach).not.toHaveBeenCalled(); // caps.achievements is false
+      expect(loc).not.toHaveBeenCalled(); // caps.screenshots is false
+    });
+
+    it('caps decide: an emulator game without an editor has no Controls section, a number in the old range does not matter', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const c = vi.spyOn(api, 'emulatorControls');
+      await render(GameDetail, { props: props({ ...newEmu, caps: { ...caps, controls: false } }) });
+      await expect.element(page.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+      expect(page.getByRole('heading', { name: 'Controls' }).elements()).toHaveLength(0);
+      expect(c).not.toHaveBeenCalled();
+    });
+
+    it('a new hostd Steam game in a high number range is still Steam', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      const c = vi.spyOn(api, 'emulatorControls');
+      const steamCaps = { ...caps, install: true, controls: false, achievements: true, screenshots: true };
+      await render(GameDetail, { props: props({ ...game, appid: 0xe0000005, id: 'steam:3758096389', source: 'steam', caps: steamCaps }) });
+      await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+      expect(c).not.toHaveBeenCalled();
+    });
+
+    it('is absent for a Steam game and never asks hostd', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      const c = vi.spyOn(api, 'emulatorControls');
+      await render(GameDetail, { props: props(game) });
+      await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+      expect(page.getByRole('heading', { name: 'Controls' }).elements()).toHaveLength(0);
+      expect(c).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('Remove from library', () => {
+  const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', id: 'emu:dolphin:RMCE01', source: 'emu', emulator: 'dolphin' };
+  beforeEach(() => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'emulatorControls').mockRejectedValue(new ApiError('no', 404));
+    vi.spyOn(api, 'games').mockResolvedValue({ games: [], ownedAvailable: true });
+  });
+
+  it('is only on emulator games', async () => {
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByRole('button', { name: 'Close' }).first()).toBeInTheDocument();
+    expect(page.getByRole('button', { name: 'Remove from library' }).elements()).toHaveLength(0);
+  });
+
+  it('asks first, says the file stays, offers no delete option, then forgets the game', async () => {
+    const rm = vi.spyOn(api, 'removeGame').mockResolvedValue(undefined);
+    const onclose = vi.fn();
+    await render(Toasts);
+    await render(GameDetail, { props: props(emu, { onclose }) });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await expect.element(page.getByText(/The file stays on disk/)).toBeInTheDocument();
+    expect(rm).not.toHaveBeenCalled();
+    expect(page.getByRole('checkbox').elements()).toHaveLength(0);
+    await userEvent.click(page.getByRole('button', { name: 'Remove', exact: true }));
+    await expect.poll(() => rm.mock.calls).toEqual([['emu:dolphin:RMCE01']]);
+    await expect.element(page.getByText('Removed Mario Kart Wii from the library. The file stays on disk.')).toBeInTheDocument();
+    await expect.poll(() => onclose.mock.calls.length).toBe(1);
+  });
+
+  it('Cancel keeps the game and says nothing to hostd', async () => {
+    const rm = vi.spyOn(api, 'removeGame').mockResolvedValue(undefined);
+    await render(GameDetail, { props: props(emu) });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await userEvent.click(page.getByRole('button', { name: 'Cancel' }));
+    expect(rm).not.toHaveBeenCalled();
+  });
+
+  it('shows the failure and stays open', async () => {
+    vi.spyOn(api, 'removeGame').mockRejectedValue(new ApiError('library.json is damaged', 500));
+    await render(GameDetail, { props: props(emu) });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await userEvent.click(page.getByRole('button', { name: 'Remove', exact: true }));
+    await expect.element(page.getByRole('alert')).toHaveTextContent('Could not remove it: library.json is damaged');
+  });
+});
+
+describe('GameDetail with the Quit confirm', () => {
+  it('puts the confirm above the panel; Esc closes the confirm first, then the panel; focus returns to Quit', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    const { default: Harness } = await import('../../test/DetailQuitHarness.svelte');
+    await render(Harness, { props: { game: { ...game, running: true } } });
+    await userEvent.click(page.getByRole('button', { name: 'Open detail' }));
+    const panel = page.getByRole('dialog', { name: 'Portal 2', exact: true });
+    await expect.element(panel).toBeInTheDocument();
+    const quit = page.getByRole('button', { name: 'Quit Portal 2' }).element() as HTMLElement;
+    await userEvent.click(quit);
+    const confirm = page.getByRole('dialog', { name: 'Quit Portal 2?' });
+    await expect.element(confirm).toBeInTheDocument();
+    await expect.poll(() => confirm.element().contains(document.activeElement)).toBe(true);
+    for (const name of ['Cancel', 'Quit']) {
+      const el = confirm.getByRole('button', { name, exact: true }).element();
+      const r = el.getBoundingClientRect();
+      expect(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2), name).toBe(el);
+    }
+    // its overlay covers the panel too
+    const dim = document.querySelector('.rs-dim')!;
+    expect(Number(getComputedStyle(dim).zIndex)).toBeGreaterThan(Number(getComputedStyle(panel.element()).zIndex));
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => page.getByRole('dialog', { name: 'Quit Portal 2?' }).elements().length).toBe(0);
+    expect(panel.element().isConnected).toBe(true);
+    await expect.poll(() => document.activeElement).toBe(quit);
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => page.getByRole('dialog', { name: 'Portal 2', exact: true }).elements().length).toBe(0);
+  });
+
+  describe('Saves section', () => {
+    const caps = { install: false, controls: false, achievements: false, launchOptions: false, saves: true, screenshots: false };
+    const wii: Game = {
+      ...game,
+      appid: 0xe0000002,
+      id: 'emu:dolphin:rmce01',
+      source: 'emu',
+      legacyId: '3758096386',
+      emulator: 'dolphin',
+      name: 'Mario Kart Wii',
+      caps,
+    };
+    const items = [
+      {
+        kind: 'state' as const,
+        name: 'RMCE01.s01',
+        path: 'StateSaves/RMCE01.s01',
+        size: 4_100_000,
+        modified: Math.floor(Date.now() / 1000) - 3 * 86_400,
+      },
+      { kind: 'nand-save' as const, name: 'Wii save data', path: 'Wii/title/00010000/524d4345/data', size: 2048, modified: null, files: 3 },
+    ];
+
+    it('lists saves, asks by id, and offers no download or delete', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const s = vi.spyOn(api, 'gameSaves').mockResolvedValue({ available: true, userDir: 'Dolphin user folder', items });
+      await render(GameDetail, { props: props(wii) });
+      const list = page.getByRole('list', { name: 'Saves' });
+      await expect.element(list.getByText('RMCE01.s01')).toBeInTheDocument();
+      await expect.element(list.getByText('Save state, 4.1 MB, 3 d ago')).toBeInTheDocument();
+      await expect.element(list.getByText('Wii save, 3 files, 2 KB')).toBeInTheDocument();
+      expect(s).toHaveBeenCalledWith('emu:dolphin:rmce01');
+      expect(page.getByRole('button', { name: /download|delete/i }).elements()).toHaveLength(0);
+    });
+
+    it('explains where saves appear when there are none', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      vi.spyOn(api, 'gameSaves').mockResolvedValue({ available: false, userDir: 'Dolphin user folder', items: [] });
+      await render(GameDetail, { props: props(wii) });
+      await expect.element(page.getByText('Save states and saves show up here after you play.')).toBeInTheDocument();
+    });
+
+    it('an old hostd (no caps) and a Steam game never call the route', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+      const s = vi.spyOn(api, 'gameSaves');
+      await render(GameDetail, { props: props({ ...wii, caps: undefined, id: undefined }) });
+      await expect.element(page.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+      expect(s).not.toHaveBeenCalled();
+      expect(page.getByRole('heading', { name: 'Saves' }).elements()).toHaveLength(0);
+    });
+  });
+});
+
+describe('GameDetail launch options', () => {
+  const withCaps = {
+    ...game,
+    id: 'steam:620',
+    source: 'steam' as const,
+    caps: { install: true, controls: false, achievements: true, launchOptions: true, saves: false, screenshots: true },
+  };
+  const view = {
+    id: 'steam:620',
+    rev: 'g1',
+    override: null,
+    effective: { wrappers: [], env: {}, custom: null, extra_args: [] },
+    problems: [],
+    allowCustomCommands: false,
+    steamLine: 'brisk-hostd wrap steam:620 -- %command%',
+  };
+
+  it('shows the section when the game has the launchOptions cap', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'launchDefaults').mockResolvedValue({ rev: 'r', allowCustomCommands: false, options: view.effective, envAllowed: [] });
+    const g = vi.spyOn(api, 'gameLaunch').mockResolvedValue(view);
+    render(GameDetail, props(withCaps));
+    await expect.element(page.getByRole('heading', { name: 'Launch options' })).toBeInTheDocument();
+    expect(g).toHaveBeenCalledWith('steam:620');
+  });
+
+  it('is left out for a game without the cap (an older hostd)', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    const g = vi.spyOn(api, 'gameLaunch');
+    render(GameDetail, props(game));
+    await expect.element(page.getByText('No store details')).toBeInTheDocument();
+    expect(page.getByRole('heading', { name: 'Launch options' }).elements()).toHaveLength(0);
+    expect(g).not.toHaveBeenCalled();
+  });
+});
+
+describe('GameDetail RetroAchievements', () => {
+  const wii: Game = {
+    ...game,
+    appid: 3_800_000_000,
+    id: 'emu:dolphin:mkwii',
+    name: 'Mario Kart Wii',
+    source: 'emu',
+    emulator: 'dolphin',
+    installed: true,
+    caps: { install: false, controls: true, achievements: true, launchOptions: false, saves: false, screenshots: false },
+  };
+  const raOk: Achievements = {
+    available: true,
+    unlocked: 1,
+    total: 2,
+    list: [
+      { id: '21', name: 'First', description: 'Do the first thing', icon: '', unlockedAt: 1773337649, points: 3, hardcore: true },
+      { id: '22', name: 'Second', description: 'Later', icon: '', unlockedAt: null, points: 5, hardcore: false },
+    ],
+    source: 'retroachievements',
+    state: 'ok',
+    unlockedHardcore: 1,
+    pointsUnlocked: 3,
+    pointsTotal: 8,
+    gameId: 9,
+    title: 'Mario Kart Wii',
+    url: 'https://retroachievements.org/game/9',
+  };
+  beforeEach(() => vi.spyOn(api, 'gameInfo').mockResolvedValue({ available: false } as GameInfo));
+  afterEach(() => vi.useRealTimers());
+
+  const notes: [Record<string, unknown>, string][] = [
+    [{ state: 'unsupported', reason: 'RVZ files cannot be hashed.' }, 'RVZ files cannot be hashed.'],
+    [{ state: 'not-found' }, 'No RetroAchievements set for this game.'],
+    [{ state: 'rate-limited' }, 'RetroAchievements is busy. Try again shortly.'],
+    [{ state: 'bad-credentials' }, 'RetroAchievements refused the login. Check the key file on the machine.'],
+    [{ state: 'error' }, 'Could not reach RetroAchievements.'],
+  ];
+  for (const [answer, text] of notes)
+    it(`says "${text}" for ${answer.state}`, async () => {
+      vi.spyOn(api, 'gameAchievements').mockResolvedValue(answer as never);
+      await render(GameDetail, { props: props(wii) });
+      await expect.element(page.getByText(text)).toBeInTheDocument();
+    });
+
+  it('hides the panel for off', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue({ state: 'off' });
+    await render(GameDetail, { props: props(wii) });
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    await expect.element(page.getByText('Achievements', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('ok: totals, points, hardcore marker and the credit link', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/1 of 2 unlocked, 3 of 8 points/)).toBeInTheDocument();
+    await expect.element(page.getByText('Hardcore')).toBeInTheDocument();
+    const link = page.getByRole('link', { name: 'RetroAchievements' });
+    await expect.element(link).toHaveAttribute('href', 'https://retroachievements.org/game/9');
+    await expect.element(link).toHaveAttribute('target', '_blank');
+    await expect.element(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(spy).toHaveBeenCalledExactlyOnceWith('emu:dolphin:mkwii');
+  });
+
+  it('Refresh asks with refresh and is disabled for 30 s', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/points/)).toBeInTheDocument();
+    const b = page.getByRole('button', { name: 'Refresh', exact: true });
+    await userEvent.click(b);
+    expect(spy).toHaveBeenLastCalledWith('emu:dolphin:mkwii', true);
+    await expect.element(b).toHaveAttribute('aria-disabled', 'true');
+    spy.mockClear();
+    (b.element() as HTMLElement).click();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('polls every 45 s only while the game runs, and stops on unmount', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    const idle = await render(GameDetail, { props: props(wii) });
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(spy).toHaveBeenCalledTimes(1); // the load only
+    idle.unmount();
+    spy.mockClear();
+    const run = await render(GameDetail, { props: props({ ...wii, running: true }) });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(spy).toHaveBeenCalledTimes(2);
+    run.unmount();
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('an old hostd (no caps) emulator game never asks', async () => {
+    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(raOk);
+    await render(GameDetail, {
+      props: props({ ...wii, caps: undefined, id: undefined, source: undefined, achievements: undefined } as never),
+    });
+    await vi.waitFor(() => expect(api.gameInfo).toHaveBeenCalled());
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('a Steam game keeps its panel: no RetroAchievements link, no extra Refresh', async () => {
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue({
+      available: true,
+      unlocked: 3,
+      total: 5,
+      list: [{ id: 'A', name: 'First Steps', description: 'Take a step.', icon: '', unlockedAt: 1700000100 }],
+    });
+    await render(GameDetail, { props: props(game) });
+    await expect.element(page.getByText('First Steps')).toBeInTheDocument();
+    await expect.element(page.getByRole('link', { name: 'RetroAchievements' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Refresh', exact: true })).not.toBeInTheDocument();
+  });
+});
+
+describe('stored stream screenshots (emulator games)', () => {
+  const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: true, art: true };
+  const wii: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', id: 'emu:dolphin:mkw', source: 'emu', emulator: 'dolphin', caps };
+  const open = async (g: Game = wii) => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+    vi.spyOn(api, 'screenshot').mockImplementation(async () => blobUrl());
+    await render(GameDetail, { props: props(g) });
+  };
+
+  it('lists them in the same grid, fetched by id, and deletes one only after a confirm', async () => {
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['300.png', '200.png'], saves: null });
+    const del = vi.spyOn(api, 'deleteShot').mockResolvedValue(undefined);
+    await render(Toasts);
+    await open();
+    await expect
+      .element(page.getByRole('img', { name: 'Mario Kart Wii screenshot 2 from this PC' }))
+      .toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    expect(api.screenshot).toHaveBeenCalledWith('emu:dolphin:mkw', '300.png');
+    await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
+    expect(del).not.toHaveBeenCalled(); // asked first
+    await page.getByRole('button', { name: 'Keep' }).click();
+    expect(del).not.toHaveBeenCalled();
+    await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
+    await page.getByRole('group', { name: 'Delete screenshot 1?' }).getByRole('button', { name: 'Delete' }).click();
+    expect(del).toHaveBeenCalledWith('emu:dolphin:mkw', '300.png');
+    await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 2 from this PC' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 1 from this PC' })).toBeInTheDocument();
+  });
+
+  it('a failed delete keeps the tile and says so', async () => {
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['300.png'], saves: null });
+    vi.spyOn(api, 'deleteShot').mockRejectedValue(new ApiError('nope', 500));
+    await render(Toasts);
+    await open();
+    await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
+    await page.getByRole('group', { name: 'Delete screenshot 1?' }).getByRole('button', { name: 'Delete' }).click();
+    await expect.element(page.getByText(/Couldn't delete the screenshot/)).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 1 from this PC' })).toBeInTheDocument();
+  });
+
+  it('Steam screenshots have no delete, and an old hostd emulator game asks for none', async () => {
+    vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: ['a.jpg'], saves: null });
+    await open(game);
+    await expect.element(page.getByRole('button', { name: 'Open Portal 2 screenshot 1 from this PC' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /^Delete screenshot/ })).not.toBeInTheDocument();
   });
 });

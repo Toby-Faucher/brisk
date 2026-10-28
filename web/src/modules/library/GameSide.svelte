@@ -1,45 +1,53 @@
 <script lang="ts">
+  import { artSrc } from '../../state/art';
   // The game panel's static side: art, title, Play / Install / Quit, the update notice, quick facts, achievement
   // progress, automatic tags, and your note and tags. GameDetail owns the data and the scrolling side.
   import { Dialog } from 'bits-ui';
   import type { Game, GameInfo, Achievements } from '../../state/api';
+  import QuitLabel from '../../ui/QuitLabel.svelte';
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { hue } from './Cover.svelte';
+  import { gameCaps, gameKey } from '../../state/gameId';
   import { badgeLabel, installLabel, playLabel, smartTags } from './library';
+  import RemoveGame from './RemoveGame.svelte';
+  import ArtActions from './ArtActions.svelte';
   import GameNotes from './GameNotes.svelte';
   import TagChip from './TagChip.svelte';
 
-  let { game, busy, info, ach, onplay, oninstall }: { game: Game; busy: boolean; info: GameInfo | null | 'none'; ach: Achievements | null; onplay: (g: Game) => void; oninstall: (g: Game) => void } = $props();
+  let { game, busy, info, ach, onplay, oninstall, onremoved }: { game: Game; busy: boolean; info: GameInfo | null | 'none'; ach: Achievements | null; onplay: (g: Game) => void; oninstall: (g: Game) => void; onremoved?: () => void } = $props();
 
   let heroBad = $state('');
   let logoLoaded = $state('');
   const logoOk = $derived(!!game.logo && logoLoaded === game.logo);
   const hrs = $derived(game.playtimeMin < 60 ? `${game.playtimeMin} min` : `${Math.round(game.playtimeMin / 60)} h`);
-  const q = $derived($quitting.has(game.appid));
+  const q = $derived($quitting.has(gameKey(game)));
   const facts = $derived(info && info !== 'none' ? info : null);
 </script>
 
 <div class="head" style="background:radial-gradient(120% 140% at 85% 0%, hsl({hue(game)} 62% 48% / .67), #12151c 62%)">
-  {#if game.hero && heroBad !== game.hero}<img class="art" src={game.hero} alt="" onerror={() => (heroBad = game.hero)} />{/if}
-  {#if game.logo}<img class="logo" class:on={logoOk} src={game.logo} alt="" onload={() => (logoLoaded = game.logo)} />{/if}
+  {#if game.hero && heroBad !== game.hero}<img class="art" {@attach artSrc(game.hero)} alt="" onerror={() => (heroBad = game.hero)} />{/if}
+  {#if game.logo}<img class="logo" class:on={logoOk} {@attach artSrc(game.logo)} alt="" onload={() => (logoLoaded = game.logo)} />{/if}
   <Dialog.Title class={logoOk ? 'gd-t vh' : 'gd-t'}>{game.name}</Dialog.Title>
   <Dialog.Description class="gd-d">{badgeLabel(game)}{game.playtimeMin ? ` · ${hrs} played` : ''}</Dialog.Description>
 </div>
 
 {#if game.installed && game.update}<p class="upd" role="note">Steam still has to update this game. Starting it now may wait for the download.</p>{/if}
 <div class="acts">
-  {#if game.installed}
+  {#if game.installed || !gameCaps(game).install}
     <button class="btn" aria-disabled={busy} onclick={() => onplay(game)}><PlayIcon {busy} size={14} /> {busy ? 'Starting…' : playLabel(game)}</button>
   {:else}
     <button class="btn" aria-disabled={busy} onclick={() => oninstall(game)}><Icon name="dl" size={14} /> {busy ? 'Asking Steam…' : installLabel(game)}</button>
   {/if}
   {#if game.running}
-    <button class="btn ghost" aria-disabled={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><Icon name="power" size={14} /> {q ? 'Quitting…' : 'Quit'}</button>
+    <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
   {/if}
+  {#if !gameCaps(game).install}<RemoveGame {game} onremoved={() => onremoved?.()} />{/if}
   <Dialog.Close class="btn ghost close">Close</Dialog.Close>
 </div>
+
+<ArtActions {game} />
 
 {#if facts}
   <section class="sec facts" aria-label="Quick facts">
@@ -63,7 +71,7 @@
 {/if}
 
 <!-- your note and tags (keyed: a fresh draft per game) -->
-{#key game.appid}<GameNotes appid={game.appid} name={game.name} />{/key}
+{#key gameKey(game)}<GameNotes {game} />{/key}
 {#if smartTags(game).length}
   <section class="sec" aria-label="Automatic tags">
     <h3>Automatic tags</h3>

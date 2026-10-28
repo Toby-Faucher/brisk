@@ -12,6 +12,7 @@ import {
   fmtFortnight,
   installLabel,
   playLabel,
+  saveRow,
   savesLine,
   searchGames,
   shelves,
@@ -268,5 +269,27 @@ describe('library', () => {
     const many = Array.from({ length: 50 }, (_, i) => g(i + 1, `g${i}`, { playtimeMin: i % 10 }));
     expect(backlog(many)).toHaveLength(40);
     expect(backlog(many)[0].playtimeMin).toBe(0);
+  });
+});
+
+describe('saveRow', () => {
+  const now = 1_000_000_000_000;
+  it('maps each kind to an icon and a plain detail line', () => {
+    expect(
+      saveRow({ kind: 'state', name: 'RMCE01.s01', path: 'StateSaves/RMCE01.s01', size: 4_100_000, modified: now / 1000 - 3 * DAY }, now),
+    ).toEqual({
+      icon: 'replay',
+      title: 'RMCE01.s01',
+      detail: 'Save state, 4.1 MB, 3 d ago',
+      note: null,
+    });
+    expect(saveRow({ kind: 'nand-save', name: 'Wii save data', path: 'x', size: 150, modified: null, files: 1 }, now).detail).toBe(
+      'Wii save, 1 file, 1 KB',
+    );
+    const c = saveRow(
+      { kind: 'memory-card', name: 'MemoryCardA.USA.raw', path: 'x', size: 524_288, modified: now / 1000, note: 'Shared' },
+      now,
+    );
+    expect([c.icon, c.note]).toEqual(['clip', 'Shared']);
   });
 });

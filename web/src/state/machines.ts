@@ -59,7 +59,10 @@ export const selected: Writable<string | null> = {
 export const selectedMachine: Readable<Machine | null> = derived([machinesW, sel], ([$m, $s]) => $m.find((m) => m.id === $s) ?? null);
 
 // Machine-scoped api calls follow the selection, but only once a hub is known.
-derived([hubW, sel], ([$h, $s]) => ($h ? $s : null)).subscribe(setRoute);
+// Until the hub is probed and a machine is chosen the route is unknown: scoped calls wait (see setRoute).
+derived([hubW, sel], ([$h, $s]) => [$h ? $s : null, $h === false || ($h === true && $s !== null)] as const).subscribe(([id, known]) =>
+  setRoute(id, known),
+);
 
 /** One fetch. Fixes the selection before publishing, so routed calls never see an unknown id. */
 async function refresh(): Promise<void> {

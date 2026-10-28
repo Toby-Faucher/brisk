@@ -90,8 +90,8 @@ describe('NotesBackup', () => {
     await userEvent.click(page.getByRole('button', { name: 'Restore' }));
     await expect.poll(() => page.getByRole('status').element().textContent).toContain('Imported 2 tags and 2 games.');
     expect(s.putTag.mock.calls.map((c) => c[0])).toEqual(['coop', 'backlog']);
-    expect(s.putGame.mock.calls.map((c) => c[0])).toEqual([400, 620]); // JS orders integer keys ascending
-    expect(s.putGame).toHaveBeenCalledWith(620, data.games[620]);
+    expect(s.putGame.mock.calls.map((c) => c[0])).toEqual(['400', '620']); // JS orders integer keys ascending
+    expect(s.putGame).toHaveBeenCalledWith('620', data.games[620]);
     expect(s.putTag.mock.invocationCallOrder.at(-1)!).toBeLessThan(s.putGame.mock.invocationCallOrder[0]);
     await vi.waitFor(() => expect(s.get).toHaveBeenCalled());
   });

@@ -123,7 +123,7 @@ async fn put_tag_roundtrip_and_persists_across_load() {
     assert_eq!(all["tags"]["coop"], sent);
     assert_eq!(all["tags"]["back"]["note"], "");
     assert_eq!(
-        all["games"]["620"],
+        all["games"]["steam:620"],
         json!({"note":"line 1\nline 2","tags":["coop","back"]})
     );
 }
@@ -264,11 +264,11 @@ async fn empty_game_note_without_tags_deletes_entry() {
         json!({"note":"keep the <img src=x onerror=alert(1)> as text"}),
     )
     .await;
-    assert!(t.all().await["games"].get("9").is_some());
+    assert!(t.all().await["games"].get("steam:9").is_some());
     let (st, body) = t.game(9, json!({"note":"  \n ","tags":[]})).await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(body, json!({"note":"  \n ","tags":[]}));
-    assert!(t.all().await["games"].get("9").is_none());
+    assert!(t.all().await["games"].get("steam:9").is_none());
 }
 
 #[tokio::test]
@@ -286,14 +286,17 @@ async fn delete_tag_removes_it_from_games() {
     assert_eq!(st, StatusCode::NO_CONTENT);
     let all = t.all().await;
     assert!(all["tags"].get("coop").is_none());
-    assert!(all["games"].get("1").is_none(), "left empty, so gone");
-    assert_eq!(all["games"]["2"], json!({"note":"hi","tags":["back"]}));
+    assert!(all["games"].get("steam:1").is_none(), "left empty, so gone");
+    assert_eq!(
+        all["games"]["steam:2"],
+        json!({"note":"hi","tags":["back"]})
+    );
     // unknown tag: still 204
     let (st, _) = t.call("DELETE", "/api/notes/tags/coop", true, None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     // and it is on disk
     let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
-    assert_eq!(on_disk["games"]["2"]["tags"], json!(["back"]));
+    assert_eq!(on_disk["games"]["steam:2"]["tags"], json!(["back"]));
 }
 
 #[tokio::test]
@@ -329,7 +332,7 @@ async fn corrupt_file_loads_empty_and_next_save_works() {
     );
     assert_eq!(t.game(5, json!({"note":"after"})).await.0, StatusCode::OK);
     let on_disk: Value = serde_json::from_slice(&std::fs::read(t.file()).unwrap()).unwrap();
-    assert_eq!(on_disk["games"]["5"]["note"], "after");
+    assert_eq!(on_disk["games"]["steam:5"]["note"], "after");
 }
 
 #[tokio::test]
@@ -402,4 +405,186 @@ async fn tag_pinned_roundtrips_and_defaults_false() {
     .unwrap();
     let t3 = t_in(t2.dir);
     assert_eq!(t3.all().await["tags"]["o"]["pinned"], false);
+}
+
+#[tokio::test]
+async fn game_notes_take_new_ids_in_any_form_and_a_bare_number_as_steam() {
+    let t = t();
+    for u in ["steam:620", "steam%3A620", "620"] {
+        let (st, _) = t
+            .call(
+                "PUT",
+                &format!("/api/notes/games/{u}"),
+                true,
+                Some(json!({"note": u}).to_string()),
+            )
+            .await;
+        assert_eq!(st, StatusCode::OK, "{u}");
+    }
+    // all three are one entry, under the new id
+    let all = t.all().await;
+    assert_eq!(all["games"].as_object().unwrap().len(), 1);
+    assert_eq!(all["games"]["steam:620"]["note"], "620");
+    let (st, _) = t
+        .call(
+            "PUT",
+            "/api/notes/games/emu:dolphin:mario-kart-wii",
+            true,
+            Some(json!({"note":"x"}).to_string()),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    for bad in [
+        "nope",
+        "steam:0620",
+        "emu:dolphin",
+        "3758096385",
+        "4294967296",
+        "-1",
+    ] {
+        let (st, _) = t
+            .call(
+                "PUT",
+                &format!("/api/notes/games/{bad}"),
+                true,
+                Some(json!({"note":"x"}).to_string()),
+            )
+            .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    assert_eq!(t.all().await["games"].as_object().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn an_old_emulator_number_reaches_the_game_when_the_library_has_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("emulators.json"),
+        r#"[{"name":"Mario Kart Wii","emulator":"dolphin","file":"/x.iso"}]"#,
+    )
+    .unwrap();
+    let t = t_in(dir);
+    let (st, _) = t
+        .call(
+            "PUT",
+            "/api/notes/games/3907440760",
+            true,
+            Some(json!({"note":"hi"}).to_string()),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(
+        t.all().await["games"]["emu:dolphin:mario-kart-wii"]["note"],
+        "hi"
+    );
+}
+
+#[tokio::test]
+async fn remap_moves_emulator_keys_the_hub_could_not_map_and_keeps_a_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = r#"{"tags":{},"games":{"3907440760":{"note":"hub note","tags":[]},"3907440999":{"note":"other","tags":[]}}}"#;
+    std::fs::write(dir.path().join("notes.json"), old).unwrap();
+    std::fs::write(
+        dir.path().join("prefs.json"),
+        r#"{"3907440760":{"preset":"fast","codec":"h264","updated":1}}"#,
+    )
+    .unwrap();
+    let t = t_in(dir);
+    let body = |m: Value| Some(json!({ "map": m }).to_string());
+    let go = |m: Value| t.call("POST", "/api/ids/remap", true, body(m));
+    let (st, v) = go(json!({"3907440760": "emu:dolphin:mario-kart-wii"})).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"notes": 1, "prefs": 1})));
+    let all = t.all().await;
+    assert_eq!(
+        all["games"]["emu:dolphin:mario-kart-wii"]["note"],
+        "hub note"
+    );
+    assert!(
+        all["games"].get("3907440999").is_some(),
+        "an unlisted key stays"
+    );
+    assert_eq!(
+        std::fs::read_to_string(t.dir.path().join("notes.json.pre-ids")).unwrap(),
+        old
+    );
+    assert!(t.dir.path().join("prefs.json.pre-ids").exists());
+    // again: nothing left to move, the backup is still the original
+    let (_, v) = go(json!({"3907440760": "emu:dolphin:mario-kart-wii"})).await;
+    assert_eq!(v, json!({"notes": 0, "prefs": 0}));
+    assert_eq!(
+        std::fs::read_to_string(t.dir.path().join("notes.json.pre-ids")).unwrap(),
+        old
+    );
+    // only old emulator numbers to new emu ids
+    for bad in [
+        json!({"620": "emu:dolphin:x"}),
+        json!({"3907440760": "steam:620"}),
+        json!({"3907440760": "nope"}),
+        json!({"x": "emu:dolphin:x"}),
+    ] {
+        assert_eq!(go(bad.clone()).await.0, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    assert_eq!(
+        t.call("POST", "/api/ids/remap", true, Some("{}".into()))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        t.call("POST", "/api/ids/remap", false, body(json!({})))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn remap_on_a_machine_with_a_library_ignores_unknown_targets_and_ambiguous_numbers() {
+    use brisk_hostd::emu::{Record, library_json};
+    let dir = tempfile::tempdir().unwrap();
+    let rec = |id: &str, legacy: u32| Record {
+        id: brisk_hostd::game::GameId::parse(id).unwrap(),
+        emulator: "dolphin".into(),
+        system: None,
+        file: format!("/g/{id}.iso").replace(':', "_").into(),
+        name: id.into(),
+        added_at: None,
+        source: "scan".into(),
+        legacy_id: Some(legacy),
+        aliases: vec![],
+    };
+    let recs = [
+        rec("emu:dolphin:AAAAAA", 0xE000_0001),
+        rec("emu:dolphin:BBBBBB", 0xE000_0001),
+        rec("emu:dolphin:CCCCCC", 0xE000_0002),
+    ];
+    std::fs::write(dir.path().join("library.json"), library_json(&recs)).unwrap();
+    let game = r#"{"note":"n","tags":[]}"#;
+    std::fs::write(
+        dir.path().join("notes.json"),
+        format!(r#"{{"tags":{{}},"games":{{"3758096385":{game},"3758096386":{game},"3758096387":{game}}}}}"#),
+    )
+    .unwrap();
+    let t = t_in(dir);
+    let (st, v) = t
+        .call(
+            "POST",
+            "/api/ids/remap",
+            true,
+            Some(
+                json!({"map": {
+                    "3758096385": "emu:dolphin:AAAAAA",
+                    "3758096386": "emu:dolphin:CCCCCC",
+                    "3758096387": "emu:dolphin:ZZZZZZ"
+                }})
+                .to_string(),
+            ),
+        )
+        .await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"notes": 1, "prefs": 0})));
+    let g = t.all().await["games"].clone();
+    assert!(g.get("emu:dolphin:CCCCCC").is_some());
+    for k in ["3758096385", "3758096387"] {
+        assert!(g.get(k).is_some(), "{k} stays");
+    }
 }

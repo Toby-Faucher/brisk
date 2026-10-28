@@ -188,7 +188,7 @@ try {
       await sleep(60);
       await page.screenshot({ path: `${OUT}/library-vt-mid.png` });
       v = await vts(page);
-      const gridCards = await page.evaluate(() => document.querySelectorAll('.grid [data-appid]').length);
+      const gridCards = await page.evaluate(() => document.querySelectorAll('.grid [data-gid]').length);
       check('grid: on-screen grid cards named (vt-<appid>), at most 60, and they animate', v.length === 1 && v[0].named > 0 && v[0].named <= 60 && v[0].anims > 0, `anims ${v[0]?.anims}, named ${v[0]?.named}, grid now ${gridCards}`);
       await sleep(600);
       check('grid: names removed after', (await leftNames(page)) === 0);
@@ -271,9 +271,9 @@ try {
       await sleep(400);
       const t0 = await page.evaluate(() => ((window.__long.length = 0), (window.__ev.length = 0), performance.now()));
       await page.getByLabel('Search games').pressSequentially('game 1', { delay: 80 });
-      await page.waitForFunction(() => document.querySelectorAll('[data-appid]').length && !document.querySelector('[style*="view-transition-name"]'));
+      await page.waitForFunction(() => document.querySelectorAll('[data-gid]').length && !document.querySelector('[style*="view-transition-name"]'));
       await sleep(700);
-      const r = await page.evaluate((t0) => ({ long: Math.max(0, ...window.__long), ev: Math.max(0, ...window.__ev), evSum: window.__ev.reduce((a, b) => a + b, 0), n: window.__vt.length, cards: document.querySelectorAll('[data-appid]').length }), t0);
+      const r = await page.evaluate((t0) => ({ long: Math.max(0, ...window.__long), ev: Math.max(0, ...window.__ev), evSum: window.__ev.reduce((a, b) => a + b, 0), n: window.__vt.length, cards: document.querySelectorAll('[data-gid]').length }), t0);
       await page.getByLabel('Search games').fill('');
       await sleep(400);
       await page.evaluate(() => (window.__long.length = 0));

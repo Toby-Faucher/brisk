@@ -31,7 +31,7 @@ describe('api', () => {
     const { m } = stubPage('http://localhost:8443/');
     m.set('brisk.secret', 'sek');
     const f = stubFetch(204);
-    await api.launch(570);
+    await api.launch('570');
     await api.games().catch(() => {});
     const [postUrl, post] = f.mock.calls[0] as unknown as [string, RequestInit];
     const [getUrl, getInit] = f.mock.calls[1] as unknown as [string, RequestInit];
@@ -54,7 +54,7 @@ describe('api', () => {
     expect(local.get('brisk.secret')).toBe('abc123');
     m.clear(); // a new tab opened from a bookmark of the bare URL
     const f = stubFetch(204);
-    await api.launch(1);
+    await api.launch('1');
     expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-brisk-secret']).toBe('abc123');
   });
 
@@ -106,5 +106,64 @@ describe('api', () => {
       vi.fn(async () => new Response('<html>', { status: 502, statusText: 'Bad Gateway' })),
     );
     await expect(api.host()).rejects.toThrow('502');
+  });
+});
+
+describe('route', () => {
+  it('scopes the emulator controls path to the selected machine', async () => {
+    const { route, setRoute } = await import('./api');
+    setRoute('m1');
+    for (const p of ['/api/launch/defaults', '/api/games/steam%3A620/launch']) expect(route(p)).toBe(`/api/m/m1/${p.slice(5)}`);
+    expect(route('/api/emulators/dolphin/controls/classic')).toBe('/api/m/m1/emulators/dolphin/controls/classic');
+    expect(route('/api/prefs')).toBe('/api/prefs');
+    setRoute(null);
+    expect(route('/api/emulators/dolphin/controls/classic')).toBe('/api/emulators/dolphin/controls/classic');
+  });
+});
+
+describe('uploads and scan calls', () => {
+  it('go to the selected machine, or to the machine named, and send x-offset', async () => {
+    stubPage('http://localhost:8443/');
+    const { route, setRoute } = await import('./api');
+    setRoute('m1');
+    expect(route('/api/uploads/abc')).toBe('/api/m/m1/uploads/abc');
+    expect(route('/api/library/scan')).toBe('/api/m/m1/library/scan');
+    const f = stubFetch(200, { offset: 5 });
+    await api.uploadsFor(null).put('abc', 3, new Blob(['xy']));
+    await api.uploadsFor('m2').put('abc', 3, new Blob(['xy']));
+    await api.scanLibrary('m2', true);
+    await api.removeGame('emu:dolphin:RMCE01');
+    const urls = f.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(urls).toEqual([
+      '/api/m/m1/uploads/abc',
+      '/api/m/m2/uploads/abc',
+      '/api/m/m2/library/scan?include_removed=1',
+      '/api/m/m1/games/emu%3Adolphin%3ARMCE01',
+    ]);
+    const init = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init[1].method).toBe('PUT');
+    expect((init[1].headers as Record<string, string>)['x-offset']).toBe('3');
+    setRoute(null);
+  });
+});
+
+describe('removeGame', () => {
+  it('sends the id form to a new hostd and the number form to an old one', async () => {
+    stubPage('http://localhost:8443/');
+    const { setRoute } = await import('./api');
+    setRoute('new');
+    stubFetch(200, { games: [{ appid: 620, id: 'steam:620' }], idScheme: 1 });
+    await api.games();
+    setRoute('old');
+    stubFetch(200, { games: [{ appid: 620 }] });
+    await api.games();
+    const f = stubFetch(200, {});
+    setRoute('new');
+    await api.removeGame('steam:620');
+    setRoute('old');
+    await api.removeGame('steam:620');
+    const urls = f.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(urls).toEqual(['/api/m/new/games/steam%3A620', '/api/m/old/games/620']);
+    setRoute(null);
   });
 });

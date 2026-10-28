@@ -6,6 +6,7 @@
   import { host } from '../../state/host';
   import { ACCENT_HEX, settings } from '../../state/settings';
   import { games, watchGames } from '../../state/games';
+  import { findGame, gameKey, pick, rowKey, storesShots } from '../../state/gameId';
   import { forgetPrefs, prefs, saver, savedBody, startGame, watchPrefs } from '../../state/prefs';
   import { onCommand } from '../../state/commands';
   import Smoke from '../../ui/Smoke.svelte';
@@ -20,6 +21,7 @@
   import { ClipSync, browserClipboard, uploadQueue, type Upload } from './clipboard';
   import { clipInWorker, download, fileName, reserveHotkeys, screenshot } from './capture';
   import { keepAwake } from './wakelock';
+  import { keepShot } from './hostShot';
   import GhostBar from './GhostBar.svelte';
   import StatsCard from './StatsCard.svelte';
 
@@ -67,7 +69,7 @@
   let statsOn = $state(false);
   let preset = $state<StreamInfo['preset']>(null);
   let codec = $state<StreamInfo['codec']>(null);
-  let appid = $state<number | null>(null); // the live game, null for the Desktop
+  let appid = $state<string | null>(null); // the live game, null for the Desktop
   let captured = $state(false);
   let starting = $state(false);
   let hold = $state<Hold>({ progress: 0, fired: false });
@@ -87,7 +89,7 @@
     }
     if (!info) return; // left the page while waiting
     if (info.state !== 'live') return void (page = 'idle');
-    appid = info.appid;
+    appid = rowKey(info);
     preset = info.preset;
     codec = info.codec;
     page = 'session';
@@ -99,7 +101,7 @@
     try {
       const info = await startGame(undefined, toast); // the Desktop: no saved quality
       if (destroyed) return; // left the page during the POST: the session is closed anyway
-      appid = info.appid;
+      appid = rowKey(info);
       preset = info.preset;
       codec = info.codec;
       page = 'session';
@@ -121,23 +123,38 @@
     if (appid !== null && get(phase) !== 'failed') saver.save(appid, savedBody(r, liveCodec));
   }
 
-  const gameName = $derived($games?.games.find((g) => g.appid === appid)?.name ?? 'this game');
-  const savedFor = $derived(appid !== null && $prefs[appid] ? gameName : null);
+  const gameName = $derived(findGame($games?.games ?? [], appid)?.name ?? 'this game');
+  const savedFor = $derived(appid !== null && pick($prefs, findGame($games?.games ?? [], appid) ?? appid) ? gameName : null);
 
-  const gameOrNull = () => (appid === null ? null : ($games?.games.find((g) => g.appid === appid)?.name ?? `app-${appid}`));
+  const gameOrNull = () => (appid === null ? null : (findGame($games?.games ?? [], appid)?.name ?? `app-${appid}`));
 
+  // One capture at a time: a second press while one is saving says so (the replay clip does the same).
+  let shooting = false;
   async function shot() {
     const c = $canvasEl;
     if (!c?.width) return toast('Nothing on screen yet');
-    const name = fileName(gameOrNull(), 'png');
-    const { png, copied } = screenshot(c);
-    // Our own clipboard write is not a laptop copy: ClipSync must not send it to the host.
-    void clip.adopt(copied.then((ok) => (ok ? png.then((blob) => ({ kind: 'image' as const, blob })) : null)));
+    if (shooting) return toast('Still saving the last screenshot…');
+    shooting = true;
     try {
-      download(await png, name); // not waiting for the clipboard
-      toast(`Saved ${name}${(await copied) ? ' · copied' : ''}`);
+      const name = fileName(gameOrNull(), 'png');
+      const { png, copied } = screenshot(c);
+      // Our own clipboard write is not a laptop copy: ClipSync must not send it to the host.
+      void clip.adopt(copied.then((ok) => (ok ? png.then((blob) => ({ kind: 'image' as const, blob })) : null)));
+      const blob = await png;
+      download(blob, name); // not waiting for the clipboard
+      const text = `Saved ${name}${(await copied) ? ' · copied' : ''}`;
+      const g = findGame($games?.games ?? [], appid);
+      if (!g || !storesShots(g)) return toast(text);
+      const kept = await keepShot(blob, (b) => api.postShot(gameKey(g), b));
+      if (!kept.ok) return toast(`${text}. Not kept with the game: ${kept.why}`, { error: true });
+      const thumb = URL.createObjectURL(blob);
+      setTimeout(() => URL.revokeObjectURL(thumb), 6000);
+      toast(`${text} · kept with ${g.name}`, { thumb, ms: 5000 });
     } catch (e) {
-      toast(`Couldn't take the screenshot: ${(e as Error).message}`, { error: true });
+      const m = (e as Error).name === 'SecurityError' ? 'the browser will not let this page read the video frame' : (e as Error).message;
+      toast(`Couldn't take the screenshot: ${m}`, { error: true });
+    } finally {
+      shooting = false;
     }
   }
 
@@ -362,6 +379,7 @@
       ondisconnect={disconnect}
       replaySeconds={$settings.replaySeconds}
       onshot={shot}
+      storesShots={storesShots(findGame($games?.games ?? [], appid) ?? { appid: 0 })}
       onreplay={saveReplay}
     />
     {#if statsOn}<StatsCard stats={$stats} path={$host?.path === 'relay' ? 'Relay' : $host?.path === 'direct' ? 'Direct' : null} />{/if}

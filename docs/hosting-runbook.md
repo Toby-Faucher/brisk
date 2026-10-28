@@ -77,6 +77,9 @@ a sudoq approval, the laptop, or a decision. Nothing here touches the root addre
   laptop is no longer on bawn's clipboard afterwards.
 - The journal never holds the secret (hostd prints the page line without it under systemd); use
   `scripts/brisk-service.sh link` for the link.
+- Emulator playtime: hostd checks the running emulators every 15 s and writes `playtime.json` in the data
+  dir (at most once a minute while a game runs). Restarting hostd loses at most that minute; time while
+  hostd is down is not counted. Delete the file to reset all emulator playtime.
 - Status / logs: `scripts/brisk-service.sh status`, `scripts/brisk-service.sh logs -f`.
 - A new link (another browser): `scripts/brisk-service.sh link`. To rotate the secret: remove
   `~/.config/brisk/secret`, `systemctl --user restart brisk-hostd.service`, open the new link.
@@ -226,6 +229,162 @@ Before rebuilding, tag the running image for rollback: `docker tag brisk-hub:loc
 - Machine shuts down while you are away from the keyboard but connected: the hub only counts a live
   stream as activity; raise `idle_shutdown_min` or remove it.
 
+## Adding games
+
+Games live in `~/Games/<system>/` on each machine (`BRISK_GAMES_DIR` changes it). The system comes from the
+file header, never the name. Three ways in; all end in a library card:
+
+- Library page, "Add game": resumable upload to the chosen machine. Only free space limits the size; 5 GB stay free.
+- Copy files into the folder any way you like (scp, a share), then press "Scan games folder" or
+  `POST /api/library/scan`. `BRISK_SCAN_ON_START=1` also scans when hostd starts.
+- On the machine: `brisk-hostd add <file> [--move|--copy|--link]` (no server needed).
+
+Only Wii and GameCube have an emulator today. Other systems are stored in their folder but get no card yet.
+"Remove" in a game's menu forgets the card and keeps the file; a scan finds it again.
+The games VM's `~/roms` keeps working as it is. To fold it in later: `ln -s ~/roms ~/Games/wii`.
+
+Upload from a script (`$HOST` is the machine's hostd address, `$SECRET` its `x-brisk-secret`; placeholders,
+fill them in your shell, never commit them). Chunks are at most 32 MiB and must go in order:
+
+```sh
+f=game.iso; size=$(stat -c %s "$f")
+id=$(curl -s -H "x-brisk-secret: $SECRET" -H 'content-type: application/json' \
+  -d "{\"name\":\"$f\",\"size\":$size}" "$HOST/api/uploads" | jq -r .id)
+off=0
+while [ "$off" -lt "$size" ]; do
+  dd if="$f" bs=1M skip=$((off/1048576)) count=32 2>/dev/null | \
+    curl -sf -X PUT -H "x-brisk-secret: $SECRET" -H "x-offset: $off" --data-binary @- "$HOST/api/uploads/$id" >/dev/null \
+    || { off=$(curl -s -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id" | jq -r .offset); continue; }
+  off=$(curl -s -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id" | jq -r .offset)
+done
+curl -s -X POST -H "x-brisk-secret: $SECRET" "$HOST/api/uploads/$id/finish"
+```
+
+If a PUT fails, the loop asks `GET /api/uploads/$id` for the offset and carries on from there. Details and
+error codes: `docs/plans/2026-10-28-stage2-upload.md`. Through the hub this needs the hub change in that file.
+
+## Launch options (MangoHud, GameMode, gamescope, env vars, your own command)
+
+Defaults live in Settings and each game can override single fields (a field left alone inherits). The data is
+`launch.json` in the data directory on the machine that runs the game. Allowed: the MangoHud, GameMode and
+gamescope wrappers (gamescope takes only `-W -H -w -h -r -f -b --fsr`), environment variables from a fixed
+list, extra arguments, and your own command. Your own command stays off until Settings has Allow custom
+commands switched on. Nothing goes through a shell; every entry is one argument.
+
+Anyone who can log in to brisk can already control the machine through the stream, so the custom command switch
+is a catch against mistakes, not a security boundary. Extra arguments are not behind the switch: they are
+appended to the game or emulator command as given. `MANGOHUD_CONFIG` is not in the variable list on purpose,
+because MangoHud's config can carry an `exec=` key that runs a command.
+
+**Emulator games** need nothing: brisk wraps the emulator command itself on Play.
+
+**Steam games** are set once per game. In Steam, open the game's Properties, General, Launch Options and paste
+the line the game's panel shows (`GET /api/games/steam:<appid>/launch`, field `steamLine`):
+
+```
+<path-to>/brisk-hostd wrap steam:<appid> -- %command%
+```
+
+After that, everything is changed in brisk and takes effect on the next start. If hostd runs with a
+`BRISK_DATA_DIR`, put the same `BRISK_DATA_DIR=<dir>` in front of the line; Steam's own environment is what the
+shim sees. Brisk never edits Steam's config files.
+
+What `wrap` does: reads `launch.json` directly (no network, no secret), works out the options for that game,
+puts the wrappers around the command Steam passes and `exec`s it. One line goes to stderr, for example
+`brisk-wrap: steam:620: starting through gamemoderun`.
+
+**A bad setting never stops a game.** If `launch.json` is missing, unreadable or invalid (for example custom
+commands were switched off after a custom command was saved), the game starts with no options, and the log says
+why (`launch options for steam:620 ignored: ...` on the shim's stderr, `warn: launch options ...` in hostd's
+log for emulators). If a wrapper program is not installed, the plain command runs instead.
+
+Check it works: run `<path-to>/brisk-hostd wrap steam:<appid> -- /bin/echo hello` in a terminal (it should print
+`hello`, or with options set, run `echo` under the wrappers), then start the game from Steam and look at
+`ps -ef` for the wrapper above the game. Steam's launch log: `STEAM_LINUX_RUNTIME_LOG=1` in the same option
+line writes to `~/.local/share/Steam/logs`.
+
+## Art and details
+
+Emulator games get cover, hero, logo and icon art from SteamGridDB, looked up once and kept on the machine.
+
+Setup, on each machine that has emulator games:
+
+- Put a free SteamGridDB API key in `~/.config/brisk/steamgriddb-api-key`, one line with only the key, mode 600 (`chmod 600`). Or point `BRISK_SGDB_KEY_FILE` at another file. No restart is needed. Without the file, games keep the title card and Settings says "Art needs a SteamGridDB key on the machine".
+- `BRISK_GAMETDB_XML_URL` is optional. When set to a plain `wiitdb.xml` URL, Wii and GameCube games also get year, publisher, developer and languages, and GameTDB's title is used for the search. Unset is fine. The GameTDB database address is not settled yet, so nothing sets it.
+
+How it runs:
+
+- A new game (scan or upload finish) is looked up once, in the background, one game at a time with a pause between calls. There is no timer and `/api/games` never starts a lookup.
+- The title comes from the disc header stored in the library record. Tags such as `(USA)`, a `Disc 1` suffix and a trailing `Wii` or `GameCube` are dropped before the search.
+- One clear match is taken and its art is fetched. An unsure match fetches nothing: up to three candidates wait in Settings > Emulators > Dolphin > Art and details, where you pick one or press None of these. A None answer is remembered.
+- Game panel: Find art, or Choose different art, clears the match and searches again (once per 30 seconds per game).
+
+Where things are, under the machine's data dir (`~/.local/share/brisk` by default):
+
+- `art/<emu_dolphin_ID>/` holds `match.json`, `nomatch`, `cover|hero|logo|icon.png|jpg|webp`, `meta.json`, `done.json`.
+- `art/pending.json` is the confirm queue (at most 50 games, 3 candidates each).
+- Files are mode 600. Removing a game from the Library keeps its art, so adding it back needs no new lookup.
+
+To clear: delete `art/<emu_dolphin_ID>/` for one game, or press Choose different art. Delete `art/` to forget everything. Credits (SteamGridDB, GameTDB) show in the game panel.
+
+Checked against loopback mocks only. Assumed, not seen against the real service: the SteamGridDB response shapes, the image host names (`cdn2.steamgriddb.com` and friends, see `docs/research/sgdb-notes.md`), the lack of a rate limit, and the GameTDB database address. Nothing was seen rendered in a browser.
+
+## Dolphin on the games VM
+Brisk can list Wii and GameCube games next to the Steam ones. Play starts `dolphin-emu -b -e <file>` on the host.
+
+1. Install Dolphin: `pacman -S dolphin-emu` (needs root).
+2. Install the gamepad profile as the games user: `scripts/setup-dolphin.sh`. It writes
+   `~/.config/dolphin-emu/WiimoteNew.ini` and adds `BackgroundInput = True` and `ConfirmStop = False` to `Dolphin.ini`. A file you
+   have changed is left alone. `--force` replaces it and keeps the old one as `<name>.before-brisk`.
+   `BackgroundInput` was added while debugging the pad and may not be needed. `ConfirmStop = False` is
+   needed for Quit: by default Dolphin answers a window close with a "stop the current emulation?" dialog
+   that nobody sees on a stream, and it then ignores SIGTERM until it is answered. Existing values are
+   never rewritten.
+3. List the games in `library.json` in the hostd data dir (`~/.local/share/brisk` by default, see
+   `BRISK_DATA_DIR`):
+   `{"v": 1, "games": [{"id": "emu:dolphin:mario-kart-wii", "emulator": "dolphin", "name": "Mario Kart Wii", "file": "/path/to/game.iso"}]}`.
+   The id is yours to pick, and it stays the game's id for good: notes, tags and quality settings hang on it.
+   On the first start after an upgrade, an old `emulators.json` is turned into `library.json` (ids from a
+   slug of the name) and is kept as it is. Only `dolphin` works today. A game whose file is missing shows as
+   not installed. A broken file is ignored with a warning in the hostd log. The data files that were keyed by
+   game number are rewritten to the new ids once, with a copy kept next to each as `<name>.pre-ids`
+   (see `docs/plans/2026-10-28-stage1-api.md`).
+4. Put the ROMs in any directory the games user can read. A separate disk mounted somewhere is fine.
+
+The profile maps the streamed Sunshine pad to a Wii Classic Controller. It names the pad
+`evdev/0/Sunshine (libvirtualhid) X-Box Series Controller`. The `0` is the index among pads with that
+name, so it assumes one such pad. With two, the index changes and the mapping misses.
+Quit on a Dolphin game closes its window and waits about 5 s, sends SIGTERM and waits about 10 s more, then
+reports still running so the UI can offer Force quit. Nothing is killed without that tap.
+Dolphin reads its config only at start. After a change, quit Dolphin and start the game again.
+
+## RetroAchievements
+Brisk shows your RetroAchievements progress for Wii and GameCube games, read-only. Dolphin earns the
+achievements; brisk only reads them back from the public web API when you open the game (and on a Refresh,
+and every so often while the game runs). Nothing hooks into Dolphin.
+
+1. On retroachievements.org: make an account, then copy the Web API key from the Keys section of the
+   account settings.
+2. On the host, as the games user, write `~/.config/brisk/retroachievements`: line 1 your user name, line 2
+   the key, then `chmod 600` it. Letters, digits, `_`, `-` and `.` only. No file means the panel stays off.
+   (`BRISK_RA_KEY_FILE` moves it, see `docs/env.md`.) Never commit it.
+3. Log in to RetroAchievements inside Dolphin on the VM (Settings, Achievements). This needs a Dolphin
+   build with achievements support (GameCube since 2407-68, Wii since 2603a per
+   `docs/research/emulator-metadata-and-achievements.md`) and Dual Core off. UNVERIFIED: whether the Arch
+   `dolphin-emu` package is built with it.
+4. Only plain `.iso` (GameCube, Wii) and `.wbfs` (Wii) files can be hashed. An RVZ or WIA file shows
+   "unsupported". Hashing reads the whole game once and is cached in `data_dir/ra/hash-cache.json`.
+
+Confirm the hash by hand: `GET /api/games/<id>/ra-hash` answers `{console, hash, container, computedAt}`.
+On retroachievements.org open the game page, then its Supported Game Files list, and compare the hash.
+The GameCube routine and the Wii routine are checked against synthetic images only. Neither has been
+compared with a real disc yet, so a "not found" for a game that has a set may mean a wrong hash: check this
+first.
+
+States of `GET /api/games/<id>/achievements` for an emulator game: `off`, `unsupported`, `not-found`,
+`rate-limited`, `bad-credentials`, `error` and `ok`. `?refresh=1` skips the 5 minute cache, at most once
+every 30 s per game.
+
 ## What needs root, and why
 | Step | Command | Why root |
 |---|---|---|
@@ -236,3 +395,18 @@ Before rebuilding, tag the running image for rollback: `docker tag brisk-hub:loc
 | (already done) caps | `setcap cap_sys_admin,cap_sys_nice+p ~/.local/opt/sunshine-brisk/bin/sunshine` | KMS capture; sunshine-brisk.sh asks via sudoq only if missing |
 | reboot test | `systemctl reboot` | |
 Everything else (the unit, its enable/start, builds, Sunshine restarts) is toby's own systemd user manager.
+
+## Emulator saves list (Stage 6c)
+
+`GET /api/games/{id}/saves` lists a Dolphin game's save states, Wii save folder and GameCube memory cards. It is
+read-only: no download, no delete, no file contents. The folder is `BRISK_DOLPHIN_USER_DIR` (see `docs/env.md`).
+Symlinks are skipped. The list is capped (100 items; a Wii save folder is counted, 2000 entries at most).
+A game only has saves when its id ends in the 6-character disc id (like `RMCE01`); other ids list nothing.
+
+Checked against Dolphin's source: the user dir rules (`~/.dolphin-emu` if present, else XDG data home),
+`StateSaves/<GameID>.sNN`, the memory card names `GC/MemoryCard{A,B}.<region>[.<blocks>].raw`, the GCI folder
+`GC/<region>/Card A`, and the Wii save path `Wii/title/<hi>/<lo>/data` with hi `00010000` or `00010004`.
+
+Assumed, not seen in the source: 10 save slots, the region folder names (USA, EUR, JPN or JAP), and that a
+disc game's low title id is the first four characters of the disc id in hex. Nothing was run against a real
+Dolphin user dir.
