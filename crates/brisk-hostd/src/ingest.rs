@@ -281,12 +281,6 @@ pub struct Tomb {
     pub id: String,
 }
 
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// The removed list. Missing is empty. Damaged: the file is moved to `removed.json.bad-<time>`
 /// and this is an error (the list is lost, so the caller must not guess). Unreadable: an error.
 fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
@@ -303,7 +297,7 @@ fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
     match serde_json::from_str::<F>(&text) {
         Ok(f) => Ok(f.removed),
         Err(_) => {
-            let bad = data_dir.join(format!("{TOMBS_FILE}.bad-{}", unix_now()));
+            let bad = data_dir.join(format!("{TOMBS_FILE}.bad-{}", crate::steam::now()));
             let _ = std::fs::rename(&p, &bad);
             Err(format!(
                 "{TOMBS_FILE} was damaged and was moved to {}; look at it, then scan again",
@@ -465,7 +459,7 @@ fn keep_bad_copy(data_dir: &Path, skipped: usize) {
     if have {
         return;
     }
-    let bad = data_dir.join(format!("{prefix}{}", unix_now()));
+    let bad = data_dir.join(format!("{prefix}{}", crate::steam::now()));
     match std::fs::copy(data_dir.join(emu::LIBRARY_FILE), &bad) {
         Ok(_) => eprintln!(
             "warning: {skipped} record(s) in {} did not parse; the original is kept as {}",

@@ -4,15 +4,12 @@
 //! browser sends a PNG; we check the signature, the IHDR size and the IEND tail, never decode it.
 
 use serde::Serialize;
-use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 
 pub(crate) const MAX_BYTES: usize = 8 << 20;
 const MAX_DIM: u32 = 8192;
 const MAX_PER_GAME: usize = 200;
-/// Free space kept after a save.
-const RESERVE: u64 = 256 << 20;
 const MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 const IEND: &[u8; 12] = b"\0\0\0\0IEND\xaeB`\x82";
 
@@ -34,7 +31,12 @@ pub struct Shot {
     pub taken_at: u64,
 }
 
-/// Width and height from a whole, sane PNG; None for anything else.
+/// Big-endian u32 at `i`; the caller has checked the length.
+fn be32(b: &[u8], i: usize) -> u32 {
+    u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]])
+}
+
+/// Width and height from a whole, sane PNG; an error for anything else.
 fn png_dims(b: &[u8]) -> Result<(u32, u32), &'static str> {
     if b.len() < 8 + 25 || &b[..8] != MAGIC {
         return Err("not a PNG");
@@ -42,8 +44,7 @@ fn png_dims(b: &[u8]) -> Result<(u32, u32), &'static str> {
     if b[8..12] != 13u32.to_be_bytes() || &b[12..16] != b"IHDR" {
         return Err("not a PNG");
     }
-    let n = |i: usize| u32::from_be_bytes(b[i..i + 4].try_into().unwrap());
-    let (w, h) = (n(16), n(20));
+    let (w, h) = (be32(b, 16), be32(b, 20));
     if w == 0 || h == 0 || w > MAX_DIM || h > MAX_DIM {
         return Err("image size out of range");
     }
@@ -75,7 +76,7 @@ pub fn save(
     free: Option<u64>,
 ) -> Result<Shot, Fail> {
     let (width, height) = png_dims(png).map_err(Fail::Invalid)?;
-    if free.is_some_and(|f| (png.len() as u64).saturating_add(RESERVE) > f) {
+    if free.is_some_and(|f| (png.len() as u64).saturating_add(crate::files::RESERVE) > f) {
         return Err(Fail::NoSpace);
     }
     let d = dir(data, id);
@@ -92,19 +93,7 @@ pub fn save(
         ms += 1;
     }
     let name = format!("{ms}.png");
-    let tmp = d.join(format!(".{ms}.tmp"));
-    let w = || -> std::io::Result<()> {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(png)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, d.join(&name))
-    };
-    if let Err(e) = w() {
-        let _ = std::fs::remove_file(&tmp);
+    if let Err(e) = crate::fsutil::write_atomic(&d.join(&name), png) {
         return Err(if e.raw_os_error() == Some(libc::ENOSPC) {
             Fail::NoSpace
         } else {
@@ -156,12 +145,11 @@ pub fn list(data: &Path, id: &str) -> Vec<Shot> {
             let size = f.metadata().ok()?.len();
             let mut h = [0u8; 24];
             std::io::Read::read_exact(&mut f, &mut h).ok()?;
-            let n = |i: usize| u32::from_be_bytes(h[i..i + 4].try_into().unwrap());
             Some(Shot {
                 taken_at: valid_name(&name)?,
                 name,
-                width: n(16),
-                height: n(20),
+                width: be32(&h, 16),
+                height: be32(&h, 20),
                 size,
             })
         })

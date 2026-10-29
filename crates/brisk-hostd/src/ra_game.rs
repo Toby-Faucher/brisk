@@ -12,11 +12,12 @@ use crate::retroachievements::{
     self as ra, Achievement, CONSOLE_GAMECUBE, CONSOLE_WII, GameProgress, Matched, RaConfig,
     RaError,
 };
+use crate::steam::now;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 const CACHE_MAX: usize = 256;
 
@@ -54,12 +55,6 @@ pub enum HashErr {
     /// A container or format `rahash` cannot decode (RVZ, WIA, unknown): never a guessed hash.
     Unsupported(String),
     Failed(String),
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
 }
 
 /// Canonical path + size + mtime (ns): a changed or replaced file misses.

@@ -12,8 +12,8 @@ use tokio::io::AsyncWriteExt;
 
 const MAX_UPLOAD: u64 = 8 << 30;
 const MAX_NAME: usize = 200;
-/// Left free on the disk after an upload.
-const RESERVE: u64 = 256 << 20;
+/// Left free on the disk after an upload or a screenshot.
+pub(crate) const RESERVE: u64 = 256 << 20;
 /// Free space is checked again after every this many bytes written.
 const CHECK_EVERY: u64 = 64 << 20;
 
