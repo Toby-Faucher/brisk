@@ -334,7 +334,10 @@ describe('GameDetail', () => {
     await expect.element(x).toBeInTheDocument();
     const box = x.element().getBoundingClientRect();
     const panel = document.querySelector('.gd')?.getBoundingClientRect() as DOMRect;
-    expect(panel.right - box.right).toBeLessThan(16);
+    const main = document.querySelector('.gd-main') as HTMLElement;
+    const sb = main.offsetWidth - main.clientWidth; // 0 when the column does not scroll
+    expect(panel.right - box.right).toBeGreaterThanOrEqual(sb + 12);
+    expect(panel.right - box.right).toBeLessThan(40);
     expect(box.top - panel.top).toBeLessThan(16);
     const rf = page.getByRole('button', { name: 'Refresh Steam data' }).element().getBoundingClientRect();
     expect(rf.right).toBeLessThanOrEqual(box.left);
