@@ -33,8 +33,8 @@ scripts: [env.md](env.md).
   brisk-proto and brisk-client; private-key use only in the client, so it needs a local attacker; kept until a
   fix or replacement) and `crypto-bigint` 0.5.5 (via p256/p384 from `rustls-rustcrypto`; REACHABLE: every
   bridge handshake signs with P-256 for any tailnet peer, accepted because remote timing is impractical).
-  `exclude-dev = true` means advisories in dev-only crates are not reported.
-  Duplicate-version warnings are expected. Install: `cargo install --locked cargo-nextest cargo-deny`
+  Dev-only crates are checked too. A second version of a crate fails the check unless it has a
+  `skip` entry with a reason in `deny.toml`. Install: `cargo install --locked cargo-nextest cargo-deny`
   (cargo-deny's `zstd-sys` needs a C compiler and free space in /tmp; the tool is not part of the product).
 - **Purity allowlist**: `scripts/check-pure-rust.sh` fails on any `*-sys`/`*_sys` crate or `cc`, `cmake`,
   `bindgen`, `pkg-config`, `vcpkg`, `cxx-build` in the x86_64-linux normal+build graph unless
