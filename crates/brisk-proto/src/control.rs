@@ -95,7 +95,14 @@ pub enum ControlError {
 
 impl std::fmt::Display for ControlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "control: {self:?}")
+        f.write_str(match self {
+            ControlError::TooLarge => "control message too large",
+            ControlError::Truncated => "truncated control message",
+            ControlError::Unencrypted => "unencrypted control message",
+            ControlError::BadTag => "control message failed authentication",
+            ControlError::Replay => "replayed control sequence number",
+            ControlError::SeqExhausted => "control sequence number exhausted",
+        })
     }
 }
 impl std::error::Error for ControlError {}

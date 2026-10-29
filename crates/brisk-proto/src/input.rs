@@ -62,6 +62,17 @@ pub enum InputError {
     GamepadIndex(u8),
 }
 
+impl std::fmt::Display for InputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputError::BadMouseButton(b) => write!(f, "bad mouse button {b}"),
+            InputError::BadModifiers(m) => write!(f, "bad key modifiers {m:#04x}"),
+            InputError::GamepadIndex(i) => write!(f, "gamepad index {i} out of range"),
+        }
+    }
+}
+impl std::error::Error for InputError {}
+
 fn packet(magic: u32, body: &[u8]) -> Vec<u8> {
     let mut p = Vec::with_capacity(8 + body.len());
     p.extend_from_slice(&(body.len() as u32 + 4).to_be_bytes());

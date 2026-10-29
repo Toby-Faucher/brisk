@@ -80,7 +80,15 @@ pub enum EnetError {
 
 impl std::fmt::Display for EnetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "enet: {self:?}")
+        f.write_str(match self {
+            EnetError::Malformed => "malformed enet datagram",
+            EnetError::TooLarge => "enet packet too large",
+            EnetError::NotConnected => "enet peer not connected",
+            EnetError::QueueFull => "enet send queue full",
+            EnetError::BadChannel => "no such enet channel",
+            EnetError::Refused => "host refused the enet connection",
+            EnetError::Timeout => "enet command not acknowledged in time",
+        })
     }
 }
 impl std::error::Error for EnetError {}
