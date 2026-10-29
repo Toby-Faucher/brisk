@@ -61,6 +61,13 @@ impl From<quinn::WriteError> for Error {
     }
 }
 
+/// Closes every connection on `ep` with an application close and waits briefly for it to be sent,
+/// so the browser learns at once that the stream is over instead of at its idle timeout.
+pub async fn shut_down(ep: &quinn::Endpoint) {
+    ep.close(STOPPING.into(), b"bridge stopping");
+    let _ = tokio::time::timeout(CLOSE_WAIT, ep.wait_idle()).await;
+}
+
 /// A QUIC endpoint for WebTransport on `addr` (refuses the unspecified address: bind a
 /// Tailscale or loopback IP).
 pub fn endpoint(
@@ -96,6 +103,10 @@ pub const MAX_PENDING: usize = 8;
 pub const MAX_CONNECTIONS: usize = MAX_PENDING + 2;
 /// Application close code for a refused connection (H3_GENERAL_PROTOCOL_ERROR).
 const REFUSED: u32 = 0x101;
+/// Application error code of the close sent to the viewer when the bridge stops.
+pub const STOPPING: u32 = 0x102;
+/// How long [`shut_down`] waits for the close to go out.
+const CLOSE_WAIT: Duration = Duration::from_secs(1);
 
 /// Admits new connections and runs their handshakes: at most [`MAX_PENDING`] at a time, each
 /// closed unless it opens a session for our token within `wait`.

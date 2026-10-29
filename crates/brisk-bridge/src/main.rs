@@ -22,6 +22,7 @@ use brisk_client::control::ControlSession;
 use brisk_client::identity::{ServerCert, default_config_dir, load_identity};
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
+use brisk_client::stop::Stop;
 use brisk_client::stream::{StreamRx, media_setup, race};
 use brisk_client::tap::{TapListener, tap_path};
 use brisk_client::{Error, StderrLog, SystemRng};
@@ -128,27 +129,16 @@ fn hex_lower(b: &[u8]) -> String {
     brisk_proto::pair::hex(b).to_ascii_lowercase()
 }
 
-/// Resolves on SIGINT, SIGTERM or SIGHUP with the signal's name. Installed before the launch, so
-/// a signal during it is handled (once the session runs) instead of killing the process before
-/// the cancel.
-fn interrupted() -> std::io::Result<impl std::future::Future<Output = &'static str>> {
-    use tokio::signal::unix::{SignalKind, signal};
-    let (mut t, mut h, mut i) = (
-        signal(SignalKind::terminate())?,
-        signal(SignalKind::hangup())?,
-        signal(SignalKind::interrupt())?,
+/// The `stopping` line hostd and people see when a stop request ends the stream.
+fn stopping(stop: &Stop) {
+    println!(
+        "{}: stopping",
+        stop.first().expect("only called after a request")
     );
-    Ok(async move {
-        tokio::select! {
-            _ = i.recv() => "SIGINT",
-            _ = t.recv() => "SIGTERM",
-            _ = h.recv() => "SIGHUP",
-        }
-    })
 }
 
 async fn run(a: Args) -> brisk_client::Result<()> {
-    let stop = interrupted()?;
+    let mut stop = Stop::on_signals()?;
     let setup = |e: String| Error::Setup(e);
     let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter(&a.cert)
         .and_then(|i| i.collect())
@@ -200,16 +190,29 @@ async fn run(a: Args) -> brisk_client::Result<()> {
         + a.secs
             .map_or(Duration::from_secs(365 * 86400), Duration::from_secs);
     let (host, ep, token, rep) = (a.host.clone(), &ep, &token, &mut report);
-    let during = |p: StreamPorts| async move {
+    let during = |p: StreamPorts, mut stop: Stop| async move {
         let mut id = [0u8; 4];
         SystemRng.fill(&mut id);
-        let (addr, cd, av) = media_setup(&host, &p).await?;
-        let mut c =
-            ControlSession::connect(addr, cd, p.key.rikey, u32::from_le_bytes(id), Some(av))
-                .await?;
+        let up = stop.unless(async {
+            let (addr, cd, av) = media_setup(&host, &p).await?;
+            let c =
+                ControlSession::connect(addr, cd, p.key.rikey, u32::from_le_bytes(id), Some(av))
+                    .await?;
+            Ok::<_, Error>((c, cd))
+        });
+        let Some(up) = up.await else {
+            stopping(&stop);
+            return Ok(());
+        };
+        let (mut c, cd) = up?;
         let r = async {
             let mut rx = StreamRx::new(p.enc_flags, p.key.rikey, p.key.rikeyid, None)?;
-            let Some(mut tap) = race(&mut c, &listener, cd, cfg.codec, &mut rx).await? else {
+            let Some(raced) = stop.unless(race(&mut c, &listener, cd, cfg.codec, &mut rx)).await
+            else {
+                stopping(&stop);
+                return Ok(());
+            };
+            let Some(mut tap) = raced? else {
                 return Err(Error::Setup(
                     "Sunshine sent RTP, not the tap: is the brisk build running? (scripts/sunshine-brisk.sh status)".into(),
                 ));
@@ -236,8 +239,8 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                 r = run => r,
                 r = forward(&mut tap, ep, token, &h, &mut arx_q, &mut arx, &inp, rep) => r,
                 r = input::send_loop(&inp, |ev| h.send_input(ev)) => r,
-                sig = stop => {
-                    println!("{sig}: stopping");
+                _ = stop.requested() => {
+                    stopping(&stop);
                     Ok(())
                 }
             };
@@ -265,7 +268,8 @@ async fn run(a: Args) -> brisk_client::Result<()> {
         d.map(|_| ())
     };
     let r = s
-        .launch_session(
+        .launch_session_until(
+            &mut stop,
             &ident,
             &server,
             a.app,
@@ -275,6 +279,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             during,
         )
         .await;
+    wt::shut_down(ep).await;
     println!("{report}");
     if s.launch_confirmed() {
         println!("session\tended after {:.1}s", start.elapsed().as_secs_f32());
@@ -294,6 +299,11 @@ async fn main() -> ExitCode {
     };
     match run(a).await {
         Ok(()) => ExitCode::SUCCESS,
+        // Same exit status as brisk-probe: a second stop request cut the cleanup short.
+        Err(e @ Error::Abandoned(_)) => {
+            eprintln!("error: {e}");
+            ExitCode::from(130)
+        }
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE

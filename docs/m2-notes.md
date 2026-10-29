@@ -290,7 +290,9 @@ moves are all +-5).
   then `enable`; restarts kept 100 s apart), runs brisk-hostd in the foreground (it serves the page on
   127.0.0.1:8443 and runs the bridge when a stream starts). It prints the `ssh -L` line and the page URL.
 - Down: Ctrl-C in brisk-up's terminal (brisk-up sends the bridge SIGTERM, which it handles like
-  SIGINT, and cancels its own Sunshine session), then `scripts/brisk-down.sh`: SIGTERM to hostd
+  SIGINT, and cancels its own Sunshine session, also when it comes while the stream is still starting;
+  a second signal during that cancel makes it exit with status 130 at once; it closes the browser's
+  connection before it exits), then `scripts/brisk-down.sh`: SIGTERM to hostd
   (which stops its bridge) if still running, then `sunshine-brisk.sh rollback` (stock Sunshine, refuses
   while busy) whenever the brisk build runs *or* its drop-in exists. Stub tests:
   `scripts/test-brisk-up-down.sh`, `scripts/test-brisk-up-exit.sh`, `scripts/test-sunshine-brisk.sh`.
