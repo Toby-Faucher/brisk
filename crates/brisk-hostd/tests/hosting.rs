@@ -163,11 +163,9 @@ fn secret_of_15_chars_or_non_ascii_is_refused() {
 
 #[test]
 fn downloads_dir_env_overrides_default() {
-    // SAFETY: no other test in this binary reads or writes BRISK_DOWNLOADS_DIR.
-    unsafe { std::env::set_var("BRISK_DOWNLOADS_DIR", "/x/dl") };
-    let c = Config::from_env(".".into());
-    // SAFETY: as above.
-    unsafe { std::env::remove_var("BRISK_DOWNLOADS_DIR") };
+    let c = Config::from_vars(".".into(), |n| {
+        (n == "BRISK_DOWNLOADS_DIR").then(|| "/x/dl".into())
+    });
     assert_eq!(c.downloads_dir, Path::new("/x/dl"));
 }
 
@@ -279,11 +277,10 @@ async fn extra_and_tailnet_hosts_are_allowed_foreign_ones_are_not() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn tailnet_name_is_learned_lazily_when_tailscale_comes_up_later() {
     let fake = Fake::new(None); // tailscale down at startup
-    let mut hosts = Hosts::new(&[], fake.clone());
-    hosts.recheck = Duration::from_millis(200);
+    let hosts = Hosts::new(&[], fake.clone());
     hosts.refresh().await;
     let h = "bawn.tail0.ts.net:8443";
     assert!(!hosts.allowed(h).await);
@@ -294,7 +291,7 @@ async fn tailnet_name_is_learned_lazily_when_tailscale_comes_up_later() {
         "never a lookup for a non-ts.net name"
     );
     assert_eq!(fake.calls("tailscale status"), 1);
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    tokio::time::advance(hosts.recheck).await;
     assert!(hosts.allowed(h).await, "cache expired: learned the name");
     assert!(
         !hosts.allowed("evil.ts.net").await,

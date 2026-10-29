@@ -3,7 +3,9 @@
 
 use crate::host::Runner;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// tokio's clock so tests can pause it; it is the system clock otherwise
+use tokio::time::Instant;
 
 /// The Host headers hostd answers: loopback on 8443, `BRISK_ALLOWED_HOSTS`, and this machine's
 /// tailnet name (`tailscale status --json` Self.DNSName, with :8443).
