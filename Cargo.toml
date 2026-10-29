@@ -11,7 +11,7 @@ version = "0.0.0"
 brisk-client = { path = "crates/brisk-client" }
 brisk-proto = { path = "crates/brisk-proto" }
 aes = "0.8.4"
-aes-gcm = "0.10.3"
+aes-gcm = "0.11.1"
 bytes = "1"
 # Property tests. No fork/timeout features (rusty-fork, tempfile): inputs are kept small instead.
 proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
