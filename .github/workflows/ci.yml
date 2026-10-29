@@ -6,27 +6,98 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The step list lives in scripts/check.sh; CI runners are not bawn, so the memory cap is off.
+env:
+  BRISK_NO_CAP: 1
+  CARGO_TERM_COLOR: always
+
 jobs:
+  lint-rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      # Installs the toolchain pinned in rust-toolchain.toml (with clippy and rustfmt).
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: scripts/check.sh fmt clippy
+
+  test-rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: taiki-e/install-action@v2.87.28
+        with:
+          tool: cargo-nextest@0.9.148
+      - run: scripts/check.sh test doc
+
+  embed:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: taiki-e/install-action@v2.87.28
+        with:
+          tool: cargo-nextest@0.9.148
+      # check.sh sets BRISK_EMBED_DIR=crates/brisk-hostd/tests/fixtures/embed-dist.
+      - run: scripts/check.sh embed
+
+  supply-chain:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: rustup toolchain install --no-self-update
+      - uses: taiki-e/install-action@v2.87.28
+        with:
+          tool: cargo-deny@0.20.2
+      - run: scripts/check.sh deny pure
+
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: rustup toolchain install --no-self-update
+      # The runner image ships shellcheck; install it anyway in case a new image drops it.
+      - run: command -v shellcheck || (sudo apt-get update && sudo apt-get install -y shellcheck)
+      - run: shellcheck --version && shellcheck -S warning scripts/check.sh scripts/capped.sh scripts/test-capped.sh .githooks/pre-push
+      - run: scripts/check.sh wording scripts
+      # shortcut: the other scripts still have warnings, so this pass only reports; make it blocking once they are clean.
+      - run: shellcheck -S warning scripts/*.sh
+        continue-on-error: true
+
   web:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-node@v4.4.0
         with:
-          node-version: 26 # @types/node is 26.x
+          node-version-file: web/.nvmrc # @types/node is 26.x
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      - run: npm run ci
+      - run: scripts/check.sh web
+      - run: npm audit --audit-level=high
         working-directory: web
 
-  rust:
+  web-browser:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4.2.2
-      # Installs the toolchain pinned in rust-toolchain.toml (with clippy and rustfmt).
-      - run: rustup toolchain install --no-self-update
-      - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      # Headless mode uses chrome-headless-shell; vitest.config.ts finds it in Playwright's default cache.
+      - run: npx playwright install --with-deps --only-shell chromium
+        working-directory: web
+      - run: scripts/check.sh browser

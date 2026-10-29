@@ -1,0 +1,28 @@
+# Version updates. Pin policy (CLAUDE.md): exact versions, at least 14 days old unless it is a
+# security fix, so every ecosystem waits 14 days before it proposes a release.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    versioning-strategy: increase
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 3
