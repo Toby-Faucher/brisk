@@ -242,6 +242,7 @@ import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
 import type { Machine } from './machines';
 import { gameSegment, toIdForm, toNumberForm } from './gameId';
+import { safeGet, safeSet } from './storage';
 
 /** Stage 2 uploads (docs/plans/2026-10-28-stage2-upload.md). */
 export type UploadStart = { id: string; chunk: number; offset: number };
@@ -314,26 +315,16 @@ export function captureSecret() {
     const s = u.searchParams.get('s');
     if (!s) return;
     sessionStorage.setItem(SECRET_KEY, s);
-    try {
-      localStorage.setItem(SECRET_KEY, s);
-    } catch {}
+    safeSet(() => localStorage, SECRET_KEY, s);
     u.searchParams.delete('s');
     history.replaceState(history.state, '', u.href);
   } catch {}
 }
 captureSecret();
 
-function stored(st: () => Storage): string | null {
-  try {
-    return st().getItem(SECRET_KEY);
-  } catch {
-    return null;
-  }
-}
-
 /** None is fine: through `tailscale serve` hostd may know the login instead. */
 function secret(): string | null {
-  return stored(() => sessionStorage) ?? stored(() => localStorage);
+  return safeGet(() => sessionStorage, SECRET_KEY) ?? safeGet(() => localStorage, SECRET_KEY);
 }
 
 /** `x-brisk-csrf` on every call: hostd only trusts a tailnet login on requests carrying it (a

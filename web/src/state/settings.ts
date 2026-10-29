@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import type { Preset } from './api';
+import { safeGet, safeSet } from './storage';
 
 export type Accent = 'mint' | 'indigo' | 'pink' | 'orange' | 'lime' | 'sky';
 /** Same values as tokens.css, for code that needs the colour itself (the smoke shader). */
@@ -39,18 +40,14 @@ export const DEFAULTS: Settings = {
 
 function read(): Settings {
   try {
-    const v = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    const v = { ...DEFAULTS, ...JSON.parse(safeGet(() => localStorage, SETTINGS_KEY) ?? '{}') };
     if (!Object.hasOwn(ACCENT_HEX, v.accent)) v.accent = DEFAULTS.accent;
     if (!REPLAY_SECONDS.includes(v.replaySeconds)) v.replaySeconds = DEFAULTS.replaySeconds;
     return v;
   } catch {
-    return { ...DEFAULTS }; // private window, blocked storage, bad JSON, or no localStorage at all
+    return { ...DEFAULTS }; // bad JSON
   }
 }
 
 export const settings = writable<Settings>(read());
-settings.subscribe((v) => {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(v));
-  } catch {}
-});
+settings.subscribe((v) => safeSet(() => localStorage, SETTINGS_KEY, JSON.stringify(v)));

@@ -1,6 +1,7 @@
 import type { Game } from '../../state/api';
 import { fmtSize } from '../library/library';
 import { fmtDate } from '../../ui/format';
+import { safeGet, safeSet } from '../../state/storage';
 
 export type SortKey = 'name' | 'size' | 'played' | 'playtime';
 export const SORTS: { key: SortKey; label: string }[] = [
@@ -47,18 +48,10 @@ export const fmtPlaytime = (min: number) =>
 
 /** The remembered sort, or Name when storage is blocked or holds nonsense. */
 export function loadSort(): SortKey {
-  try {
-    const v = sessionStorage.getItem(KEY);
-    return isSortKey(v) ? v : 'name';
-  } catch {
-    return 'name';
-  }
+  const v = safeGet(() => sessionStorage, KEY);
+  return isSortKey(v) ? v : 'name';
 }
-export function saveSort(k: SortKey) {
-  try {
-    sessionStorage.setItem(KEY, k);
-  } catch {}
-}
+export const saveSort = (k: SortKey) => safeSet(() => sessionStorage, KEY, k);
 
 /** Index after an arrow/Home/End key in a list of `n`, or null for other keys. */
 export function stepIndex(i: number, key: string, n: number): number | null {

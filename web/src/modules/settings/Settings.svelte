@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DASH } from '../../ui/format';
+  import { safeGet, safeSet } from '../../state/storage';
   import { onMount } from 'svelte';
   import { Tabs } from 'bits-ui';
   import { ACCENT_HEX, DEFAULTS, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
@@ -65,7 +66,7 @@
   function show(t: Tab) {
     tab = t;
     live = true;
-    try { localStorage.setItem(TAB_KEY, t); } catch {}
+    safeSet(() => localStorage, TAB_KEY, t);
     if (location.hash !== hashFor(t)) history.replaceState(history.state, '', hashFor(t));
   }
   const measure = () => {
@@ -74,8 +75,7 @@
   };
   $effect(() => { tab; list; measure(); });
   onMount(() => {
-    let stored: string | null = null;
-    try { stored = localStorage.getItem(TAB_KEY); } catch {}
+    const stored = safeGet(() => localStorage, TAB_KEY);
     sync();
     tab = initialTab(location.hash, stored);
     const onHash = () => {
