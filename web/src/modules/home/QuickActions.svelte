@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, type Preset } from '../../state/api';
   import { settings } from '../../state/settings';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
 
@@ -14,7 +14,7 @@
       await api.restartSunshine();
       toast('Sunshine is restarting');
     } catch (e) {
-      toast(`Could not restart Sunshine: ${(e as Error).message}`, { error: true });
+      toastError('restart Sunshine', e);
     } finally {
       restarting = false;
     }

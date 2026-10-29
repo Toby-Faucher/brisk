@@ -9,7 +9,7 @@ export const SAVED = 'Saved. Used the next time a game starts.';
 export const SAVE_FAILED = 'Could not save the mapping.';
 export const LOAD_FAILED = 'Could not load the mapping.';
 export const CONFLICT = 'Another device changed the mapping. Showing the latest.';
-export const RESTART_FAILED = { close: 'Could not close the game', save: 'Could not save the mapping', start: 'Could not start the game' };
+const RESTART_FAILED = { close: 'Could not close the game', save: 'Could not save the mapping', start: 'Could not start the game' };
 
 type Draft = { bindings: Bindings; deadZone: ControlsData['deadZone'] };
 export type Note = { text: string; tone: 'info' | 'error' };

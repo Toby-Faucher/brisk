@@ -3,7 +3,7 @@
 import type { Codec, StreamReq } from '../../state/api';
 export const EDGE_PX = 4;
 export const HIDE_MS = 600;
-export const HOLD_MS = 800;
+const HOLD_MS = 800;
 
 /** Is the bar visible? `sinceLeaveMs`: time since the pointer left the bar (caller's clock). */
 export function edgeReveal(y: number, prevVisible: boolean, hovering: boolean, menuOpen = false, sinceLeaveMs = 0): boolean {

@@ -5,7 +5,7 @@
   import { settings } from '../state/settings';
   import { denied } from '../state/api';
   import { hub, selectedMachine, startMachines, powerMachine } from '../state/machines';
-  import { toast } from './Toasts.svelte';
+  import { toastError } from './Toasts.svelte';
   import WakeOverlay from '../ui/WakeOverlay.svelte';
   import { bindAccent } from '../modules/settings/accent';
   import Sidebar from './Sidebar.svelte';
@@ -44,7 +44,7 @@
     {#if off}
       <div class="off" role="status">
         <span>{off.name} is off</span>
-        {#if off.canPower}<button class="btn sm" onclick={() => void powerMachine(off.id, 'start').catch((e) => toast(`Could not start ${off.name}: ${e.message}`, { error: true }))}>Start</button>{/if}
+        {#if off.canPower}<button class="btn sm" onclick={() => void powerMachine(off.id, 'start').catch((e) => toastError(`start ${off.name}`, e))}>Start</button>{/if}
       </div>
     {/if}
     <div class="page" class:gone={$denied}>{@render children?.()}</div>

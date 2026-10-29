@@ -23,7 +23,7 @@ export const BUTTON_LABELS = [
   'D-pad right',
   'Home',
 ];
-export const AXIS_LABELS = ['Left stick X', 'Left stick Y', 'Right stick X', 'Right stick Y'];
+const AXIS_LABELS = ['Left stick X', 'Left stick Y', 'Right stick X', 'Right stick Y'];
 
 const fin = (v: number | undefined) => (Number.isFinite(v) ? (v as number) : 0);
 const clamp = (v: number) => Math.min(1, Math.max(-1, v));

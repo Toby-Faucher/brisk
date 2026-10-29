@@ -23,7 +23,7 @@ export function rank(query: string, items: CommandItem[]): CommandItem[] {
 
 export type KeyLike = { key: string; target?: unknown; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; preventDefault(): void };
 
-export function isTyping(t: unknown): boolean {
+function isTyping(t: unknown): boolean {
   const e = t as { tagName?: string; isContentEditable?: boolean } | null;
   return !!e && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName ?? '') || !!e.isContentEditable);
 }

@@ -4,6 +4,7 @@
   --panel: #121419;
   --panel2: #171a21;
   --line: #22262f;
+  --line-hover: #3a4152; /* a border under the pointer or around a focused field */
   --fg: #eceef3;
   --muted: #8e96a5;
   --dim: #7a8292; /* 4.5:1 on --panel2 (WCAG AA small text); was #5d6575 (2.97:1) */

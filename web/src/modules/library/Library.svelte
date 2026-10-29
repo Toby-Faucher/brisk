@@ -9,7 +9,7 @@
   import { notes, watchNotes } from '../../state/notes';
   import { watchRemap } from '../../state/remap';
   import TagChip from './TagChip.svelte';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap, splitIn } from '../../ui/motion';
@@ -157,7 +157,7 @@
     try {
       await task();
     } catch (e) {
-      toast(`Could not ${verb} ${g.name}: ${(e as Error).message}`, { error: true });
+      toastError(`${verb} ${g.name}`, e);
     } finally {
       busy = null;
     }
@@ -203,7 +203,7 @@
 
 <div class="body" bind:this={body}>
   {#if $games && !$games.ownedAvailable}
-    <div class="banner" role="status">Couldn't reach Steam. Showing installed games only for now.</div>
+    <div class="banner" role="status">Could not reach Steam. Showing installed games only for now.</div>
   {/if}
 
   {#if !$games}
@@ -238,12 +238,9 @@
 <style>
   .top { display: flex; align-items: center; gap: 12px; padding: 0 2px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   h2 { font-size: 18px; letter-spacing: -.02em; }
-  .search { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); min-width: 210px; }
-  .search:focus-within { border-color: #3a4152; }
-  .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; }
   .filters { isolation: isolate; display: flex; gap: 6px; padding: 12px 0 0; flex-wrap: wrap; }
   .fchip { position: relative; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; transition: color .2s var(--ease), border-color .2s var(--ease); }
-  .fchip:hover { color: var(--fg); border-color: #3a4152; }
+  .fchip:hover { color: var(--fg); border-color: var(--line-hover); }
   /* the selected fill is a pseudo-element, so it can glide between chips (motion glideSwap) */
   .fchip[aria-pressed='true'] { border-color: transparent; color: var(--fg); }
   .fchip[aria-pressed='true']::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--accent) 20%, transparent); border: 1px solid var(--accent); transform-origin: 0 0; }

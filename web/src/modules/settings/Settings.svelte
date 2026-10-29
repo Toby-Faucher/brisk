@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { DASH } from '../../ui/format';
+  import { safeGet, safeSet } from '../../state/storage';
   import { onMount } from 'svelte';
   import { Tabs } from 'bits-ui';
   import { ACCENT_HEX, DEFAULTS, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
@@ -64,7 +66,7 @@
   function show(t: Tab) {
     tab = t;
     live = true;
-    try { localStorage.setItem(TAB_KEY, t); } catch {}
+    safeSet(() => localStorage, TAB_KEY, t);
     if (location.hash !== hashFor(t)) history.replaceState(history.state, '', hashFor(t));
   }
   const measure = () => {
@@ -73,8 +75,7 @@
   };
   $effect(() => { tab; list; measure(); });
   onMount(() => {
-    let stored: string | null = null;
-    try { stored = localStorage.getItem(TAB_KEY); } catch {}
+    const stored = safeGet(() => localStorage, TAB_KEY);
     sync();
     tab = initialTab(location.hash, stored);
     const onHash = () => {
@@ -178,7 +179,7 @@
       <div class="col">
         <Card cols={2}>
           <h4>Brisk</h4>
-          <dl class="kv"><dt>Commit</dt><dd>{commit}</dd><dt>Host</dt><dd>{$host?.name ?? '–'}</dd><dt>Sunshine</dt><dd>{$host?.sunshine ?? '–'}</dd></dl>
+          <dl class="kv"><dt>Commit</dt><dd>{commit}</dd><dt>Host</dt><dd>{$host?.name ?? DASH}</dd><dt>Sunshine</dt><dd>{$host?.sunshine ?? DASH}</dd></dl>
           <h4 class="gap">Docs</h4>
           <ul class="plain">{#each DOCS as d (d)}<li><code>{d}</code></li>{/each}</ul>
         </Card>

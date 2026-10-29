@@ -7,7 +7,7 @@
   import { savesLine, saveRow } from './library';
   import { gameCaps, gameKey } from '../../state/gameId';
   import { raView, TITLE_NOTE, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
   import StreamHistory from './StreamHistory.svelte';
@@ -194,7 +194,7 @@
       if (local) local = { ...local, screenshots: local.screenshots.filter((n) => n !== name) };
       toast('Screenshot deleted');
     } catch (e) {
-      toast(`Couldn't delete the screenshot: ${(e as Error).message}`, { error: true });
+      toastError('delete the screenshot', e);
     }
   }
   const saves = $derived(savesLine(local?.saves ?? null));

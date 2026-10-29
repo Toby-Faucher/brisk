@@ -1,6 +1,6 @@
 // View model of the History page: pure formatting, no fetching.
 import type { SeriesPoint, SessionRec, SessionStats } from '../../state/api';
-import { DASH } from '../home/home';
+import { DASH } from '../../ui/format';
 import { fold } from '../library/library';
 
 export function listState(list: SessionRec[] | null, failed: boolean): 'loading' | 'error' | 'empty' | 'list' {

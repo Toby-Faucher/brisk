@@ -2,9 +2,9 @@ import type { Preset, SessionRec } from '../../state/api';
 import { rowKey, sameKey } from '../../state/gameId';
 
 /** Newest closed sessions looked at, how many of them must be bad, and the dropped/sent ratio that makes one bad. */
-export const RECENT_SESSIONS = 5;
-export const BAD_SESSIONS_NEEDED = 3;
-export const DROP_RATIO = 0.02;
+const RECENT_SESSIONS = 5;
+const BAD_SESSIONS_NEEDED = 3;
+const DROP_RATIO = 0.02;
 
 const closed = (sessions: SessionRec[], key: string) => sessions.filter((s) => s.ended != null && sameKey(rowKey(s) ?? '', key));
 

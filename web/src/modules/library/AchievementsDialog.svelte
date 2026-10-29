@@ -4,6 +4,7 @@
   import { Dialog } from 'bits-ui';
   import type { Achievements } from '../../state/api';
   import { fold } from './library';
+  import { fmtDate } from '../../ui/format';
 
   let { ach, name, onclose }: { ach: Achievements; name: string; onclose: () => void } = $props();
 
@@ -15,7 +16,6 @@
     const fq = fold(q);
     return fq ? folded.filter((x) => x.k.includes(fq)).map((x) => x.a) : ach.list;
   });
-  const day = (s: number) => new Date(s * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 </script>
 
 <Dialog.Root bind:open onOpenChangeComplete={(o) => !o && onclose()}>
@@ -47,7 +47,7 @@
                 <b>{a.name}</b>
                 {#if a.hardcore}<small class="hc">Hardcore</small>{/if}
                 {#if a.description}<small>{a.description}</small>{/if}
-                <small class="when">{a.unlockedAt === null ? 'Locked' : `Unlocked ${day(a.unlockedAt)}`}</small>
+                <small class="when">{a.unlockedAt === null ? 'Locked' : `Unlocked ${fmtDate(a.unlockedAt)}`}</small>
               </span>
             </li>
           {/each}

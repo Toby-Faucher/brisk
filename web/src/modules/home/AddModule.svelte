@@ -54,7 +54,7 @@
 
 <style>
   :global(.ghostcard) { grid-column: span 2; border: 1px dashed var(--line); border-radius: var(--r-card); background: transparent; color: var(--muted); display: grid; place-content: center; justify-items: center; gap: 4px; cursor: pointer; transition: transform .25s var(--ease), border-color .25s, color .25s; }
-  :global(.ghostcard:hover) { transform: translateY(-3px); border-color: #3a4152; color: var(--fg); }
+  :global(.ghostcard:hover) { transform: translateY(-3px); border-color: var(--line-hover); color: var(--fg); }
   @media (prefers-reduced-motion: reduce) { :global(.ghostcard:hover) { transform: none; } }
   /* centred without `transform`, so the FLIP's translate + scale (origin top left) map the boxes exactly */
   :global(.mp) { position: fixed; left: 0; right: 0; top: 18%; margin-inline: auto; width: min(420px, calc(100vw - 32px)); padding: 20px; z-index: 41; display: grid; gap: 6px; transform-origin: 0 0; }

@@ -8,7 +8,8 @@
   import { findGame, gameKey } from '../../state/gameId';
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
+  import { errMsg } from '../../state/errMsg';
   import Dropdown from '../../ui/Dropdown.svelte';
   import Icon from '../../ui/Icon.svelte';
   import LatencyLayers from '../../ui/LatencyLayers.svelte';
@@ -16,7 +17,7 @@
   import { box, flipDelta, glide, motionAllowed, cssVar } from '../../ui/motion-base';
   import Cover from '../library/Cover.svelte';
   import { fmtSize } from '../library/library';
-  import { DASH, fmtAgo, fmtTemp, fmtUptime } from '../home/home';
+  import { DASH, fmtAgo, fmtTemp, fmtUptime } from '../../ui/format';
   import { fmtWhen } from '../history/history';
   import { PALETTE, normalizeHex } from '../../ui/color';
   import { COLOR_NAMES, dotState, powerWhy, restartError, STATE_LABEL } from './machines';
@@ -51,7 +52,7 @@
       const r = await api.forMachine(machineId).games(refresh);
       if (n === gseq) gl = { state: 'idle', data: r.games.filter((g) => g.installed), error: '' };
     } catch (e) {
-      if (n === gseq) gl = { ...gl, state: 'error', error: (e as Error).message };
+      if (n === gseq) gl = { ...gl, state: 'error', error: errMsg(e) };
     }
   }
   async function loadSessions() {
@@ -61,7 +62,7 @@
       const r = await api.forMachine(machineId).sessions();
       if (n === sseq) sl = { state: 'idle', data: r.sessions.slice(0, 8), error: '' };
     } catch (e) {
-      if (n === sseq) sl = { ...sl, state: 'error', error: (e as Error).message };
+      if (n === sseq) sl = { ...sl, state: 'error', error: errMsg(e) };
     }
   }
   $effect(() => {
@@ -90,7 +91,7 @@
   }
 
   // ---- actions ----
-  const failed = (what: string, e: unknown) => toast(`Could not ${what}: ${(e as Error).message}`, { error: true });
+  const failed = toastError;
   const start = () => m && powerMachine(m.id, 'start').catch((e) => failed(`start ${m.name}`, e));
   async function shutDown() {
     shutting = false;
@@ -153,7 +154,7 @@
     try {
       await setMachineColor(machineId, c);
     } catch (e) {
-      colorErr = `Could not save the colour: ${(e as Error).message}`;
+      colorErr = `Could not save the colour: ${errMsg(e)}`;
     }
   }
   const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;
@@ -365,8 +366,7 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
   .empty { display: grid; gap: 10px; justify-items: start; }
   .tools { display: flex; gap: 8px; align-items: center; }
-  .search { flex: 1; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
-  .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; min-width: 0; }
+  .search { flex: 1; padding: 6px 10px; border-radius: 10px; min-width: 0; } /* the rest: base.css */
   .games, .sess { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   .row { display: grid; grid-template-columns: 34px 1fr auto auto auto; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
   .row:hover, .row[aria-selected='true'] { background: var(--panel2); }

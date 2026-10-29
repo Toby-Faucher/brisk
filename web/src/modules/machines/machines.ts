@@ -1,6 +1,7 @@
+import { errMsg } from '../../state/errMsg';
 import { get } from 'svelte/store';
 import { ApiError, type HostInfo } from '../../state/api';
-import { DASH, fmtTemp, fmtUptime } from '../home/home';
+import { DASH, fmtTemp, fmtUptime } from '../../ui/format';
 import { ensureReady, hub, selectedMachine, type Machine, type MachineState, type PingSample } from '../../state/machines';
 
 export type SoloMachine = { id: string; info: HostInfo };
@@ -10,7 +11,7 @@ export const machinesFrom = (info: HostInfo): SoloMachine[] => [{ id: info.name.
 
 export function restartError(e: unknown): string {
   if (e instanceof ApiError && e.status === 429) return 'Sunshine was restarted a moment ago, try again in a minute';
-  return `Could not restart Sunshine: ${(e as Error).message}`;
+  return `Could not restart Sunshine: ${errMsg(e)}`;
 }
 
 export const STATE_LABEL: Record<MachineState, string> = {
@@ -70,7 +71,7 @@ export function statRows(info: Pick<HostInfo, 'gpuTempC' | 'cpuTempC'>, vm: Vm |
 }
 
 /** Pointer travel (px) up to which a press and release on a card still count as a click, not a drag or a text selection. */
-export const TAP_PX = 5;
+const TAP_PX = 5;
 export const isTap = (down: { x: number; y: number } | null, up: { x: number; y: number }, max = TAP_PX) =>
   !!down && Math.hypot(up.x - down.x, up.y - down.y) <= max;
 

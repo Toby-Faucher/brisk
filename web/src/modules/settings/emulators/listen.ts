@@ -2,9 +2,9 @@
 import type { PadView } from '../controllertest';
 import { kindOf, PAD_BY_INDEX, type ControlDef, type Kind } from './mapping';
 
-export const TRIGGER_ON = 0.5;
-export const STICK_ON = 0.6;
-export const STICK_OFF = 0.3;
+const TRIGGER_ON = 0.5;
+const STICK_ON = 0.6;
+const STICK_OFF = 0.3;
 
 export type Heard = { type: 'none' } | { type: 'bind'; pad: string } | { type: 'wrong'; pad: string; hint: string } | { type: 'cancel' };
 

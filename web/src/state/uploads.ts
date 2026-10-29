@@ -247,7 +247,7 @@ export function createUploader(o: Options = {}) {
     /** A failed file carries on with the same upload where the machine has it. */
     retry(key: number) {
       const j = jobs.find((x) => x.item.key === key);
-      if (!j || j.item.state !== 'failed') return;
+      if (j?.item.state !== 'failed') return;
       set(j, { state: 'queued', error: undefined });
       pump();
     },

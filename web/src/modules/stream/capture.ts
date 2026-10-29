@@ -71,7 +71,7 @@ export function screenshot(canvas: HTMLCanvasElement): { png: Promise<Blob>; cop
 
 /** Bytes per message to the worker: each batch is one main-thread copy well under 1 ms. */
 const BATCH_BYTES = 2 << 20;
-export const CLIP_TIMEOUT_MS = 30_000;
+const CLIP_TIMEOUT_MS = 30_000;
 
 /** Chooses and muxes the clip in a worker. The ring keeps its references: each packet is copied
  *  once (slice, then transferred), in batches with a yield between them so the stream keeps going. */

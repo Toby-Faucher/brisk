@@ -242,6 +242,7 @@ import type { GamePrefs, PrefsBody, PrefsMap } from './prefs';
 import type { GameNote, Notes, Tag } from './notes';
 import type { Machine } from './machines';
 import { gameSegment, toIdForm, toNumberForm } from './gameId';
+import { safeGet, safeSet } from './storage';
 
 /** Stage 2 uploads (docs/plans/2026-10-28-stage2-upload.md). */
 export type UploadStart = { id: string; chunk: number; offset: number };
@@ -314,26 +315,16 @@ export function captureSecret() {
     const s = u.searchParams.get('s');
     if (!s) return;
     sessionStorage.setItem(SECRET_KEY, s);
-    try {
-      localStorage.setItem(SECRET_KEY, s);
-    } catch {}
+    safeSet(() => localStorage, SECRET_KEY, s);
     u.searchParams.delete('s');
     history.replaceState(history.state, '', u.href);
   } catch {}
 }
 captureSecret();
 
-function stored(st: () => Storage): string | null {
-  try {
-    return st().getItem(SECRET_KEY);
-  } catch {
-    return null;
-  }
-}
-
 /** None is fine: through `tailscale serve` hostd may know the login instead. */
 function secret(): string | null {
-  return stored(() => sessionStorage) ?? stored(() => localStorage);
+  return safeGet(() => sessionStorage, SECRET_KEY) ?? safeGet(() => localStorage, SECRET_KEY);
 }
 
 /** `x-brisk-csrf` on every call: hostd only trusts a tailnet login on requests carrying it (a
@@ -408,10 +399,34 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   return r;
 }
 
-async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, keepalive = false): Promise<T> {
+/** How long a JSON call may take before it fails with "Request timed out". */
+export const CALL_TIMEOUT_MS = 15_000;
+/** Calls where hostd waits on Steam, SteamGridDB, Sunshine, the bridge or a machine's power (its own limits are 15 to 30 s). */
+const SLOW_MS = 45_000;
+/** `keepalive` lets the request finish after the page is gone. `timeoutMs` null: no limit (uploads, scans). */
+type CallOpts = { keepalive?: boolean; timeoutMs?: number | null };
+
+async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, opts: CallOpts = {}): Promise<T> {
+  const { keepalive = false, timeoutMs = CALL_TIMEOUT_MS } = opts;
   const headers = auth(body === undefined ? {} : { 'content-type': 'application/json' });
-  const r = await send(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), keepalive });
-  return (r.status === 204 ? undefined : await r.json()) as T;
+  const ac = new AbortController();
+  // A plain timer, not AbortSignal.timeout: cleared once the answer is read, and fake timers in tests reach it.
+  const t = timeoutMs === null ? undefined : setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await send(path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      keepalive,
+      signal: ac.signal,
+    });
+    return (r.status === 204 ? undefined : await r.json()) as T;
+  } catch (e) {
+    if (ac.signal.aborted) throw new ApiError('Request timed out', 0);
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /** `since` null: only the seq. Text comes as JSON, an image as the PNG body. */
@@ -471,26 +486,29 @@ function uploadFile(f: File, progress: (loaded: number) => void, signal?: AbortS
   });
 }
 
+const NO_LIMIT: CallOpts = { timeoutMs: null };
+const SLOW: CallOpts = { timeoutMs: SLOW_MS };
+
 /** Upload calls for one machine: `machineId` names it through the hub, null follows the selected machine (or a single host). */
 function uploadsFor(machineId: string | null): UploadApi {
   const base = machineId ? `/api/m/${encodeURIComponent(machineId)}` : '/api';
   const u = (id: string) => `${base}/uploads/${encodeURIComponent(id)}`;
   return {
-    create: (name, size) => call<UploadStart>('POST', `${base}/uploads`, { name, size }),
+    create: (name, size) => call<UploadStart>('POST', `${base}/uploads`, { name, size }, NO_LIMIT),
     async put(id, offset, blob, signal) {
       const r = await send(u(id), { method: 'PUT', headers: auth({ 'x-offset': String(offset) }), body: blob, signal });
       return (await r.json()) as { offset: number };
     },
-    status: (id) => call<UploadStatus>('GET', u(id)),
-    finish: (id) => call<UploadDone>('POST', `${u(id)}/finish`),
-    abort: (id) => call<void>('DELETE', u(id)),
+    status: (id) => call<UploadStatus>('GET', u(id), undefined, NO_LIMIT),
+    finish: (id) => call<UploadDone>('POST', `${u(id)}/finish`, undefined, NO_LIMIT),
+    abort: (id) => call<void>('DELETE', u(id), undefined, NO_LIMIT),
   };
 }
 
 /** Scan the games folder of one machine (null: the selected one). `includeRemoved` brings back games you removed. */
 function scanLibrary(machineId: string | null, includeRemoved = false): Promise<ScanResult> {
   const base = machineId ? `/api/m/${encodeURIComponent(machineId)}` : '/api';
-  return call<ScanResult>('POST', `${base}/library/scan${includeRemoved ? '?include_removed=1' : ''}`);
+  return call<ScanResult>('POST', `${base}/library/scan${includeRemoved ? '?include_removed=1' : ''}`, undefined, NO_LIMIT);
 }
 
 const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
@@ -499,7 +517,8 @@ const q = (refresh?: boolean) => (refresh ? '?refresh=1' : '');
 function forMachine(id: string) {
   const base = `/api/m/${encodeURIComponent(id)}`; // not in SCOPED, so route() leaves it alone
   return {
-    games: (refresh?: boolean) => call<GamesAnswer>('GET', `${base}/games${q(refresh)}`).then((r) => (noteScheme(id, r), r)),
+    games: (refresh?: boolean) =>
+      call<GamesAnswer>('GET', `${base}/games${q(refresh)}`, undefined, SLOW).then((r) => (noteScheme(id, r), r)),
     sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', `${base}/sessions`),
     host: () => call<HostInfo>('GET', `${base}/host`),
   };
@@ -512,17 +531,19 @@ export const api = {
   /** Hub only, never routed. */
   machines: () => call<{ machines: Machine[] }>('GET', '/api/machines'),
   power: (id: string, action: 'start' | 'shutdown') =>
-    call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }),
+    call<{ state: string }>('POST', `/api/machines/${encodeURIComponent(id)}/power`, { action }, SLOW),
   host: () => call<HostInfo>('GET', '/api/host'),
   /** `refresh` skips hostd's Steam caches (`?refresh=1`). */
-  games: (refresh?: boolean) => call<GamesAnswer>('GET', `/api/games${q(refresh)}`).then((r) => (noteScheme(prefix, r), r)),
+  games: (refresh?: boolean) =>
+    call<GamesAnswer>('GET', `/api/games${q(refresh)}`, undefined, SLOW).then((r) => (noteScheme(prefix, r), r)),
   uploadsFor,
   scanLibrary,
   /** Forgets an emulator game's library record. The file stays on disk. Sends the id form this machine speaks. */
   removeGame: (key: string) => call<void>('DELETE', gamePath(key, '')),
-  gameInfo: (key: string, refresh?: boolean) => call<GameInfo>('GET', gamePath(key, `/info${q(refresh)}`)),
-  gameAchievements: (key: string, refresh?: boolean) => call<Achievements | RaAnswer>('GET', gamePath(key, `/achievements${q(refresh)}`)),
-  gameNews: (key: string, refresh?: boolean) => call<News>('GET', gamePath(key, `/news${q(refresh)}`)),
+  gameInfo: (key: string, refresh?: boolean) => call<GameInfo>('GET', gamePath(key, `/info${q(refresh)}`), undefined, SLOW),
+  gameAchievements: (key: string, refresh?: boolean) =>
+    call<Achievements | RaAnswer>('GET', gamePath(key, `/achievements${q(refresh)}`), undefined, SLOW),
+  gameNews: (key: string, refresh?: boolean) => call<News>('GET', gamePath(key, `/news${q(refresh)}`), undefined, SLOW),
   emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
   putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),
   resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
@@ -541,27 +562,28 @@ export const api = {
   artPending: () => call<ArtQueue>('GET', '/api/art/pending'),
   /** Confirm a candidate (hostd fetches the art in the background) or answer "none of these". */
   artAnswer: (key: string, pick: { candidateId: number } | { none: true }) =>
-    call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/match`, pick),
+    call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/match`, pick, SLOW),
   /** Forget the match and cached art, search again. 409 without a key on the machine, 429 when repeated quickly. */
-  artRefresh: (key: string) => call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/refresh`),
+  artRefresh: (key: string) => call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/refresh`, undefined, SLOW),
   /** What SteamGridDB has for one kind of art (up to `limit`, best first). 409 without a key, 404 before the game is matched. */
   artCandidates: (key: string, kind: ArtKindName, limit = 24) =>
-    call<ArtList>('GET', `/api/art/${gameSegment(machineForm(key))}/candidates?kind=${kind}&limit=${limit}`),
+    call<ArtList>('GET', `/api/art/${gameSegment(machineForm(key))}/candidates?kind=${kind}&limit=${limit}`, undefined, SLOW),
   /** Use that image for the game; hostd downloads it before it answers. */
   artPick: (key: string, kind: ArtKindName, imageId: number) =>
-    call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/pick`, { kind, imageId }),
-  friends: () => call<Friends>('GET', '/api/friends'),
+    call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/pick`, { kind, imageId }, SLOW),
+  friends: () => call<Friends>('GET', '/api/friends', undefined, SLOW),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => {
     const { game, ...rest } = req;
-    return call<StreamInfo>('POST', '/api/stream', game === undefined ? rest : { ...rest, ...nameGame(game) });
+    return call<StreamInfo>('POST', '/api/stream', game === undefined ? rest : { ...rest, ...nameGame(game) }, SLOW);
   },
-  stopStream: () => call<StreamInfo>('DELETE', '/api/stream'),
-  launch: (key: string) => call<void>('POST', '/api/launch', nameGame(key)),
-  install: (key: string) => call<void>('POST', '/api/install', nameGame(key)),
+  stopStream: () => call<StreamInfo>('DELETE', '/api/stream', undefined, SLOW),
+  launch: (key: string) => call<void>('POST', '/api/launch', nameGame(key), SLOW),
+  install: (key: string) => call<void>('POST', '/api/install', nameGame(key), SLOW),
   /** Closes a running game (hostd escalates; `force` allows the last resort). Takes up to ~25 s. */
-  quit: (key: string, force = false) => call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { ...nameGame(key), force }),
-  restartSunshine: () => call<void>('POST', '/api/sunshine/restart'),
+  quit: (key: string, force = false) =>
+    call<{ state: 'closed' | 'still-running' }>('POST', '/api/quit', { ...nameGame(key), force }, { timeoutMs: 30_000 }),
+  restartSunshine: () => call<void>('POST', '/api/sunshine/restart', undefined, SLOW),
   prefs: () =>
     call<{ prefs: PrefsMap; homeOrder?: string[]; machinesOrder?: string[]; machineColors?: Record<string, string> }>(
       'GET',
@@ -575,21 +597,22 @@ export const api = {
       Array.isArray(l) ? { homeOrder: l } : l,
     ),
   resetLayout: () => call<void>('DELETE', '/api/prefs/layout'),
-  putPrefs: (key: string, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${gameSegment(hubForm(key))}`, b, true), // keepalive: a flush on pagehide can finish after the page is gone
+  putPrefs: (key: string, b: PrefsBody) => call<GamePrefs>('PUT', `/api/prefs/${gameSegment(hubForm(key))}`, b, { keepalive: true }), // keepalive: a flush on pagehide can finish after the page is gone
   deletePrefs: (key: string) => call<void>('DELETE', `/api/prefs/${gameSegment(hubForm(key))}`),
   notes: () => call<Notes>('GET', '/api/notes').then((r) => (seeIds(r.games ?? {}), r)),
   /** Hub only: move notes and prefs kept under an old emulator number to its new id. Safe to repeat; an old hostd has no such route. */
   remapIds: (map: Record<string, string>) => call<{ notes: number; prefs: number }>('POST', '/api/ids/remap', { map }),
   /** Create or replace a tag; hostd answers with what it stored (name trimmed). */
-  putTag: (id: string, tag: Tag) => call<Tag>('PUT', `/api/notes/tags/${id}`, tag),
+  putTag: (id: string, tag: Tag) => call<Tag>('PUT', `/api/notes/tags/${encodeURIComponent(id)}`, tag),
   /** Also takes the tag off every game. */
-  deleteTag: (id: string) => call<void>('DELETE', `/api/notes/tags/${id}`),
+  deleteTag: (id: string) => call<void>('DELETE', `/api/notes/tags/${encodeURIComponent(id)}`),
   /** hostd drops unknown tag ids and answers with what it stored. */
-  putGameNote: (key: string, b: GameNote) => call<GameNote>('PUT', `/api/notes/games/${gameSegment(hubForm(key))}`, b, true), // keepalive: flushed on pagehide
+  putGameNote: (key: string, b: GameNote) => call<GameNote>('PUT', `/api/notes/games/${gameSegment(hubForm(key))}`, b, { keepalive: true }), // keepalive: flushed on pagehide
   /** Each row carries `spark`: up to 24 mean-binned delays of its series (empty without one). */
   sessions: () => call<{ sessions: (SessionRec & { spark?: number[] })[] }>('GET', '/api/sessions'),
   session: (started: number) => call<{ session: SessionRec; series: SeriesPoint[] }>('GET', `/api/sessions/${started}`),
-  putSeries: (started: number, points: SeriesPoint[]) => call<void>('PUT', `/api/sessions/${started}/series`, { points }, true), // keepalive: sent on pagehide
+  putSeries: (started: number, points: SeriesPoint[]) =>
+    call<void>('PUT', `/api/sessions/${started}/series`, { points }, { keepalive: true }), // keepalive: sent on pagehide
   getClipboard,
   postClipboard,
   uploadFile,

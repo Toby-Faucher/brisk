@@ -10,7 +10,7 @@
 // (audio-worklet.ts); startAudio is the main-thread glue.
 
 export const RATE = 48000;
-export const AUDIO_HEADER_LEN = 6;
+const AUDIO_HEADER_LEN = 6;
 /// 5 ms at 48 kHz (Sunshine's packetDuration 5).
 export const PACKET_FRAMES = 240;
 /// Playback starts (and restarts after a starvation) at 20 ms buffered.

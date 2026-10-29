@@ -3,7 +3,7 @@
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import { count } from '../../ui/motion';
-  import { DASH, fmtTemp, fmtUptime } from './home';
+  import { DASH, fmtTemp, fmtUptime } from '../../ui/format';
 
   const ring = (v: number) => `${Math.round(v)}°`;
   const SUN = { ready: 'Sunshine ready', busy: 'Sunshine streaming', down: 'Sunshine down' } as const;

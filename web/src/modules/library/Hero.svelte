@@ -6,7 +6,7 @@
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import Tip from '../../ui/Tip.svelte';
-  import { fmtAgo } from '../home/home';
+  import { fmtAgo } from '../../ui/format';
   import Cover, { hue } from './Cover.svelte';
   import { playLabel } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
