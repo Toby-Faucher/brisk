@@ -18,7 +18,8 @@ use std::rc::Rc;
 
 /// Extensions a scan or an upload looks at.
 pub const EXTS: &[&str] = &[
-    "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "gen",
+    "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "swc", "fig", "gb", "gbc", "gba",
+    "md", "smd", "gen",
 ];
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;

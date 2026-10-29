@@ -260,7 +260,7 @@ fn cartridge(f: &mut File, h: &[u8], len: u64, ext: &str) -> Result<Identity, Er
     } else {
         match ext {
             "nes" => id.system = System::NES,
-            "sfc" | "smc" => id.system = System::SNES,
+            "sfc" | "smc" | "swc" | "fig" => id.system = System::SNES,
             "gb" => id.system = System::GB,
             "gbc" => id.system = System::GBC,
             "gba" => id.system = System::GBA,

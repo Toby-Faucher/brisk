@@ -243,6 +243,10 @@ async fn emu_achievements(s: &AppState, g: &Game, refresh: bool) -> Response {
     let Some(r) = crate::emu::find(&recs, &g.id) else {
         return err(StatusCode::NOT_FOUND, "unknown game");
     };
+    if r.emulator == "retroarch" {
+        let body = crate::ra_game::cartridge_json();
+        return ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response();
+    }
     let fresh = refresh && {
         let mut m = s.ra_refresh.lock().unwrap();
         let now = std::time::Instant::now();
@@ -336,13 +340,23 @@ async fn game_saves(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String
         return err(StatusCode::NOT_FOUND, "no saves for this game");
     }
     let recs = s.records();
+    let rec = crate::emu::find(&recs, &g.id);
+    let retro = rec.filter(|r| r.emulator == "retroarch");
+    let retro_label = retro.is_some(); // owned: the blocking closure cannot borrow `recs`
+    let stem = retro.and_then(|r| r.file.file_stem()?.to_str().map(String::from));
     let (disc, system) = (
-        crate::emu::find(&recs, &g.id).and_then(crate::emu::disc_id_of),
+        rec.and_then(crate::emu::disc_id_of),
         g.system.clone().unwrap_or_default(),
     );
-    let dir = s.cfg.dolphin_user_dir.clone();
-    let found = tokio::task::spawn_blocking(move || {
-        disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system))
+    let dir = if retro_label {
+        s.cfg.retroarch_dir.clone()
+    } else {
+        s.cfg.dolphin_user_dir.clone()
+    };
+    let found = tokio::task::spawn_blocking(move || match (retro_label, stem) {
+        (true, Some(stem)) => crate::saves::list_retroarch(&dir, &stem),
+        (true, None) => Some(vec![]),
+        _ => disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system)),
     })
     .await;
     let Ok(found) = found else {
@@ -350,7 +364,7 @@ async fn game_saves(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String
     };
     let body = serde_json::json!({
         "available": found.is_some(),
-        "userDir": "Dolphin user folder",
+        "userDir": if retro_label { "RetroArch folder" } else { "Dolphin user folder" },
         "items": found.unwrap_or_default(),
     });
     ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()

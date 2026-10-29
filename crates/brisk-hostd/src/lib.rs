@@ -27,6 +27,7 @@ pub mod ra_game;
 pub mod rahash;
 pub mod registry;
 pub mod retroachievements;
+pub mod retroarch;
 pub mod running;
 pub mod saves;
 pub mod sessions;

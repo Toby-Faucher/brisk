@@ -209,11 +209,21 @@ fn find_window(tree: &Value, pids: &HashSet<u32>) -> Option<u64> {
     v.into_iter().max()
 }
 
-/// Every window (con id) whose X11 class is `class`. Xwayland windows have no app_id, so an
-/// emulator is found by class rather than by pid.
+/// A native Wayland app_id counts as `class` when it is equal or ends in `.<class>`, any case
+/// (RetroArch: `com.libretro.RetroArch`).
+fn app_id_is(app_id: Option<&str>, class: &str) -> bool {
+    app_id.is_some_and(|a| {
+        let (a, c) = (a.to_ascii_lowercase(), class.to_ascii_lowercase());
+        a == c || a.ends_with(&format!(".{c}"))
+    })
+}
+
+/// Every window (con id) whose X11 class is `class`, or whose app_id matches it (`app_id_is`).
+/// Xwayland windows have no app_id, so an emulator is found by class rather than by pid.
 fn class_windows(tree: &Value, class: &str, out: &mut Vec<u64>) {
     if matches!(tree["type"].as_str(), Some("con" | "floating_con"))
-        && tree["window_properties"]["class"].as_str() == Some(class)
+        && (tree["window_properties"]["class"].as_str() == Some(class)
+            || app_id_is(tree["app_id"].as_str(), class))
         && let Some(id) = tree["id"].as_u64()
     {
         out.push(id);
@@ -558,6 +568,21 @@ impl Quitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn class_match_takes_x11_class_or_wayland_app_id() {
+        let t: Value = serde_json::from_str(
+            r#"{"id":1,"type":"root","nodes":[
+            {"id":2,"type":"con","app_id":null,"window_properties":{"class":"retroarch"}},
+            {"id":3,"type":"con","app_id":"com.libretro.RetroArch"},
+            {"id":4,"type":"con","app_id":"notretroarch"},
+            {"id":5,"type":"con","window_properties":{"class":"steam"}}]}"#,
+        )
+        .unwrap();
+        let mut v = vec![];
+        class_windows(&t, "retroarch", &mut v);
+        assert_eq!(v, [2, 3]);
+    }
 
     #[test]
     fn finds_only_windows_of_the_game() {
