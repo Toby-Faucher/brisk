@@ -25,7 +25,7 @@
     "astro": "7.4.2",
     "bits-ui": "2.20.2",
     "layerchart": "2.8.0",
-    "mediabunny": "1.61.4",
+    "mediabunny": "1.61.5",
     "svelte": "5.57.2"
   },
   "devDependencies": {
