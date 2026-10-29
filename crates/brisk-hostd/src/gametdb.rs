@@ -5,6 +5,7 @@
 //! link back to it: show "Data and art from GameTDB (gametdb.com)" wherever this is shown.
 
 use crate::config::Config;
+use crate::fsutil::write_atomic;
 use crate::steam::{base_ok, get_limited, get_limited_for, now};
 
 fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
@@ -13,17 +14,15 @@ fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// Env: URL of a plain `wiitdb.xml` (no default, see the notes: the zip needs a decision).
-pub const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
+pub(crate) const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
 /// Env: art base URL (tests point it at a mock).
-pub const ENV_ART_BASE: &str = "BRISK_GAMETDB_ART_BASE";
+const ENV_ART_BASE: &str = "BRISK_GAMETDB_ART_BASE";
 /// Art host. Confirmed by search snippets and rom-properties' docs, not by the site itself.
-pub const DEFAULT_ART_BASE: &str = "https://art.gametdb.com";
+const DEFAULT_ART_BASE: &str = "https://art.gametdb.com";
 
 /// Database download cap. shortcut: real size of wiitdb.xml is UNVERIFIED (believed ~20 MB), raise if refused.
 const MAX_DB: u64 = 64 << 20;
@@ -110,7 +109,7 @@ impl Entry {
 // ---- id and art URLs ----
 
 /// True for a six character GameTDB id.
-pub fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 6 && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
@@ -142,7 +141,7 @@ impl ArtKind {
 /// Region folders to try, best first, from the 4th character of the id. shortcut: the letter
 /// to folder table is UNVERIFIED (US, EN, DE, FR, ES, IT, NL, JA, KO, TW, AU, RU are seen in
 /// the wild); PAL ids fall back to EN, and `fetch_art` tries the next folder on a 404.
-pub fn regions(id: &str) -> Vec<&'static str> {
+fn regions(id: &str) -> Vec<&'static str> {
     let first = match id.as_bytes().get(3).map(u8::to_ascii_uppercase) {
         Some(b'E') => "US",
         Some(b'J') => "JA",
@@ -174,11 +173,6 @@ fn art_url_at(base: &str, id: &str, kind: ArtKind, region: &str) -> Result<Strin
         base.trim_end_matches('/'),
         kind.dir()
     ))
-}
-
-/// First-choice art URL on the default host. Pure; rejects anything but a 6-character id.
-pub fn art_url(id: &str, kind: ArtKind) -> Result<String, Error> {
-    art_url_at(DEFAULT_ART_BASE, id, kind, regions(id)[0])
 }
 
 // ---- wiitdb.xml scanner ----
@@ -336,20 +330,8 @@ fn games(xml: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// One game from the database text, by exact id. Pure.
-pub fn parse_game(xml: &str, id: &str) -> Option<Entry> {
-    if !valid_id(id) {
-        return None;
-    }
-    let needle = format!(">{id}</id>");
-    games(xml)
-        .filter(|g| g.contains(&needle))
-        .find_map(parse_one)
-        .filter(|e| e.id == id)
-}
-
 /// Every game in the text (capped at 200k games).
-pub fn build_index(xml: &str) -> Vec<Entry> {
+fn build_index(xml: &str) -> Vec<Entry> {
     games(xml).filter_map(parse_one).take(MAX_GAMES).collect()
 }
 
@@ -359,30 +341,6 @@ pub fn build_index(xml: &str) -> Vec<Entry> {
 struct Cache {
     fetched: u64,
     games: Vec<Entry>,
-}
-
-fn write_atomic(path: &Path, data: &[u8]) -> Result<(), Error> {
-    let io = |e: std::io::Error| Error::Io(e.kind());
-    let dir = path
-        .parent()
-        .ok_or(Error::Io(std::io::ErrorKind::InvalidInput))?;
-    std::fs::create_dir_all(dir).map_err(io)?;
-    let tmp = dir.join(format!(".tmp.{}.{}", std::process::id(), now()));
-    let r = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, path)
-    })();
-    if let Err(e) = r {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(io(e));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -425,11 +383,11 @@ fn lookup_at(data_dir: &Path, xml_url: Option<&str>, id: &str, at: u64) -> Resul
     }
     let path = data_dir.join("gametdb/index.json");
     let cached = read_cache(&path);
-    let fresh = cached
-        .as_ref()
-        .is_some_and(|c| at.saturating_sub(c.fetched) < TTL_S);
-    let cache = if fresh {
-        cached.ok_or(Error::BadContent)?
+    let cache = if let Some(c) = cached
+        .clone()
+        .filter(|c| at.saturating_sub(c.fetched) < TTL_S)
+    {
+        c
     } else if failed_recently(&data_dir.join("gametdb"), at) {
         // The last download failed lately: stale (or nothing) until the cool-down ends.
         cached.ok_or_else(|| Error::Network("database download failed lately".into()))?
@@ -526,7 +484,7 @@ fn fetch_art_at(data_dir: &Path, base: &str, id: &str, kind: ArtKind) -> Result<
                 // The server's content-type is not exposed by the shared helper; magic bytes decide.
                 let ext = image_ext(&b).ok_or(Error::BadContent)?;
                 let p = dir.join(format!("{}.{ext}", kind.dir()));
-                write_atomic(&p, &b)?;
+                write_atomic(&p, &b).map_err(|e| Error::Io(e.kind()))?;
                 return Ok(p);
             }
         }
@@ -544,8 +502,25 @@ pub fn fetch_art(cfg: &Config, id: &str, kind: ArtKind) -> Result<PathBuf, Error
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    /// First-choice art URL on the default host.
+    fn art_url(id: &str, kind: ArtKind) -> Result<String, Error> {
+        art_url_at(DEFAULT_ART_BASE, id, kind, regions(id)[0])
+    }
+
+    /// One game from the database text, by exact id.
+    fn parse_game(xml: &str, id: &str) -> Option<Entry> {
+        if !valid_id(id) {
+            return None;
+        }
+        let needle = format!(">{id}</id>");
+        games(xml)
+            .filter(|g| g.contains(&needle))
+            .find_map(parse_one)
+            .filter(|e| e.id == id)
+    }
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -888,7 +863,7 @@ mod tests {
         let leftovers: Vec<_> = std::fs::read_dir(t.path().join("art/RMCE01"))
             .unwrap()
             .flatten()
-            .filter(|e| e.file_name().to_string_lossy().starts_with(".tmp"))
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
         assert!(leftovers.is_empty());
     }

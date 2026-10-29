@@ -6,18 +6,17 @@
 //! Credentials: `~/.config/brisk/retroachievements`, line 1 username, line 2 Web API key. No file = off.
 //! The key goes into the URL only inside `get_json`; errors and Debug output never carry it.
 
-use crate::steam::{base_ok, https_get};
+use crate::steam::{base_ok, https_get, now};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 pub(crate) const DEFAULT_BASE: &str = "https://retroachievements.org/API";
 /// shortcut: console ids from memory of the RA site, not confirmed by the official docs (the docs page
 /// lists no ids); check with API_GetConsoleIDs.php once a key exists.
-pub const CONSOLE_GAMECUBE: u32 = 16;
+pub(crate) const CONSOLE_GAMECUBE: u32 = 16;
 pub const CONSOLE_WII: u32 = 19;
 
 #[derive(Debug, Clone)]
@@ -29,23 +28,6 @@ pub struct RaConfig {
     pub progress_ttl: Duration,
     /// Least gap between two requests from this process.
     pub min_interval: Duration,
-}
-
-impl RaConfig {
-    /// `BRISK_RA_BASE` overrides the host (tests point it at a local mock).
-    pub fn from_env(data_dir: &Path) -> Self {
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        Self {
-            data_dir: data_dir.to_path_buf(),
-            key_file: home.join(".config/brisk/retroachievements"),
-            base: std::env::var("BRISK_RA_BASE").unwrap_or_else(|_| DEFAULT_BASE.into()),
-            hash_ttl: Duration::from_secs(7 * 86400),
-            progress_ttl: Duration::from_secs(300),
-            min_interval: Duration::from_secs(1),
-        }
-    }
 }
 
 /// What the UI can show. No variant carries the URL or the key.
@@ -266,12 +248,6 @@ async fn get_json<T: serde::de::DeserializeOwned + Send + 'static>(
 
 // ---- disk cache ----
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 #[derive(Serialize, Deserialize)]
 struct Cached<T> {
     fetched: u64,
@@ -280,33 +256,16 @@ struct Cached<T> {
 
 pub(crate) fn read_cache<T: serde::de::DeserializeOwned>(path: &Path, ttl: Duration) -> Option<T> {
     let c: Cached<T> = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
-    (now_secs().saturating_sub(c.fetched) < ttl.as_secs()).then_some(c.data)
+    (now().saturating_sub(c.fetched) < ttl.as_secs()).then_some(c.data)
 }
 
-/// 0600 temp file, fsync, rename. A failure leaves no temp file behind.
+/// Atomic 0600 write of `data` stamped with the current time.
 pub(crate) fn write_cache<T: Serialize>(path: &Path, data: &T) -> std::io::Result<()> {
-    use std::io::Write;
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
-    let go = || -> std::io::Result<()> {
-        if let Some(d) = path.parent() {
-            std::fs::create_dir_all(d)?;
-        }
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(&serde_json::to_vec(&Cached {
-            fetched: now_secs(),
-            data,
-        })?)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, path)
-    };
-    go().inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    let body = serde_json::to_vec(&Cached {
+        fetched: now(),
+        data,
+    })?;
+    crate::fsutil::write_atomic(path, &body)
 }
 
 // ---- public entry points ----
@@ -369,7 +328,7 @@ async fn fetch_lists(
 /// RA marks subsets "[Subset - X]", and those must not equal the base game ("[tag]" of a file name is
 /// removed from the library name in `resolve_title`).
 /// shortcut: no roman numerals, "the" or subtitle folding; an odd title just stays unmatched.
-pub fn norm_title(t: &str) -> String {
+fn norm_title(t: &str) -> String {
     let mut out = String::new();
     let mut depth = 0u32;
     for c in t.chars() {
@@ -409,7 +368,7 @@ fn strip_square(t: &str) -> String {
 }
 
 /// The one game id whose normalised title equals a normalised name; none or several = NotFound.
-pub async fn resolve_title(cfg: &RaConfig, console: u32, names: &[String]) -> Result<u64, RaError> {
+async fn resolve_title(cfg: &RaConfig, console: u32, names: &[String]) -> Result<u64, RaError> {
     let creds = read_creds(cfg)?;
     let path = cfg.data_dir.join(format!("ra/titles-{console}.json"));
     let titles: Vec<(String, u64)> = match read_cache(&path, cfg.hash_ttl) {
@@ -473,27 +432,14 @@ pub async fn progress_for(
     console: u32,
     hash: &str,
 ) -> Result<GameProgress, RaError> {
-    progress_for_opts(cfg, console, hash, false).await
-}
-
-/// `fresh` drops the cached progress first (the hash list cache is kept).
-pub async fn progress_for_opts(
-    cfg: &RaConfig,
-    console: u32,
-    hash: &str,
-    fresh: bool,
-) -> Result<GameProgress, RaError> {
     let creds = read_creds(cfg)?;
     let id = resolve_with(cfg, &creds, console, hash).await?;
-    if fresh {
-        let _ = std::fs::remove_file(cfg.data_dir.join(format!("ra/game-{id}.json")));
-    }
     progress_with(cfg, &creds, id).await
 }
 
-/// Like `progress_for_opts`, but a hash missing from RA's list falls back to one unambiguous
+/// Like `progress_for`, but a hash missing from RA's list falls back to one unambiguous
 /// title match against `names`. A hash hit always wins.
-pub async fn progress_for_names(
+pub(crate) async fn progress_for_names(
     cfg: &RaConfig,
     console: u32,
     hash: &str,

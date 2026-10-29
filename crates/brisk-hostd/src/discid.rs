@@ -102,12 +102,6 @@ fn region_of(c: u8) -> Region {
     }
 }
 
-/// Plain GameCube/Wii disc header (ISO, GCM, or the copy inside RVZ/WBFS). `Ok(None)` when neither
-/// magic is present; `Err(Truncated)` if there are fewer than 0x60 bytes but the data is not clearly foreign.
-pub fn identify_header(b: &[u8]) -> Result<Identity, Error> {
-    identify_disc(b, Container::Iso)?.ok_or(Error::Invalid("no GameCube or Wii magic"))
-}
-
 fn identify_disc(b: &[u8], container: Container) -> Result<Option<Identity>, Error> {
     if b.len() < DISC_HEADER_LEN {
         return Err(Error::Truncated);
@@ -162,13 +156,13 @@ pub(crate) fn open_regular(path: &Path) -> Result<File, Error> {
 }
 
 /// Identify `path`. Refuses anything but a regular file.
-pub fn identify(path: &Path) -> Result<Identity, Error> {
+pub(crate) fn identify(path: &Path) -> Result<Identity, Error> {
     identify_as(path, None)
 }
 
 /// `identify`, taking the extension for the header-less cartridge fallback from `ext` instead of
 /// the path (an upload sits in a `.part` file until it is placed).
-pub fn identify_as(path: &Path, ext: Option<&str>) -> Result<Identity, Error> {
+pub(crate) fn identify_as(path: &Path, ext: Option<&str>) -> Result<Identity, Error> {
     let mut f = open_regular(path)?;
     let len = f.metadata()?.len();
     let mut head = Vec::new();
@@ -373,6 +367,11 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    /// A plain disc header, with "no magic" turned into an error.
+    fn identify_header(b: &[u8]) -> Result<Identity, Error> {
+        identify_disc(b, Container::Iso)?.ok_or(Error::Invalid("no GameCube or Wii magic"))
+    }
+
     #[test]
     fn a_fifo_is_refused_without_blocking_and_the_extension_can_be_given() {
         use std::os::unix::ffi::OsStrExt;
@@ -424,25 +423,15 @@ mod tests {
 
     #[test]
     fn sha1_vectors() {
-        let hex = |d: &[u8]| {
-            let mut h = Sha1::new();
-            h.update(d);
-            h.finish()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
-        };
+        let hex = |d: &[u8]| sha1_hex(&mut &d[..]).unwrap();
         assert_eq!(hex(b""), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
         assert_eq!(hex(b"abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
         assert_eq!(
             hex(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
             "84983e441c3bd26ebaae4aa1f95129e5e54670f1"
         );
-        let mut h = Sha1::new();
-        for _ in 0..1000 {
-            h.update(&[b'a'; 1000]);
-        }
-        let s: String = h.finish().iter().map(|b| format!("{b:02x}")).collect();
+        // a million bytes: many reads into the 64 KiB buffer
+        let s = sha1_hex(&mut io::Read::take(io::repeat(b'a'), 1_000_000)).unwrap();
         assert_eq!(s, "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
     }
 
@@ -570,14 +559,7 @@ mod tests {
     fn cartridges() {
         let d = tempfile::tempdir().unwrap();
         let body = vec![7u8; 100];
-        let want = {
-            let mut s = Sha1::new();
-            s.update(&body);
-            s.finish()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
-        };
+        let want = sha1_hex(&mut &body[..]).unwrap();
         let with = [&b"NES\x1A"[..], &[0u8; 12], &body].concat();
         let a = identify(&write(&d, "a.nes", &with)).unwrap();
         assert_eq!(
@@ -586,9 +568,14 @@ mod tests {
         );
         let headerless = identify(&write(&d, "b.nes", &body)).unwrap();
         assert_eq!(headerless.hash.as_deref(), Some(want.as_str()));
-        let snes = [&[0u8; 512][..], &vec![7u8; 512]].concat();
+        let snes = [&[0u8; 512][..], &vec![7u8; 1024]].concat();
         let s = identify(&write(&d, "c.sfc", &snes)).unwrap();
-        assert_eq!(s.system, System::SNES);
+        // the 512-byte copier header is not hashed
+        let snes_body = sha1_hex(&mut &snes[512..]).unwrap();
+        assert_eq!(
+            (s.system, s.hash.as_deref()),
+            (System::SNES, Some(snes_body.as_str()))
+        );
         let mut gb = vec![0u8; 0x150];
         gb[0x104..0x108].copy_from_slice(&[0xCE, 0xED, 0x66, 0x66]);
         gb[0x134..0x138].copy_from_slice(b"TEST");

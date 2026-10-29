@@ -8,7 +8,6 @@
 use crate::steam::{base_ok, get_limited};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -100,14 +99,7 @@ impl SgdbConfig {
     /// Config from the key file; None when there is no usable key.
     pub fn with_key_file(key_file: &Path, base: String, data_dir: &Path) -> Option<SgdbConfig> {
         let raw = std::fs::read_to_string(key_file).ok()?;
-        let key = raw.trim();
-        if key.is_empty()
-            || !key
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return None;
-        }
+        let key = crate::steam::plain_key(&raw)?;
         let base = base.trim_end_matches('/').to_string();
         let mut allowed_hosts: Vec<String> = DEFAULT_HOSTS.iter().map(|s| s.to_string()).collect();
         if let Some((_, h)) = split_url(&base)
@@ -242,7 +234,7 @@ pub fn search(cfg: &SgdbConfig, name: &str) -> Result<Vec<Candidate>, Error> {
 /// Lowercase words: bracketed tags removed, "&" as "and", punctuation gone, a leading "the" and a
 /// trailing platform word dropped, roman numerals II..XX (after the first word) as digits.
 /// shortcut: a lone "I" stays as is, and "Final Fantasy X" equals "Final Fantasy 10" (intended).
-pub fn normalize(name: &str) -> String {
+fn normalize(name: &str) -> String {
     let mut s = String::new();
     let mut depth = 0u32;
     for c in name.chars() {
@@ -389,7 +381,11 @@ pub struct ArtChoice {
 /// logos and icons, WEBP/JPEG before PNG for big art), then the community score. Content filters
 /// are all `false` (no NSFW, humor or flashing art). First page only; when the sized query is
 /// empty, one unsized retry. shortcut: no paging, 50 results are plenty for picking one.
-pub fn art_for(cfg: &SgdbConfig, game_id: u64, kind: ArtKind) -> Result<Vec<ArtChoice>, Error> {
+pub(crate) fn art_for(
+    cfg: &SgdbConfig,
+    game_id: u64,
+    kind: ArtKind,
+) -> Result<Vec<ArtChoice>, Error> {
     let base = format!(
         "{}/game/{game_id}?types=static&nsfw=false&humor=false&epilepsy=false&mimes={}",
         kind.path(),
@@ -448,7 +444,7 @@ fn io(e: std::io::Error) -> Error {
 }
 
 /// data_dir/art/<key>/, with the key limited to plain file-name characters.
-pub fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
+pub(crate) fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
     let ok = !key.is_empty()
         && key.len() <= 64
         && !key.starts_with('.')
@@ -461,43 +457,32 @@ pub fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
     Ok(cfg.data_dir.join("art").join(key))
 }
 
-/// Atomic private write: temp file (0600, created fresh) then rename.
+/// Atomic 0600 write into a 0700 directory.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::os::unix::fs::DirBuilderExt;
     let dir = path.parent().ok_or(Error::BadInput("path"))?;
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(dir)
         .map_err(io)?;
-    let tmp = dir.join(format!(
-        ".{}.tmp",
-        path.file_name().and_then(|n| n.to_str()).unwrap_or("x")
-    ));
-    let _ = std::fs::remove_file(&tmp);
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)
-        .map_err(io)?;
-    f.write_all(bytes).and_then(|()| f.sync_all()).map_err(io)?;
-    std::fs::rename(&tmp, path).map_err(io)
+    crate::fsutil::write_atomic(path, bytes).map_err(io)
 }
 
 /// The confirmed match for a game, so it is never asked twice.
-pub fn load_match(cfg: &SgdbConfig, key: &str) -> Option<Candidate> {
+pub(crate) fn load_match(cfg: &SgdbConfig, key: &str) -> Option<Candidate> {
     let p = art_dir(cfg, key).ok()?.join("match.json");
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
 /// Saves the chosen candidate for `key`.
-pub fn save_match(cfg: &SgdbConfig, key: &str, c: &Candidate) -> Result<(), Error> {
+pub(crate) fn save_match(cfg: &SgdbConfig, key: &str, c: &Candidate) -> Result<(), Error> {
     let body = serde_json::to_vec(c).map_err(|_| Error::BadResponse)?;
     write_private(&art_dir(cfg, key)?.join("match.json"), &body)
 }
 
-fn image_ext(b: &[u8]) -> Option<&'static str> {
+/// The file extension for PNG, JPEG or WebP bytes; None for anything else.
+pub(crate) fn image_ext(b: &[u8]) -> Option<&'static str> {
     if b.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("png")
     } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -515,7 +500,7 @@ pub(crate) const EXTS: [&str; 3] = ["png", "jpg", "webp"];
 /// data_dir/art without extension, e.g. `art_dir(..)/grid`). If any such file exists it is
 /// returned without a request. The URL host must be on the allowlist, redirects are refused
 /// (by the shared helper), the body is capped at 10 MiB and checked for PNG/JPEG/WEBP magic.
-pub fn fetch_art(cfg: &SgdbConfig, url: &str, dest: &Path) -> Result<PathBuf, Error> {
+pub(crate) fn fetch_art(cfg: &SgdbConfig, url: &str, dest: &Path) -> Result<PathBuf, Error> {
     let art_root = cfg.data_dir.join("art");
     let rel = dest
         .strip_prefix(&art_root)

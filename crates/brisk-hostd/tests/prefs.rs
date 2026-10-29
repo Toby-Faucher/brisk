@@ -1,14 +1,11 @@
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use brisk_hostd::config::Config;
+mod common;
+use axum::http::StatusCode;
 use brisk_hostd::http::{AppState, router};
 use brisk_hostd::prefs::{Entry, MAX_ENTRIES, Prefs};
+use common::{call, data_cfg};
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
-use tower::ServiceExt;
-
-const SECRET: &str = "s3cret";
 
 struct T {
     app: axum::Router,
@@ -16,9 +13,7 @@ struct T {
 }
 
 fn t_in(dir: tempfile::TempDir) -> T {
-    let mut cfg = Config::from_env(dir.path().to_path_buf());
-    cfg.secret = SECRET.into();
-    cfg.data_dir = dir.path().to_path_buf();
+    let mut cfg = data_cfg(dir.path());
     cfg.app_id = 870779643;
     T {
         app: router(Arc::new(AppState::new(cfg))),
@@ -38,20 +33,7 @@ impl T {
         secret: bool,
         body: Option<Value>,
     ) -> (StatusCode, Value) {
-        let mut r = Request::builder()
-            .method(m)
-            .uri(u)
-            .header("host", "localhost:8443");
-        if secret {
-            r = r.header("x-brisk-secret", SECRET);
-        }
-        let b = body.map_or(Body::empty(), |v| Body::from(v.to_string()));
-        let res = self.app.clone().oneshot(r.body(b).unwrap()).await.unwrap();
-        let st = res.status();
-        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
-            .await
-            .unwrap();
-        (st, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+        call(&self.app, m, u, secret, body.map(|v| v.to_string())).await
     }
     async fn put(&self, id: &str, v: Value) -> StatusCode {
         self.call("PUT", &format!("/api/prefs/{id}"), true, Some(v))

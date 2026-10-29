@@ -8,15 +8,15 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-pub const MAX_TAGS: usize = 64;
-pub const MAX_GAMES: usize = 2000;
-pub const TAG_ID_MAX: usize = 16;
-pub const TAG_NAME_MAX: usize = 24;
-pub const TAG_NOTE_MAX: usize = 500;
-pub const GAME_NOTE_MAX: usize = 4000;
-pub const GAME_TAGS_MAX: usize = 16;
-pub const SYMBOL_MAX: usize = 16;
-pub const COLORS: [&str; 9] = [
+const MAX_TAGS: usize = 64;
+pub(crate) const MAX_GAMES: usize = 2000;
+const TAG_ID_MAX: usize = 16;
+const TAG_NAME_MAX: usize = 24;
+const TAG_NOTE_MAX: usize = 500;
+const GAME_NOTE_MAX: usize = 4000;
+const GAME_TAGS_MAX: usize = 16;
+const SYMBOL_MAX: usize = 16;
+const COLORS: [&str; 9] = [
     "gray", "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink",
 ];
 
@@ -81,7 +81,7 @@ fn charset(s: &str, max: usize, ok: impl Fn(u8) -> bool) -> bool {
 }
 
 /// True for a valid tag id.
-pub fn valid_tag_id(id: &str) -> bool {
+fn valid_tag_id(id: &str) -> bool {
     crate::fsutil::slug_ok(id, TAG_ID_MAX)
 }
 
@@ -129,7 +129,7 @@ impl NotesStore {
     }
 
     /// Creates or replaces tag `id`; returns it as stored (name trimmed).
-    pub fn put_tag(&self, id: &str, mut t: Tag) -> Result<Tag, NotesError> {
+    pub(crate) fn put_tag(&self, id: &str, mut t: Tag) -> Result<Tag, NotesError> {
         // `auto-` ids belong to the page's smart tags.
         if !valid_tag_id(id) || id.starts_with("auto-") {
             return Err(NotesError::Bad("tag id must be 1-16 of a-z 0-9 -"));
@@ -158,7 +158,7 @@ impl NotesStore {
     }
 
     /// Removes the tag and takes it off every game (a game left empty goes too). Unknown id: no-op.
-    pub fn delete_tag(&self, id: &str) -> Result<(), NotesError> {
+    pub(crate) fn delete_tag(&self, id: &str) -> Result<(), NotesError> {
         if !self.inner.lock().unwrap().tags.contains_key(id) {
             return Ok(());
         }
@@ -174,7 +174,7 @@ impl NotesStore {
 
     /// Stores one game's note and tags (unknown and repeated tag ids dropped); a blank note with no
     /// tags removes the entry. Returns what was stored.
-    pub fn put_game(&self, id: &str, g: GameNote) -> Result<GameNote, NotesError> {
+    pub(crate) fn put_game(&self, id: &str, g: GameNote) -> Result<GameNote, NotesError> {
         check_note(&g.note, GAME_NOTE_MAX)?;
         let mut out = GameNote {
             note: g.note,

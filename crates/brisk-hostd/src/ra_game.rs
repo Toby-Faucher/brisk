@@ -12,22 +12,26 @@ use crate::retroachievements::{
     self as ra, Achievement, CONSOLE_GAMECUBE, CONSOLE_WII, GameProgress, Matched, RaConfig,
     RaError,
 };
+use crate::steam::now;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 const CACHE_MAX: usize = 256;
 
 impl Config {
     /// The RA client settings for this config (key file and base come from `Config`).
     pub fn ra(&self) -> RaConfig {
-        let mut r = RaConfig::from_env(&self.data_dir);
-        r.key_file = self.ra_key_file.clone();
-        r.base = self.ra_base.clone();
-        r.min_interval = self.ra_min_interval;
-        r
+        RaConfig {
+            data_dir: self.data_dir.clone(),
+            key_file: self.ra_key_file.clone(),
+            base: self.ra_base.clone(),
+            hash_ttl: Duration::from_secs(7 * 86400),
+            progress_ttl: Duration::from_secs(300),
+            min_interval: self.ra_min_interval,
+        }
     }
 }
 
@@ -56,12 +60,6 @@ pub enum HashErr {
     Failed(String),
 }
 
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// Canonical path + size + mtime (ns): a changed or replaced file misses.
 fn cache_key(file: &Path) -> Option<String> {
     let m = std::fs::metadata(file).ok()?;
@@ -75,7 +73,7 @@ fn cache_key(file: &Path) -> Option<String> {
 }
 
 /// Blocking: reads up to a GB on a miss, so callers use `spawn_blocking`.
-pub fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
+fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
     let cache = data_dir.join("ra/hash-cache.json");
     let key = cache_key(file).ok_or_else(|| HashErr::Failed("game file unreadable".into()))?;
     // A corrupt or missing cache is an empty one.
@@ -170,7 +168,7 @@ fn ach_json(a: &Achievement) -> Value {
 
 /// Steam's `Achievements` shape (`available`, `unlocked`, `total`, `list` of `id name description
 /// icon unlockedAt`) plus `state`, `source`, points and hardcore.
-pub fn ok_json(p: &GameProgress, how: Matched) -> Value {
+fn ok_json(p: &GameProgress, how: Matched) -> Value {
     let un = |a: &&Achievement| a.unlocked.is_some();
     json!({
         "state": "ok",
@@ -200,7 +198,7 @@ fn not_found_reason(console: u32) -> &'static str {
 }
 
 /// The panel state for a RetroAchievements error.
-pub fn err_json(e: &RaError) -> Value {
+fn err_json(e: &RaError) -> Value {
     let state = match e {
         RaError::Off => "off",
         RaError::BadCredentials | RaError::Unauthorized => "bad-credentials",
@@ -212,7 +210,7 @@ pub fn err_json(e: &RaError) -> Value {
 }
 
 /// The route body for one emulator game. `fresh`: drop the cached progress first.
-pub async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool) -> Value {
+pub(crate) async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool) -> Value {
     let rc = cfg.ra();
     if !rc.key_file.is_file() {
         return json!({ "state": "off" });
@@ -231,7 +229,7 @@ pub async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool
 }
 
 /// The disc hash of `file`, worked out off the async threads.
-pub async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo, HashErr> {
+pub(crate) async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo, HashErr> {
     let (d, f) = (cfg.data_dir.clone(), file.to_path_buf());
     tokio::task::spawn_blocking(move || hash_for(&d, &f))
         .await
@@ -241,13 +239,6 @@ pub async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo, HashEr
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn tmp(tag: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("brisk-ragame-{}-{tag}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
-    }
 
     fn gc(file: &Path, extra: u8) {
         let mut img = vec![0u8; 0x3300];
@@ -260,10 +251,11 @@ mod tests {
 
     #[test]
     fn hash_cache_hits_misses_and_follows_mtime() {
-        let d = tmp("cache");
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         let f = d.join("g.iso");
         gc(&f, 0);
-        let a = hash_for(&d, &f).unwrap();
+        let a = hash_for(d, &f).unwrap();
         assert_eq!(
             (a.console, a.hash.len(), a.container.as_str()),
             (16, 32, "iso")
@@ -277,7 +269,7 @@ mod tests {
             .unwrap()
             .set_modified(m)
             .unwrap();
-        assert_eq!(hash_for(&d, &f).unwrap(), a);
+        assert_eq!(hash_for(d, &f).unwrap(), a);
         // Miss: a new mtime recomputes.
         std::fs::File::options()
             .write(true)
@@ -285,8 +277,9 @@ mod tests {
             .unwrap()
             .set_modified(m + Duration::from_secs(5))
             .unwrap();
-        assert_eq!(hash_for(&d, &f).unwrap().hash.len(), 32);
-        assert_ne!(hash_for(&d, &f).unwrap().hash, a.hash);
+        let b = hash_for(d, &f).unwrap();
+        assert_eq!(b.hash.len(), 32);
+        assert_ne!(b.hash, a.hash);
         // The cache file is private and a corrupt one is tolerated.
         let c = d.join("ra/hash-cache.json");
         use std::os::unix::fs::PermissionsExt;
@@ -295,27 +288,26 @@ mod tests {
             0o600
         );
         std::fs::write(&c, "{{{").unwrap();
-        assert!(hash_for(&d, &f).is_ok());
-        std::fs::remove_dir_all(d).ok();
+        assert_eq!(hash_for(d, &f).unwrap(), b);
     }
 
     #[test]
     fn rvz_and_junk_are_unsupported_never_hashed() {
-        let d = tmp("rvz");
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         let f = d.join("g.rvz");
         let mut b = vec![0u8; 0x200];
         b[..4].copy_from_slice(b"RVZ\x01");
         b[0x58..0x5E].copy_from_slice(b"GTESTA");
         b[0x58 + 0x1C..0x58 + 0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
         std::fs::write(&f, b).unwrap();
-        assert!(matches!(hash_for(&d, &f), Err(HashErr::Unsupported(_))));
+        assert!(matches!(hash_for(d, &f), Err(HashErr::Unsupported(_))));
         std::fs::write(&f, b"nothing").unwrap();
-        assert!(matches!(hash_for(&d, &f), Err(HashErr::Unsupported(_))));
+        assert!(matches!(hash_for(d, &f), Err(HashErr::Unsupported(_))));
         assert!(matches!(
-            hash_for(&d, &d.join("missing")),
+            hash_for(d, &d.join("missing")),
             Err(HashErr::Failed(_))
         ));
-        std::fs::remove_dir_all(d).ok();
     }
 
     #[test]

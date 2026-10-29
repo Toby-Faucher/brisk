@@ -87,16 +87,6 @@ pub async fn friends_cached(state: &AppState) -> Friends {
     f
 }
 
-/// Friends who are online or in a game, playing first then by name, at most 30. Any failure
-/// (private list, no key) is `available: false`.
-pub async fn friends(cfg: &Config) -> Friends {
-    fetch_friends(cfg).await.unwrap_or_else(|err| {
-        let (Fail::Transient(err) | Fail::Permanent(err)) = err;
-        eprintln!("warning: steam friends failed: {err}");
-        Friends::default()
-    })
-}
-
 /// Transient: worth waiting out. Permanent: a config error or a refusal (401/403).
 enum Fail {
     Transient(String),

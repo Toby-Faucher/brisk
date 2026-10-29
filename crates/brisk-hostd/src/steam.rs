@@ -128,6 +128,7 @@ fn get_s<'a>(m: &'a [(String, V)], k: &str) -> Option<&'a str> {
 // are from memory and unverified against a live update. 512 (UpdatePaused) counts as needed and wins over the running bits.
 const FULLY_INSTALLED: u32 = 4;
 const UPDATE_REQUIRED: u32 = 2;
+const UPDATE_PAUSED: u32 = 512;
 const UPDATE_RUNNING: u32 = 256 | 1024 | 1_048_576 | 2_097_152 | 4_194_304;
 
 /// Only installed games get a state: an install in progress is shown by the install flow.
@@ -135,7 +136,7 @@ fn update_state(flags: u32) -> Option<String> {
     if flags & FULLY_INSTALLED == 0 {
         return None;
     }
-    if flags & 512 != 0 {
+    if flags & UPDATE_PAUSED != 0 {
         Some("needed".into())
     } else if flags & UPDATE_RUNNING != 0 {
         Some("running".into())
@@ -209,7 +210,9 @@ fn installed_manifests(steam_dir: &Path) -> Vec<Installed> {
                 .and_then(parse_acf)
             {
                 // Same appid in two libraries: prefer the fully installed one, else the first.
-                let better = |o: &Installed| i.state_flags & 4 != 0 && o.state_flags & 4 == 0;
+                let better = |o: &Installed| {
+                    i.state_flags & FULLY_INSTALLED != 0 && o.state_flags & FULLY_INSTALLED == 0
+                };
                 if seen.get(&i.appid).is_none_or(better) {
                     seen.insert(i.appid, i);
                 }
@@ -304,15 +307,18 @@ pub(crate) fn get_limited_for(
 /// The key from its file; only plain key characters, so it cannot change the shape of the URL.
 pub(crate) fn read_key(cfg: &Config) -> Result<String, &'static str> {
     let key = std::fs::read_to_string(&cfg.steam_key_file).map_err(|_| "no API key file")?;
-    let key = key.trim();
-    if key.is_empty()
-        || !key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err("API key file is not a plain key");
-    }
-    Ok(key.to_string())
+    plain_key(&key)
+        .map(str::to_string)
+        .ok_or("API key file is not a plain key")
+}
+
+/// The key file's text, trimmed, when it is one non-empty run of `A-Za-z0-9_-`.
+pub(crate) fn plain_key(raw: &str) -> Option<&str> {
+    let key = raw.trim();
+    let plain = key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    (!key.is_empty() && plain).then_some(key)
 }
 
 /// A `steam_get` error that will not go away by waiting: Steam refused the key or the list is private
@@ -438,12 +444,12 @@ fn steam_art(id: u32) -> (String, String, String) {
 }
 
 /// The games list, from cache where it can.
-pub async fn load_games(cfg: &Config) -> GamesResult {
+pub(crate) async fn load_games(cfg: &Config) -> GamesResult {
     load_games_with(cfg, false).await
 }
 
 /// The games list; `refresh` skips the owned games cache.
-pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
+pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let steam_dir = cfg.steam_dir.clone();
     let installed = tokio::task::spawn_blocking(move || installed_manifests(&steam_dir))
         .await
@@ -470,11 +476,12 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
         ]
         .iter()
         .any(|p| i.name.starts_with(p));
-        if if owned_available {
+        let skip = if owned_available {
             !by_id.contains_key(&i.appid)
         } else {
             tool
-        } {
+        };
+        if skip {
             continue;
         }
         let g = by_id.entry(i.appid).or_insert_with(|| {
@@ -482,7 +489,7 @@ pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
             (g.cover, g.hero, g.logo) = steam_art(i.appid);
             g
         });
-        g.installed = i.state_flags & 4 != 0;
+        g.installed = i.state_flags & FULLY_INSTALLED != 0;
         g.update = i.update.clone();
         if g.installed {
             g.size_bytes = Some(i.size);

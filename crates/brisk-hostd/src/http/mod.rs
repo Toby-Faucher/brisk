@@ -151,7 +151,7 @@ impl AppState {
 
     /// An id as a request writes it (`steam:620`, or a bare number) as a GameId: a bare number
     /// in the old emulator range needs this machine's library to say which game it was.
-    pub fn parse_id(&self, raw: &str) -> Option<GameId> {
+    pub(crate) fn parse_id(&self, raw: &str) -> Option<GameId> {
         let recs = self.records();
         crate::emu::resolve(&recs, raw)
     }
@@ -181,6 +181,11 @@ pub(crate) fn err(code: StatusCode, msg: &str) -> Response {
 }
 
 /// JSON body or 400 (axum's `Json` would answer 422). `appid` is a u32 here or the request fails.
+/// True when the query string has exactly `kv` (like `refresh=1`) as one of its parts.
+pub(crate) fn query_flag(q: Option<&str>, kv: &str) -> bool {
+    q.is_some_and(|q| q.split('&').any(|p| p == kv))
+}
+
 fn parse<T: serde::de::DeserializeOwned>(b: &[u8]) -> Result<T, Response> {
     serde_json::from_slice(b)
         .map_err(|e| err(StatusCode::BAD_REQUEST, &format!("bad request: {e}")))

@@ -13,20 +13,20 @@ use std::sync::Mutex;
 
 pub const MAX_ENTRIES: usize = 500;
 /// Home cards are a handful; the caps only bound what a client can make hostd store.
-pub const HOME_MAX: usize = 32;
-pub const HOME_ID_MAX: usize = 32;
-pub const MACHINES_MAX: usize = 64;
-pub const COLORS_MAX: usize = 64;
+const HOME_MAX: usize = 32;
+const HOME_ID_MAX: usize = 32;
+const MACHINES_MAX: usize = 64;
+const COLORS_MAX: usize = 64;
 const LAYOUT_KEY: &str = "layout";
 const LAYOUT_V: u64 = 1;
 
 /// Keeps the ids that are 1..=HOME_ID_MAX of `a-z 0-9 -`, first occurrence only, at most HOME_MAX.
-pub fn clean_home_order(ids: Vec<String>) -> Vec<String> {
+fn clean_home_order(ids: Vec<String>) -> Vec<String> {
     clean_ids(ids, HOME_MAX)
 }
 
 /// Same rules as `clean_home_order`, at most MACHINES_MAX ids.
-pub fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
+fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
     clean_ids(ids, MACHINES_MAX)
 }
 
@@ -35,7 +35,7 @@ fn valid_id(s: &str) -> bool {
 }
 
 /// `#rgb` or `#rrggbb` in any case -> lowercase `#rrggbb`; anything else is None.
-pub fn normalize_color(c: &str) -> Option<String> {
+fn normalize_color(c: &str) -> Option<String> {
     let h = c.strip_prefix('#')?;
     if !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
@@ -54,13 +54,12 @@ pub fn normalize_color(c: &str) -> Option<String> {
 }
 
 fn clean_ids(ids: Vec<String>, max: usize) -> Vec<String> {
-    let ok = valid_id;
     let mut out: Vec<String> = Vec::new();
     for id in ids {
         if out.len() == max {
             break;
         }
-        if ok(&id) && !out.contains(&id) {
+        if valid_id(&id) && !out.contains(&id) {
             out.push(id);
         }
     }
@@ -133,7 +132,7 @@ impl Prefs {
             })
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|(k, v)| valid_id(&k).then_some((k.clone(), normalize_color(v.as_str()?)?)))
+            .filter_map(|(k, v)| valid_id(&k).then_some((k, normalize_color(v.as_str()?)?)))
             .take(COLORS_MAX)
             .collect();
         // Keys are kept as they are, even an old number the migration could not map (never dropped).
@@ -162,17 +161,17 @@ impl Prefs {
     }
 
     /// The saved Home card order.
-    pub fn home_order(&self) -> Vec<String> {
+    pub(crate) fn home_order(&self) -> Vec<String> {
         self.inner.lock().unwrap().home.clone()
     }
 
     /// The saved Machines page order.
-    pub fn machines_order(&self) -> Vec<String> {
+    pub(crate) fn machines_order(&self) -> Vec<String> {
         self.inner.lock().unwrap().machines.clone()
     }
 
     /// The saved machine colours.
-    pub fn machine_colors(&self) -> BTreeMap<String, String> {
+    pub(crate) fn machine_colors(&self) -> BTreeMap<String, String> {
         self.inner.lock().unwrap().colors.clone()
     }
 
@@ -180,7 +179,7 @@ impl Prefs {
     /// list clears that order. `colors` is merged into the stored map (None removes an id). A bad
     /// id or colour, or more than COLORS_MAX entries after the merge, is an Err and stores nothing.
     /// Returns (home, machines, colors) as stored.
-    pub fn set_layout(
+    pub(crate) fn set_layout(
         &self,
         home: Option<Vec<String>>,
         machines: Option<Vec<String>>,

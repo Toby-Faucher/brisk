@@ -212,8 +212,8 @@ async fn cache_write_failure_still_answers_and_leaves_no_temp() {
     // a directory where the cache file goes makes the final rename fail
     let dest = t.cfg.data_dir.join("ra/game-38107.json");
     std::fs::create_dir_all(&dest).unwrap();
-    assert!(game_progress(&t.cfg, 38107).await.is_ok());
-    assert!(game_progress(&t.cfg, 38107).await.is_ok());
+    let a = game_progress(&t.cfg, 38107).await.unwrap();
+    assert_eq!(game_progress(&t.cfg, 38107).await.unwrap(), a);
     assert_eq!(log.lock().unwrap().len(), 2, "nothing was cached");
     let names: Vec<_> = std::fs::read_dir(t.cfg.data_dir.join("ra"))
         .unwrap()

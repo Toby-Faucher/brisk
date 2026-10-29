@@ -4,6 +4,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use brisk_hostd::config::Config;
 use brisk_hostd::http::{AppState, router};
+use serde_json::Value;
 use std::path::Path;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -101,39 +102,59 @@ pub fn steam(base: &str, store_base: &str, key: Option<&str>) -> Steam {
     Steam { _t: t, cfg }
 }
 
-pub async fn get_json(cfg: &Config, uri: &str) -> (StatusCode, serde_json::Value) {
-    let app = router(Arc::new(AppState::new(cfg.clone())));
-    let r = app
-        .oneshot(
-            Request::builder()
-                .uri(uri)
-                .header("host", H)
-                .header("x-brisk-secret", cfg.secret.as_str())
-                .body(Body::empty())
-                .unwrap(),
-        )
+/// Config with `dir` as both the site and the data directory, and the test secret.
+pub fn data_cfg(dir: &Path) -> Config {
+    let mut cfg = Config::from_env(dir.to_path_buf());
+    cfg.secret = SECRET.into();
+    cfg.data_dir = dir.to_path_buf();
+    cfg
+}
+
+/// One request to `app` on host `H`: the status and the raw body.
+pub async fn send_raw(
+    app: &axum::Router,
+    m: &str,
+    u: &str,
+    secret: Option<&str>,
+    body: Option<String>,
+) -> (StatusCode, Vec<u8>) {
+    let mut r = Request::builder().method(m).uri(u).header("host", H);
+    if let Some(s) = secret {
+        r = r.header("x-brisk-secret", s);
+    }
+    let b = body.map_or(Body::empty(), Body::from);
+    let res = app.clone().oneshot(r.body(b).unwrap()).await.unwrap();
+    let st = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), 4 << 20)
         .await
         .unwrap();
-    let st = r.status();
-    let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+    (st, bytes.to_vec())
+}
+
+/// `send_raw` with or without `SECRET`; the body as JSON, or Null when it is not JSON.
+pub async fn call(
+    app: &axum::Router,
+    m: &str,
+    u: &str,
+    secret: bool,
+    body: Option<String>,
+) -> (StatusCode, Value) {
+    let (st, b) = send_raw(app, m, u, secret.then_some(SECRET), body).await;
+    (st, serde_json::from_slice(&b).unwrap_or(Value::Null))
+}
+
+/// A GET with `cfg`'s secret through a fresh router.
+pub async fn get_json(cfg: &Config, uri: &str) -> (StatusCode, Value) {
+    let app = router(Arc::new(AppState::new(cfg.clone())));
+    let (st, b) = send_raw(&app, "GET", uri, Some(&cfg.secret), None).await;
     (st, serde_json::from_slice(&b).unwrap_or_default())
 }
 
-pub async fn games_json(cfg: &Config, uri: &str) -> (serde_json::Value, String) {
+/// `get_json` that must answer 200; also returns the body text.
+pub async fn games_json(cfg: &Config, uri: &str) -> (Value, String) {
     let app = router(Arc::new(AppState::new(cfg.clone())));
-    let r = app
-        .oneshot(
-            Request::builder()
-                .uri(uri)
-                .header("host", H)
-                .header("x-brisk-secret", cfg.secret.as_str())
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(r.status(), StatusCode::OK);
-    let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
-    let b = String::from_utf8(b.to_vec()).unwrap();
+    let (st, b) = send_raw(&app, "GET", uri, Some(&cfg.secret), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let b = String::from_utf8(b).unwrap();
     (serde_json::from_str(&b).unwrap(), b)
 }

@@ -8,7 +8,6 @@ use crate::ingest::{self, Mode};
 use axum::body::Body;
 use axum::http::StatusCode;
 use http_body_util::BodyExt;
-use rand_core::{OsRng, RngCore};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
@@ -18,9 +17,9 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 /// The largest body of one PUT.
-pub const CHUNK: u64 = 32 << 20;
+const CHUNK: u64 = 32 << 20;
 /// Free space kept after the file.
-pub const RESERVE: u64 = 5 << 30;
+pub(crate) const RESERVE: u64 = 5 << 30;
 const MAX_OPEN: usize = 2;
 const DAY: Duration = Duration::from_secs(24 * 3600);
 
@@ -187,9 +186,7 @@ impl Uploads {
                 "two uploads are already open",
             ));
         }
-        let mut b = [0u8; 16];
-        OsRng.fill_bytes(&mut b);
-        let id: String = b.iter().map(|x| format!("{x:02x}")).collect();
+        let id = crate::config::new_secret();
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)

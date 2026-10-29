@@ -22,7 +22,7 @@ use std::path::Path;
 /// Old hash id -> new id text.
 pub type LegacyMap = HashMap<u32, String>;
 
-pub const BACKUP_SUFFIX: &str = ".pre-ids";
+const BACKUP_SUFFIX: &str = ".pre-ids";
 
 /// Lowercase ASCII letters and digits, anything else a single `-`; at most 48 chars. A name with
 /// no ASCII letters at all (a Japanese title) falls back to `g` plus its old hash, so it is still
@@ -56,7 +56,7 @@ struct OldEntry {
 /// The old hand-written list as library records. Ids are `emu:<emulator>:<slug of the name>`, a
 /// second game with the same slug gets `~2`, then `~3`. An entry whose emulator name cannot be an
 /// id is skipped with a warning. Err when the text is not a list of entries.
-pub fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
+pub(crate) fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
     let entries: Vec<OldEntry> = serde_json::from_str(old).map_err(|e| e.to_string())?;
     let mut used: HashSet<GameId> = HashSet::new();
     let mut out = vec![];
@@ -97,7 +97,7 @@ pub fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
 }
 
 /// Old numeric id to new id for each record.
-pub fn legacy_map(recs: &[Record]) -> LegacyMap {
+fn legacy_map(recs: &[Record]) -> LegacyMap {
     recs.iter()
         .map(|r| (r.legacy(), r.id.to_string()))
         .collect()
@@ -231,7 +231,7 @@ pub fn sessions(old: &str, legacy: &LegacyMap) -> Result<Out, String> {
 }
 
 /// Copies `path` to `<path>.pre-ids` unless that copy exists already (made once). A missing file is fine.
-pub fn backup_once(path: &Path) -> std::io::Result<()> {
+pub(crate) fn backup_once(path: &Path) -> std::io::Result<()> {
     let mut b = path.as_os_str().to_owned();
     b.push(BACKUP_SUFFIX);
     let b = std::path::PathBuf::from(b);

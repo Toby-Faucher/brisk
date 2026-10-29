@@ -226,7 +226,7 @@ impl Supervisor {
     }
 
     /// `info` without blocking: `None` while the state lock is held (or poisoned).
-    pub fn try_info(&self) -> Option<StreamInfo> {
+    pub(crate) fn try_info(&self) -> Option<StreamInfo> {
         self.shared.try_lock().ok().map(|s| s.view())
     }
 
@@ -454,7 +454,7 @@ impl Supervisor {
     }
 
     /// True once shutdown began.
-    pub fn shutting_down(&self) -> bool {
+    pub(crate) fn shutting_down(&self) -> bool {
         self.closing.load(std::sync::atomic::Ordering::SeqCst)
     }
 

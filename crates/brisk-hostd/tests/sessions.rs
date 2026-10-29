@@ -1,15 +1,12 @@
 //! Session history over HTTP: one session's record + series, and the series PUT.
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use brisk_hostd::config::Config;
+mod common;
+use axum::http::StatusCode;
 use brisk_hostd::http::{AppState, router};
 use brisk_hostd::sessions::{MAX_POINTS, MAX_SERIES};
+use common::{call, data_cfg};
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
-use tower::ServiceExt;
-
-const SECRET: &str = "s3cret";
 
 struct T {
     app: axum::Router,
@@ -28,35 +25,15 @@ fn t(ids: impl IntoIterator<Item = u64>) -> T {
     let dir = tempfile::tempdir().unwrap();
     let lines: String = ids.into_iter().map(|i| rec(i) + "\n").collect();
     std::fs::write(dir.path().join("sessions.jsonl"), lines).unwrap();
-    let mut cfg = Config::from_env(dir.path().to_path_buf());
-    cfg.secret = SECRET.into();
-    cfg.data_dir = dir.path().to_path_buf();
     T {
-        app: router(Arc::new(AppState::new(cfg))),
+        app: router(Arc::new(AppState::new(data_cfg(dir.path())))),
         dir,
     }
 }
 
 impl T {
     async fn raw(&self, m: &str, u: &str, secret: bool, body: String) -> (StatusCode, Value) {
-        let mut r = Request::builder()
-            .method(m)
-            .uri(u)
-            .header("host", "localhost:8443");
-        if secret {
-            r = r.header("x-brisk-secret", SECRET);
-        }
-        let res = self
-            .app
-            .clone()
-            .oneshot(r.body(Body::from(body)).unwrap())
-            .await
-            .unwrap();
-        let st = res.status();
-        let b = axum::body::to_bytes(res.into_body(), 4 << 20)
-            .await
-            .unwrap();
-        (st, serde_json::from_slice(&b).unwrap_or(Value::Null))
+        call(&self.app, m, u, secret, Some(body)).await
     }
     async fn put(&self, id: u64, v: Value) -> StatusCode {
         self.raw(

@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-pub const LIBRARY_FILE: &str = "library.json";
-pub const OLD_FILE: &str = "emulators.json";
+pub(crate) const LIBRARY_FILE: &str = "library.json";
+pub(crate) const OLD_FILE: &str = "emulators.json";
 
 /// One game in the library. `id` is explicit and stable: a later stage may replace it (a disc
 /// header id) and keep the old one in `aliases`, so notes saved under it still resolve.
@@ -50,7 +50,7 @@ fn manual() -> String {
 }
 
 /// FNV-1a of the name folded into the old emulator id range: the first emulator version's id.
-pub fn legacy_hash(name: &str) -> u32 {
+pub(crate) fn legacy_hash(name: &str) -> u32 {
     let h = name.bytes().fold(0x811c_9dc5_u32, |h, b| {
         (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
     });
@@ -72,7 +72,7 @@ impl Record {
 /// The 6-char disc id of a record: the first alphanumeric 6-char tail among its `id` and `aliases`.
 /// A scan keeps an older slug id and stores the disc id as an alias, so ids alone are not enough.
 /// Saves use it; art and achievements can too.
-pub fn disc_id_of(r: &Record) -> Option<String> {
+pub(crate) fn disc_id_of(r: &Record) -> Option<String> {
     std::iter::once(&r.id)
         .chain(&r.aliases)
         .find_map(crate::saves::disc_id)
@@ -116,10 +116,8 @@ fn played(data_dir: &Path) -> BTreeMap<String, u64> {
 
 /// Records now as the game's last-played time: atomic 0600 write, the oldest entries dropped
 /// past a cap. A failed write is a warning only.
-pub fn mark_played(data_dir: &Path, id: &GameId) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+pub(crate) fn mark_played(data_dir: &Path, id: &GameId) {
+    let now = crate::steam::now();
     let mut m = played(data_dir);
     m.insert(id.to_string(), now);
     crate::fsutil::evict_oldest(&mut m, PLAYED_MAX, |_, t| *t);
@@ -131,7 +129,7 @@ pub fn mark_played(data_dir: &Path, id: &GameId) {
 }
 
 /// The library file's records; bad records are skipped with a warning, a corrupt file is empty.
-pub fn parse_library(text: &str) -> Result<Vec<Record>, String> {
+pub(crate) fn parse_library(text: &str) -> Result<Vec<Record>, String> {
     #[derive(Deserialize)]
     struct File {
         games: Vec<serde_json::Value>,
@@ -200,16 +198,15 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let ps = procs(proc);
     let played = played(data_dir);
     let pt = crate::playtime::Store::load(data_dir);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+    let now = crate::steam::now();
     let pending = crate::art::load_pending(data_dir);
     recs.iter()
         .map(|r| {
-            let mut g = Game::steam(r.legacy(), &r.name);
+            let legacy = r.legacy();
+            let mut g = Game::steam(legacy, &r.name);
             g.id = r.id.clone();
             g.source = Source::Emu;
-            g.legacy_id = Some(r.legacy().to_string());
+            g.legacy_id = Some(legacy.to_string());
             g.caps = caps(&r.emulator);
             // Cheap: no I/O. Only Dolphin's layout is known.
             g.caps.saves =
@@ -235,20 +232,11 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
 /// Starts the emulator on the game file, detached, in the graphical session, unless it already
 /// runs that file: then nothing is spawned. True when the game is running afterwards. False for an
 /// unknown id, a missing file, an emulator we don't know, or a failed start. Blocking.
-pub fn launch(
-    runner: &dyn Runner,
-    proc: &Path,
-    recs: &[Record],
-    id: &GameId,
-    env: &[(String, String)],
-) -> bool {
-    launch_with(runner, proc, recs, id, env, None)
-}
-
-/// `launch` with the launch options in `launch_json` (`data_dir/launch.json`) wrapped around the
-/// emulator command. Options that are not valid at this moment are not applied (and the log says
-/// why): a game always starts.
-pub fn launch_with(
+///
+/// The launch options in `launch_json` (`data_dir/launch.json`) are wrapped around the emulator
+/// command. Options that are not valid at this moment are not applied (and the log says why): a
+/// game always starts.
+pub(crate) fn launch_with(
     runner: &dyn Runner,
     proc: &Path,
     recs: &[Record],
@@ -306,6 +294,16 @@ pub fn launch_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn launch(
+        runner: &dyn Runner,
+        proc: &Path,
+        recs: &[Record],
+        id: &GameId,
+        env: &[(String, String)],
+    ) -> bool {
+        launch_with(runner, proc, recs, id, env, None)
+    }
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 

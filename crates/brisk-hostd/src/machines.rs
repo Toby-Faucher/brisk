@@ -197,6 +197,22 @@ impl Hub {
         Self::recent(&self.starting, id, STARTING_FOR)
     }
 
+    fn mark_starting(&self, id: &str) {
+        self.stopping.lock().unwrap().remove(id);
+        self.starting
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), Instant::now());
+    }
+
+    fn mark_stopping(&self, id: &str) {
+        self.starting.lock().unwrap().remove(id);
+        self.stopping
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), Instant::now());
+    }
+
     fn recent(marks: &Mutex<HashMap<String, Instant>>, id: &str, within: Duration) -> bool {
         marks
             .lock()
@@ -442,21 +458,13 @@ fn do_power(h: &Hub, e: &Entry, p: &dyn Power, v: Verb) -> Result<(StatusCode, S
         }
         (Verb::Start, VmState::Stopped) => {
             p.start()?;
-            h.stopping.lock().unwrap().remove(id);
-            h.starting
-                .lock()
-                .unwrap()
-                .insert(id.clone(), Instant::now());
+            h.mark_starting(id);
             (StatusCode::ACCEPTED, "starting".into())
         }
         (Verb::Shutdown, VmState::Stopped) => (StatusCode::OK, "off".into()),
         (Verb::Shutdown, VmState::Running) => {
             p.shutdown()?;
-            h.starting.lock().unwrap().remove(id);
-            h.stopping
-                .lock()
-                .unwrap()
-                .insert(id.clone(), Instant::now());
+            h.mark_stopping(id);
             (StatusCode::ACCEPTED, "stopping".into())
         }
     };
@@ -465,7 +473,7 @@ fn do_power(h: &Hub, e: &Entry, p: &dyn Power, v: Verb) -> Result<(StatusCode, S
 }
 
 /// `POST /api/machines/{id}/power`: start or shut down a machine.
-pub async fn power(
+pub(crate) async fn power(
     State(s): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     b: axum::body::Bytes,
@@ -507,7 +515,7 @@ fn path_ok(p: &str) -> bool {
 }
 
 /// ANY /api/m/{id}/{*path}: forwarded to the machine's own `/api/{path}`.
-pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
+pub(crate) async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
     let Some(h) = s.hub.clone() else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -649,11 +657,7 @@ pub fn spawn_idle(h: &Arc<Hub>) {
                 let done = tokio::task::spawn_blocking(move || {
                     let p = e2.power.as_ref().ok_or("no power")?;
                     p.shutdown()?;
-                    h2.starting.lock().unwrap().remove(&e2.cfg.id);
-                    h2.stopping
-                        .lock()
-                        .unwrap()
-                        .insert(e2.cfg.id.clone(), Instant::now());
+                    h2.mark_stopping(&e2.cfg.id);
                     h2.invalidate(&e2.cfg.id);
                     Ok::<(), String>(())
                 })

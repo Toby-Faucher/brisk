@@ -81,7 +81,7 @@ impl Hosts {
 }
 
 /// `Self.DNSName` without its trailing dot, as `name:8443` (the only port tailscale serve maps to us).
-pub fn tailnet_names(json: &str) -> Option<Vec<String>> {
+fn tailnet_names(json: &str) -> Option<Vec<String>> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let n = v["Self"]["DNSName"].as_str()?.trim_end_matches('.');
     (!n.is_empty()).then(|| vec![format!("{}:8443", n.to_ascii_lowercase())])
@@ -92,7 +92,12 @@ pub fn tailnet_names(json: &str) -> Option<Vec<String>> {
 /// `csrf` is the page's `x-brisk-csrf` header: tailscale attaches the identity to any request from
 /// the laptop, a cross-site one too, and a custom header cannot be sent cross-origin without a
 /// CORS preflight, which hostd never grants.
-pub fn tailnet_ok(users: &[String], loopback: bool, login: Option<&str>, csrf: bool) -> bool {
+pub(crate) fn tailnet_ok(
+    users: &[String],
+    loopback: bool,
+    login: Option<&str>,
+    csrf: bool,
+) -> bool {
     let Some(login) = login.map(str::trim).filter(|l| !l.is_empty()) else {
         return false;
     };

@@ -12,8 +12,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub const MAX_FILE: u64 = 256 << 10;
-pub const MAX_GAMES: usize = 500;
+const MAX_FILE: u64 = 256 << 10;
+pub(crate) const MAX_GAMES: usize = 500;
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -26,7 +26,7 @@ pub struct Data {
 }
 
 /// Reads the file; never fails. Entries that do not parse, or whose key is no game id, are dropped.
-pub fn read_file(path: &Path) -> Data {
+pub(crate) fn read_file(path: &Path) -> Data {
     let mut b = Vec::new();
     let ok = std::fs::File::open(path)
         .and_then(|f| f.take(MAX_FILE + 1).read_to_end(&mut b))
@@ -60,7 +60,7 @@ impl Data {
 
 /// What to run for `id` around `base`, and a note when saved options were unusable and ignored.
 /// Never fails: invalid options (for example custom commands switched off later) mean no options.
-pub fn command_for(d: &Data, id: &str, base: &[String]) -> (Command, Option<String>) {
+pub(crate) fn command_for(d: &Data, id: &str, base: &[String]) -> (Command, Option<String>) {
     match launch::validate(&d.effective(id), d.allow_custom_commands) {
         Ok(v) => (launch::build(&v, base), None),
         Err(p) => (
@@ -100,7 +100,7 @@ pub fn describe(p: &Problem) -> String {
 }
 
 /// All problems in one line.
-pub fn describe_all(p: &[Problem]) -> String {
+fn describe_all(p: &[Problem]) -> String {
     p.iter().map(describe).collect::<Vec<_>>().join("; ")
 }
 
@@ -127,12 +127,12 @@ fn rev_of<T: Serialize>(t: &T) -> String {
 }
 
 /// The revision of the defaults.
-pub fn defaults_rev(d: &Data) -> String {
+pub(crate) fn defaults_rev(d: &Data) -> String {
     rev_of(&(d.allow_custom_commands, &d.defaults))
 }
 
 /// The revision of one game's override.
-pub fn game_rev(d: &Data, id: &str) -> String {
+pub(crate) fn game_rev(d: &Data, id: &str) -> String {
     rev_of(&d.games.get(id))
 }
 
@@ -155,7 +155,7 @@ impl LaunchStore {
     }
 
     /// Replaces the defaults and the custom-commands switch. Must validate under the new switch.
-    pub fn put_defaults(
+    pub(crate) fn put_defaults(
         &self,
         rev: Option<&str>,
         allow: bool,
@@ -173,7 +173,7 @@ impl LaunchStore {
     }
 
     /// Replaces one game's override. The effective result must validate.
-    pub fn put_game(
+    pub(crate) fn put_game(
         &self,
         id: &str,
         rev: Option<&str>,
@@ -194,7 +194,7 @@ impl LaunchStore {
     }
 
     /// Removes the game's override.
-    pub fn delete_game(&self, id: &str) -> Result<Data, StoreError> {
+    pub(crate) fn delete_game(&self, id: &str) -> Result<Data, StoreError> {
         let mut g = self.lock();
         let mut n = g.clone();
         n.games.remove(id);
