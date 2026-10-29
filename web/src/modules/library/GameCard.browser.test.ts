@@ -63,18 +63,12 @@ describe('GameCard', () => {
     expect(document.querySelector('.ach')).toBeNull();
   });
 
-  it('shows an Updated chip and names it in the label', async () => {
+  it('shows an Updated chip and names Updated once: no auto-updated tag in the label or the tag chip', async () => {
     await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
-    await expect.element(page.getByRole('button', { name: /updated since you played/ })).toBeInTheDocument();
-    expect(page.getByRole('button', { name: /updated since you played/ }).element().textContent).toContain('Updated');
-  });
-
-  it('names Updated once: no auto-updated tag in the label or the tag chip', async () => {
-    await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
-    const label = page
-      .getByRole('button', { name: /updated since you played/ })
-      .element()
-      .getAttribute('aria-label')!;
+    const card = page.getByRole('button', { name: /updated since you played/ });
+    await expect.element(card).toBeInTheDocument();
+    expect(card.element().textContent).toContain('Updated');
+    const label = card.element().getAttribute('aria-label')!;
     expect(label.match(/updated/gi)).toHaveLength(1);
     expect(label).not.toMatch(/tags:.*Updated/);
     expect(document.querySelector('.tchip')?.querySelectorAll('.tc').length ?? 0).toBe(1); // Backlog only

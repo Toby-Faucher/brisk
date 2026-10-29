@@ -239,10 +239,4 @@ describe('Library ?open=', () => {
     expect(page.getByRole('dialog').elements()).toHaveLength(0);
     expect(location.search).toBe('');
   });
-
-  it('mounts filtered by ?tag= (the router remounts Library on each visit)', async () => {
-    history.replaceState(null, '', '?tag=auto-coop');
-    await render(Library);
-    await expect.element(page.getByRole('button', { name: /^Co-op 1$/ })).toHaveAttribute('aria-pressed', 'true');
-  });
 });

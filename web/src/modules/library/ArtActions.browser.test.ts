@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { api, ApiError, type Game } from '../../state/api';
 import ArtActions from './ArtActions.svelte';
 import Cover from './Cover.svelte';
+import Toasts from '../../shell/Toasts.svelte';
 
 const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false, art: true };
 const game: Game = {
@@ -152,9 +153,10 @@ describe('art actions in the game panel', () => {
 
   it('shows the plain reason when there is no key', async () => {
     vi.spyOn(api, 'artRefresh').mockRejectedValue(new ApiError('x', 409));
+    await render(Toasts);
     await render(ArtActions, { props: { game } });
     await userEvent.click(page.getByRole('button', { name: 'Find art' }));
-    expect(api.artRefresh).toHaveBeenCalled();
+    await expect.element(page.getByText('Art needs a SteamGridDB key on the machine, or it is already looking.')).toBeInTheDocument();
   });
 
   it('says a game is waiting for a choice', async () => {

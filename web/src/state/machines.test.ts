@@ -69,6 +69,14 @@ async function setup(opts: { list?: M[]; stored?: string; machinesStatus?: numbe
   return { m, a, f, state, local };
 }
 
+/** setup, then the machines loop started and its first round done. */
+async function started(opts: Parameters<typeof setup>[0] = {}) {
+  const r = await setup(opts);
+  r.m.startMachines();
+  await vi.advanceTimersByTimeAsync(0);
+  return r;
+}
+
 const calls = (f: ReturnType<typeof vi.fn>, re: RegExp) => f.mock.calls.filter((c) => re.test(String(c[0]))).length;
 
 beforeEach(() => vi.useFakeTimers());
@@ -124,9 +132,7 @@ describe('routing', () => {
   });
 
   it('leaves_paths_alone_without_a_hub', async () => {
-    const { m, a } = await setup({ machinesStatus: 404 });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, a } = await started({ machinesStatus: 404 });
     expect(get(m.hub)).toBe(false);
     expect(a.route('/api/host')).toBe('/api/host');
   });
@@ -178,9 +184,7 @@ describe('hub detection and polling', () => {
 
 describe('selection', () => {
   it('persists_and_falls_back_to_the_first_machine', async () => {
-    const { m, local } = await setup({ stored: 'zzz' });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, local } = await started({ stored: 'zzz' });
     expect(get(m.selected)).toBe('a');
     expect(local.get('brisk.machine')).toBe('a');
     m.selected.set('b');
@@ -290,9 +294,7 @@ describe('ensureReady', () => {
 
 describe('actions', () => {
   it('selecting_an_off_machine_wakes_it_and_an_on_one_does_not', async () => {
-    const { m, f, state } = await setup({ list: [mk('a'), mk('b', 'off')] });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, f, state } = await started({ list: [mk('a'), mk('b', 'off')] });
     await m.selectMachine('a');
     expect(calls(f, /power/)).toBe(0);
     const p = m.selectMachine('b');
@@ -322,16 +324,12 @@ describe('machine order', () => {
   });
 
   it('keeps_server_order_without_a_saved_one', async () => {
-    const { m } = await setup();
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m } = await started();
     expect(get(m.orderedMachines).map((x) => x.id)).toEqual(['a', 'b']);
   });
 
   it('saves_optimistically_and_takes_the_cleaned_answer', async () => {
-    const { m, f } = await setup();
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, f } = await started();
     const p = m.setMachinesOrder(['b', 'bad', 'a']);
     expect(get(m.machinesOrder)).toEqual(['b', 'bad', 'a']);
     await p;
@@ -416,9 +414,7 @@ describe('machine colours', () => {
 
 describe('forMachine', () => {
   it('always_goes_through_the_hub_path_whatever_is_selected', async () => {
-    const { m, a, f } = await setup();
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, a, f } = await started();
     m.selected.set('b');
     await a.api.forMachine('a').games(true);
     expect(f.mock.calls.at(-1)![0]).toBe('/api/m/a/games?refresh=1');
@@ -453,9 +449,7 @@ describe('pings', () => {
 
   it('samples_every_3s_with_direct_timing_and_the_hub_rtt', async () => {
     stubDoc();
-    const { m, f } = await setup({ list: [mk('a'), mk('b', 'starting')] });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, f } = await started({ list: [mk('a'), mk('b', 'starting')] });
     const stop = m.startPings();
     await vi.advanceTimersByTimeAsync(100);
     expect(get(m.pings).a).toEqual([{ t: expect.any(Number), direct: 20, hub: 5 }]);
@@ -472,9 +466,7 @@ describe('pings', () => {
 
   it('is_ref_counted', async () => {
     const { l } = stubDoc();
-    const { m } = await setup();
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m } = await started();
     const s1 = m.startPings();
     const s2 = m.startPings();
     expect(l.size).toBe(1);
@@ -488,9 +480,7 @@ describe('pings', () => {
 
   it('times_out_after_5s_and_failures_give_null_without_overlap', async () => {
     stubDoc();
-    const { m, f, state } = await setup({ list: [mk('a')] });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, f, state } = await started({ list: [mk('a')] });
     state.ping = 'hang';
     const stop = m.startPings();
     await vi.advanceTimersByTimeAsync(3_100);
@@ -506,9 +496,7 @@ describe('pings', () => {
 
   it('off_stopping_and_unreachable_machines_get_null_samples_without_a_request', async () => {
     stubDoc();
-    const { m, f } = await setup({ list: [mk('a', 'off'), mk('b', 'stopping'), mk('c', 'unreachable')] });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, f } = await started({ list: [mk('a', 'off'), mk('b', 'stopping'), mk('c', 'unreachable')] });
     const stop = m.startPings();
     await vi.advanceTimersByTimeAsync(100);
     for (const id of ['a', 'b', 'c']) expect(get(m.pings)[id]).toEqual([{ t: expect.any(Number), direct: null, hub: null }]);
@@ -518,9 +506,7 @@ describe('pings', () => {
 
   it('keeps_60_samples_and_drops_vanished_machines', async () => {
     stubDoc();
-    const { m, state } = await setup();
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, state } = await started();
     const stop = m.startPings();
     await vi.advanceTimersByTimeAsync(3_000 * 70);
     expect(get(m.pings).a).toHaveLength(60);
@@ -532,9 +518,7 @@ describe('pings', () => {
 
   it('pauses_while_hidden_and_resumes_at_once', async () => {
     const { doc, fire } = stubDoc();
-    const { m } = await setup({ list: [mk('a')] });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m } = await started({ list: [mk('a')] });
     const stop = m.startPings();
     await vi.advanceTimersByTimeAsync(100);
     expect(get(m.pings).a).toHaveLength(1);
@@ -551,9 +535,7 @@ describe('pings', () => {
 
   it('does_nothing_without_a_hub', async () => {
     stubDoc();
-    const { m, f } = await setup({ machinesStatus: 404 });
-    m.startMachines();
-    await vi.advanceTimersByTimeAsync(0);
+    const { m, f } = await started({ machinesStatus: 404 });
     const stop = m.startPings();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(get(m.pings)).toEqual({});
