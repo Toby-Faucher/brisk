@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The full check list from docs/ui-notes.md ("Rust dev tooling" and "Dev tooling"), in order; stops at the
+# The full check list from docs/dev.md ("Rust dev tooling" and "Web dev tooling"), in order; stops at the
 # first failure. Cargo and npm run under the memory cap (scripts/capped.sh, needs systemd-run), so this is
 # meant for bawn; BRISK_NO_CAP=1 runs them plain (CI).
 set -euo pipefail
@@ -52,8 +52,7 @@ run_step() {
     test) step "nextest"; capped cargo nextest run --workspace --profile ci ;;
     doc) step "doc tests"; capped cargo test --doc --workspace ;;
     deny) step "cargo deny"; capped cargo deny check ;;
-    # shortcut: bash, because its `echo "$meta"` breaks the JSON under dash's echo (Ubuntu's /bin/sh); drop once it uses printf.
-    pure) step "check-pure-rust"; bash scripts/check-pure-rust.sh ;;
+    pure) step "check-pure-rust"; scripts/check-pure-rust.sh ;;
     wording) step "check-wording"; scripts/check-wording.sh ;;
     embed)
       step "clippy, embed feature"
