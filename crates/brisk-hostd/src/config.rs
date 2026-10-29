@@ -40,6 +40,9 @@ pub struct Config {
     pub dolphin_dir: PathBuf,
     /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
     pub dolphin_user_dir: PathBuf,
+    /// RetroArch's saves, states and system dirs live under here (`BRISK_RETROARCH_DIR`, default
+    /// `<data dir>/retroarch`); scripts/setup-retroarch.sh points RetroArch at the same place.
+    pub retroarch_dir: PathBuf,
     /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
     pub playtime_poll: std::time::Duration,
     /// RetroAchievements: line 1 user name, line 2 Web API key (`BRISK_RA_KEY_FILE`). Missing = off.
@@ -105,6 +108,11 @@ impl Config {
                     .filter(|p| p.is_absolute())
                     .unwrap_or_else(|| home.join(".local/share"))
                     .join("dolphin-emu")
+            }),
+            retroarch_dir: env_path("BRISK_RETROARCH_DIR").unwrap_or_else(|| {
+                env_path("BRISK_DATA_DIR")
+                    .unwrap_or_else(|| home.join(".local/share/brisk"))
+                    .join("retroarch")
             }),
             playtime_poll: crate::playtime::poll_from(
                 std::env::var("BRISK_PLAYTIME_POLL_S").ok().as_deref(),

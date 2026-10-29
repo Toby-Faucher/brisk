@@ -100,7 +100,7 @@ pub fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
         }
         _ => {
             return Err(HashErr::Unsupported(
-                "RetroAchievements here covers Wii and GameCube".into(),
+                "brisk shows RetroAchievements for Wii and GameCube only so far; log in inside RetroArch to earn them there".into(),
             ));
         }
     };
@@ -208,6 +208,14 @@ pub fn err_json(e: &RaError) -> Value {
         _ => "error",
     };
     json!({ "state": state })
+}
+
+/// The route body for a cartridge game (RetroArch): hashing for those consoles is a later job.
+pub fn cartridge_json() -> Value {
+    json!({
+        "state": "unsupported",
+        "reason": "brisk does not read RetroAchievements for cartridge games yet; log in inside RetroArch to earn them there"
+    })
 }
 
 /// The route body for one emulator game. `fresh`: drop the cached progress first.

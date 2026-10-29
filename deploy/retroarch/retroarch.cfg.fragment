@@ -1,0 +1,21 @@
+# Settings brisk wants in retroarch.cfg. scripts/setup-retroarch.sh adds each key that is absent
+# (with --force it replaces the value) and fills @DATA@ and @CONFIG@. Key names are from
+# libretro/RetroArch retroarch.cfg and configuration.c; values marked (unverified) were not run.
+video_fullscreen = "true"
+# The quit prompt would sit unseen on a stream and never close. Key name from the
+# "quit_press_twice" migration in configuration.c; default is on (config.def.h).
+confirm_quit = "false"
+# The stream window may not hold focus; do not pause then.
+pause_nonactive = "false"
+video_driver = "gl"
+audio_driver = "pulse"
+# Battery saves every 10 s, so a kill loses little; states at exit and back in on start.
+autosave_interval = "10"
+savestate_auto_save = "true"
+savestate_auto_load = "true"
+config_save_on_exit = "false"
+savefile_directory = "@DATA@/saves"
+savestate_directory = "@DATA@/states"
+# Empty on purpose: none of the six systems needs a BIOS.
+system_directory = "@DATA@/system"
+joypad_autoconfig_dir = "@CONFIG@/autoconfig"

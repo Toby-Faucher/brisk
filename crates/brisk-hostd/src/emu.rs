@@ -234,9 +234,10 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
             g.source = Source::Emu;
             g.legacy_id = Some(r.legacy().to_string());
             g.caps = caps(&r.emulator);
-            // Cheap: no I/O. Only Dolphin's layout is known.
-            g.caps.saves =
-                r.emulator == "dolphin" && matches!(r.system.as_deref(), Some("wii" | "gamecube"));
+            // Cheap: no I/O. Dolphin's Wii/GameCube layout and RetroArch's are known.
+            g.caps.saves = r.emulator == "retroarch"
+                || (r.emulator == "dolphin"
+                    && matches!(r.system.as_deref(), Some("wii" | "gamecube")));
             g.system = r.system.clone();
             g.installed = r.file.is_file();
             g.size_bytes = std::fs::metadata(&r.file).ok().map(|m| m.len());
@@ -293,11 +294,19 @@ pub fn launch_with(
         return true;
     }
     // The path is a separate argument, never parsed by a shell.
-    let base: Vec<String> = std::iter::once(e.cmd)
-        .chain(e.args.iter().copied())
-        .chain([file])
-        .map(String::from)
-        .collect();
+    let base = match crate::retroarch::argv(
+        e,
+        r.system.as_deref(),
+        file,
+        &crate::retroarch::process_env,
+        &Path::is_file,
+    ) {
+        Ok(b) => b,
+        Err(why) => {
+            eprintln!("error: cannot start {}: {why}", r.name);
+            return false;
+        }
+    };
     let cmd = match launch_json {
         Some(p) => {
             let (c, note) = command_for(&read_file(p), id.as_str(), &base);
@@ -590,6 +599,29 @@ mod tests {
         for j in [None, Some("{bad")] {
             assert_eq!(go(j).0, "dolphin-emu");
         }
+        std::fs::remove_file(f).ok();
+    }
+
+    #[test]
+    fn a_retroarch_process_on_the_file_means_running_and_a_second_play_spawns_nothing() {
+        let f = std::env::temp_dir().join(format!("brisk-ra-{}.gba", std::process::id()));
+        std::fs::write(&f, b"x").unwrap();
+        let fs = f.to_str().unwrap();
+        let mut r = rec("Minish", "retroarch", &f);
+        r.system = Some("gba".into());
+        let id = r.id.clone();
+        let p = fake_proc(&[(
+            9,
+            "retroarch",
+            &["retroarch", "-L", "/c/mgba_libretro.so", "-f", fs],
+        )]);
+        let ps = procs(p.path());
+        assert_eq!(pids(&ps, &r), HashSet::from([9]));
+        let games = games(&[r.clone()], p.path(), p.path());
+        assert!(games[0].running && games[0].caps.saves && !games[0].caps.controls);
+        let rec = Rec::new(1);
+        assert!(launch(&*rec, p.path(), &[r], &id, &[]));
+        assert!(rec.log().iter().all(|l| !l.starts_with("spawn")));
         std::fs::remove_file(f).ok();
     }
 

@@ -184,7 +184,7 @@ fn same_file_through_a_symlink_is_one_game() {
 }
 
 #[test]
-fn cartridges_key_on_the_hash_and_have_no_emulator_yet() {
+fn cartridges_key_on_the_hash_and_register_under_retroarch() {
     let d = tempfile::tempdir().unwrap();
     let g = found(&d.path().join("g.gba"), &gba("MINISH"));
     let k = key(&g.id).unwrap();
@@ -192,7 +192,12 @@ fn cartridges_key_on_the_hash_and_have_no_emulator_yet() {
     assert!(g.id.hash.as_ref().unwrap().starts_with(&k));
     let mut recs = vec![];
     let m = merge(&mut recs, &[g], "scan");
-    assert_eq!((m.unplayable, recs.len()), (1, 0));
+    assert_eq!((m.unplayable, recs.len()), (0, 1));
+    assert_eq!(recs[0].id.as_str(), format!("emu:retroarch:{k}"));
+    assert_eq!(
+        (recs[0].emulator.as_str(), recs[0].system.as_deref()),
+        ("retroarch", Some("gba"))
+    );
 }
 
 fn cfg(d: &Path) -> Config {
@@ -226,12 +231,6 @@ fn add_dry_paths() {
         code(&[junk.to_str().unwrap()])
             .1
             .contains("not a game file")
-    );
-    let cart = put(d.path(), "in/g.gba", &gba("X"));
-    assert!(
-        code(&[cart.to_str().unwrap()])
-            .1
-            .contains("no emulator for gba")
     );
     assert!(!c.data_dir.join("library.json").exists());
 

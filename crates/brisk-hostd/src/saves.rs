@@ -28,6 +28,8 @@ pub enum Kind {
     State,
     MemoryCard,
     NandSave,
+    /// RetroArch battery save (`.srm`, `.rtc`).
+    Sram,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -195,6 +197,44 @@ pub fn list(user: &Path, disc: &str, system: &str) -> Option<Vec<SaveItem>> {
     Some(out)
 }
 
+/// RetroArch saves of the game file stem `stem` under `root`: `saves/<stem>.srm` and `.rtc`, and
+/// `states/<stem>.state`, `.state1`..., `.state.auto`. `None` when `root` does not exist. Layout
+/// is from retroarch.cfg comments and docs, not seen on a real install (docs/research/retroarch-notes.md);
+/// the directories are the ones scripts/setup-retroarch.sh sets, with no per-core sorting.
+/// shortcut: two systems with the same file stem share names; add a per-system folder if that bites.
+pub fn list_retroarch(root: &Path, stem: &str) -> Option<Vec<SaveItem>> {
+    plain(root).or_else(|| std::fs::metadata(root).ok())?;
+    let mut out = vec![];
+    if stem.is_empty() {
+        return Some(out);
+    }
+    for ext in ["srm", "rtc"] {
+        let name = format!("{stem}.{ext}");
+        out.extend(file_item(root, &["saves", &name], Kind::Sram, None));
+    }
+    let prefix = format!("{stem}.state");
+    let names: Vec<String> = std::fs::read_dir(root.join("states"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .take(MAX_WALK)
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| {
+            n.strip_prefix(&prefix)
+                .is_some_and(|r| r == ".auto" || r.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .collect();
+    for n in names {
+        let note = n
+            .ends_with(".auto")
+            .then_some("Written when the game closes");
+        out.extend(file_item(root, &["states", &n], Kind::State, note));
+    }
+    out.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.path.cmp(&b.path)));
+    out.truncate(MAX_ITEMS);
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,5 +362,40 @@ mod tests {
         }
         let v = list(t.path(), "RMCE01", "wii").unwrap();
         assert!(v[0].files.unwrap() as usize <= MAX_WALK);
+    }
+
+    #[test]
+    fn retroarch_lists_srm_and_states_of_this_stem_only() {
+        let t = tempfile::tempdir().unwrap();
+        let r = t.path();
+        for f in [
+            "saves/Zelda.srm",
+            "saves/Zelda.rtc",
+            "saves/Zelda 2.srm",
+            "saves/Other.srm",
+            "states/Zelda.state",
+            "states/Zelda.state3",
+            "states/Zelda.state.auto",
+            "states/Zelda.state.png",
+            "states/Zelda.states",
+            "states/Other.state",
+        ] {
+            put(r, f, 4);
+        }
+        let got = list_retroarch(r, "Zelda").unwrap();
+        let mut paths: Vec<_> = got.iter().map(|i| i.path.as_str()).collect();
+        paths.sort_unstable();
+        assert_eq!(
+            paths,
+            [
+                "saves/Zelda.rtc",
+                "saves/Zelda.srm",
+                "states/Zelda.state",
+                "states/Zelda.state.auto",
+                "states/Zelda.state3"
+            ]
+        );
+        assert!(list_retroarch(&r.join("nope"), "Zelda").is_none());
+        assert_eq!(list_retroarch(r, "").unwrap().len(), 0);
     }
 }

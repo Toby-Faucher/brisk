@@ -349,7 +349,7 @@ async fn finish_checks_the_size_and_the_header() {
 }
 
 #[tokio::test]
-async fn cartridges_are_stored_but_have_no_card() {
+async fn cartridges_are_stored_and_get_a_retroarch_card() {
     let r = rig();
     let mut g = vec![0u8; 0x200];
     g[4..8].copy_from_slice(&[0x24, 0xFF, 0xAE, 0x51]);
@@ -360,7 +360,7 @@ async fn cartridges_are_stored_but_have_no_card() {
         .await;
     assert_eq!(
         (f["system"].as_str(), f["registered"].as_bool()),
-        (Some("gba"), Some(false))
+        (Some("gba"), Some(true))
     );
     assert!(r.games.join("gba/x.gba").is_file());
 }
@@ -629,7 +629,7 @@ async fn scan_route_adds_once_and_is_rate_limited() {
             v["unknown"].as_u64(),
             v["scanned"].as_u64()
         ),
-        (2, Some(1), Some(1), Some(4))
+        (3, Some(0), Some(1), Some(4))
     );
     let ids: Vec<_> = v["added"]
         .as_array()
@@ -638,13 +638,14 @@ async fn scan_route_adds_once_and_is_rate_limited() {
         .map(|g| g["id"].as_str().unwrap())
         .collect();
     assert!(ids.contains(&"emu:dolphin:RMCE01") && ids.contains(&"emu:dolphin:GALE01"));
+    assert!(ids.iter().any(|i| i.starts_with("emu:retroarch:")));
     let (_, v) = r.call("POST", "/api/library/scan", Value::Null).await;
     assert_eq!(
         (
             v["added"].as_array().unwrap().len(),
             v["duplicates"].as_u64()
         ),
-        (0, Some(2))
+        (0, Some(3))
     );
 
     // with a gap configured, a second scan right away waits
