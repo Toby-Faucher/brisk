@@ -34,14 +34,28 @@ pub(super) fn controls_reply(r: Result<crate::controls::View, CtlError>) -> Resp
     }
 }
 
+/// The gate and then `act`, together on the blocking pool (/proc scan, canonicalize, fsynced writes).
+async fn controls_run(
+    s: &Arc<AppState>,
+    kind: String,
+    act: impl FnOnce(&Controls, PadKind, bool) -> Result<crate::controls::View, CtlError>
+    + Send
+    + 'static,
+) -> Response {
+    let r = blocking(s, move |s| {
+        controls_gate(s, &kind).map(|(k, run)| controls_reply(act(&s.controls, k, run)))
+    })
+    .await;
+    match r {
+        Ok(Ok(r)) | Ok(Err(r)) | Err(r) => r,
+    }
+}
+
 pub(super) async fn controls_get(
     State(s): State<Arc<AppState>>,
     UrlPath(kind): UrlPath<String>,
 ) -> Response {
-    match controls_gate(&s, &kind) {
-        Ok((k, run)) => controls_reply(s.controls.get(k, run)),
-        Err(r) => r,
-    }
+    controls_run(&s, kind, |c, k, run| c.get(k, run)).await
 }
 
 pub(super) async fn controls_put(
@@ -49,10 +63,7 @@ pub(super) async fn controls_put(
     UrlPath(kind): UrlPath<String>,
     b: axum::body::Bytes,
 ) -> Response {
-    match controls_gate(&s, &kind) {
-        Ok((k, run)) => controls_reply(s.controls.put(k, &b, run)),
-        Err(r) => r,
-    }
+    controls_run(&s, kind, move |c, k, run| c.put(k, &b, run)).await
 }
 
 pub(super) async fn controls_reset(
@@ -60,8 +71,5 @@ pub(super) async fn controls_reset(
     UrlPath(kind): UrlPath<String>,
     _b: axum::body::Bytes,
 ) -> Response {
-    match controls_gate(&s, &kind) {
-        Ok((k, run)) => controls_reply(s.controls.reset(k, run)),
-        Err(r) => r,
-    }
+    controls_run(&s, kind, |c, k, run| c.reset(k, run)).await
 }

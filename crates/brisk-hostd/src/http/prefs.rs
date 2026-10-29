@@ -36,15 +36,18 @@ pub(super) async fn layout_put(State(s): State<Arc<AppState>>, b: axum::body::By
                 "homeOrder, machinesOrder or machineColors required",
             )
         }
-        Ok(b) => match s
-            .prefs
-            .set_layout(b.home_order, b.machines_order, b.machine_colors)
+        Ok(b) => match blocking(&s, move |s| {
+            s.prefs
+                .set_layout(b.home_order, b.machines_order, b.machine_colors)
+        })
+        .await
         {
-            Ok((home, machines, colors)) => axum::Json(serde_json::json!({
+            Ok(Ok((home, machines, colors))) => axum::Json(serde_json::json!({
                 "homeOrder": home, "machinesOrder": machines, "machineColors": colors
             }))
             .into_response(),
-            Err(e) => err(StatusCode::BAD_REQUEST, e),
+            Ok(Err(e)) => err(StatusCode::BAD_REQUEST, e),
+            Err(r) => r,
         },
         Err(r) => r,
     }
@@ -52,14 +55,20 @@ pub(super) async fn layout_put(State(s): State<Arc<AppState>>, b: axum::body::By
 
 /// Reset layout: forget the saved orders and colours (Home and Machines fall back to their defaults).
 pub(super) async fn layout_delete(State(s): State<Arc<AppState>>) -> Response {
-    let all = s
-        .prefs
-        .machine_colors()
-        .into_keys()
-        .map(|k| (k, None))
-        .collect();
-    let _ = s.prefs.set_layout(Some(vec![]), Some(vec![]), Some(all));
-    StatusCode::NO_CONTENT.into_response()
+    let done = blocking(&s, |s| {
+        let all = s
+            .prefs
+            .machine_colors()
+            .into_keys()
+            .map(|k| (k, None))
+            .collect();
+        let _ = s.prefs.set_layout(Some(vec![]), Some(vec![]), Some(all));
+    })
+    .await;
+    match done {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(r) => r,
+    }
 }
 
 #[derive(Deserialize)]
@@ -121,7 +130,10 @@ pub(super) async fn prefs_put(
         bitrate_kbps: keep(b.bitrate_kbps),
         updated: 0,
     };
-    axum::Json(s.prefs.put(id.as_str(), e)).into_response()
+    match blocking(&s, move |s| s.prefs.put(id.as_str(), e)).await {
+        Ok(e) => axum::Json(e).into_response(),
+        Err(r) => r,
+    }
 }
 
 pub(super) async fn prefs_delete(
@@ -129,10 +141,10 @@ pub(super) async fn prefs_delete(
     UrlPath(raw): UrlPath<String>,
 ) -> Response {
     match s.parse_id(&raw) {
-        Some(id) => {
-            s.prefs.delete(id.as_str());
-            StatusCode::NO_CONTENT.into_response()
-        }
+        Some(id) => match blocking(&s, move |s| s.prefs.delete(id.as_str())).await {
+            Ok(_) => StatusCode::NO_CONTENT.into_response(),
+            Err(r) => r,
+        },
         None => err(StatusCode::BAD_REQUEST, "bad game id"),
     }
 }
