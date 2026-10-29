@@ -200,7 +200,7 @@ describe('Library', () => {
 });
 
 describe('Library Steam banner', () => {
-  const banner = () => page.getByText("Couldn't reach Steam", { exact: false });
+  const banner = () => page.getByText('Could not reach Steam', { exact: false });
 
   it('shows loading, not the Steam banner, while the games have not arrived', async () => {
     games.set(null);

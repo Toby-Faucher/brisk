@@ -1,4 +1,5 @@
 use rand_core::{OsRng, RngCore};
+use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,8 @@ pub struct Config {
     pub scan_on_start: bool,
     /// Hub machine list (`BRISK_MACHINES_FILE`); read by main.rs, absent = single host.
     pub machines_file: PathBuf,
+    /// `BRISK_MACHINES_FILE` was set, so a missing file is an error rather than single host.
+    pub machines_explicit: bool,
     /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
     pub dolphin_dir: PathBuf,
     /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
@@ -50,14 +53,17 @@ pub struct Config {
     pub ra_min_interval: std::time::Duration,
 }
 
-fn env_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name).map(PathBuf::from)
-}
-
 impl Config {
     /// Defaults plus the `BRISK_*` overrides, with a fresh random secret: main.rs swaps in the
     /// persistent one (`load_secret`), so tests never touch ~/.config/brisk.
     pub fn from_env(dist: PathBuf) -> Config {
+        Config::from_vars(dist, |n| std::env::var_os(n))
+    }
+
+    /// `from_env` with the variables read through `var`, so tests need not touch the environment.
+    pub fn from_vars(dist: PathBuf, var: impl Fn(&str) -> Option<OsString>) -> Config {
+        let env_path = |n: &str| var(n).map(PathBuf::from);
+        let env_str = |n: &str| var(n).and_then(|v| v.into_string().ok());
         let home = env_path("HOME").unwrap_or_else(|| PathBuf::from("."));
         Config {
             listen: ([127, 0, 0, 1], 8443).into(),
@@ -67,28 +73,28 @@ impl Config {
                 .unwrap_or_else(|| home.join(".local/share/Steam")),
             steam_key_file: env_path("BRISK_STEAM_KEY_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/steam-api-key")),
-            steam_api_base: std::env::var("BRISK_STEAM_API_BASE")
-                .unwrap_or_else(|_| "https://api.steampowered.com".into()),
-            steam_store_base: std::env::var("BRISK_STEAM_STORE_BASE")
-                .unwrap_or_else(|_| "https://store.steampowered.com".into()),
+            steam_api_base: env_str("BRISK_STEAM_API_BASE")
+                .unwrap_or_else(|| "https://api.steampowered.com".into()),
+            steam_store_base: env_str("BRISK_STEAM_STORE_BASE")
+                .unwrap_or_else(|| "https://store.steampowered.com".into()),
             bridge_bin: env_path("BRISK_BRIDGE_BIN").unwrap_or_else(|| "brisk-bridge".into()),
-            bridge_listen: std::env::var("BRISK_LISTEN").ok().filter(|v| !v.is_empty()),
+            bridge_listen: env_str("BRISK_LISTEN").filter(|v| !v.is_empty()),
             tls_dir: env_path("BRISK_TLS_DIR").unwrap_or_else(|| home.join(".config/brisk/tls")),
-            allowed_hosts: list(&std::env::var("BRISK_ALLOWED_HOSTS").unwrap_or_default()),
-            allowed_users: list(&std::env::var("BRISK_ALLOWED_USERS").unwrap_or_default()),
-            app_id: std::env::var("BRISK_APP")
-                .ok()
+            allowed_hosts: list(&env_str("BRISK_ALLOWED_HOSTS").unwrap_or_default()),
+            allowed_users: list(&env_str("BRISK_ALLOWED_USERS").unwrap_or_default()),
+            app_id: env_str("BRISK_APP")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(870779643),
             secret: new_secret(),
-            service: std::env::var_os("INVOCATION_ID").is_some(),
+            service: var("INVOCATION_ID").is_some(),
             downloads_dir: env_path("BRISK_DOWNLOADS_DIR")
                 .unwrap_or_else(|| home.join("Downloads/brisk")),
             games_dir: env_path("BRISK_GAMES_DIR").unwrap_or_else(|| home.join("Games")),
-            scan_on_start: std::env::var("BRISK_SCAN_ON_START").is_ok_and(|v| v == "1"),
+            scan_on_start: env_str("BRISK_SCAN_ON_START").is_some_and(|v| v == "1"),
             proc_dir: "/proc".into(),
             machines_file: env_path("BRISK_MACHINES_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/machines.json")),
+            machines_explicit: var("BRISK_MACHINES_FILE").is_some(),
             dolphin_dir: env_path("BRISK_DOLPHIN_DIR").unwrap_or_else(|| {
                 env_path("XDG_CONFIG_HOME")
                     .filter(|p| !p.as_os_str().is_empty())
@@ -106,13 +112,11 @@ impl Config {
                     .unwrap_or_else(|| home.join(".local/share"))
                     .join("dolphin-emu")
             }),
-            playtime_poll: crate::playtime::poll_from(
-                std::env::var("BRISK_PLAYTIME_POLL_S").ok().as_deref(),
-            ),
+            playtime_poll: crate::playtime::poll_from(env_str("BRISK_PLAYTIME_POLL_S").as_deref()),
             ra_key_file: env_path("BRISK_RA_KEY_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/retroachievements")),
-            ra_base: std::env::var("BRISK_RA_BASE")
-                .unwrap_or_else(|_| crate::retroachievements::DEFAULT_BASE.into()),
+            ra_base: env_str("BRISK_RA_BASE")
+                .unwrap_or_else(|| crate::retroachievements::DEFAULT_BASE.into()),
             ra_min_interval: std::time::Duration::from_secs(1),
         }
     }

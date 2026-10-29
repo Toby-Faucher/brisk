@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DASH } from '../ui/format';
   import { onMount, tick } from 'svelte';
   import { host, pollHost } from '../state/host';
   import { hub, machines, selected, selectedMachine, selectMachine } from '../state/machines';
@@ -49,7 +50,7 @@
     {/if}
     <button class="pill" aria-haspopup="menu" aria-expanded={open} onclick={() => void toggle()} title={sel ? STATE_LABEL[sel.state] : 'No machine selected'}>
       <Icon name="host" color={sel?.state === 'ready' ? 'var(--ok)' : 'var(--muted)'} />
-      <span class="name" {@attach fadeOnChange(sel?.name ?? '–', true)}>{sel?.name ?? '–'}</span>
+      <span class="name" {@attach fadeOnChange(sel?.name ?? DASH, true)}>{sel?.name ?? DASH}</span>
       {#if sel}<span class="st">{STATE_LABEL[sel.state]}</span>{/if}
       <StatusDot state={sel ? dotState(sel) : 'off'} />
     </button>
@@ -57,7 +58,7 @@
 {:else}
   <a class="pill" href="/machines" title={$host ? label[$host.sunshine] : 'Host not reachable'}>
     <Icon name="host" color={$host ? 'var(--ok)' : 'var(--muted)'} />
-    <span class="name">{$host?.name ?? '–'}</span>
+    <span class="name">{$host?.name ?? DASH}</span>
     <StatusDot state={$host?.sunshine ?? 'off'} />
   </a>
 {/if}

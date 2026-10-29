@@ -6,7 +6,6 @@
 // research/8bitdo-ultimate-2-dimensions.md has the sources and what is unverified.
 
 export const VIEWBOX = '-80 -60 160 120';
-export const BODY_MM = { w: 147, h: 103 };
 
 type Seg = ['L', number, number] | ['C', number, number, number, number, number, number];
 const d = (start: [number, number], segs: Seg[]) => `M${start.join(' ')} ` + segs.map((s) => s.join(' ')).join(' ');

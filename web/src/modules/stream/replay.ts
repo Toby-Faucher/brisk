@@ -5,7 +5,7 @@ import { codecFromAccessUnit, nals } from '../../lib/video';
 import type { AudioHeader } from '../../lib/audio';
 
 /** Video + audio kept at most (Crisp 40 Mbps for 40 s is about 200 MB: the ring cuts to fit). */
-export const REPLAY_CAP_BYTES = 160 << 20;
+const REPLAY_CAP_BYTES = 160 << 20;
 /** Counted per entry on top of its buffer, so 200 tiny audio packets a second count too. */
 const ENTRY_BYTES = 64;
 /** Sunshine sends no periodic IDR: while replay is on the page asks for one (MSG_REFRESH_KEY) this often. */

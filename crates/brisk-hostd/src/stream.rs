@@ -68,6 +68,7 @@ pub enum RawId {
 }
 
 impl RawId {
+    /// The id as text.
     pub fn text(&self) -> String {
         match self {
             RawId::Num(n) => n.to_string(),
@@ -188,9 +189,12 @@ pub struct Supervisor {
     /// SIGTERM to exit: the bridge cancels its Sunshine session (Sunshine lingers ~10 s).
     pub stop_wait: Duration,
     pub page_wait: Duration,
+    /// Gap between looks for a launched game's window.
+    pub focus_poll: Duration,
 }
 
 impl Supervisor {
+    /// A supervisor with no bridge running.
     pub fn new(cfg: &Config, runner: Arc<dyn Runner>) -> Self {
         Supervisor {
             bin: cfg.bridge_bin.clone(),
@@ -212,9 +216,11 @@ impl Supervisor {
             child: tokio::sync::Mutex::new(None),
             stop_wait: Duration::from_secs(12),
             page_wait: Duration::from_secs(20),
+            focus_poll: Duration::from_secs(1),
         }
     }
 
+    /// The current stream state.
     pub fn info(&self) -> StreamInfo {
         self.shared.lock().unwrap().view()
     }
@@ -224,6 +230,7 @@ impl Supervisor {
         self.shared.try_lock().ok().map(|s| s.view())
     }
 
+    /// The `n` newest sessions.
     pub fn sessions(&self, n: usize) -> Vec<SessionRec> {
         self.sessions.latest(n)
     }
@@ -326,7 +333,7 @@ impl Supervisor {
         );
         let mut launch = game.as_ref().map(|g| g.id.clone());
         let (proc, data) = (self.proc_dir.clone(), self.data_dir.clone());
-        let quiet = self.quiet;
+        let (quiet, poll) = (self.quiet, self.focus_poll);
         let report = Arc::new(Mutex::new(Report::default()));
         let rep = report.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
@@ -351,7 +358,7 @@ impl Supervisor {
                             } else if l.starts_with("tap\tconnected")
                                 && let Some(id) = launch.take()
                             {
-                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), data.clone(), id));
+                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), data.clone(), id, poll));
                             }
                             rep.lock().unwrap().line(&l);
                             forward(bridge_line(l, quiet, tok.as_deref()));
@@ -416,7 +423,7 @@ impl Supervisor {
                     name: game.map_or_else(|| "Desktop".into(), |g| g.name),
                     started: now_ms(),
                     ended: None,
-                    host: hostname(),
+                    host: crate::host::hostname(),
                     preset: req.preset,
                     codec: Some(req.codec),
                     bitrate_kbps: Some(kbps),
@@ -446,6 +453,7 @@ impl Supervisor {
         Ok(s.view())
     }
 
+    /// True once shutdown began.
     pub fn shutting_down(&self) -> bool {
         self.closing.load(std::sync::atomic::Ordering::SeqCst)
     }
@@ -520,13 +528,16 @@ impl Supervisor {
         }
         src.after_launch(&self.data_dir, id);
         if src.focus_class(&self.data_dir, id).is_some() {
-            let (r, p, d, id) = (
+            let (r, p, d, id, poll) = (
                 self.runner.clone(),
                 self.proc_dir.clone(),
                 self.data_dir.clone(),
                 id.clone(),
+                self.focus_poll,
             );
-            tokio::spawn(async move { focus(r, p, d, env, id, Duration::from_secs(60)).await });
+            tokio::spawn(
+                async move { focus(r, p, d, env, id, Duration::from_secs(60), poll).await },
+            );
         }
         true
     }
@@ -646,7 +657,7 @@ pub fn ensure_cert(
         );
     }
     eprintln!(
-        "new bridge certificate {} ({CERT_DAYS} days)",
+        "info: new bridge certificate {} ({CERT_DAYS} days)",
         cert.display()
     );
     Ok((cert, key))
@@ -669,11 +680,6 @@ fn parse_page(p: &str) -> Option<(String, String)> {
     (!wt.is_empty() && !hash.is_empty()).then(|| (wt.to_string(), hash.to_string()))
 }
 
-fn hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map_or_else(|_| "bawn".into(), |s| s.trim().to_string())
-}
-
 /// Waits up to `wait` for the game's window, then focuses and fullscreens it: found by the
 /// source's window class, else through the game's process tree. A miss is only logged.
 pub(crate) async fn focus(
@@ -683,17 +689,24 @@ pub(crate) async fn focus(
     env: Vec<(String, String)>,
     id: GameId,
     wait: Duration,
+    poll: Duration,
 ) {
     if let Some(class) = of(&id).focus_class(&data, &id) {
-        crate::running::focus_class(runner, env, class, id.to_string(), wait).await;
+        crate::running::focus_class(runner, env, class, id.to_string(), wait, poll).await;
     } else if let Some(n) = id.steam_appid() {
-        crate::running::focus_game(runner, proc, env, n, wait).await;
+        crate::running::focus_game(runner, proc, env, n, wait, poll).await;
     }
 }
 
 /// A running game is only brought to the front: launching it again does nothing useful and
 /// leaves its window small on the desktop. Then waits up to a minute for the window to fullscreen it.
-async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf, id: GameId) {
+async fn launch_and_focus(
+    runner: Arc<dyn Runner>,
+    proc: PathBuf,
+    data: PathBuf,
+    id: GameId,
+    poll: Duration,
+) {
     let (r, p, d, i) = (runner.clone(), proc.clone(), data.clone(), id.clone());
     let (ok, env) = tokio::task::spawn_blocking(move || {
         let src = of(&i);
@@ -714,7 +727,7 @@ async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf,
     .await
     .unwrap_or_default();
     if ok {
-        focus(runner, proc, data, env, id, Duration::from_secs(60)).await;
+        focus(runner, proc, data, env, id, Duration::from_secs(60), poll).await;
     }
 }
 

@@ -3,7 +3,7 @@
   import Card from '../../ui/Card.svelte';
   import DefaultsEditor from '../launch/DefaultsEditor.svelte';
 
-  let _props: { focusKey?: number } = $props(); // the Emulators tab passes it to every section
+  const { focusKey: _focusKey }: { focusKey?: number } = $props(); // the Emulators tab passes it to every section
 </script>
 
 <div class="el">

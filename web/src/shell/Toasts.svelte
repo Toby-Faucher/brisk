@@ -2,6 +2,7 @@
   import { writable } from 'svelte/store';
   import { play } from '../ui/sounds';
   import type { ToastOpts } from '../state/quit';
+  import { errMsg } from '../state/errMsg';
 
   type Toast = { id: number; text: string; error: boolean; thumb?: string; action?: ToastOpts['action'] };
   const list = writable<Toast[]>([]);
@@ -14,6 +15,9 @@
     if (t.error) play('error');
     setTimeout(() => list.update((l) => l.filter((x) => x !== t)), opts.ms ?? 3500);
   }
+
+  /** "Could not <what>: <reason>" as an error toast; `e` is whatever was caught. */
+  export const toastError = (what: string, e: unknown) => toast(`Could not ${what}: ${errMsg(e)}`, { error: true });
 </script>
 
 <script lang="ts">

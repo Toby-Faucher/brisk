@@ -4,7 +4,7 @@
   import { gameKey, pick, without } from '../../state/gameId';
   import { homeOrder, prefs, refreshPrefs } from '../../state/prefs';
   import { toast } from '../../shell/Toasts.svelte';
-  import { fmtAgo } from '../home/home';
+  import { fmtAgo } from '../../ui/format';
   import { gameHistory, fmtTotal, recentTrouble, recommendPreset } from './streamHistory';
 
   let { game }: { game: Game } = $props();

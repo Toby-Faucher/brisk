@@ -4,7 +4,7 @@ import type { SeriesPoint } from '../../state/api';
 
 /** `[t seconds since the session started, delay ms, fps, Mbit/s]`, as hostd stores it. */
 export type Point = SeriesPoint;
-export const STEP_S = 5;
+const STEP_S = 5;
 export const UPLOAD_MS = 30_000;
 /** Raw samples kept while hostd does not acknowledge them (~400 points, 33 min); the oldest go first. */
 export const MAX_PENDING = 4000;

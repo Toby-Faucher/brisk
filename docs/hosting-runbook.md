@@ -295,7 +295,7 @@ puts the wrappers around the command Steam passes and `exec`s it. One line goes 
 
 **A bad setting never stops a game.** If `launch.json` is missing, unreadable or invalid (for example custom
 commands were switched off after a custom command was saved), the game starts with no options, and the log says
-why (`launch options for steam:620 ignored: ...` on the shim's stderr, `warn: launch options ...` in hostd's
+why (`launch options for steam:620 ignored: ...` on the shim's stderr, `warning: launch options ...` in hostd's
 log for emulators). If a wrapper program is not installed, the plain command runs instead.
 
 Check it works: run `<path-to>/brisk-hostd wrap steam:<appid> -- /bin/echo hello` in a terminal (it should print

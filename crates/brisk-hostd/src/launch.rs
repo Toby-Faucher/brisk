@@ -89,6 +89,7 @@ pub struct Command {
     pub env: Vec<(String, String)>,
 }
 
+/// The defaults with the override applied.
 pub fn effective(defaults: &LaunchOptions, over: Option<&LaunchOverride>) -> LaunchOptions {
     let Some(o) = over else {
         return defaults.clone();
@@ -161,6 +162,7 @@ fn custom_ok(c: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Checks the options; every problem found when they are not usable.
 pub fn validate(o: &LaunchOptions, allow_custom: bool) -> Result<Validated, Vec<Problem>> {
     let mut bad = Vec::new();
     let mut seen = [false; 3];

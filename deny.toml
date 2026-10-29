@@ -13,7 +13,6 @@ targets = [
     "x86_64-pc-windows-msvc",
     "aarch64-pc-windows-msvc",
 ]
-exclude-dev = true
 
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
@@ -22,7 +21,7 @@ unmaintained = "workspace"
 yanked = "deny"
 # Seven advisories are accepted on purpose; each reason says whether it is reachable.
 # paste (RUSTSEC-2024-0436, unmaintained) needs no entry: unmaintained = "workspace" skips transitive deps.
-# exclude-dev (above) means advisories in dev-only crates are not reported.
+# Dev-only crates are checked too (no exclude-dev in [graph]); none needs an entry here.
 ignore = [
     # rustls-webpki 0.102.8 comes only from rustls-rustcrypto 0.0.2-alpha, which imports just the
     # `alg_id` constants from it (verify/{ecdsa,eddsa,rsa}.rs). No chain, CRL or name-constraint code
@@ -62,7 +61,20 @@ allow = [
 ]
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "deny"
+# Each duplicate below is pulled in by a dependency we do not control. Skip the version with fewer
+# users; drop the entry once the lock has one version (cargo deny then warns the skip is unused).
+skip = [
+    { crate = "base64@0.22.1", reason = "sfv (web-transport-proto, bridge) is on 0.22; ureq is on 0.23" },
+    { crate = "chacha20@0.9.1", reason = "chacha20poly1305 0.10 from rustls-rustcrypto; rand 0.10 (proptest, quinn-proto) uses 0.10" },
+    { crate = "cpufeatures@0.3.1", reason = "only chacha20 0.10 (rand 0.10) uses it; the RustCrypto 0.10 crates use 0.2" },
+    { crate = "getrandom@0.2.17", reason = "rand_core 0.6 (RustCrypto stack and our OsRng) uses 0.2; rand 0.10 and tempfile use 0.4" },
+    { crate = "getrandom@0.3.4", reason = "graviola (rustls-graviola, hostd Steam HTTPS) uses 0.3" },
+    { crate = "rand@0.8.8", reason = "num-bigint-dig (rsa) uses rand 0.8; proptest and quinn-proto use 0.10" },
+    { crate = "rand_core@0.6.4", reason = "the RustCrypto 0.10 stack (rsa, signature, elliptic-curve) uses 0.6; rand 0.10 uses 0.10" },
+    { crate = "rustls-webpki@0.102.8", reason = "rustls-rustcrypto 0.0.2-alpha pins 0.102; rustls uses 0.103 (see the advisory ignores above)" },
+    { crate = "syn@3.0.9", reason = "some proc macros (displaydoc, ref-cast-impl) moved to syn 3, the rest are on 2; build time only" },
+]
 wildcards = "deny"
 # Path dependencies between our own crates carry no version wildcard issue.
 allow-wildcard-paths = true

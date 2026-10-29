@@ -19,6 +19,7 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// The Content-Type for this kind.
     pub fn mime(self) -> &'static str {
         match self {
             Kind::Text => "text/plain;charset=utf-8",
@@ -63,6 +64,7 @@ pub struct Clipboard {
 }
 
 impl Clipboard {
+    /// A clipboard on `backend`, empty until the first read.
     pub fn new(backend: Arc<dyn Backend>) -> Self {
         Clipboard {
             backend,

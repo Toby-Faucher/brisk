@@ -35,10 +35,10 @@ done
 # --- stricter scan: every -sys crate, C build tool and `links` crate, minus the allowlist ---
 allow=${PURE_ALLOW_FILE:-scripts/pure-rust-allow.txt}
 entries=$(grep -v '^[[:space:]]*\(#\|$\)' "$allow" 2>/dev/null)
-if [ -n "$entries" ] && ! echo "$entries" | awk -F'|' 'NF<3 || $1 ~ /^[[:space:]]*$/ || $2 ~ /^[[:space:]]*$/ || $3 ~ /^[[:space:]]*$/ {exit 1}'; then
+if [ -n "$entries" ] && ! printf '%s\n' "$entries" | awk -F'|' 'NF<3 || $1 ~ /^[[:space:]]*$/ || $2 ~ /^[[:space:]]*$/ || $3 ~ /^[[:space:]]*$/ {exit 1}'; then
     echo "ERROR: lines in $allow must be 'crate | reason | date'"; exit 1
 fi
-allowed=$(echo "$entries" | awk -F'|' '{gsub(/[[:space:]]/,"",$1); print $1}')
+allowed=$(printf '%s\n' "$entries" | awk -F'|' '{gsub(/[[:space:]]/,"",$1); print $1}')
 # Names of normal/build-reachable packages that declare `links`, from `cargo metadata` JSON on stdin.
 links_py='
 import json, sys
@@ -60,22 +60,22 @@ for i in sorted(seen):
 '
 for tgt in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
     tree=$(cargo tree --workspace -e normal,build --target "$tgt" --prefix none 2>"$err")
-    if [ $? -ne 0 ] || ! echo "$tree" | grep -q '^brisk-hostd v'; then
+    if [ $? -ne 0 ] || ! printf '%s\n' "$tree" | grep -q '^brisk-hostd v'; then
         echo "ERROR: unexpected cargo tree output for $tgt (failed, empty or not the expected format):"; cat "$err"; exit 1
     fi
     meta=$(cargo metadata --format-version 1 --filter-platform "$tgt" 2>"$err")
-    names=$(echo "$meta" | python3 -c "$links_py" 2>>"$err")
+    names=$(printf '%s\n' "$meta" | python3 -c "$links_py" 2>>"$err")
     if [ $? -ne 0 ]; then echo "ERROR reading cargo metadata for $tgt:"; cat "$err"; exit 1; fi
     # `cargo metadata` unifies features across dev-deps too (it lists ring via rustls, which the
     # normal+build tree does not), so a links crate only counts if the tree has it as well.
-    treenames=$(echo "$tree" | awk '{print $1}' | sort -u)
-    names=$(echo "$names" | while read -r n; do [ -n "$n" ] && echo "$treenames" | grep -qxF -- "$n" && echo "$n"; done)
+    treenames=$(printf '%s\n' "$tree" | awk '{print $1}' | sort -u)
+    names=$(printf '%s\n' "$names" | while read -r n; do [ -n "$n" ] && printf '%s\n' "$treenames" | grep -qxF -- "$n" && echo "$n"; done)
     for c in $treenames; do
         case $c in
             *-sys|*_sys|cc|cmake|bindgen|pkg-config|vcpkg|cxx-build) ;;
-            *) echo "$names" | grep -qxF -- "$c" || continue ;;
+            *) printf '%s\n' "$names" | grep -qxF -- "$c" || continue ;;
         esac
-        if echo "$allowed" | grep -qxF -- "$c"; then
+        if printf '%s\n' "$allowed" | grep -qxF -- "$c"; then
             echo "allowed (see $allow): $c [$tgt]"
         else
             echo "NOT PURE: $c is a -sys / links / C build-tool crate and is not in $allow [$tgt]"; bad=1

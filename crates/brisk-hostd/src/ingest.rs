@@ -23,6 +23,7 @@ pub const EXTS: &[&str] = &[
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;
 
+/// True when the file name has a game file extension.
 pub fn known_ext(name: &str) -> bool {
     Path::new(name)
         .extension()
@@ -45,6 +46,7 @@ pub fn folder(s: System) -> &'static str {
     }
 }
 
+/// The emulator that runs system `s`.
 pub fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
     registry::EMULATORS
         .iter()
@@ -323,7 +325,7 @@ pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
 pub fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     t.drain(..t.len().saturating_sub(MAX_TOMBS));
     let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
-    if let Err(e) = emu::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
+    if let Err(e) = crate::fsutil::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
         eprintln!("warning: removed list: {e}");
     }
 }
@@ -406,6 +408,7 @@ fn register_with(
 /// Exclusive lock on `data_dir/library.lock`, shared with other hostd processes (`add`).
 pub struct Lock(File);
 
+/// Takes the library lock in `data_dir`; it is held until dropped.
 pub fn lock(data_dir: &Path) -> io::Result<Lock> {
     std::fs::create_dir_all(data_dir)?;
     let f = std::fs::OpenOptions::new()
@@ -487,7 +490,7 @@ pub fn update<R>(
         if skipped > 0 {
             keep_bad_copy(data_dir, skipped);
         }
-        emu::write_atomic(&p, &emu::library_json(&recs))
+        crate::fsutil::write_atomic(&p, &emu::library_json(&recs))
             .map_err(|e| format!("library save: {e}"))?;
     }
     Ok(r)

@@ -1,12 +1,19 @@
-//! Sunshine HTTP XML replies, DESCRIBE SDP attributes and the launch session URL.
+//! Sunshine HTTP framing and XML replies, DESCRIBE SDP attributes and the launch session URL.
 #![no_main]
 
-use brisk_proto::http::{check_status, parse_applist, parse_field, parse_launch, parse_serverinfo};
+use brisk_proto::http::{
+    check_status, parse_applist, parse_field, parse_launch, parse_serverinfo, response_body,
+};
 use brisk_proto::pair::unhex;
 use brisk_proto::sdp::sdp_attr;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|d: &[u8]| {
+    for need_len in [false, true] {
+        if let Ok(b) = response_body(d, need_len) {
+            assert!(b.len() <= d.len());
+        }
+    }
     let s = String::from_utf8_lossy(d);
     let _ = check_status(&s);
     let _ = parse_field(&s, "paired");

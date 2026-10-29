@@ -101,7 +101,7 @@ export function prefsChip(p: GamePrefs): string {
   return p.preset === 'custom' ? `Custom · ${mbps} Mbps` : NAME[p.preset];
 }
 
-export const SAVE_DELAY_MS = 1000;
+const SAVE_DELAY_MS = 1000;
 
 /** Debounced, last-wins save for one game at a time; a change for another game saves the pending one first. */
 export function prefSaver(d: {

@@ -1,6 +1,7 @@
 // One stream session: connects the existing video/audio/input pipes (lib/*.ts) to the bridge's
 // WebTransport, reconnects silently on a drop, restarts the bridge for a quality change, and
 // samples stats for the ghost bar and the stats card. Everything browser-side is injected (Deps).
+import { errMsg } from '../../state/errMsg';
 import { writable } from 'svelte/store';
 import type { StreamInfo, StreamReq } from '../../state/api';
 import { MSG_REFRESH_KEY, type FrameHeader, type VideoStats } from '../../lib/video';
@@ -12,7 +13,7 @@ export type SessionState = 'connecting' | 'live' | 'reconnecting' | 'failed';
 /** Waits before each reconnect try after a drop; then 'failed'. */
 export const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 /** A connection that lived this long earns a fresh set of retries (a flapping one does not). */
-export const STABLE_MS = 5000;
+const STABLE_MS = 5000;
 const SAMPLE_MS = 500;
 const POINTS = 60;
 
@@ -129,7 +130,7 @@ export class StreamSession {
       info = await this.d.api.startStream(codec ? { ...rest, codec } : rest);
     } catch (e) {
       if (gen === this.gen) {
-        this.d.notify(`Couldn't change quality: ${(e as Error).message}`, true);
+        this.d.notify(`Could not change quality: ${errMsg(e)}`, true);
         this.state.set('failed');
       }
       return;

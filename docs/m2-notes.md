@@ -83,7 +83,7 @@ Chosen: **a self-signed ECDSA P-256 certificate, valid 13 days, pinned by the pa
 - WebTransport and WebCodecs need a secure context. `http://localhost` is one; `http://<tailscale
   ip>` is not. So the page (static `web/dist`, served by `python3 -m http.server --bind 127.0.0.1
   8443`) is reached from the laptop with `ssh -N -L 8443:127.0.0.1:8443 bawn`, while WebTransport
-  itself goes straight to `https://100.80.84.102:4433/<token>` over Tailscale (UDP; an SSH forward
+  itself goes straight to `https://100.64.0.1:4433/<token>` over Tailscale (UDP; an SSH forward
   cannot carry it). The certificate hash replaces hostname checks, so the IP works.
 - Exposure: the bridge binds bawn's Tailscale IP only (it refuses `0.0.0.0`), the page server binds
   127.0.0.1, and a WebTransport session needs the random 128-bit token from the page URL
@@ -452,7 +452,7 @@ Setup
 1. On bawn (needs Sunshine idle; brisk-up refuses otherwise): `cd ~/Projects/brisk && scripts/brisk-up.sh --secs 1800` (30 min; Ctrl-C when done)
 2. On the laptop: `ssh -N -L 8443:127.0.0.1:8443 bawn` (leave it open).
 3. In Chrome on the laptop, open the `page` URL that brisk-up printed
-   (`http://localhost:8443/?wt=https://100.80.84.102:4433/<token>&hash=<sha256>`).
+   (`http://localhost:8443/?wt=https://100.64.0.1:4433/<token>&hash=<sha256>`).
    Click **Connect** (it also starts audio; Chrome only allows sound after a click).
 
 Video (first minute)

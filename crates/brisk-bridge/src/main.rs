@@ -14,6 +14,8 @@
 //! certificate hash. --secs stops after N seconds (default: until SIGINT/SIGTERM/SIGHUP or the
 //! host ends the session). At exit it prints the latency report and the M2 gate.
 
+#![forbid(unsafe_code)]
+
 use brisk_bridge::session::{AudioRx, Report, forward};
 use brisk_bridge::{input, wt};
 use brisk_client::control::ControlSession;
@@ -122,8 +124,9 @@ fn ranged(flag: &str, v: String, lo: u32, hi: u32) -> Result<u32, String> {
         .ok_or(format!("{flag} must be a number in {lo}..={hi}"))
 }
 
-fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
+/// Lower-case hex for the page URL (token, certificate hash).
+fn hex_lower(b: &[u8]) -> String {
+    brisk_proto::pair::hex(b).to_ascii_lowercase()
 }
 
 /// Resolves on SIGINT, SIGTERM or SIGHUP with the signal's name. Installed before the launch, so
@@ -153,7 +156,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
         .map_err(|e| setup(format!("--cert {}: {e}", a.cert.display())))?;
     let key = PrivateKeyDer::from_pem_file(&a.key)
         .map_err(|e| setup(format!("--key {}: {e}", a.key.display())))?;
-    let hash = hex(&Sha256::digest(
+    let hash = hex_lower(&Sha256::digest(
         certs
             .first()
             .ok_or(setup("--cert has no certificate".into()))?,
@@ -161,7 +164,7 @@ async fn run(a: Args) -> brisk_client::Result<()> {
     let ep = wt::endpoint(a.listen, certs, key)?;
     let mut t = [0u8; 16];
     SystemRng.fill(&mut t);
-    let token = hex(&t);
+    let token = hex_lower(&t);
     let wt_url = format!("https://{}/{token}", a.listen);
     println!("listening\t{} (udp)", a.listen);
     println!("page\t{}?wt={wt_url}&hash={hash}", a.page);

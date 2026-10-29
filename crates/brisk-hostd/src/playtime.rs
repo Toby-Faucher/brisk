@@ -43,11 +43,12 @@ impl Store {
         Store { games }
     }
 
+    /// Writes the store to `data_dir`; a failure is a warning only.
     pub fn save(&self, data_dir: &Path) {
         let bytes = serde_json::to_vec(&serde_json::json!({"v": 1, "games": self.games}))
             .unwrap_or_default();
         let path = data_dir.join(FILE);
-        if let Err(e) = emu::write_atomic(&path, &bytes) {
+        if let Err(e) = crate::fsutil::write_atomic(&path, &bytes) {
             eprintln!("warning: {}: {e}", path.display());
         }
     }
@@ -72,16 +73,10 @@ impl Store {
                 .map(|(s, e)| e.saturating_sub(s))
                 .sum::<u64>();
         }
-        while self.games.len() > MAX_GAMES {
-            let oldest = self
-                .games
-                .iter()
-                .min_by_key(|(_, e)| e.last_end())
-                .map(|(k, _)| k.clone());
-            self.games.remove(&oldest.unwrap());
-        }
+        crate::fsutil::evict_oldest(&mut self.games, MAX_GAMES, |_, e| e.last_end());
     }
 
+    /// Minutes played of game `id`.
     pub fn total_minutes(&self, id: &str) -> u64 {
         self.games.get(id).map_or(0, |e| {
             (e.folded

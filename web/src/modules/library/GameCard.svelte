@@ -6,7 +6,7 @@
   import TagChip from './TagChip.svelte';
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import Tip from '../../ui/Tip.svelte';
-  import { fmtAgo } from '../home/home';
+  import { fmtAgo } from '../../ui/format';
   import Cover from './Cover.svelte';
   import { badgeLabel, fmtFortnight, fmtSize, smartTags, updateLabel } from './library';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';

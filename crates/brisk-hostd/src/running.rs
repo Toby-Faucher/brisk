@@ -288,7 +288,7 @@ fn focus_once(runner: &dyn Runner, sock: &[String], find: &dyn Fn() -> Option<u6
     runner.run("swaymsg", &args).is_some()
 }
 
-/// Polls every second, up to `wait`, until `find` yields a window and it is focused and
+/// Polls every `poll`, up to `wait`, until `find` yields a window and it is focused and
 /// fullscreen. Async between tries, so hostd's shutdown never waits on it. Never fails: a miss is
 /// only logged as `what`.
 async fn focus_window(
@@ -296,6 +296,7 @@ async fn focus_window(
     env: Vec<(String, String)>,
     what: String,
     wait: Duration,
+    poll: Duration,
     find: impl Fn(&dyn Runner, &[String]) -> Option<u64> + Send + Sync + 'static,
 ) {
     let sock = Arc::new(sway_sock(&env));
@@ -311,7 +312,7 @@ async fn focus_window(
             eprintln!("warning: no sway window for {what} after {wait:?}; left as is");
             return;
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(poll).await;
     }
 }
 
@@ -322,12 +323,14 @@ pub async fn focus_game(
     env: Vec<(String, String)>,
     appid: u32,
     wait: Duration,
+    poll: Duration,
 ) {
     focus_window(
         runner,
         env,
         format!("game {appid}"),
         wait,
+        poll,
         move |r, sock| {
             let pids = game_pids(&proc, appid)?;
             find_windows(r, sock, Find::Pids(&pids)).last().copied()
@@ -343,8 +346,9 @@ pub async fn focus_class(
     class: &'static str,
     what: String,
     wait: Duration,
+    poll: Duration,
 ) {
-    focus_window(runner, env, what, wait, move |r, sock| {
+    focus_window(runner, env, what, wait, poll, move |r, sock| {
         find_windows(r, sock, Find::Class(class)).last().copied()
     })
     .await;
@@ -396,6 +400,7 @@ impl Drop for Claim<'_> {
 }
 
 impl Quitter {
+    /// A quitter; quit is off when hostd runs as root.
     pub fn new(runner: Arc<dyn Runner>, proc: PathBuf, data_dir: PathBuf) -> Self {
         let as_root = rustix::process::geteuid().is_root();
         if as_root {

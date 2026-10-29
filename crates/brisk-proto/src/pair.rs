@@ -19,15 +19,23 @@ use x509_cert::der::{DecodePem, Encode};
 const DEVICE_NAME: &str = "brisk";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Why pairing failed.
 pub enum PairError {
+    /// A reply arrived in the wrong phase.
     OutOfOrder,
+    /// A hex field is not hex.
     BadHex,
+    /// A field has the wrong length.
     BadLength,
+    /// A certificate does not parse.
     BadCert,
+    /// The client key does not parse.
     BadKey,
     /// Server secret does not match the phase-2 hash: wrong PIN or MITM.
     HashMismatch,
+    /// The server's signature over its secret does not verify.
     BadSignature,
+    /// The server answered `paired` other than 1.
     NotPaired,
 }
 
@@ -38,7 +46,9 @@ impl std::fmt::Display for PairError {
 }
 impl std::error::Error for PairError {}
 
+/// Keys derived from the salt and PIN.
 pub struct PairKeys {
+    /// AES-128 key for the challenge phases.
     pub aes_key: [u8; 16],
 }
 
@@ -68,6 +78,7 @@ pub(crate) fn aes_ecb_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
     out
 }
 
+/// AES-128-ECB decryption, no padding; `data` must be whole blocks.
 pub fn aes_ecb_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, PairError> {
     if !data.len().is_multiple_of(16) {
         return Err(PairError::BadLength);
@@ -102,6 +113,7 @@ pub fn hex(data: &[u8]) -> String {
     data.iter().map(|b| format!("{b:02X}")).collect()
 }
 
+/// Parses hex (either case); odd lengths and non-hex bytes are refused.
 pub fn unhex(s: &str) -> Result<Vec<u8>, PairError> {
     // from_str_radix alone would accept "+F"
     if !s.len().is_multiple_of(2) || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -113,7 +125,9 @@ pub fn unhex(s: &str) -> Result<Vec<u8>, PairError> {
         .collect()
 }
 
+/// Randomness for pairing salt, challenge and secret.
 pub trait Rng {
+    /// Fills `buf` with random bytes.
     fn fill(&mut self, buf: &mut [u8]);
 }
 
@@ -140,6 +154,7 @@ enum Phase {
     Failed,
 }
 
+/// Client side of the PIN pairing handshake, one phase per reply.
 pub struct PairingClient {
     cert_pem: String,
     cert_sig: Vec<u8>,
@@ -156,6 +171,7 @@ pub struct PairingClient {
 }
 
 impl PairingClient {
+    /// A client using our certificate and key (PKCS#8 or PKCS#1 PEM).
     pub fn new(
         client_cert_pem: &str,
         client_key_pem: &str,

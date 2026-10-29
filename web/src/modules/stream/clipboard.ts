@@ -1,6 +1,7 @@
 // Clipboard sync with the host and the file upload queue of the Stream page. ClipSync is the
 // logic (fakes in tests); browserClipboard is the thin navigator.clipboard layer. Never logs
 // clipboard contents.
+import { errMsg } from '../../state/errMsg';
 import type { Clip, Saved } from '../../state/api';
 
 /** Same cap as hostd: bigger clipboards are skipped both ways. */
@@ -21,7 +22,7 @@ export type ClipDeps = {
 
 const size = (c: Clip) => (c.kind === 'text' ? new TextEncoder().encode(c.text).length : c.blob.size);
 
-export async function clipHash(c: Clip): Promise<string> {
+async function clipHash(c: Clip): Promise<string> {
   const data = c.kind === 'text' ? new TextEncoder().encode(c.text) : new Uint8Array(await c.blob.arrayBuffer());
   const buf = new Uint8Array(data.length + 1);
   buf[0] = c.kind === 'text' ? 0 : 1;
@@ -118,7 +119,7 @@ export class ClipSync {
     try {
       await this.d.api.post(c);
     } catch (e) {
-      this.d.notify(`Couldn't send the clipboard: ${(e as Error).message}`, true);
+      this.d.notify(`Could not send the clipboard: ${errMsg(e)}`, true);
       return false;
     }
     this.last = h;
@@ -205,7 +206,7 @@ export function uploadQueue(
       try {
         on.done(f.name, (await send(f, report, signal)).path);
       } catch (e) {
-        if (!signal.aborted) on.error(f.name, (e as Error).message);
+        if (!signal.aborted) on.error(f.name, errMsg(e));
       }
     }
     running = false;

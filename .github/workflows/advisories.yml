@@ -1,0 +1,20 @@
+name: advisories
+# New RustSec advisories land without any push, so check the lockfile weekly too.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny-advisories:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: rustup toolchain install --no-self-update
+      - uses: taiki-e/install-action@v2.87.28
+        with:
+          tool: cargo-deny@0.20.2
+      - run: cargo deny check advisories

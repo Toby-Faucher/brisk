@@ -91,8 +91,7 @@ async fn listener_rejects_foreign_uid() {
     let t = tempfile::tempdir().unwrap();
     let path = t.path().join("tap.sock");
     // Pretend we run as another user, so this process's own peer is the foreign one.
-    // SAFETY: getuid cannot fail.
-    let uid = unsafe { libc::getuid() };
+    let uid = rustix::process::getuid().as_raw();
     let l = TapListener::bind(&path).unwrap().expect_uid(uid + 1);
     let p = peer(&path);
     p.send(&msg(1, CD, 1, 1, 0, ANNEXB)).unwrap();
@@ -135,23 +134,18 @@ async fn tap_conn_rejects_garbage() {
 
 #[test]
 fn tap_path_prefers_brisk_tap_sock() {
-    // SAFETY: std serialises its own env access, and nothing in this binary reads the environment
-    // through C (getenv); nextest also runs each test in its own process.
-    unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/4242") };
-    // SAFETY: std serialises its own env access, and nothing in this binary reads the environment
-    // through C (getenv); nextest also runs each test in its own process.
-    unsafe { std::env::remove_var("BRISK_TAP_SOCK") };
+    use brisk_client::tap::tap_path_from;
+    let xdg = |n: &str| (n == "XDG_RUNTIME_DIR").then(|| "/run/user/4242".into());
     assert_eq!(
-        brisk_client::tap::tap_path().unwrap(),
+        tap_path_from(xdg).unwrap(),
         Path::new("/run/user/4242/brisk/tap.sock")
     );
-    // SAFETY: std serialises its own env access, and nothing in this binary reads the environment
-    // through C (getenv); nextest also runs each test in its own process.
-    unsafe { std::env::set_var("BRISK_TAP_SOCK", "/tmp/x.sock") };
-    assert_eq!(
-        brisk_client::tap::tap_path().unwrap(),
-        Path::new("/tmp/x.sock")
-    );
+    let both = |n: &str| match n {
+        "BRISK_TAP_SOCK" => Some("/tmp/x.sock".into()),
+        _ => xdg(n),
+    };
+    assert_eq!(tap_path_from(both).unwrap(), Path::new("/tmp/x.sock"));
+    assert_eq!(tap_path_from(|_| None), None);
 }
 
 /// `recv - tap_ns` on loopback: 3000 frames of 40 KB (every 60th 300 KB, an IDR), 1 ms apart.

@@ -45,6 +45,7 @@ impl Default for ShotCache {
 }
 
 impl ShotCache {
+    /// A cache that keeps listings for `ttl`.
     pub fn new(ttl: Duration) -> Self {
         ShotCache {
             ttl,
@@ -203,38 +204,31 @@ pub fn screenshot(
 mod tests {
     use super::*;
 
-    fn dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("brisk-shots-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
-    }
-
     #[test]
     fn a_huge_folder_is_capped_without_a_panic() {
-        let d = dir("cap");
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         for n in 0..MAX_ENTRIES + 10 {
             std::fs::write(d.join(format!("{n}.png")), b"x").unwrap();
         }
-        assert_eq!(list_shots(&d).len(), MAX_SHOTS);
-        assert_eq!(list_shots_capped(&d, 3).len(), 3); // the cut itself
-        std::fs::remove_dir_all(&d).unwrap();
+        assert_eq!(list_shots(d).len(), MAX_SHOTS);
+        assert_eq!(list_shots_capped(d, 3).len(), 3); // the cut itself
     }
 
     #[test]
     fn two_requests_within_the_ttl_list_once_then_the_ttl_ends_it() {
-        let d = dir("ttl");
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         std::fs::write(d.join("a.png"), b"x").unwrap();
         let c = ShotCache::new(Duration::from_secs(5));
         let t0 = Instant::now();
-        assert_eq!(c.listing(1, &d, t0), ["a.png"]);
+        assert_eq!(c.listing(1, d, t0), ["a.png"]);
         std::fs::write(d.join("b.png"), b"x").unwrap();
         // inside the TTL: still the first listing (the folder was not read again)
-        assert_eq!(c.listing(1, &d, t0 + Duration::from_secs(4)), ["a.png"]);
+        assert_eq!(c.listing(1, d, t0 + Duration::from_secs(4)), ["a.png"]);
         // another game has its own entry
-        assert_eq!(c.listing(2, &d, t0 + Duration::from_secs(4)).len(), 2);
+        assert_eq!(c.listing(2, d, t0 + Duration::from_secs(4)).len(), 2);
         // after the TTL the new file shows
-        assert_eq!(c.listing(1, &d, t0 + Duration::from_secs(6)).len(), 2);
-        std::fs::remove_dir_all(&d).unwrap();
+        assert_eq!(c.listing(1, d, t0 + Duration::from_secs(6)).len(), 2);
     }
 }

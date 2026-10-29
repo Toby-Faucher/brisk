@@ -5,8 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -24,6 +22,7 @@ pub const COLORS: [&str; 9] = [
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// A tag: name, colour, symbol, note and whether Home pins it.
 pub struct Tag {
     pub name: String,
     pub color: String,
@@ -38,6 +37,7 @@ pub struct Tag {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// A game's note and tag ids.
 pub struct GameNote {
     #[serde(default)]
     pub note: String,
@@ -48,6 +48,7 @@ pub struct GameNote {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Everything in notes.json.
 pub struct Notes {
     #[serde(default)]
     pub tags: BTreeMap<String, Tag>,
@@ -57,6 +58,7 @@ pub struct Notes {
 }
 
 #[derive(Debug, PartialEq)]
+/// Why a notes change was refused.
 pub enum NotesError {
     /// 400, with the reason.
     Bad(&'static str),
@@ -66,6 +68,7 @@ pub enum NotesError {
     Io,
 }
 
+/// Your notes and tags, kept in one JSON file.
 pub struct NotesStore {
     path: PathBuf,
     max_tags: usize,
@@ -77,10 +80,9 @@ fn charset(s: &str, max: usize, ok: impl Fn(u8) -> bool) -> bool {
     (1..=max).contains(&s.len()) && s.bytes().all(ok)
 }
 
+/// True for a valid tag id.
 pub fn valid_tag_id(id: &str) -> bool {
-    charset(id, TAG_ID_MAX, |b| {
-        b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'
-    })
+    crate::fsutil::slug_ok(id, TAG_ID_MAX)
 }
 
 /// At most `max` chars (not bytes), trailing whitespace not counted. The text itself is kept as sent.
@@ -97,6 +99,7 @@ fn keep(g: &GameNote) -> bool {
 }
 
 impl NotesStore {
+    /// The store at `path` with the default caps; a missing or corrupt file is empty.
     pub fn load(path: PathBuf) -> NotesStore {
         Self::with_limits(path, MAX_TAGS, MAX_GAMES)
     }
@@ -120,6 +123,7 @@ impl NotesStore {
         }
     }
 
+    /// All notes and tags.
     pub fn all(&self) -> Notes {
         self.inner.lock().unwrap().clone()
     }
@@ -240,23 +244,7 @@ impl NotesStore {
     }
 
     fn save(&self, n: &Notes) -> std::io::Result<()> {
-        let dir = self.path.parent().unwrap_or(std::path::Path::new("."));
-        std::fs::create_dir_all(dir)?;
-        let tmp = dir.join(format!(".notes.json.{}.tmp", std::process::id()));
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        let r = f
-            .write_all(&serde_json::to_vec(n)?)
-            .and_then(|_| f.sync_all())
-            .and_then(|_| std::fs::rename(&tmp, &self.path));
-        if r.is_err() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-        r
+        crate::fsutil::write_atomic(&self.path, &serde_json::to_vec(n)?)
     }
 }
 

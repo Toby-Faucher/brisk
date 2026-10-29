@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Runs the fast checks (fmt, clippy, nextest) before a push.
+# Turn on once per clone: git config core.hooksPath .githooks
+# Skip one push: git push --no-verify
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" fast

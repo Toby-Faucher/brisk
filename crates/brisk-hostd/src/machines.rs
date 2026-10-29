@@ -2,7 +2,7 @@
 //! (docs/plans/machine-hub.md). Secrets are read from their files at each use, never stored and
 //! never in a response, log line or error text.
 
-use crate::http::AppState;
+use crate::http::{AppState, err};
 use crate::idle::{IdleWatch, Observed};
 use crate::power::{Power, PowerCfg, ProxmoxCfg, VmState, VmStats};
 use axum::body::Body;
@@ -117,12 +117,7 @@ pub fn parse(text: &str) -> Result<Vec<MachineCfg>, String> {
     let mut seen = std::collections::HashSet::new();
     for m in &f.machines {
         let id = &m.id;
-        if id.is_empty()
-            || id.len() > 32
-            || !id
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        {
+        if !crate::fsutil::slug_ok(id, 32) {
             return Err(format!("machine id {id:?} must be 1-32 of a-z, 0-9, -"));
         }
         if !seen.insert(id.as_str()) {
@@ -146,6 +141,7 @@ pub struct Entry {
     power: Option<Arc<dyn Power>>,
 }
 
+/// The machines behind this hub and their state.
 pub struct Hub {
     machines: Vec<Arc<Entry>>,
     cache: Mutex<HashMap<String, (Instant, Value)>>,
@@ -310,7 +306,7 @@ struct Up {
     body: Vec<u8>,
 }
 
-/// Blocking call to `{url}/api/{pq}`. TLS as in steam.rs `https_get`; no proxy, no redirects, so
+/// Blocking call to `{url}/api/{pq}`. TLS from `net::agent`: no proxy, no redirects, so
 /// the machine's secret only ever goes to the configured URL.
 fn call(
     e: &Entry,
@@ -320,22 +316,13 @@ fn call(
     body: &[u8],
     timeout: Duration,
 ) -> Result<Up, Fail> {
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+    let agent = crate::net::agent(
+        ureq::tls::RootCerts::PlatformVerifier,
+        Some(Duration::from_secs(3)),
+        timeout,
+        false,
+    );
     let secret = std::fs::read_to_string(&e.cfg.secret_file).map_err(|_| Fail::Local)?;
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::PlatformVerifier)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .proxy(None)
-        .max_redirects(0)
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(3)))
-        .timeout_global(Some(timeout))
-        .build()
-        .into();
     let mut rq = ureq::http::Request::builder()
         .method(method)
         .uri(format!("{}/api/{pq}", e.cfg.url))
@@ -384,19 +371,15 @@ fn get_json(e: &Entry, path: &str) -> Option<Value> {
 
 /// `{"cpuTempC": n}` from the configured sensor URL, 2 s at most; any failure is `None`.
 fn fetch_temp(url: &str) -> Option<f64> {
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::PlatformVerifier)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .proxy(None)
-        .max_redirects(0)
-        .timeout_global(Some(Duration::from_secs(2)))
-        .build()
-        .into();
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    let agent = AGENT.get_or_init(|| {
+        crate::net::agent(
+            ureq::tls::RootCerts::PlatformVerifier,
+            None,
+            Duration::from_secs(2),
+            true,
+        )
+    });
     let mut r = agent.get(url).call().ok()?;
     let body = r
         .body_mut()
@@ -408,10 +391,7 @@ fn fetch_temp(url: &str) -> Option<f64> {
     v["cpuTempC"].as_f64().filter(|c| (0.0..=150.0).contains(c))
 }
 
-fn err(code: StatusCode, msg: &str) -> Response {
-    (code, axum::Json(json!({ "error": msg }))).into_response()
-}
-
+/// `GET /api/machines`: every machine with its state; 404 without a hub.
 pub async fn list(State(s): State<Arc<AppState>>) -> Response {
     let Some(h) = s.hub.clone() else {
         return StatusCode::NOT_FOUND.into_response();
@@ -484,6 +464,7 @@ fn do_power(h: &Hub, e: &Entry, p: &dyn Power, v: Verb) -> Result<(StatusCode, S
     Ok(r)
 }
 
+/// `POST /api/machines/{id}/power`: start or shut down a machine.
 pub async fn power(
     State(s): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
@@ -678,8 +659,8 @@ pub fn spawn_idle(h: &Arc<Hub>) {
                 })
                 .await;
                 match done {
-                    Ok(Ok(())) => eprintln!("idle: shutting down {}", e.cfg.id),
-                    _ => eprintln!("idle: shutdown of {} failed", e.cfg.id),
+                    Ok(Ok(())) => eprintln!("info: idle: shutting down {}", e.cfg.id),
+                    _ => eprintln!("warning: idle: shutdown of {} failed", e.cfg.id),
                 }
             }
         });

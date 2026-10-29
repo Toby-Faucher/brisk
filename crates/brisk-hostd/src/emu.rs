@@ -17,8 +17,6 @@ use crate::registry;
 use crate::running::{Proc, procs};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 pub const LIBRARY_FILE: &str = "library.json";
@@ -116,28 +114,6 @@ fn played(data_dir: &Path) -> BTreeMap<String, u64> {
         .unwrap_or_default()
 }
 
-/// Atomic 0600 write: a temp file in the same directory, then rename.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
-    let write = || -> std::io::Result<()> {
-        std::fs::create_dir_all(dir)?;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, path)
-    };
-    write().inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
-}
-
 /// Records now as the game's last-played time: atomic 0600 write, the oldest entries dropped
 /// past a cap. A failed write is a warning only.
 pub fn mark_played(data_dir: &Path, id: &GameId) {
@@ -146,12 +122,10 @@ pub fn mark_played(data_dir: &Path, id: &GameId) {
         .map_or(0, |d| d.as_secs());
     let mut m = played(data_dir);
     m.insert(id.to_string(), now);
-    while m.len() > PLAYED_MAX {
-        let oldest = m.iter().min_by_key(|(_, t)| **t).map(|(k, _)| k.clone());
-        m.remove(&oldest.unwrap());
-    }
+    crate::fsutil::evict_oldest(&mut m, PLAYED_MAX, |_, t| *t);
     let path = data_dir.join(PLAYED_FILE);
-    if let Err(e) = write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default()) {
+    if let Err(e) = crate::fsutil::write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default())
+    {
         eprintln!("warning: {}: {e}", path.display());
     }
 }
@@ -176,20 +150,22 @@ pub fn parse_library(text: &str) -> Result<Vec<Record>, String> {
                         r.id, r.emulator
                     )),
                 })
-                .inspect_err(|e| eprintln!("warn: {LIBRARY_FILE}: skipping a game: {e}"))
+                .inspect_err(|e| eprintln!("warning: {LIBRARY_FILE}: skipping a game: {e}"))
                 .ok()
         })
         .collect())
 }
 
+/// library.json text for `recs`.
 pub fn library_json(recs: &[Record]) -> Vec<u8> {
     serde_json::to_vec_pretty(&serde_json::json!({ "v": 1, "games": recs })).unwrap_or_default()
 }
 
+/// The library records; a missing or corrupt file is empty.
 pub fn load(data_dir: &Path) -> Vec<Record> {
     match std::fs::read_to_string(data_dir.join(LIBRARY_FILE)) {
         Ok(text) => parse_library(&text).unwrap_or_else(|e| {
-            eprintln!("warn: {LIBRARY_FILE} ignored: {e}");
+            eprintln!("warning: {LIBRARY_FILE} ignored: {e}");
             vec![]
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -197,17 +173,18 @@ pub fn load(data_dir: &Path) -> Vec<Record> {
                 return vec![];
             };
             crate::migrate::library_from_emulators(&text).unwrap_or_else(|e| {
-                eprintln!("warn: {OLD_FILE} ignored: {e}");
+                eprintln!("warning: {OLD_FILE} ignored: {e}");
                 vec![]
             })
         }
         Err(e) => {
-            eprintln!("warn: {LIBRARY_FILE} unreadable: {e}");
+            eprintln!("warning: {LIBRARY_FILE} unreadable: {e}");
             vec![]
         }
     }
 }
 
+/// What an emulator game of this emulator can do.
 pub fn caps(emulator: &str) -> Caps {
     Caps {
         controls: registry::get(emulator).is_some_and(|e| !e.controller.is_empty()),
@@ -302,7 +279,7 @@ pub fn launch_with(
         Some(p) => {
             let (c, note) = command_for(&read_file(p), id.as_str(), &base);
             if let Some(n) = note {
-                eprintln!("warn: {n}; starting {} without them", r.name);
+                eprintln!("warning: {n}; starting {} without them", r.name);
             }
             c
         }
@@ -317,7 +294,7 @@ pub fn launch_with(
     // A wrapper that is not installed must not stop the game.
     if wrapped {
         eprintln!(
-            "warn: could not start {} through {}; starting it plain",
+            "warning: could not start {} through {}; starting it plain",
             r.name, cmd.program
         );
         let args: Vec<&str> = base[1..].iter().map(String::as_str).collect();
@@ -404,10 +381,11 @@ mod tests {
         d
     }
 
-    fn iso(tag: &str) -> PathBuf {
-        let f = std::env::temp_dir().join(format!("brisk-emu-{tag}-{}.iso", std::process::id()));
-        std::fs::write(&f, b"x").unwrap();
-        f
+    /// A one-byte disc image, removed when dropped.
+    fn iso() -> tempfile::TempPath {
+        let f = tempfile::Builder::new().suffix(".iso").tempfile().unwrap();
+        std::fs::write(f.path(), b"x").unwrap();
+        f.into_temp_path()
     }
 
     #[test]
@@ -442,7 +420,7 @@ mod tests {
 
     #[test]
     fn games_carry_the_new_fields_and_caps_by_emulator() {
-        let f = iso("shape");
+        let f = iso();
         let none = fake_proc(&[]);
         let recs = [rec("MKW", "dolphin", &f), rec("Odd", "mystery", &f)];
         let g = games(&recs, none.path(), none.path());
@@ -455,7 +433,6 @@ mod tests {
         );
         assert!(g[0].caps.controls && !g[0].caps.install && !g[0].caps.achievements);
         assert!(!g[1].caps.controls, "an emulator without an editor");
-        std::fs::remove_file(f).ok();
     }
 
     #[test]
@@ -476,7 +453,7 @@ mod tests {
 
     #[test]
     fn launches_dolphin_on_an_existing_file_only() {
-        let f = iso("one");
+        let f = iso();
         let ok = rec("MKW", "dolphin", &f);
         let other = rec("Other", "mystery", &f);
         let none = fake_proc(&[]);
@@ -497,7 +474,6 @@ mod tests {
             run.log(),
             vec![format!("spawn dolphin-emu -b -e {}", f.display())]
         );
-        std::fs::remove_file(f).ok();
     }
 
     /// Records the whole spawn, env included.
@@ -523,7 +499,7 @@ mod tests {
 
     #[test]
     fn launch_options_wrap_the_emulator_and_invalid_ones_are_dropped() {
-        let f = iso("lo");
+        let f = iso();
         let r = rec("MKW", "dolphin", &f);
         let none = fake_proc(&[]);
         let d = tempfile::tempdir().unwrap();
@@ -590,12 +566,11 @@ mod tests {
         for j in [None, Some("{bad")] {
             assert_eq!(go(j).0, "dolphin-emu");
         }
-        std::fs::remove_file(f).ok();
     }
 
     #[test]
     fn running_means_a_dolphin_process_on_that_file_and_a_second_play_spawns_nothing() {
-        let (a, b) = (iso("a"), iso("b"));
+        let (a, b) = (iso(), iso());
         let (ra, rb) = (rec("A", "dolphin", &a), rec("B", "dolphin", &b));
         let (sa, sb) = (a.to_str().unwrap(), b.to_str().unwrap());
         let p = fake_proc(&[
@@ -612,8 +587,6 @@ mod tests {
         assert!(run.log().is_empty());
         assert!(launch(&*run, p.path(), &rs, &rb.id, &[]));
         assert_eq!(run.log(), vec![format!("spawn dolphin-emu -b -e {sb}")]);
-        std::fs::remove_file(a).ok();
-        std::fs::remove_file(b).ok();
     }
 
     /// The focus loop is shared (`stream::focus` picks the class from the source).
@@ -635,6 +608,7 @@ mod tests {
             env,
             r.id.clone(),
             Duration::from_secs(60),
+            Duration::from_secs(1),
         )
         .await;
         assert_eq!(*run.trees.lock().unwrap(), 4);
@@ -661,6 +635,7 @@ mod tests {
             vec![],
             r.id.clone(),
             Duration::from_secs(60),
+            Duration::from_secs(1),
         )
         .await;
         assert!(run.log().is_empty(), "nothing is focused: {:?}", run.log());

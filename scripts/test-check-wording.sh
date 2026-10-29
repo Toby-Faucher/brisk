@@ -5,9 +5,10 @@ set -u
 here=$(cd "$(dirname "$0")/.." && pwd)
 t=$(mktemp -d) || exit 2
 trap 'rm -rf "$t"' EXIT
-mkdir -p "$t/scripts" "$t/docs/plans" "$t/web/src/ui"
-cp "$here/scripts/wording-banned.txt" "$t/scripts/"
-: > "$t/scripts/wording-allow.txt"
+# Setup steps exit 2 on failure (no pipefail: `run | grep` below expects run to fail).
+mkdir -p "$t/scripts" "$t/docs/plans" "$t/web/src/ui" || exit 2
+cp "$here/scripts/wording-banned.txt" "$t/scripts/" || exit 2
+: > "$t/scripts/wording-allow.txt" || exit 2
 fail=0
 run() { WORDING_ROOT=$t "$here/scripts/check-wording.sh" 2>&1; }
 expect() { # name want_rc
@@ -44,4 +45,7 @@ echo "README.md | robust claim | quoted from the spec" > "$t/scripts/wording-all
 expect "allowlist lets a line through" 0
 echo "A robust plan." >> "$t/README.md"
 expect "allowlist is per line text" 1
+echo "Don't call it robust." > "$t/README.md"
+echo "README.md | Don't call it robust | an apostrophe in the text" > "$t/scripts/wording-allow.txt"
+expect "allowlist text with an apostrophe" 0
 exit $fail

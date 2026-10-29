@@ -27,7 +27,7 @@
 <style>
   /* Bits renders these: global, prefixed dd- */
   :global(.dd) { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
-  :global(.dd:hover), :global(.dd[data-state='open']) { color: var(--fg); border-color: #3a4152; }
+  :global(.dd:hover), :global(.dd[data-state='open']) { color: var(--fg); border-color: var(--line-hover); }
   :global(.dd svg) { rotate: 90deg; transition: rotate .18s var(--ease); }
   :global(.dd[data-state='open'] svg) { rotate: -90deg; }
   :global(.dd-menu) { z-index: 50; min-width: var(--bits-select-anchor-width); padding: 5px; border-radius: 14px; font-size: 13px; outline: none; }

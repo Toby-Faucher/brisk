@@ -1,3 +1,4 @@
+import { errMsg } from './errMsg';
 import { get, writable } from 'svelte/store';
 import type { Game } from './api';
 import { gameKey } from './gameId';
@@ -52,7 +53,7 @@ export function quitFlow(deps: QuitDeps) {
       const err = e as Error & { status?: number };
       // Another tab or button started this quit: its answer is still coming.
       if (err.status === 409 && err.message === 'already quitting') deps.toast(`Already closing ${game.name}…`);
-      else deps.toast(`Could not quit ${game.name}: ${err.message}`, { error: true });
+      else deps.toast(`Could not quit ${game.name}: ${errMsg(e)}`, { error: true });
     } finally {
       mark(busy, gameKey(game), false);
       await deps.refresh();

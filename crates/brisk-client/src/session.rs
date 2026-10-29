@@ -453,10 +453,10 @@ impl Session {
             rec.push(&format!("{label}-req"), tls.is_some(), req.as_bytes());
             rec.push(&format!("{label}-resp"), tls.is_some(), &raw);
         }
-        // Keep a typed `HttpError` (a refusal) intact: callers decide on it, e.g. never cancel.
-        body(&raw, tls.is_some()).map_err(|e| match e {
-            crate::Error::Http(_) => e,
-            e => e.context(path),
+        // Keep a refusal (`HttpError::Status`) intact: callers decide on it, e.g. never cancel.
+        brisk_proto::http::response_body(&raw, tls.is_some()).map_err(|e| match e {
+            e @ brisk_proto::http::HttpError::Status { .. } => e.into(),
+            e => crate::Error::from(e).context(path),
         })
     }
 }
@@ -534,7 +534,7 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
         match s.read(&mut chunk).await {
             Ok(0) => break,
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            // Peer closed TLS without close_notify; `body` still enforces Content-Length.
+            // Peer closed TLS without close_notify; `response_body` still enforces Content-Length.
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
             Err(e) => return Err(e.into()),
         }
@@ -545,56 +545,8 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
     Ok(buf)
 }
 
-/// Body of a raw HTTP/1.1 response; enforces Content-Length (required when `need_len`, i.e. over
-/// TLS where a close without close_notify is tolerated), rejects chunked.
-fn body(raw: &[u8], need_len: bool) -> crate::Result<String> {
-    let end = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or(proto("truncated http response (no header end)"))?;
-    let head = std::str::from_utf8(&raw[..end]).map_err(|_| proto("non-utf8 http header"))?;
-    let mut lines = head.split("\r\n");
-    let status: u16 = lines
-        .next()
-        .and_then(|l| l.split(' ').nth(1))
-        .and_then(|c| c.parse().ok())
-        .ok_or(proto("bad http status line"))?;
-    let mut body = &raw[end + 4..];
-    let mut has_len = false;
-    for (k, v) in lines.filter_map(|l| l.split_once(':')) {
-        match k.trim().to_ascii_lowercase().as_str() {
-            "transfer-encoding" => return Err(proto("chunked http response not supported")),
-            "content-length" => {
-                has_len = true;
-                let n: usize = v.trim().parse().map_err(|_| proto("bad content-length"))?;
-                if body.len() < n {
-                    return Err(proto("truncated http response body"));
-                }
-                body = &body[..n];
-            }
-            _ => {}
-        }
-    }
-    if need_len && !has_len {
-        return Err(proto("https response without content-length"));
-    }
-    let body = String::from_utf8(body.to_vec()).map_err(|_| proto("non-utf8 http body"))?;
-    if status != 200 && body.trim().is_empty() {
-        return Err(brisk_proto::http::HttpError::Status {
-            code: status.into(),
-            message: "empty body".into(),
-        }
-        .into());
-    }
-    Ok(body) // non-200 with XML: the parser reports Sunshine's status_message
-}
-
 fn provider() -> Arc<CryptoProvider> {
     Arc::new(rustls_rustcrypto::provider())
-}
-
-fn proto(s: &str) -> crate::Error {
-    crate::Error::Protocol(s.into())
 }
 
 type BoxResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -671,44 +623,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn body_checks_length_and_status() {
-        let ok = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello trailing";
-        assert_eq!(body(ok, false).unwrap(), "hello");
-        assert!(body(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort", false).is_err());
-        assert!(
-            body(
-                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello",
-                false
-            )
-            .is_err()
-        );
-        assert!(body(b"HTTP/1.1 404 Not Found\r\n\r\n", false).is_err());
-        assert!(body(b"HTTP/1.1 200 OK\r\nContent", false).is_err());
-        assert!(body(b"HTTP/1.1 200 OK\r\n\r\nhi", true).is_err());
-        assert_eq!(
-            body(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", true).unwrap(),
-            "hi"
-        );
+    fn enc_escapes_query_values() {
         assert_eq!(enc("a b/+Z~"), "a%20b%2F%2BZ~");
-    }
-
-    proptest::proptest! {
-        /// Any response bytes (and any declared Content-Length): no panic, and the body is cut
-        /// from the bytes that arrived, never sized by the header.
-        #[test]
-        fn body_takes_any_response(
-            raw in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..400),
-            n in proptest::prelude::any::<u64>(),
-            tail in "[ -~]{0,80}",
-        ) {
-            let shaped = format!("HTTP/1.1 200 OK\r\nContent-Length: {n}\r\n\r\n{tail}");
-            for r in [&raw[..], shaped.as_bytes()] {
-                for need_len in [false, true] {
-                    if let Ok(b) = body(r, need_len) {
-                        proptest::prop_assert!(b.len() <= r.len());
-                    }
-                }
-            }
-        }
     }
 }

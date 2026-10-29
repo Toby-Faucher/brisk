@@ -64,13 +64,8 @@ pub fn candidate(name: &str, i: u32) -> String {
 
 /// Free bytes for an unprivileged user on the filesystem holding `p`.
 pub fn disk_free(p: &Path) -> Option<u64> {
-    use std::os::unix::ffi::OsStrExt;
-    let c = std::ffi::CString::new(p.as_os_str().as_bytes()).ok()?;
-    // SAFETY: statvfs fills the zeroed struct; c is a valid NUL-terminated path.
-    let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
-    // SAFETY: as above, `c` is a valid NUL-terminated path and `s` a valid out-pointer.
-    let ok = unsafe { libc::statvfs(c.as_ptr(), &mut s) } == 0;
-    ok.then(|| s.f_bavail as u64 * s.f_frsize as u64)
+    let s = rustix::fs::statvfs(p).ok()?;
+    Some(s.f_bavail * s.f_frsize)
 }
 
 pub struct Files {
@@ -102,6 +97,7 @@ fn fail(code: StatusCode, msg: &str) -> Fail {
 }
 
 impl Files {
+    /// File drop into `dir`.
     pub fn new(dir: PathBuf) -> Self {
         Files {
             dir,
@@ -135,7 +131,10 @@ impl Files {
             return Err(too_big());
         }
         let io = |e: std::io::Error| match e.raw_os_error() {
-            Some(libc::ENOSPC) => fail(StatusCode::INSUFFICIENT_STORAGE, "bawn's disk is full"),
+            Some(libc::ENOSPC) => fail(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "this machine's disk is full",
+            ),
             _ => fail(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("couldn't save the file: {e}"),
@@ -151,7 +150,7 @@ impl Files {
         let no_space = || {
             fail(
                 StatusCode::INSUFFICIENT_STORAGE,
-                "not enough free disk space on bawn",
+                "not enough free disk space on this machine",
             )
         };
         // Checked up front with a Content-Length, then again while writing (chunked bodies,

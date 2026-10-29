@@ -4,27 +4,7 @@
 //!   brisk-hostd wrap <game id> -- <command...>   Steam launch option shim (wrap.rs)
 //! BRISK_STATIC=embed serves the build compiled in with `--features embed` (default: disk).
 //!
-//! Environment (read in config.rs unless noted):
-//!   BRISK_DIST             web build directory (main.rs; the DIST_DIR argument wins)
-//!   BRISK_STATIC           `embed` or disk (main.rs, site.rs)
-//!   BRISK_SECRET_FILE      the persistent secret (main.rs; default ~/.config/brisk/secret)
-//!   BRISK_SECRET           secret override for tests (main.rs)
-//!   BRISK_ALLOWED_USERS    tailnet logins let in without the secret, comma/newline separated
-//!   BRISK_ALLOWED_HOSTS    extra Host headers allowed besides localhost:8443 and 127.0.0.1:8443
-//!   BRISK_MACHINES_FILE    hub machine list (default ~/.config/brisk/machines.json; absent = single host)
-//!   BRISK_APP              Sunshine app id to launch (default 870779643)
-//!   BRISK_LISTEN           bridge listen IP:PORT (default: the tailscale IPv4, port 4433)
-//!   BRISK_BRIDGE_BIN       brisk-bridge binary (default: `brisk-bridge` on PATH)
-//!   BRISK_TLS_DIR          bridge certificate directory (default ~/.config/brisk/tls)
-//!   BRISK_DATA_DIR         sessions, prefs and caches (default ~/.local/share/brisk)
-//!   BRISK_DOWNLOADS_DIR    file drop target (default ~/Downloads/brisk)
-//!   BRISK_GAMES_DIR        games folder, one sub-folder per system (default ~/Games)
-//!   BRISK_SCAN_ON_START    `1` scans the games folder at startup
-//!   BRISK_STEAM_DIR        Steam install (default ~/.local/share/Steam)
-//!   BRISK_STEAM_KEY_FILE   Steam API key file (default ~/.config/brisk/steam-api-key)
-//!   BRISK_STEAM_API_BASE   Steam Web API base URL (default https://api.steampowered.com)
-//!   BRISK_PLAYTIME_POLL_S  playtime watcher poll seconds (default 15, min 5)
-//!   BRISK_SPAWN_SCOPE      `1` starts spawned programs in a systemd scope (host.rs)
+//! Environment variables: see docs/env.md.
 
 use brisk_hostd::config::{Config, load_secret, load_users, page_line};
 use brisk_hostd::http::{AppState, router};
@@ -82,7 +62,7 @@ async fn main() -> std::process::ExitCode {
         .extend(load_users(&conf.join("allowed-users")));
     if !cfg.allowed_users.is_empty() {
         eprintln!(
-            "tailnet logins allowed without the secret: {}",
+            "info: tailnet logins allowed without the secret: {}",
             cfg.allowed_users.join(", ")
         );
     }
@@ -96,10 +76,7 @@ async fn main() -> std::process::ExitCode {
         }
     };
     println!("{}", page_line(&cfg.secret, cfg.service));
-    let hub = match machines::load(
-        &cfg.machines_file,
-        std::env::var_os("BRISK_MACHINES_FILE").is_some(),
-    ) {
+    let hub = match machines::load(&cfg.machines_file, cfg.machines_explicit) {
         Ok(h) => h.map(Arc::new),
         Err(e) => {
             eprintln!("error: machines file {e}");
@@ -134,7 +111,7 @@ async fn main() -> std::process::ExitCode {
         let art = state.art.clone();
         tokio::task::spawn_blocking(move || match brisk_hostd::ingest::scan_library(&cfg) {
             Ok(r) => {
-                eprintln!("scan: {} new games", r.merged.added.len());
+                eprintln!("info: scan: {} new games", r.merged.added.len());
                 art.trigger_new(&cfg, &r.merged.added);
             }
             Err(e) => eprintln!("warning: startup scan: {e}"),

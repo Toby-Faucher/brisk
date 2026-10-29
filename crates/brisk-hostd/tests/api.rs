@@ -604,7 +604,8 @@ fn rig_at(mode: &str, service: bool, base: &str) -> Rig {
     cfg.proc_dir = d.path().join("proc");
     let data = cfg.data_dir.clone();
     let runner = Arc::new(Calls(Default::default()));
-    let st = AppState::with_host(cfg, runner.clone(), Arc::new(Clock0));
+    let mut st = AppState::with_host(cfg, runner.clone(), Arc::new(Clock0));
+    st.stream.focus_poll = std::time::Duration::from_millis(10);
     *st.games.lock().unwrap() = Some(GamesResult {
         games: vec![{
             let mut g = Game::steam(10, "Half-Life");
@@ -1200,7 +1201,8 @@ async fn running_game_streams_without_relaunch_and_fullscreens_its_window() {
         "{:?}",
         r.sway_cmds()
     );
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // ten more polls: a second focus would show by now
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert!(
         r.steam_calls().is_empty(),
         "relaunched: {:?}",
@@ -1218,7 +1220,8 @@ async fn fresh_launch_fullscreens_the_window_once_it_appears() {
         .await;
     assert_eq!(st, StatusCode::OK, "{v}");
     assert!(eventually(|| r.steam_calls().len() == 1).await);
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    // ten polls without a window
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert!(
         r.sway_cmds().is_empty(),
         "no game window yet: {:?}",
@@ -1305,7 +1308,8 @@ async fn emulator_id_stream_spawns_dolphin_and_never_steam() {
             .count()
     };
     assert!(eventually(|| spawned(&r) == 1).await);
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // ten focus polls: a late second launch would show by now
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert!(
         r.runner
             .0
@@ -1330,7 +1334,8 @@ async fn emulator_id_has_no_steam_details_and_no_outbound_call() {
     // The library listing warms Steam's caches in the background; it must skip the emulator game.
     let (st, _) = r.call("GET", "/api/games", "").await;
     assert_eq!(st, StatusCode::OK);
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // the warm ends on its own; only then is "no call" final
+    assert!(eventually(|| !r.state.warming.load(std::sync::atomic::Ordering::SeqCst)).await);
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 

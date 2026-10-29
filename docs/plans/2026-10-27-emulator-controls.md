@@ -1,6 +1,6 @@
 # Emulator controller editor (design)
 
-Status: design, no product code yet. Branch `emulator-launch`. Toby chose "option 1, Pad diagram" from the
+Status: v1 was built, then replaced by `2026-10-28-emulator-controls-v2.md` (merged to main). Toby chose "option 1, Pad diagram" from the
 mock-up round. The UI is decided: this doc specifies it, it does not redesign it.
 
 ## 1. Intent and scope

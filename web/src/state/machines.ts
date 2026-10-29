@@ -1,6 +1,7 @@
 import { derived, get, writable, type Readable, type Writable } from 'svelte/store';
 import { api, setRoute, type HostInfo } from './api';
 import { defaultColor, normalizeHex } from '../ui/color';
+import { safeGet, safeSet } from './storage';
 
 export type MachineState = 'off' | 'starting' | 'stopping' | 'ready' | 'unreachable';
 export type Machine = {
@@ -37,20 +38,10 @@ export const hub: Readable<boolean | null> = { subscribe: hubW.subscribe };
 export const machines: Readable<Machine[]> = { subscribe: machinesW.subscribe };
 export const wake: Readable<Wake> = { subscribe: wakeW.subscribe };
 
-function load(): string | null {
-  try {
-    return localStorage.getItem(KEY);
-  } catch {
-    return null;
-  }
-}
-const sel = writable<string | null>(load());
+const sel = writable<string | null>(safeGet(() => localStorage, KEY));
 export const selected: Writable<string | null> = {
   set(id) {
-    try {
-      if (id === null) localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, id);
-    } catch {}
+    safeSet(() => localStorage, KEY, id);
     sel.set(id);
   },
   update: (fn) => selected.set(fn(get(sel))),

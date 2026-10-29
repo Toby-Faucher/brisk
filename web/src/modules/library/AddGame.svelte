@@ -22,7 +22,7 @@
   // On a hub the files go to the machine picked here (default: the selected one); on a single host there is nothing to pick.
   const target = $derived($hub ? (picked ?? $selected ?? $machines[0]?.id ?? null) : null);
   const targetMachine = $derived($machines.find((m) => m.id === target) ?? null);
-  const notReady = $derived($hub === true && (!targetMachine || targetMachine.state !== 'ready'));
+  const notReady = $derived($hub === true && targetMachine?.state !== 'ready');
   const options = $derived($machines.map((m): [string, string] => [m.id, m.state === 'ready' ? m.name : `${m.name} (${m.state})`]));
 
   const up = createUploader({

@@ -1,26 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { exe, shellDir } from './scripts/browser.mjs';
 
 const BROWSER = '*.browser.test.ts';
 
 // Playwright finds its own headless shell unless BRISK_CHROMIUM names one; say how to fix a missing one up front.
-const exe = process.env.BRISK_CHROMIUM;
-if (!exe) {
-  const pw = dirname(createRequire(import.meta.url).resolve('playwright-core'));
-  const rev = JSON.parse(readFileSync(join(pw, 'browsers.json'), 'utf8')).browsers.find(
-    (b: { name: string }) => b.name === 'chromium-headless-shell',
-  )?.revision;
-  const dir = join(process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(homedir(), '.cache/ms-playwright'), `chromium_headless_shell-${rev}`);
-  if (!existsSync(dir))
-    console.warn(
-      `browser tests: no ${dir}; run \`npx playwright install chromium-headless-shell\` or set BRISK_CHROMIUM=/path/to/chrome-headless-shell`,
-    );
-}
+const custom = process.env.BRISK_CHROMIUM !== undefined;
+if (!custom && !existsSync(shellDir))
+  console.warn(
+    `browser tests: no ${shellDir}; run \`npx playwright install chromium-headless-shell\` or set BRISK_CHROMIUM=/path/to/chrome-headless-shell`,
+  );
 
 // Two projects: `unit` (node, what `npm test` runs, no DOM) and `browser` (real Svelte components in the
 // chrome-headless-shell Playwright already has, `npm run test:browser`).
@@ -42,7 +33,7 @@ export default defineConfig({
             enabled: true,
             headless: true,
             provider: playwright({
-              launchOptions: exe ? { executablePath: exe } : {},
+              launchOptions: custom ? { executablePath: exe } : {},
               contextOptions: { reducedMotion: 'reduce' }, // dialog/menu animations off, so nothing waits on them
             }),
             instances: [{ browser: 'chromium' }],

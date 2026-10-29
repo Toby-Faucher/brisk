@@ -12,15 +12,22 @@ banned=${WORDING_BANNED:-scripts/wording-banned.txt}
 allow=${WORDING_ALLOW:-scripts/wording-allow.txt}
 pat=$(grep -v '^[[:space:]]*\(#\|$\)' "$banned" | paste -sd'|')
 [ -n "$pat" ] || { echo "no patterns in $banned" >&2; exit 2; }
+trim() { local s=${1#"${1%%[![:space:]]*}"}; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+# The allowlist is read once: parallel arrays of path and line text.
+allow_p=(); allow_t=()
+while IFS='|' read -r ap atext _; do
+  ap=$(trim "$ap"); atext=$(trim "$atext")
+  case $ap in ''|'#'*) continue ;; esac
+  [ -n "$atext" ] || continue
+  allow_p+=("$ap"); allow_t+=("$atext")
+done < "$allow"
 bad=0
 while IFS= read -r f; do
   while IFS= read -r hit; do
     ok=0
-    while IFS='|' read -r ap atext _; do
-      ap=$(echo "$ap" | xargs); atext=$(echo "$atext" | xargs)
-      case $ap in ''|'#'*) continue ;; esac
-      [ "$ap" = "$f" ] && [ -n "$atext" ] && [[ $hit == *"$atext"* ]] && ok=1 && break
-    done < "$allow"
+    for i in "${!allow_p[@]}"; do
+      [ "${allow_p[i]}" = "$f" ] && [[ $hit == *"${allow_t[i]}"* ]] && { ok=1; break; }
+    done
     [ $ok = 1 ] || { echo "$f:$hit"; bad=1; }
   done < <(grep -nEi -- "$pat" "$f")
 done < <(find . -type f \( -name '*.md' -o -path './web/src/*' \( -name '*.svelte' -o -name '*.astro' -o -name '*.ts' \) \) \

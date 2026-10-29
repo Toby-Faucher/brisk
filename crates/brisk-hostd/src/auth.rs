@@ -3,7 +3,9 @@
 
 use crate::host::Runner;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// tokio's clock so tests can pause it; it is the system clock otherwise
+use tokio::time::Instant;
 
 /// The Host headers hostd answers: loopback on 8443, `BRISK_ALLOWED_HOSTS`, and this machine's
 /// tailnet name (`tailscale status --json` Self.DNSName, with :8443).
@@ -19,6 +21,7 @@ pub struct Hosts {
 }
 
 impl Hosts {
+    /// The fixed local hosts plus `extra`; tailnet names are looked up later.
     pub fn new(extra: &[String], runner: Arc<dyn Runner>) -> Self {
         let mut fixed = vec!["localhost:8443".to_string(), "127.0.0.1:8443".to_string()];
         fixed.extend(extra.iter().map(|h| h.to_ascii_lowercase()));

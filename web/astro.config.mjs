@@ -1,10 +1,13 @@
+// @ts-check
 import { defineConfig } from 'astro/config';
 import svelte from '@astrojs/svelte';
 import { execSync } from 'node:child_process';
 
 const commit = (() => {
   try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
   } catch {
     return 'unknown';
   }

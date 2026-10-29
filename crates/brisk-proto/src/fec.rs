@@ -8,6 +8,7 @@
 pub const MAX_SHARDS: usize = 255;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why Reed-Solomon recovery was refused.
 pub enum FecError {
     /// Shard counts nanors rejects (`ds` or `ps` zero, or `ds + ps > 255`) or a slice of the
     /// wrong length.
