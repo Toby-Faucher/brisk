@@ -4,6 +4,8 @@ Check scripts for the UI. Run them from `web/`. None are part of `npm run ci` (t
 Most drive headless Chrome with `playwright-core` and print PASS/FAIL. They find it through `browser.mjs`: the
 chrome-headless-shell for the revision in `playwright-core/browsers.json`, or the path in `BRISK_CHROMIUM` when set.
 The browser tests (`vitest.config.ts`) use the same helper.
+Biome lints every script. `npm run check` type-checks the ones that start with `// @ts-check` (the helpers,
+`gen-spring-tokens.mjs` and `axe-check.mjs` so far); add it to a script once its JSDoc is in place.
 The "preview" scripts need `npx astro preview --host 127.0.0.1 --port <port> &` running first (build with `npm run build`);
 they mock `/api`, so no hostd is needed. Screenshots go to `$OUT`. Details and results: `docs/ui-notes.md`.
 
