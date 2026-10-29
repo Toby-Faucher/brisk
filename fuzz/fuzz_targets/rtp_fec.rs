@@ -15,8 +15,9 @@ fuzz_target!(|d: &[u8]| {
         if let Ok(p) = parse_video_packet(c, 0) {
             assert!(p.payload.len() <= MAX_VIDEO_PACKET);
             for f in asm.push(p) {
-                // A frame is built from at most 4 blocks of 255 shards of one packet each.
-                assert!(f.annexb.len() <= 4 * 255 * MAX_VIDEO_PACKET);
+                // At most 4 blocks; a block with no parity shards may hold up to 1023 data shards
+                // (the header field is 10 bits and rtp.rs caps the total only when parity exists), one packet each.
+                assert!(f.annexb.len() <= 4 * 1023 * MAX_VIDEO_PACKET);
             }
         }
     }

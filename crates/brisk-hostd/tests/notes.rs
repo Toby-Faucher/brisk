@@ -540,7 +540,11 @@ async fn remap_on_a_machine_with_a_library_ignores_unknown_targets_and_ambiguous
         rec("emu:dolphin:BBBBBB", 0xE000_0001),
         rec("emu:dolphin:CCCCCC", 0xE000_0002),
     ];
-    std::fs::write(dir.path().join("library.json"), library_json(&recs).unwrap()).unwrap();
+    std::fs::write(
+        dir.path().join("library.json"),
+        library_json(&recs).unwrap(),
+    )
+    .unwrap();
     let game = r#"{"note":"n","tags":[]}"#;
     std::fs::write(
         dir.path().join("notes.json"),
