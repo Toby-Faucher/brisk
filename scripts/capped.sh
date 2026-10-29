@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Resource cap shared by sunshine-brisk.sh and brisk-up.sh (sourced): an OOM kills the build, not
 # the box. bawn hung once on an uncapped build.
 # BRISK_NO_CAP=1 turns the cap off: CI runners are not bawn and have no user systemd.
