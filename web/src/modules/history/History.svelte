@@ -11,7 +11,7 @@
   import Icon from '../../ui/Icon.svelte';
   import Tip from '../../ui/Tip.svelte';
   import { morph, skipMorph } from '../../ui/motion';
-  import { DASH, fmtDuration } from '../home/home';
+  import { DASH, fmtDuration } from '../../ui/format';
   import { chartRows, fmtWhen, listState, qualityLabel, sessionParam, sparkPath, statRows, filterSessions } from './history';
 
   type Detail = { session: SessionRec; series: SeriesPoint[] };

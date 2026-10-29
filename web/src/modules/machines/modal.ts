@@ -1,5 +1,6 @@
 import type { Game } from '../../state/api';
 import { fmtSize } from '../library/library';
+import { fmtDate } from '../../ui/format';
 
 export type SortKey = 'name' | 'size' | 'played' | 'playtime';
 export const SORTS: { key: SortKey; label: string }[] = [
@@ -39,8 +40,7 @@ export function gamesHeader(games: Game[]): string {
 }
 
 /** Last played (unix seconds) as a short date, or "Never". */
-export const fmtPlayed = (s: number | null) =>
-  s ? new Date(s * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never';
+export const fmtPlayed = (s: number | null) => (s ? fmtDate(s) : 'Never');
 
 export const fmtPlaytime = (min: number) =>
   min < 1 ? 'Not played yet' : min < 60 ? `${min} min` : `${(min / 60).toFixed(min < 600 ? 1 : 0)} h`;

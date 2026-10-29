@@ -1,5 +1,6 @@
 import type { Game, GameLocal, SaveItem } from '../../state/api';
-import { fmtAgo, pickResume } from '../home/home';
+import { pickResume } from '../home/home';
+import { fmtAgo } from '../../ui/format';
 import type { Notes, TagColor } from '../../state/notes';
 import { pick } from '../../state/gameId';
 

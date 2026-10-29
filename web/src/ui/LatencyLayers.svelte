@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DASH } from './format';
   import { motionAllowed } from './motion-base';
   import { areaPath, edgePath, lossXs, niceMax, stats, timeX, type Layer, type PingSample, type Pt } from './latency';
 
@@ -29,7 +30,7 @@
   const grid = $derived([yMax / 2, yMax]);
   const st = $derived({ direct: stats(samples, 'direct'), hub: stats(samples, 'hub') });
   const answered = $derived(samples.some((s) => (!off.direct && s.direct !== null) || (!off.hub && s.hub !== null)));
-  const ms = (n: number | null) => (n === null ? '–' : `${Math.round(n)}`);
+  const ms = (n: number | null) => (n === null ? DASH : `${Math.round(n)}`);
   const pct = (n: number) => (n === 0 ? '0%' : n < 1 ? '<1%' : `${Math.round(n)}%`);
 
   const say = (n: number | null) => (n === null ? 'no answer' : `${Math.round(n)} ms`);

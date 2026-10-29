@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DASH } from '../../ui/format';
   import { onMount } from 'svelte';
   import type { Codec, Preset, StreamReq } from '../../state/api';
   import Icon from '../../ui/Icon.svelte';
@@ -155,7 +156,7 @@
     if (e.key === 'Escape' && menu) (menu = null), update();
   }}
 >
-  <span class="hostchip"><span class="dot"></span><b>{host}</b><span class="mono muted">{rttMs === null ? '–' : `${rttMs.toFixed(0)} ms`}</span></span>
+  <span class="hostchip"><span class="dot"></span><b>{host}</b><span class="mono muted">{rttMs === null ? DASH : `${rttMs.toFixed(0)} ms`}</span></span>
   {#if pads.length}
     <!-- Not a live region (it would announce every replug); the tooltip text is in the DOM. -->
     <span class="padchip">

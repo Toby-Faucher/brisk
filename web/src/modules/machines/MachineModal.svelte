@@ -17,7 +17,7 @@
   import { box, flipDelta, glide, motionAllowed, cssVar } from '../../ui/motion-base';
   import Cover from '../library/Cover.svelte';
   import { fmtSize } from '../library/library';
-  import { DASH, fmtAgo, fmtTemp, fmtUptime } from '../home/home';
+  import { DASH, fmtAgo, fmtTemp, fmtUptime } from '../../ui/format';
   import { fmtWhen } from '../history/history';
   import { PALETTE, normalizeHex } from '../../ui/color';
   import { COLOR_NAMES, dotState, powerWhy, restartError, STATE_LABEL } from './machines';

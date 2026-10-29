@@ -1,7 +1,7 @@
 import { errMsg } from '../../state/errMsg';
 import { get } from 'svelte/store';
 import { ApiError, type HostInfo } from '../../state/api';
-import { DASH, fmtTemp, fmtUptime } from '../home/home';
+import { DASH, fmtTemp, fmtUptime } from '../../ui/format';
 import { ensureReady, hub, selectedMachine, type Machine, type MachineState, type PingSample } from '../../state/machines';
 
 export type SoloMachine = { id: string; info: HostInfo };

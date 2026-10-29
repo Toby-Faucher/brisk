@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DASH } from '../../ui/format';
   import type { StatsView } from './session';
 
   let { stats, path }: { stats: StatsView; path: string | null } = $props();
@@ -9,7 +10,7 @@
   const line = (d: number[], lo: number, hi: number) =>
     d.map((v, i) => `${((i / Math.max(1, d.length - 1)) * W).toFixed(1)},${(H - 3 - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * (H - 8)).toFixed(1)}`).join(' ');
   const last = (d: number[]) => (d.length ? d[d.length - 1] : null);
-  const fmt = (v: number | null, digits: number) => (v === null ? '–' : v.toFixed(digits));
+  const fmt = (v: number | null, digits: number) => (v === null ? DASH : v.toFixed(digits));
   const rows = $derived([
     { id: 'delay', label: 'Delay', unit: 'ms', data: stats.delay, lo: 0, hi: Math.max(40, ...stats.delay), digits: 1, color: '#60a5fa' },
     { id: 'fps', label: 'Frame rate', unit: 'fps', data: stats.fps, lo: 0, hi: Math.max(62, ...stats.fps), digits: 0, color: 'var(--accent)' },
@@ -38,7 +39,7 @@
     </div>
   {/each}
   {#if stats.width}
-    <p class="meta mono">{stats.width}×{stats.height} · {stats.codec ?? '–'} · {stats.hw === 'prefer-hardware' ? 'hw decode' : 'sw decode'}</p>
+    <p class="meta mono">{stats.width}×{stats.height} · {stats.codec ?? DASH} · {stats.hw === 'prefer-hardware' ? 'hw decode' : 'sw decode'}</p>
   {/if}
 </section>
 

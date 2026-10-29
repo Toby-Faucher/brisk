@@ -3,7 +3,7 @@
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import { count } from '../../ui/motion';
-  import { DASH } from '../home/home';
+  import { DASH } from '../../ui/format';
 
   const installed = $derived($games?.games.filter((g) => g.installed).length);
 </script>

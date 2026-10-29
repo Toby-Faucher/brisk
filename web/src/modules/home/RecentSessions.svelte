@@ -6,7 +6,7 @@
   import { games } from '../../state/games';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
-  import { DASH, fmtAgo, fmtDuration } from './home';
+  import { DASH, fmtAgo, fmtDuration } from '../../ui/format';
 
   let list: SessionRec[] | null = $state(null);
   onMount(() => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DASH } from '../../ui/format';
   import { onMount } from 'svelte';
   import { Tabs } from 'bits-ui';
   import { ACCENT_HEX, DEFAULTS, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
@@ -178,7 +179,7 @@
       <div class="col">
         <Card cols={2}>
           <h4>Brisk</h4>
-          <dl class="kv"><dt>Commit</dt><dd>{commit}</dd><dt>Host</dt><dd>{$host?.name ?? '–'}</dd><dt>Sunshine</dt><dd>{$host?.sunshine ?? '–'}</dd></dl>
+          <dl class="kv"><dt>Commit</dt><dd>{commit}</dd><dt>Host</dt><dd>{$host?.name ?? DASH}</dd><dt>Sunshine</dt><dd>{$host?.sunshine ?? DASH}</dd></dl>
           <h4 class="gap">Docs</h4>
           <ul class="plain">{#each DOCS as d (d)}<li><code>{d}</code></li>{/each}</ul>
         </Card>

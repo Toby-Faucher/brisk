@@ -9,7 +9,8 @@
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
   import { playLabel } from '../library/library';
-  import { DASH, fmtAgo, pickResume } from './home';
+  import { pickResume } from './home';
+  import { DASH, fmtAgo } from '../../ui/format';
 
   const g = $derived(pickResume($games?.games ?? []));
   let busy = $state(false);

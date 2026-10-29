@@ -20,7 +20,8 @@
   import MachineModal from './MachineModal.svelte';
   import Slot from '../home/Slot.svelte';
   import { count, fadeOnChange } from '../../ui/motion';
-  import { DASH, fmtUptime, reconcileOrder } from '../home/home';
+  import { reconcileOrder } from '../home/home';
+  import { DASH, fmtUptime } from '../../ui/format';
   import { reorder } from '../home/drag';
   import { hub, machineHue, orderedMachines, pings, startPings, selected, selectMachine, setMachinesOrder, powerMachine } from '../../state/machines';
   import { isTap, machinesFrom, restartError, dimmed, dotState, powerWhy, statRows, chipData, gauges, headerVars, networkText, pingText, STATE_LABEL, SUN_LABEL, type Vm } from './machines';
