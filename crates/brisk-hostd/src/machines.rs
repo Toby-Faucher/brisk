@@ -11,7 +11,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -124,6 +124,9 @@ pub fn parse(text: &str) -> Result<Vec<MachineCfg>, String> {
             return Err(format!("machine id {id:?} is used twice"));
         }
         url_ok(&m.url).map_err(|e| format!("machine {id}: {e}"))?;
+        if let Some(p) = &m.power {
+            crate::power::check(&p.proxmox).map_err(|e| format!("machine {id}: {e}"))?;
+        }
         if let Some(t) = m.power.as_ref().and_then(|p| p.temp_url.as_deref()) {
             temp_url_ok(t).map_err(|e| format!("machine {id}: {e}"))?;
         }
@@ -149,6 +152,8 @@ pub struct Hub {
     stopping: Mutex<HashMap<String, Instant>>,
     /// When a start was last requested, for the `starting` state while Proxmox still says stopped.
     starting: Mutex<HashMap<String, Instant>>,
+    /// Machines whose power status call is failing now, so the failure is logged once, not every poll.
+    status_failing: Mutex<HashSet<String>>,
 }
 
 /// `Ok(None)`: no file at the default path (single-host mode). A file that is there but bad, or
@@ -178,6 +183,7 @@ impl Hub {
             cache: Mutex::default(),
             stopping: Mutex::default(),
             starting: Mutex::default(),
+            status_failing: Mutex::default(),
         }
     }
 
@@ -265,8 +271,15 @@ impl Hub {
                 (Some(h), rtt) => Self::view_with(e, "ready", Some(h), rtt, None),
                 (None, _) => Self::view(e, "unreachable", None),
             },
-            Some(p) => match p.status() {
-                Err(_) => Self::view(e, "unreachable", None),
+            Some(p) => match p.status().inspect(|_| {
+                self.status_failing.lock().unwrap().remove(&e.cfg.id);
+            }) {
+                Err(err) => {
+                    if self.status_failing.lock().unwrap().insert(e.cfg.id.clone()) {
+                        tracing::warn!("machine {}: power status failed: {err}", e.cfg.id);
+                    }
+                    Self::view(e, "unreachable", None)
+                }
                 Ok(VmState::Stopped) => {
                     self.stopping.lock().unwrap().remove(&e.cfg.id);
                     if self.is_starting(&e.cfg.id) {
@@ -787,6 +800,23 @@ mod tests {
         (url, w)
     }
 
+    #[tokio::test]
+    async fn a_failing_power_status_is_logged_once_per_outage() {
+        let down = Arc::new(Fake {
+            vm: Mutex::new(Err("pve down".into())),
+            ..Arc::into_inner(Fake::new(VmState::Running)).unwrap()
+        });
+        let r = rig(vec![("m", "http://127.0.0.1:1".into(), Some(down.clone()))]);
+        let e = r.hub.get("m").unwrap();
+        let failing = || r.hub.status_failing.lock().unwrap().contains("m");
+        assert_eq!(r.hub.probe(&e)["state"], "unreachable");
+        assert!(failing());
+        assert_eq!(r.hub.probe(&e)["state"], "unreachable");
+        *down.vm.lock().unwrap() = Ok(VmState::Stopped);
+        assert_eq!(r.hub.probe(&e)["state"], "off");
+        assert!(!failing(), "recovery re-arms the warning");
+    }
+
     /// A URL nothing listens on.
     #[tokio::test]
     async fn tcp_rtt_is_a_connect_time() {
@@ -1048,6 +1078,23 @@ mod tests {
         for (text, want) in bad {
             let e = parse(text).expect_err(text);
             assert!(e.contains(want), "{text}: {e}");
+        }
+        // a bad proxmox block fails at startup, with the same checks the calls use
+        for (field, bad_value, want) in [
+            ("api", "http://pve.invalid:8006", "proxmox api"),
+            ("node", "n/../x", "proxmox node"),
+            ("token_id", "u@pve! t", "proxmox token_id"),
+        ] {
+            let mut j: Value = serde_json::from_str(&one(
+                r#","power":{"proxmox":{"api":"https://p.invalid","node":"n","vmid":1,"token_id":"t","token_file":"/t"}}"#,
+            ))
+            .unwrap();
+            j["machines"][0]["power"]["proxmox"][field] = bad_value.into();
+            let e = parse(&j.to_string()).expect_err(field);
+            assert!(
+                e.starts_with("machine a:") && e.contains(want),
+                "{field}: {e}"
+            );
         }
         for url in [
             "https://h.invalid:8443",

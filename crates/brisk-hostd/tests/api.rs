@@ -833,6 +833,30 @@ async fn bridge_exit_before_page_line_is_an_error_and_idle() {
 }
 
 #[tokio::test]
+async fn bridge_exit_right_after_the_page_line_never_leaves_live() {
+    let r = rig("exit_after_page");
+    let (st, v) = r
+        .call("POST", "/api/stream", r#"{"preset":"balanced"}"#)
+        .await;
+    if st != StatusCode::OK {
+        assert!(v["error"].as_str().is_some_and(|e| !e.is_empty()), "{v}");
+    }
+    // A dead bridge must not stay "live" (this was the bug: Live with a URL nobody serves).
+    let mut state = String::new();
+    for _ in 0..100 {
+        state = r.call("GET", "/api/stream", "").await.1["state"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        if state == "idle" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(state, "idle");
+}
+
+#[tokio::test]
 async fn appid_launches_steam_after_tap_only_on_fresh_start() {
     let r = rig("");
     let (st, v) = r

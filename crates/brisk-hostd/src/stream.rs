@@ -410,6 +410,17 @@ impl Supervisor {
                 });
             }
         };
+        // The watcher may have seen the bridge exit after it sent the page line. It resets the state
+        // under this lock, so a dead bridge shows as done or as a state that is no longer Starting.
+        let gone = {
+            let s = self.shared.lock().unwrap();
+            s.info.state != State::Starting || slot.as_ref().is_none_or(|r| *r.done.borrow())
+        };
+        if gone {
+            self.stop_locked(&mut slot).await;
+            self.fail(rec);
+            return Err("the bridge stopped before it was ready".into());
+        }
         let mut fresh = None;
         let rec = match rec {
             Some(mut r) => {
@@ -636,9 +647,20 @@ pub fn ensure_cert(
         ],
     );
     let pem = |p: &PathBuf| std::fs::read_to_string(p).is_ok_and(|s| s.contains("-----BEGIN"));
-    if ran.is_none() || !pem(&tc) || !pem(&tk) {
+    // Say which step failed; the runner gives no stderr, so this is the most it can tell.
+    let step = if ran.is_none() {
+        Some("openssl did not run or exited with an error (is it installed?)")
+    } else if !pem(&tc) {
+        Some("openssl wrote no PEM certificate")
+    } else if !pem(&tk) {
+        Some("openssl wrote no PEM key")
+    } else {
+        None
+    };
+    if let Some(step) = step {
         let _ = (std::fs::remove_file(&tc), std::fs::remove_file(&tk));
-        return Err(fail("openssl failed or is missing".into()));
+        tracing::warn!("bridge certificate: {step}");
+        return Err(fail(step.into()));
     }
     // Key first: if we die in between, the old cert's age makes the next start renew again.
     std::fs::rename(&tk, &key)

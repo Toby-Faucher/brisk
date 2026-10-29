@@ -236,8 +236,10 @@ pub(crate) fn backup_once(path: &Path) -> std::io::Result<()> {
     b.push(BACKUP_SUFFIX);
     let b = std::path::PathBuf::from(b);
     match std::fs::read(path) {
-        Ok(bytes) if !b.exists() => write_atomic(&b, &bytes),
-        Ok(_) => Ok(()),
+        Ok(bytes) => match crate::fsutil::write_new(&b, &bytes) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            r => r,
+        },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
@@ -287,7 +289,10 @@ pub fn run(data_dir: &Path) {
         && let Ok(text) = std::fs::read_to_string(data_dir.join(emu::OLD_FILE))
     {
         match library_from_emulators(&text) {
-            Ok(recs) => match write_atomic(&lib, &emu::library_json(&recs)) {
+            Ok(recs) => match emu::library_json(&recs)
+                .map_err(|e| e.to_string())
+                .and_then(|j| write_atomic(&lib, &j).map_err(|e| e.to_string()))
+            {
                 Ok(()) => tracing::info!(
                     "{} -> {} ({} games)",
                     emu::OLD_FILE,

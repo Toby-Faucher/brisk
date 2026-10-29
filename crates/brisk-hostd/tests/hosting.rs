@@ -615,7 +615,7 @@ fn openssl_failure_is_a_clean_error_and_keeps_the_old_pair() {
     });
     let e = ensure_cert(&*broken, &dir, SystemTime::now()).unwrap_err();
     assert!(
-        e.contains("couldn't make the bridge certificate") && e.contains("openssl"),
+        e.contains("couldn't make the bridge certificate") && e.contains("openssl did not run"),
         "{e}"
     );
     assert_eq!(

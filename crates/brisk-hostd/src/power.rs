@@ -65,6 +65,29 @@ pub(crate) fn proxmox(cfg: &ProxmoxCfg) -> Arc<dyn Power> {
     Arc::new(Proxmox { cfg: cfg.clone() })
 }
 
+/// The checks that keep a Proxmox URL from changing shape; `machines::parse` runs them at startup.
+pub(crate) fn check(c: &ProxmoxCfg) -> Result<(), String> {
+    if !crate::steam::base_ok(c.api.trim_end_matches('/')) {
+        return Err("proxmox api must be https (or http to loopback)".into());
+    }
+    if c.node.is_empty()
+        || !c
+            .node
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+    {
+        return Err("proxmox node is not a plain node name".into());
+    }
+    if c.token_id.is_empty()
+        || c.token_id
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch.is_control())
+    {
+        return Err("proxmox token_id is not valid".into());
+    }
+    Ok(())
+}
+
 struct Proxmox {
     cfg: ProxmoxCfg,
 }
@@ -123,25 +146,8 @@ impl Proxmox {
     /// The URL of `suffix` under this VM; every part is validated, so it cannot change shape.
     fn url(&self, suffix: &str) -> Result<String, String> {
         let c = &self.cfg;
+        check(c)?;
         let api = c.api.trim_end_matches('/');
-        if !crate::steam::base_ok(api) {
-            return Err("proxmox api must be https (or http to loopback)".into());
-        }
-        if c.node.is_empty()
-            || !c
-                .node
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
-        {
-            return Err("proxmox node is not a plain node name".into());
-        }
-        if c.token_id.is_empty()
-            || c.token_id
-                .chars()
-                .any(|ch| ch.is_whitespace() || ch.is_control())
-        {
-            return Err("proxmox token_id is not valid".into());
-        }
         Ok(format!(
             "{api}/api2/json/nodes/{}/qemu/{}/{suffix}",
             c.node, c.vmid

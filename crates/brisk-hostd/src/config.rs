@@ -152,8 +152,8 @@ pub fn list(s: &str) -> Vec<String> {
 /// `env` (`BRISK_SECRET`, for tests) if set, else the secret in `file`, created once (0600, its
 /// directory 0700) so a bookmarked link survives restarts. Shorter than 16 characters is refused.
 pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> {
-    use std::io::{Error, ErrorKind, Write};
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    use std::io::{Error, ErrorKind};
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     let check = |s: String| {
         if s.len() >= 16 && s.bytes().all(|b| b.is_ascii_graphic()) {
             Ok(s)
@@ -186,18 +186,10 @@ pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> 
                     .create(dir)?;
             }
             let s = new_secret();
-            // create_new: of two hostds starting at once only one writes; the other reads it.
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o600)
-                .open(file)
-            {
-                Ok(mut f) => {
-                    f.write_all(format!("{s}\n").as_bytes())?;
-                    f.sync_all()?;
-                    Ok(s)
-                }
+            // write_new is all or nothing, so a crash cannot leave an empty secret; of two hostds
+            // starting at once only one wins, and the other reads it.
+            match crate::fsutil::write_new(file, format!("{s}\n").as_bytes()) {
+                Ok(()) => Ok(s),
                 Err(e) if e.kind() == ErrorKind::AlreadyExists => load_secret(None, file),
                 Err(e) => Err(e),
             }

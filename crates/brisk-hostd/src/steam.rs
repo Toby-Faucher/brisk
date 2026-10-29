@@ -421,8 +421,11 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
                 fetched: now(),
                 games,
             };
-            let _ = tokio::fs::create_dir_all(&cfg.data_dir).await;
-            let _ = tokio::fs::write(&path, serde_json::to_vec(&c).unwrap_or_default()).await;
+            // Atomic: other requests read this file while we write.
+            if let Ok(b) = serde_json::to_vec(&c) {
+                let _ = tokio::task::spawn_blocking(move || crate::fsutil::write_atomic(&path, &b))
+                    .await;
+            }
             (c.games, true)
         }
         // Stale cache is better than nothing, but the UI still says Steam was unreachable.

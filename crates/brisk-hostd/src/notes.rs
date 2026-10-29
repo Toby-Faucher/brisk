@@ -1,6 +1,6 @@
 //! Your notes in `data_dir/notes.json`: one per game, and tags you make (name, color, symbol, a note of
 //! their own). Written whole to a 0600 temp file and renamed over the old one, read tolerantly (a missing
-//! or corrupt file is just empty, and stays on disk until the next save replaces it). Private text: never
+//! file is empty; a corrupt one is copied to `notes.json.corrupt` once, then reads as empty). Private text: never
 //! logged. Writes are per tag or per game, so two browsers editing different games never clash.
 
 use serde::{Deserialize, Serialize};
@@ -99,17 +99,15 @@ fn keep(g: &GameNote) -> bool {
 }
 
 impl NotesStore {
-    /// The store at `path` with the default caps; a missing or corrupt file is empty.
+    /// The store at `path` with the default caps; a missing file is empty, a corrupt one is copied to
+    /// `<path>.corrupt` and starts empty.
     pub fn load(path: PathBuf) -> NotesStore {
         Self::with_limits(path, MAX_TAGS, MAX_GAMES)
     }
 
     /// `load` with other caps (tests).
     pub fn with_limits(path: PathBuf, max_tags: usize, max_games: usize) -> NotesStore {
-        let mut n: Notes = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let mut n: Notes = crate::fsutil::read_json_or_default(&path);
         let tags = &n.tags;
         for g in n.games.values_mut() {
             g.tags.retain(|id| tags.contains_key(id));
@@ -312,6 +310,10 @@ mod tests {
         std::fs::write(&p, b"\xff\xfe garbage").unwrap();
         let s = NotesStore::load(p.clone());
         assert_eq!(s.all(), Notes::default());
+        assert_eq!(
+            std::fs::read(d.path().join("notes.json.corrupt")).unwrap(),
+            b"\xff\xfe garbage"
+        );
         s.put_tag("a", tag("A")).unwrap();
         assert_eq!(NotesStore::load(p).all().tags.len(), 1);
     }

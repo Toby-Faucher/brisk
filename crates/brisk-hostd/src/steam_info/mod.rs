@@ -58,8 +58,11 @@ pub(crate) async fn cached<T: Serialize + DeserializeOwned + Clone>(
                 fetched: now(),
                 value,
             };
-            let _ = tokio::fs::create_dir_all(&dir).await;
-            let _ = tokio::fs::write(&path, serde_json::to_vec(&e).unwrap_or_default()).await;
+            // Atomic: other requests read this file while we write.
+            if let Ok(b) = serde_json::to_vec(&e) {
+                let _ = tokio::task::spawn_blocking(move || crate::fsutil::write_atomic(&path, &b))
+                    .await;
+            }
             Some(e.value)
         }
         Err(err) => {

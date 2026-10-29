@@ -74,6 +74,8 @@ struct Walk {
     files: Vec<PathBuf>,
     seen: usize,
     truncated: bool,
+    /// Entries skipped because the name is not valid UTF-8 (the library file cannot hold their path).
+    skipped: usize,
 }
 
 fn walk(dir: &Path, depth: usize, w: &mut Walk) {
@@ -90,7 +92,10 @@ fn walk(dir: &Path, depth: usize, w: &mut Walk) {
         }
         w.seen += 1;
         let name = e.file_name();
-        let name = name.to_string_lossy();
+        let Some(name) = name.to_str() else {
+            w.skipped += 1;
+            continue;
+        };
         if name.starts_with('.') {
             continue; // dot-dirs (.uploads) and hidden files
         }
@@ -103,7 +108,7 @@ fn walk(dir: &Path, depth: usize, w: &mut Walk) {
             if depth < MAX_DEPTH {
                 walk(&p, depth + 1, w);
             }
-        } else if ft.is_file() && known_ext(&name) {
+        } else if ft.is_file() && known_ext(name) {
             w.files.push(p);
         }
     }
@@ -115,10 +120,12 @@ pub fn scan(root: &Path) -> Scan {
         files: vec![],
         seen: 0,
         truncated: false,
+        skipped: 0,
     };
     walk(root, 0, &mut w);
     let mut s = Scan {
         truncated: w.truncated,
+        broken: w.skipped,
         scanned: w.files.len(),
         ..Scan::default()
     };
@@ -317,10 +324,18 @@ pub(crate) fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
     })
 }
 
+#[derive(serde::Serialize)]
+struct TombsFile<'a> {
+    removed: &'a [Tomb],
+}
+
 /// Atomic 0600 write, the oldest entries dropped past the cap. A failed write is a warning only.
 pub(crate) fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     t.drain(..t.len().saturating_sub(MAX_TOMBS));
-    let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
+    let b = match serde_json::to_vec(&TombsFile { removed: &t }) {
+        Ok(b) => b,
+        Err(e) => return tracing::warn!("removed list not saved: {e}"),
+    };
     if let Err(e) = crate::fsutil::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
         tracing::warn!("removed list: {e}");
     }
@@ -486,8 +501,8 @@ pub fn update<R>(
         if skipped > 0 {
             keep_bad_copy(data_dir, skipped);
         }
-        crate::fsutil::write_atomic(&p, &emu::library_json(&recs))
-            .map_err(|e| format!("library save: {e}"))?;
+        let json = emu::library_json(&recs).map_err(|e| format!("library save: {e}"))?;
+        crate::fsutil::write_atomic(&p, &json).map_err(|e| format!("library save: {e}"))?;
     }
     Ok(r)
 }

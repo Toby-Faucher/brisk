@@ -353,7 +353,10 @@ impl Sessions {
                 .create(true)
                 .append(true)
                 .open(&self.path)?;
-            writeln!(f, "{}", serde_json::to_string(r)?)
+            // One write_all of the whole line: O_APPEND writes do not interleave, but two writes could.
+            let mut line = serde_json::to_string(r)?;
+            line.push('\n');
+            f.write_all(line.as_bytes())
         };
         if let Err(e) = write() {
             tracing::warn!("{}: {e}", self.path.display());
@@ -388,6 +391,36 @@ impl Sessions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_appends_never_split_a_line() {
+        let d = tempfile::tempdir().unwrap();
+        let s = Sessions::new(d.path().join("sessions.jsonl"));
+        let rec = |i: u64| SessionRec {
+            appid: None,
+            game_id: None,
+            name: "x".repeat(2000),
+            started: i,
+            ended: None,
+            host: "h".into(),
+            preset: Preset::Fast,
+            codec: None,
+            bitrate_kbps: None,
+            stats: None,
+        };
+        std::thread::scope(|sc| {
+            for t in 0..8 {
+                let (s, rec) = (&s, &rec);
+                sc.spawn(move || (0..100).for_each(|i| s.append(&rec(t * 100 + i))));
+            }
+        });
+        let text = std::fs::read_to_string(&s.path).unwrap();
+        assert_eq!(text.lines().count(), 800);
+        assert!(
+            text.lines()
+                .all(|l| serde_json::from_str::<SessionRec>(l).is_ok())
+        );
+    }
 
     fn parse(text: &str) -> Stats {
         let mut r = Report::default();

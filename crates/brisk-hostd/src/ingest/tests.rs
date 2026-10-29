@@ -453,3 +453,60 @@ fn a_damaged_removed_list_is_set_aside_and_the_scan_refuses() {
     std::fs::write(c.data_dir.join("removed.json"), "{oops").unwrap();
     assert_eq!(scan_library_with(&c, true).unwrap().merged.added.len(), 1);
 }
+
+fn non_utf8_record() -> emu::Record {
+    use std::os::unix::ffi::OsStringExt;
+    emu::Record {
+        id: GameId::emu("dolphin", "AAAAAA").unwrap(),
+        emulator: "dolphin".into(),
+        system: None,
+        file: PathBuf::from(std::ffi::OsString::from_vec(b"/x/\xff.iso".to_vec())),
+        name: "A".into(),
+        added_at: None,
+        source: "scan".into(),
+        legacy_id: None,
+        aliases: vec![],
+    }
+}
+
+#[test]
+fn a_non_utf8_path_leaves_the_library_file_untouched() {
+    let d = tempfile::tempdir().unwrap();
+    let text = r#"{"v":1,"games":[{"id":"emu:dolphin:BBBBBB","emulator":"dolphin","file":"/x/b.iso","name":"B","source":"scan"}]}"#;
+    let p = d.path().join("library.json");
+    std::fs::write(&p, text).unwrap();
+    assert!(emu::library_json(&[non_utf8_record()]).is_err());
+    let r = update(d.path(), |recs| {
+        recs.push(non_utf8_record());
+        (true, ())
+    });
+    assert!(r.is_err());
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), text);
+}
+
+#[test]
+fn a_non_utf8_removed_path_leaves_removed_json_untouched() {
+    let d = tempfile::tempdir().unwrap();
+    let ok = Tomb {
+        path: "/x/a.iso".into(),
+        id: "emu:dolphin:AAAAAA".into(),
+    };
+    tombs_save(d.path(), vec![ok.clone()]);
+    let before = std::fs::read(d.path().join(TOMBS_FILE)).unwrap();
+    let bad = Tomb {
+        path: non_utf8_record().file,
+        id: "emu:dolphin:BBBBBB".into(),
+    };
+    tombs_save(d.path(), vec![ok, bad]);
+    assert_eq!(std::fs::read(d.path().join(TOMBS_FILE)).unwrap(), before);
+}
+
+#[test]
+fn scan_counts_a_non_utf8_name_as_broken_and_skips_it() {
+    use std::os::unix::ffi::OsStringExt;
+    let d = tempfile::tempdir().unwrap();
+    let name = std::ffi::OsString::from_vec(b"bad\xff.iso".to_vec());
+    std::fs::write(d.path().join(name), b"").unwrap();
+    let s = scan(d.path());
+    assert_eq!((s.broken, s.scanned, s.found.len()), (1, 0, 0));
+}
