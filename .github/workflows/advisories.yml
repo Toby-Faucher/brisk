@@ -12,7 +12,7 @@ jobs:
   cargo-deny-advisories:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - run: rustup toolchain install --no-self-update
       - uses: taiki-e/install-action@v2.87.28
         with:
