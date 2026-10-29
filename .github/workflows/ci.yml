@@ -66,11 +66,7 @@ jobs:
       # The runner image ships shellcheck; install it anyway in case a new image drops it.
       - run: command -v shellcheck || (sudo apt-get update && sudo apt-get install -y shellcheck)
       - run: shellcheck --version && shellcheck -S warning scripts/check.sh scripts/capped.sh scripts/test-capped.sh .githooks/pre-push
-      # shortcut: test-brisk-service.sh runs shellcheck; SC2174 (mkdir -p -m) is still in brisk-service.sh and
-      # brisk-up.sh, so it is excluded here until those are fixed.
       - run: scripts/check.sh wording scripts
-        env:
-          SHELLCHECK_OPTS: -e SC2174
       # shortcut: the other scripts still have warnings, so this pass only reports; make it blocking once they are clean.
       - run: shellcheck -S warning scripts/*.sh
         continue-on-error: true
