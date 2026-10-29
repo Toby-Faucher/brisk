@@ -1,16 +1,11 @@
 //! GameTDB lookups for Wii and GameCube games by 6-character disc ID: title, region, languages
-//! and cover art. The database is fetched once and cached on disk; art is downloaded once per
-//! game. Facts about GameTDB are in `docs/research/gametdb-notes.md` (many are UNVERIFIED: the
-//! site answered 403 to our fetch tool). GameTDB asks that its data is not edited and that users
+//! and credits. The database is fetched once and cached on disk. Facts about GameTDB are in
+//! `docs/research/gametdb-notes.md` (many are UNVERIFIED: the site answered 403 to our fetch tool). GameTDB asks that its data is not edited and that users
 //! link back to it: show "Data and art from GameTDB (gametdb.com)" wherever this is shown.
 
 use crate::config::Config;
 use crate::fsutil::write_atomic;
-use crate::steam::{base_ok, get_limited, get_limited_for, now};
-
-fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
-    get_limited(url, None, limit)
-}
+use crate::steam::{base_ok, get_limited_for, now};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,14 +14,8 @@ use std::sync::{Arc, Mutex};
 
 /// Env: URL of a plain `wiitdb.xml` (no default, see the notes: the zip needs a decision).
 pub(crate) const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
-/// Env: art base URL (tests point it at a mock).
-const ENV_ART_BASE: &str = "BRISK_GAMETDB_ART_BASE";
-/// Art host. Confirmed by search snippets and rom-properties' docs, not by the site itself.
-const DEFAULT_ART_BASE: &str = "https://art.gametdb.com";
-
 /// Database download cap. shortcut: real size of wiitdb.xml is UNVERIFIED (believed ~20 MB), raise if refused.
 const MAX_DB: u64 = 64 << 20;
-const MAX_ART: u64 = 4 << 20;
 /// One `<game>` element longer than this is skipped (hostile or broken input).
 const MAX_GAME: usize = 64 << 10;
 const MAX_GAMES: usize = 200_000;
@@ -106,73 +95,11 @@ impl Entry {
     }
 }
 
-// ---- id and art URLs ----
+// ---- id ----
 
 /// True for a six character GameTDB id.
 pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 6 && id.bytes().all(|b| b.is_ascii_alphanumeric())
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ArtKind {
-    Cover,
-    Cover3D,
-    CoverFull,
-    Disc,
-    DiscM,
-    Box,
-}
-
-impl ArtKind {
-    /// Folder name on the art host. shortcut: only `cover` and `disc` are confirmed (rom-properties);
-    /// the rest are UNVERIFIED names, check with a real fetch.
-    pub fn dir(self) -> &'static str {
-        match self {
-            ArtKind::Cover => "cover",
-            ArtKind::Cover3D => "cover3D",
-            ArtKind::CoverFull => "coverfull",
-            ArtKind::Disc => "disc",
-            ArtKind::DiscM => "discM",
-            ArtKind::Box => "box",
-        }
-    }
-}
-
-/// Region folders to try, best first, from the 4th character of the id. shortcut: the letter
-/// to folder table is UNVERIFIED (US, EN, DE, FR, ES, IT, NL, JA, KO, TW, AU, RU are seen in
-/// the wild); PAL ids fall back to EN, and `fetch_art` tries the next folder on a 404.
-fn regions(id: &str) -> Vec<&'static str> {
-    let first = match id.as_bytes().get(3).map(u8::to_ascii_uppercase) {
-        Some(b'E') => "US",
-        Some(b'J') => "JA",
-        Some(b'K') => "KO",
-        Some(b'W') => "TW",
-        Some(b'D') => "DE",
-        Some(b'F') => "FR",
-        Some(b'S') => "ES",
-        Some(b'I') => "IT",
-        Some(b'H') => "NL",
-        Some(b'U') => "AU",
-        Some(b'R') => "RU",
-        _ => "EN",
-    };
-    if first == "EN" {
-        vec!["EN"]
-    } else {
-        vec![first, "EN"]
-    }
-}
-
-fn art_url_at(base: &str, id: &str, kind: ArtKind, region: &str) -> Result<String, Error> {
-    if !valid_id(id) {
-        return Err(Error::BadId);
-    }
-    // shortcut: GameCube is assumed to live under /wii/ too (it is in wiitdb.xml); png assumed for all kinds.
-    Ok(format!(
-        "{}/wii/{}/{region}/{id}.png",
-        base.trim_end_matches('/'),
-        kind.dir()
-    ))
 }
 
 // ---- wiitdb.xml scanner ----
@@ -450,65 +377,12 @@ pub fn lookup(cfg: &Config, id: &str) -> Result<Entry, Error> {
     )
 }
 
-fn image_ext(b: &[u8]) -> Option<&'static str> {
-    if b.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
-        Some("png")
-    } else if b.starts_with(&[0xff, 0xd8, 0xff]) {
-        Some("jpg")
-    } else {
-        None
-    }
-}
-
-fn fetch_art_at(data_dir: &Path, base: &str, id: &str, kind: ArtKind) -> Result<PathBuf, Error> {
-    if !valid_id(id) {
-        return Err(Error::BadId);
-    }
-    if !base_ok(base) {
-        return Err(Error::NotConfigured);
-    }
-    let dir = data_dir.join("art").join(id);
-    for ext in ["png", "jpg"] {
-        let p = dir.join(format!("{}.{ext}", kind.dir()));
-        if std::fs::metadata(&p).is_ok_and(|m| m.len() > 0) {
-            return Ok(p);
-        }
-    }
-    let mut last = Error::NotFound;
-    for region in regions(id) {
-        let url = art_url_at(base, id, kind, region)?;
-        match https_get_limit(&url, MAX_ART) {
-            Err(e) if e == "HTTP 404" => last = Error::NotFound,
-            Err(e) => return Err(net(e)),
-            Ok(b) => {
-                // The server's content-type is not exposed by the shared helper; magic bytes decide.
-                let ext = image_ext(&b).ok_or(Error::BadContent)?;
-                let p = dir.join(format!("{}.{ext}", kind.dir()));
-                write_atomic(&p, &b).map_err(|e| Error::Io(e.kind()))?;
-                return Ok(p);
-            }
-        }
-    }
-    Err(last)
-}
-
-/// Download one image once into `data_dir/art/<id>/<kind>.<png|jpg>` and return its path.
-pub fn fetch_art(cfg: &Config, id: &str, kind: ArtKind) -> Result<PathBuf, Error> {
-    let base = std::env::var(ENV_ART_BASE).unwrap_or_else(|_| DEFAULT_ART_BASE.into());
-    fetch_art_at(&cfg.data_dir, &base, id, kind)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-
-    /// First-choice art URL on the default host.
-    fn art_url(id: &str, kind: ArtKind) -> Result<String, Error> {
-        art_url_at(DEFAULT_ART_BASE, id, kind, regions(id)[0])
-    }
 
     /// One game from the database text, by exact id.
     fn parse_game(xml: &str, id: &str) -> Option<Entry> {
@@ -591,30 +465,13 @@ mod tests {
     }
 
     #[test]
-    fn id_validation_and_urls() {
-        assert_eq!(
-            art_url("RMCE01", ArtKind::Cover).unwrap(),
-            "https://art.gametdb.com/wii/cover/US/RMCE01.png"
-        );
-        assert_eq!(
-            art_url("RSBP01", ArtKind::Disc).unwrap(),
-            "https://art.gametdb.com/wii/disc/EN/RSBP01.png"
-        );
+    fn ids_are_six_plain_characters() {
+        assert!(valid_id("RMCE01"));
         for bad in [
-            "",
-            "RMCE0",
-            "RMCE011",
-            "RM/E01",
-            "..RMCE",
-            "RMCE0\n",
-            "RMCE0%",
-            "RMC E1",
-            "RMCÉ01",
-            "RMCE01/../x",
+            "", "RMCE0", "RMCE011", "RM/E01", "..RMCE", "RMCE0\n", "RMC E1", "RMCÉ01",
         ] {
-            assert_eq!(art_url(bad, ArtKind::Cover), Err(Error::BadId), "{bad:?}");
+            assert!(!valid_id(bad), "{bad:?}");
         }
-        assert_eq!(regions("RSBD01"), ["DE", "EN"]);
     }
 
     type Routes = HashMap<&'static str, (u16, Vec<u8>)>;
@@ -643,12 +500,6 @@ mod tests {
             }
         });
         (base, hits)
-    }
-
-    fn png() -> Vec<u8> {
-        let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-        v.extend_from_slice(&[0; 32]);
-        v
     }
 
     #[test]
@@ -785,86 +636,5 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("gametdb"), b"a file where the dir should be").unwrap();
         assert!(lookup_at(d.path(), Some(&format!("{base}/db.xml")), "RMCE01", 0).is_ok());
-    }
-
-    #[test]
-    fn art_happy_path_and_failures() {
-        let (base, hits) = serve(HashMap::from([
-            ("/wii/cover/US/RMCE01.png", (200, png())),
-            ("/wii/disc/US/RMCE01.png", (404, vec![])),
-            ("/wii/box/US/RMCE01.png", (500, vec![])),
-            (
-                "/wii/cover3D/US/RMCE01.png",
-                (200, b"<html>no</html>".to_vec()),
-            ),
-            (
-                "/wii/coverfull/US/RMCE01.png",
-                (200, vec![0x89; (MAX_ART + 1) as usize]),
-            ),
-            ("/wii/cover/EN/RSBP01.png", (200, png())),
-        ]));
-        let d = tempfile::tempdir().unwrap();
-        let p = fetch_art_at(d.path(), &base, "RMCE01", ArtKind::Cover).unwrap();
-        assert!(p.ends_with("art/RMCE01/cover.png"));
-        assert_eq!(std::fs::read(&p).unwrap(), png());
-        fetch_art_at(d.path(), &base, "RMCE01", ArtKind::Cover).unwrap();
-        assert_eq!(
-            hits.load(Ordering::SeqCst),
-            1,
-            "second call is served from disk"
-        );
-        // PAL id: EN folder is the only one, found
-        assert!(fetch_art_at(d.path(), &base, "RSBP01", ArtKind::Cover).is_ok());
-        assert_eq!(
-            fetch_art_at(d.path(), &base, "RMCE01", ArtKind::Disc),
-            Err(Error::NotFound)
-        );
-        assert_eq!(
-            fetch_art_at(d.path(), &base, "RMCE01", ArtKind::Box),
-            Err(Error::Network("HTTP 500".into()))
-        );
-        assert_eq!(
-            fetch_art_at(d.path(), &base, "RMCE01", ArtKind::Cover3D),
-            Err(Error::BadContent)
-        );
-        assert_eq!(
-            fetch_art_at(d.path(), &base, "RMCE01", ArtKind::CoverFull),
-            Err(Error::TooLarge)
-        );
-        assert!(!d.path().join("art/RMCE01/cover3D.png").exists());
-        assert_eq!(
-            fetch_art_at(d.path(), &base, "RM/../1", ArtKind::Cover),
-            Err(Error::BadId)
-        );
-        assert_eq!(
-            fetch_art_at(d.path(), "ftp://x", "RMCE01", ArtKind::Cover),
-            Err(Error::NotConfigured)
-        );
-        assert!(matches!(
-            fetch_art_at(d.path(), "http://127.0.0.1:1", "GALE01", ArtKind::Cover),
-            Err(Error::Network(_))
-        ));
-    }
-
-    #[test]
-    fn art_write_failure_leaves_no_file() {
-        let (base, _) = serve(HashMap::from([("/wii/cover/US/RMCE01.png", (200, png()))]));
-        let d = tempfile::tempdir().unwrap();
-        std::fs::write(d.path().join("art"), b"blocker").unwrap();
-        assert!(matches!(
-            fetch_art_at(d.path(), &base, "RMCE01", ArtKind::Cover),
-            Err(Error::Io(_))
-        ));
-        // rename target is a directory: the temp file is cleaned up
-        let t = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(t.path().join("art/RMCE01/cover.png")).unwrap();
-        // a directory has len > 0 on most fs, so cached-check may return it: only assert no tmp left
-        let _ = fetch_art_at(t.path(), &base, "RMCE01", ArtKind::Cover);
-        let leftovers: Vec<_> = std::fs::read_dir(t.path().join("art/RMCE01"))
-            .unwrap()
-            .flatten()
-            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
-            .collect();
-        assert!(leftovers.is_empty());
     }
 }

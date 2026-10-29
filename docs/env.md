@@ -21,7 +21,6 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_SGDB_BASE` | SteamGridDB API base URL (tests point it at a mock). | `https://www.steamgriddb.com/api/v2` | `hostd/src/steamgriddb.rs` |
 | `BRISK_SGDB_KEY_FILE` | File with the SteamGridDB API key, one line (0600). Missing = art lookup off (read when art is needed, no restart). | `~/.config/brisk/steamgriddb-api-key` | `hostd/src/steamgriddb.rs` |
 | `BRISK_GAMETDB_XML_URL` | URL of a plain `wiitdb.xml` for Wii and GameCube titles (no default; a `.zip` is refused). Optional: adds year, publisher, developer, languages and a better title to emulator games. | unset | `hostd/src/gametdb.rs` |
-| `BRISK_GAMETDB_ART_BASE` | GameTDB art base URL (tests point it at a mock). Art lookup does not use GameTDB images yet. | `https://art.gametdb.com` | `hostd/src/gametdb.rs` |
 | `BRISK_MACHINES_FILE` | Hub machine list (`machines.json`, see `deploy/hub/machines.example.json`). Default path missing = single host. Set explicitly, a missing file is an error and hostd exits. | `~/.config/brisk/machines.json` | `hostd/src/config.rs`, `main.rs`, `machines.rs` |
 | `BRISK_BRIDGE_BIN` | `brisk-bridge` binary hostd starts per stream. | `brisk-bridge` (on PATH) | `hostd/src/config.rs` |
 | `BRISK_LISTEN` | Bridge address, `IPv4:PORT`; `scripts/brisk-up.sh` rejects `0.0.0.0`. | the Tailscale IPv4 on `:4433`, asked at each stream start | `hostd/src/config.rs`, `scripts/brisk-up.sh` |
