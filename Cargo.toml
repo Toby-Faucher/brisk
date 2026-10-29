@@ -26,7 +26,7 @@ subtle = "2.6.1"
 tempfile = "3"
 tokio = "1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-x509-cert = { version = "0.2.5", features = ["pem"] }
+x509-cert = { version = "0.3.0", features = ["pem"] }
 
 # RSA-2048 keygen is very slow unoptimised; tests generate identities.
 [profile.dev.package.num-bigint-dig]
