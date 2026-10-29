@@ -138,16 +138,20 @@
 </Dialog.Root>
 
 <style>
-  :global(.cm-dim.ap-dim) { z-index: 42; }
-  :global(.rs.ap) { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); z-index: 43; display: flex; flex-direction: column; gap: 10px; }
-  .tabs { display: flex; gap: 6px; }
+  :global(.cm-dim.ap-dim) { z-index: 42; background: rgb(0 0 0 / .3); }
+  /* a side sheet on the right edge: the game panel stays visible on its left */
+  :global(.rs.ap) { position: fixed; left: auto; right: 0; top: 0; bottom: 0; transform: none; width: min(380px, 100vw); height: 100dvh; max-height: none; border-radius: 20px 0 0 20px; z-index: 43; display: flex; flex-direction: column; gap: 10px; }
+  :global(.rs.ap[data-ending-style]) { translate: 48px 0; scale: 1; }
+  @starting-style { :global(.rs.ap[data-state='open']) { translate: 48px 0; } }
+  @media (max-width: 559px) { :global(.rs.ap) { border-radius: 0; } }
+    .tabs { display: flex; gap: 6px; }
   .tab { font: inherit; font-size: 13px; padding: 5px 14px; min-height: 32px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel2); color: var(--fg); cursor: pointer; }
   .tab[aria-selected='true'] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
-  .body { overflow: auto; overscroll-behavior: contain; min-height: 180px; display: grid; gap: 10px; align-content: start; padding: 4px; }
+  .body { overflow: auto; overscroll-behavior: contain; min-height: 180px; flex: 1; display: grid; gap: 10px; align-content: start; padding: 4px; }
   .msg { padding: 28px 0; text-align: center; margin: 0; }
-  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
-  .grid.hero { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-  .grid.logo { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .grid.hero { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .grid.logo { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
   .th { position: relative; padding: 0; border: 2px solid transparent; border-radius: 10px; overflow: hidden; background: var(--panel); cursor: pointer; aspect-ratio: 2 / 3; display: grid; place-items: center; color: inherit; }
   .hero .th { aspect-ratio: 31 / 10; }
   .logo .th { aspect-ratio: 16 / 9; background: repeating-conic-gradient(var(--panel) 0 25%, var(--panel2) 0 50%) 0 0 / 16px 16px; }
