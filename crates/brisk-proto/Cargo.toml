@@ -5,17 +5,16 @@ version.workspace = true
 publish = false
 
 [dependencies]
-aes = "0.8.4"
-aes-gcm = "0.10.3"
+aes.workspace = true
+aes-gcm.workspace = true
 quick-xml = "0.42.0"
-rsa = { version = "0.9.10", features = ["sha2"] }
-sha2 = "0.10.9"
-subtle = "2.6.1"
-x509-cert = { version = "0.2.5", features = ["pem"] }
+rsa.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+x509-cert.workspace = true
 
 [dev-dependencies]
-# Property tests. No fork/timeout features (rusty-fork, tempfile): inputs are kept small instead.
-proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+proptest.workspace = true
 
 [lints]
 workspace = true

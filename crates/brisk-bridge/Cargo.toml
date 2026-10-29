@@ -5,11 +5,11 @@ version.workspace = true
 publish = false
 
 [dependencies]
-aes = "0.8.4"
-aes-gcm = "0.10.3"
-brisk-client = { path = "../brisk-client" }
-brisk-proto = { path = "../brisk-proto" }
-bytes = "1"
+aes.workspace = true
+aes-gcm.workspace = true
+brisk-client.workspace = true
+brisk-proto.workspace = true
+bytes.workspace = true
 hkdf = "0.12.4"
 hmac = "0.12.1"
 http = "1"
@@ -17,20 +17,20 @@ http = "1"
 # is the pure-Rust replacement.
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio"] }
 quinn-proto = { version = "0.11", default-features = false }
-rand_core = { version = "0.6.4", features = ["getrandom"] }
-rustls = { version = "0.23", default-features = false, features = ["std"] }
-rustls-rustcrypto = "=0.0.2-alpha"
-sha2 = "0.10.9"
-subtle = "2.6.1"
-tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros", "signal", "sync"] }
-tracing = { version = "0.1", default-features = false, features = ["std"] }
+rand_core.workspace = true
+rustls.workspace = true
+rustls-rustcrypto.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal", "sync"] }
+tracing.workspace = true
 web-transport-proto = "0.6"
 
 [dev-dependencies]
-proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+proptest.workspace = true
 # Paused clock for the held-key watchdog tests.
-tokio = { version = "1", features = ["test-util"] }
-tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
 url = "2"
 
 [lints]
