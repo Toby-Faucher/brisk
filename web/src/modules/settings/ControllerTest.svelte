@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { padName, type PadLike } from '../../lib/gamepad';
+  import { listener } from '../../lib/listen';
   import Card from '../../ui/Card.svelte';
   import Dropdown from '../../ui/Dropdown.svelte';
   import { countUp, popIn } from '../../ui/motion';
@@ -135,8 +136,7 @@
 
   onMount(() => {
     const ac = new AbortController();
-    // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
-    const on = (t: EventTarget, type: string, f: (e: any) => void) => t.addEventListener(type, f, { signal: ac.signal });
+    const on = listener(ac.signal);
     on(window, 'focus', sync);
     on(window, 'blur', sync);
     on(document, 'visibilitychange', sync);

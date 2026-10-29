@@ -12,6 +12,7 @@
 //
 // No deadzone here: Sunshine passes values straight to its virtual pad (virtualhid_input.cpp
 // normalize_axis), like a real pad, and games apply their own.
+import { listener } from './listen';
 
 export const KIND_GAMEPAD = 0x15;
 export const KIND_GAMEPAD_GONE = 0x16;
@@ -304,12 +305,11 @@ export function attachGamepads(s: GamepadSender, { doc, win, raf, caf }: Gamepad
   };
   frame = raf(loop);
   const gone = new AbortController();
-  // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
-  const on = (t: EventTarget, type: string, f: (e: any) => void) => t.addEventListener(type, f, { signal: gone.signal });
+  const on = listener(gone.signal);
   on(win, 'blur', () => s.release());
   on(doc, 'visibilitychange', () => doc.visibilityState === 'hidden' && s.release());
   on(win, 'pagehide', () => s.detachAll());
-  on(win, 'gamepaddisconnected', (e: { gamepad: { index: number } }) => s.disconnected(e.gamepad.index));
+  on(win, 'gamepaddisconnected', (e) => s.disconnected(e.gamepad.index));
   const stop = () => {
     clearInterval(timer);
     caf(frame);

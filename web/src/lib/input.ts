@@ -13,6 +13,7 @@
 //
 // Gamepads (gamepad.ts) write on the same stream; the bridge sends rumble back on it.
 
+import { listener } from './listen';
 import { FrameSplitter, GamepadSender, attachGamepads, onBridgeFrame, type PadInfo } from './gamepad';
 
 export const KIND_KEY = 0x10;
@@ -241,9 +242,7 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
   };
   // Every listener goes when `closed` settles, so a reconnect does not leave the old ones behind.
   const gone = new AbortController();
-  // biome-ignore lint/suspicious/noExplicitAny: one helper for listeners of several event types
-  const on = (t: EventTarget, type: string, f: (e: any) => void, passive = true) =>
-    t.addEventListener(type, f, { passive, signal: gone.signal });
+  const on = listener(gone.signal, true);
   // The first non-zero motion once locked is the cursor jumping to where Chrome parks it, not
   // the user's: dropped. Headless Chromium sends it (-640,-360 on a 1280x720 page) before
   // `pointerlockchange`, so the flag is set when the lock is asked for.
@@ -269,8 +268,8 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
     e.preventDefault(); // the browser ignores this for its reserved shortcuts, which is fine
     s.key(vk, down, modifiers(e)); // drops repeats: Sunshine repeats held keys itself
   };
-  on(win, 'keydown', key(true), false);
-  on(win, 'keyup', key(false), false);
+  on(win, 'keydown', key(true), { passive: false });
+  on(win, 'keyup', key(false), { passive: false });
   on(doc, 'mousemove', (e: MouseEvent) => {
     if (!locked()) return;
     if (!parked) s.move(e.movementX, e.movementY);
@@ -281,8 +280,8 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
     e.preventDefault();
     s.button(e.button + 1, down); // 0 left, 1 middle, 2 right, 3 back, 4 forward -> 1..5
   };
-  on(canvas, 'mousedown', button(true), false);
-  on(canvas, 'mouseup', button(false), false);
+  on(canvas, 'mousedown', button(true), { passive: false });
+  on(canvas, 'mouseup', button(false), { passive: false });
   on(
     canvas,
     'wheel',
@@ -291,9 +290,9 @@ export function attach(s: InputSender, { canvas, doc, win }: InputEnv, closed: P
       e.preventDefault();
       s.wheel(wheelUnits(e.deltaY, e.deltaMode));
     },
-    false,
+    { passive: false },
   );
-  on(canvas, 'contextmenu', (e: Event) => e.preventDefault(), false);
+  on(canvas, 'contextmenu', (e: Event) => e.preventDefault(), { passive: false });
   on(win, 'blur', leave);
   on(win, 'pagehide', leave);
   on(doc, 'visibilitychange', () => {
