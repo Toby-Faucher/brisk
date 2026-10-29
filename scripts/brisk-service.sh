@@ -20,10 +20,11 @@ SB=${BRISK_SB:-$src/scripts/sunshine-brisk.sh}
 SERVE=(tailscale serve --bg --https=8443 http://127.0.0.1:8443)
 SERVE_OFF=(tailscale serve --https=8443 off)
 USAGE="usage: $0 install|update|status|logs|link|uninstall|serve-on|serve-off|sunshine-permanent|doctor"
+# shellcheck disable=SC2034 # read by die in brisk-common.sh
 ME=brisk-service
 # shellcheck source=scripts/brisk-common.sh
 . "$src/scripts/brisk-common.sh"
-mkdir -p -m 700 "$RUN"
+mkdir -p "$RUN" && chmod 700 "$RUN"
 
 # Self.DNSName only (peers have one too): the first DNSName inside the top-level "Self" block,
 # trailing dot dropped, and only if it looks like a host name.

@@ -14,6 +14,7 @@ APP=${BRISK_APP:-870779643}
 PORT=8443 # hostd binds 127.0.0.1:8443
 RUN=${XDG_RUNTIME_DIR:?}/brisk
 SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
+# shellcheck disable=SC2034 # read by die in brisk-common.sh
 ME=brisk-up
 # shellcheck source=scripts/brisk-common.sh
 . "$here/scripts/brisk-common.sh"
@@ -34,7 +35,7 @@ if [ -n "${BRISK_LISTEN:-}" ]; then
 elif [ -z "$(tailscale ip -4 2>/dev/null | head -1 || true)" ]; then
   echo "brisk-up: tailscale has no IPv4 now; streams fail until it is up (hostd asks at each start)" >&2
 fi
-mkdir -p -m 700 "$RUN"
+mkdir -p "$RUN" && chmod 700 "$RUN"
 
 # shellcheck source=scripts/capped.sh
 . "$here/scripts/capped.sh"

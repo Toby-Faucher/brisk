@@ -140,11 +140,11 @@ done
 SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "idle install of the changed unit failed"
 touch -d '1 hour ago' "$U"; : > "$L"; SVC_ACTIVE=0 S_START=$(date +%s) "$B" install >/dev/null 2>&1
 grep -q restart "$L" && fail "restarted a service started after its unit"
-touch "$U"; s=$(( $(date +%s) - 60 ))
-: > "$L"; out=$(SVC_ACTIVE=0 S_START=$s STREAM=live "$B" install 2>&1) && fail "pending unit: install over a live stream succeeded"
+touch "$U"; started=$(( $(date +%s) - 60 ))
+: > "$L"; out=$(SVC_ACTIVE=0 S_START=$started STREAM=live "$B" install 2>&1) && fail "pending unit: install over a live stream succeeded"
 grep -q 'unit installed but service not restarted yet' <<<"$out" || fail "pending unit not reported: $out"
 grep -qE 'daemon-reload|restart' "$L" && fail "pending unit: manager touched over a live stream"
-: > "$L"; out=$(SVC_ACTIVE=0 S_START=$s "$B" install 2>&1) || fail "pending unit, idle: install failed: $out"
+: > "$L"; out=$(SVC_ACTIVE=0 S_START=$started "$B" install 2>&1) || fail "pending unit, idle: install failed: $out"
 grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "pending unit not restarted when idle"
 echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 STREAM=down FORCE=1 "$B" install >/dev/null 2>&1; grep -q '^systemctl --user restart' "$L" || fail "FORCE=1 did not restart"
@@ -283,16 +283,17 @@ for e in SS_ADDR=0.0.0.0:8443 "SS_ADDR=127.0.0.1:8443 [::]:8443" "SS_ADDR=127.0.
 done
 grep -q '0123456789abcdef0123' "$L" && fail "the secret appeared on a command line"
 # the secret header files are per run and removed afterwards
-ls "$t/run/brisk" | grep -q -e '^hdr\.' -e '^doctor\.hdr$' && fail "secret header file left: $(ls "$t/run/brisk")"
+hdrs() { compgen -G "$t/run/brisk/hdr.*" >/dev/null; }
+{ hdrs || [ -e "$t/run/brisk/doctor.hdr" ]; } && fail "secret header file left: $(ls "$t/run/brisk")"
 # ... also when the run is killed mid-request (a curl that hangs on /api/stream)
 mkdir -p "$t/hang"
 printf '#!/bin/bash\ncase "$*" in *api/stream*) exec sleep 5;; esac\nexec "%s" "$@"\n' "$t/bin/curl" > "$t/hang/curl"; chmod +x "$t/hang/curl"
 PATH=$t/hang:$PATH SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 & k=$!
-for _ in $(seq 50); do ls "$t/run/brisk" | grep -q '^hdr\.' && break; sleep 0.1; done
-ls "$t/run/brisk" | grep -q '^hdr\.' || fail "no header file seen during the hanging request"
+for _ in $(seq 50); do hdrs && break; sleep 0.1; done
+hdrs || fail "no header file seen during the hanging request"
 # TERM to the script and to the $(restart_ok) subshell that holds the file
 pkill -TERM -P "$k"; kill -TERM "$k"; wait "$k"
-sleep 0.5; ls "$t/run/brisk" | grep -q '^hdr\.' && fail "header file left after TERM: $(ls "$t/run/brisk")"
+sleep 0.5; hdrs && fail "header file left after TERM: $(ls "$t/run/brisk")"
 rm -f "$SV"/*.new # the killed update had staged binaries
 # usage
 "$B" --help | grep -q '^usage: ' || fail "--help"

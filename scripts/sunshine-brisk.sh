@@ -4,6 +4,7 @@
 # Env overrides (used by the test): SB_PREFIX SB_SRC SB_DROPIN_DIR SB_SERVERINFO SB_PATCH
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck disable=SC2034 # read by die in brisk-common.sh
 ME=sunshine-brisk
 # shellcheck source=scripts/brisk-common.sh
 . "$here/scripts/brisk-common.sh"
@@ -21,7 +22,7 @@ require_idle() {
     [ "${FORCE:-}" = 1 ] || [ "${ALLOW_DEAD:-}" = 1 ] || die "serverinfo gives no answer (busy unknown); set FORCE=1 to restart anyway"
     echo "serverinfo: no answer (restart allowed)"; return
   fi
-  sunshine_idle "$s" && return
+  serverinfo_idle "$s" && return
   if [ "${BUSY_OK:-}" = 1 ]; then echo "WARNING: Sunshine is busy; FORCE=1 will END THE LIVE STREAM" >&2; return; fi
   die "Sunshine is busy (not FREE / currentgame != 0); refusing to restart"
 }

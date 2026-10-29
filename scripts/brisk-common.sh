@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared by brisk-up.sh, brisk-down.sh, brisk-service.sh and sunshine-brisk.sh (sourced). The
 # caller sets ME (its name in messages) and, for the pid and restart helpers, RUN.
 # Env overrides (tests): SB_PREFIX SB_DROPIN_DIR SB_SERVERINFO BRISK_RESTART_GAP.
@@ -6,17 +7,16 @@ SUNSHINE_PREFIX=${SB_PREFIX:-$HOME/.local/opt/sunshine-brisk}
 SUNSHINE_BIN=$SUNSHINE_PREFIX/bin/sunshine
 SERVERINFO_URL=${SB_SERVERINFO:-http://127.0.0.1:47989/serverinfo}
 DROPIN_DIR=${SB_DROPIN_DIR:-$HOME/.config/systemd/user/$SUNSHINE_UNIT.d}
+# shellcheck disable=SC2034 # used by the scripts that source this
 BRISK_DROPIN=$DROPIN_DIR/brisk.conf
 
 die() { echo "${ME:-brisk}: $*" >&2; exit 1; }
 
 serverinfo() { curl -s --max-time 5 "$SERVERINFO_URL" || true; }
 # Idle = FREE and no app running (currentgame 0). No answer counts as not idle.
-# $1: serverinfo text already fetched (default: ask now).
-sunshine_idle() {
-  local s=${1-$(serverinfo)}
-  [[ $s == *'<state>SUNSHINE_SERVER_FREE</state>'* && $s == *'<currentgame>0</currentgame>'* ]]
-}
+# serverinfo_idle takes serverinfo text already fetched; sunshine_idle asks now.
+serverinfo_idle() { [[ $1 == *'<state>SUNSHINE_SERVER_FREE</state>'* && $1 == *'<currentgame>0</currentgame>'* ]]; }
+sunshine_idle() { serverinfo_idle "$(serverinfo)"; }
 # The Sunshine unit runs the patched binary.
 brisk_running() { systemctl --user show -p ExecStart "$SUNSHINE_UNIT" 2>/dev/null | grep -qF "path=$SUNSHINE_BIN"; }
 
