@@ -128,10 +128,7 @@ fn parse(raw: &[u8]) -> Result<Parts, RtspError> {
     if raw.len() > MAX_MESSAGE {
         return Err(RtspError::TooLarge);
     }
-    let end = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or(RtspError::Truncated)?;
+    let end = crate::http::header_end(raw).ok_or(RtspError::Truncated)?;
     let head = std::str::from_utf8(&raw[..end]).map_err(|_| RtspError::Malformed)?;
     let mut lines = head.split("\r\n");
     let mut start = lines.next().unwrap_or("").splitn(3, ' ');

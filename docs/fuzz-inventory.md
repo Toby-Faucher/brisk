@@ -35,7 +35,7 @@ Coverage after this pass: **P** = property test (file::test), **F** = cargo-fuzz
 | `tap::parse_tap` | brisk-proto src/tap.rs | tap SEQPACKET messages | local | round trip, magic, header_len, size, recorded | P tap_parser_takes_any_bytes, tap_header_round_trip; F tap |
 | `TapConn::recv` / peek header | brisk-client src/tap.rs | tap socket (MSG_TRUNC length) | local | tests/tap_live.rs | via parse_tap (P/F above); the socket code itself is not fuzzable sans-io |
 | `find_sps` (private) | brisk-client src/tap.rs | Annex B from the tap | local | table test + indirect (tap_live) | P tap::tests::find_sps_takes_any_annexb |
-| `session::body` (private) | brisk-client src/session.rs | raw HTTP/1.1 responses from Sunshine | net before pairing, host after | body_checks_length_and_status | P session::tests::body_takes_any_response |
+| `http::response_body` | brisk-proto src/http.rs (called by brisk-client src/session.rs) | raw HTTP/1.1 responses from Sunshine | net before pairing, host after | response_body_checks_length_and_status | P http::tests::response_body_takes_any_response; F http_sdp |
 | `rtsp::parse_session_url` | brisk-client src/rtsp.rs | `sessionUrl0` from the launch XML | host | none | P rtsp::tests::parse_session_url_takes_any_text; F http_sdp |
 | `StreamRx::on_datagram` (video/audio counters) | brisk-client src/stream.rs | media UDP datagrams | net | tests/live_stream.rs | via parse_video_packet, FrameAssembler, AudioFec (P/F above) |
 | `input::parse`, `InputQueue::on_message_from` and the queue | brisk-bridge src/input.rs | browser input frames (len u8 + body) | peer | tests/input_map.rs, gamepad.rs | P prop_input (4 tests: any body, round trip, bounded queue + release-all, final state wins); F bridge_input |
