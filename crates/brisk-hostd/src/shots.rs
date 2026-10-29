@@ -87,19 +87,22 @@ pub fn save(
             .create(p)
     };
     mk(&d).map_err(|_| Fail::Io)?;
-    // Two shots in one millisecond: take the next free number.
+    // Two shots in one millisecond: write_new never replaces a file, so the loser takes the next number.
     let mut ms = now_ms;
-    while d.join(format!("{ms}.png")).exists() {
-        ms += 1;
-    }
-    let name = format!("{ms}.png");
-    if let Err(e) = crate::fsutil::write_atomic(&d.join(&name), png) {
-        return Err(if e.raw_os_error() == Some(libc::ENOSPC) {
-            Fail::NoSpace
-        } else {
-            Fail::Io
-        });
-    }
+    let name = loop {
+        let name = format!("{ms}.png");
+        match crate::fsutil::write_new(&d.join(&name), png) {
+            Ok(()) => break name,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => ms += 1,
+            Err(e) => {
+                return Err(if e.raw_os_error() == Some(libc::ENOSPC) {
+                    Fail::NoSpace
+                } else {
+                    Fail::Io
+                });
+            }
+        }
+    };
     // Drop the oldest beyond the cap.
     let all = names(&d);
     for old in all.iter().skip(MAX_PER_GAME) {
@@ -222,6 +225,19 @@ mod tests {
         ] {
             assert!(valid_name(bad).is_none(), "{bad}");
         }
+    }
+
+    #[test]
+    fn same_millisecond_saves_from_threads_all_land() {
+        let t = tempfile::tempdir().unwrap();
+        std::thread::scope(|sc| {
+            for _ in 0..8 {
+                sc.spawn(|| {
+                    save(t.path(), "steam:1", &png(2, 2), 1_730_000_000_000, None).unwrap()
+                });
+            }
+        });
+        assert_eq!(list(t.path(), "steam:1").len(), 8);
     }
 
     #[test]
