@@ -42,8 +42,8 @@ export const TYPE_LABEL: Record<ControllerType, string> = { classic: 'Classic Co
 export const idsOf = (t: ControllerType) => CONTROL_SETS[t].map((c) => c.id);
 export const controlOf = (t: ControllerType, id: string) => CONTROL_SETS[t].find((c) => c.id === id)!;
 
-export const BUTTON_NAMES: readonly PadName[] = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu', 'Guide'];
-export const STICK_NAMES: readonly PadName[] = ['Left stick', 'Right stick'];
+const BUTTON_NAMES: readonly PadName[] = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu', 'Guide'];
+const STICK_NAMES: readonly PadName[] = ['Left stick', 'Right stick'];
 /** Which pad names a control of this kind takes (the allowlist hostd checks too). */
 export const ACCEPTS: Record<Kind, readonly string[]> = { button: BUTTON_NAMES, stick: STICK_NAMES, dpad: ['D-pad'] };
 export const accepts = (t: ControllerType, id: string, pad: string) => ACCEPTS[controlOf(t, id).kind].includes(pad);

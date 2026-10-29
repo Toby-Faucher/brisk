@@ -26,7 +26,7 @@ export const FLUSH_MS = 8;
 /// While a key or button is held, a heartbeat goes out this often; the bridge releases
 /// everything after 1 s without any frame (a lost network or a frozen tab).
 export const HEARTBEAT_MS = 250;
-export const KIND_HEARTBEAT = 0x14;
+const KIND_HEARTBEAT = 0x14;
 export const heartbeatFrame = Uint8Array.of(1, KIND_HEARTBEAT);
 /// Moonlight's one wheel notch.
 const WHEEL_DELTA = 120;

@@ -110,7 +110,7 @@ export function watchNotes(win: EventTarget = window): () => void {
   return () => win.removeEventListener('focus', onFocus);
 }
 
-export const NOTE_SAVE_MS = 800;
+const NOTE_SAVE_MS = 800;
 /** Per game; no entry means nothing to report. `refused`: hostd said no (400/409/413), `msg` says why; not retried. */
 export type SaveState = { st: 'saving' | 'saved' | 'failed' | 'refused'; msg?: string };
 

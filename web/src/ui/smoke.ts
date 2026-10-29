@@ -13,7 +13,7 @@ export function smokeGL<T extends GLish>(canvas: { getContext(id: string, opts?:
 export const smokeAllowed = (path: string, shaders: boolean, idle = false) => shaders && (idle || !/^\/stream(\/|$)/.test(path));
 
 /** '#5eead4' -> linear RGB for the shader. */
-export function accentLinear(hex: string): [number, number, number] {
+function accentLinear(hex: string): [number, number, number] {
   const v = parseInt(hex.slice(1), 16);
   return [16, 8, 0].map((s) => (((v >> s) & 255) / 255) ** 2.2) as [number, number, number];
 }

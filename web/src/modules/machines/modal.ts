@@ -18,7 +18,7 @@ const byName = (a: Game, b: Game) => a.name.localeCompare(b.name);
 /** Widths where three columns, then two (pane 3 slides over pane 2), then one pane at a time stop fitting. */
 export const layoutFor = (w: number): Layout => (w >= 1100 ? 'wide' : w >= 700 ? 'medium' : 'narrow');
 
-export const isSortKey = (v: unknown): v is SortKey => SORTS.some((s) => s.key === v);
+const isSortKey = (v: unknown): v is SortKey => SORTS.some((s) => s.key === v);
 
 /** Installed games matching `q` (case-insensitive substring), best first for `sort`; ties fall back to name. Never mutates. */
 export function listGames(games: Game[], q: string, sort: SortKey): Game[] {

@@ -71,7 +71,7 @@ export function statRows(info: Pick<HostInfo, 'gpuTempC' | 'cpuTempC'>, vm: Vm |
 }
 
 /** Pointer travel (px) up to which a press and release on a card still count as a click, not a drag or a text selection. */
-export const TAP_PX = 5;
+const TAP_PX = 5;
 export const isTap = (down: { x: number; y: number } | null, up: { x: number; y: number }, max = TAP_PX) =>
   !!down && Math.hypot(up.x - down.x, up.y - down.y) <= max;
 

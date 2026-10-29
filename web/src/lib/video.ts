@@ -6,7 +6,7 @@
 // meaningful here; neither is compared with this machine's clock.
 
 export const HEADER_LEN = 21;
-export const FLAG_IDR = 1;
+const FLAG_IDR = 1;
 /// Bridge message: "my decoder needs a key frame".
 export const MSG_WANT_KEY = 1;
 /// Bridge message: "send a key frame when you can" (replay buffer, every 10 s while on). The

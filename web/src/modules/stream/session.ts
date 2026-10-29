@@ -13,7 +13,7 @@ export type SessionState = 'connecting' | 'live' | 'reconnecting' | 'failed';
 /** Waits before each reconnect try after a drop; then 'failed'. */
 export const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 /** A connection that lived this long earns a fresh set of retries (a flapping one does not). */
-export const STABLE_MS = 5000;
+const STABLE_MS = 5000;
 const SAMPLE_MS = 500;
 const POINTS = 60;
 

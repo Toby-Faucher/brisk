@@ -22,7 +22,7 @@ export type ClipDeps = {
 
 const size = (c: Clip) => (c.kind === 'text' ? new TextEncoder().encode(c.text).length : c.blob.size);
 
-export async function clipHash(c: Clip): Promise<string> {
+async function clipHash(c: Clip): Promise<string> {
   const data = c.kind === 'text' ? new TextEncoder().encode(c.text) : new Uint8Array(await c.blob.arrayBuffer());
   const buf = new Uint8Array(data.length + 1);
   buf[0] = c.kind === 'text' ? 0 : 1;
