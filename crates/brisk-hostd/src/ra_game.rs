@@ -98,6 +98,11 @@ pub fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
                 "{c:?} images cannot be hashed yet, use an ISO or WBFS file"
             )));
         }
+        (System::ThreeDS, _) => {
+            return Err(HashErr::Unsupported(
+                "RetroAchievements has no 3DS support in Azahar".into(),
+            ));
+        }
         _ => {
             return Err(HashErr::Unsupported(
                 "RetroAchievements here covers Wii and GameCube".into(),

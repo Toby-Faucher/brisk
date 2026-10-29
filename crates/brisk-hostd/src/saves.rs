@@ -135,6 +135,63 @@ fn region_tags(disc: &str) -> &'static [&'static str] {
     }
 }
 
+/// The 16-hex-digit program id inside an Azahar game id (`emu:azahar:0004000000123400`), uppercase.
+pub fn program_id(id: &crate::game::GameId) -> Option<String> {
+    let (e, tail) = id.emu_parts()?;
+    (e == "azahar" && tail.len() == 16 && tail.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| tail.to_ascii_uppercase())
+}
+
+/// Azahar saves of one game, from its user dir (paths from the Azahar source: `savestate.cpp`,
+/// `archive_source_sd_savedata.cpp`, `common_paths.h`; the fixed all-zero id0/id1 folders are its own constants).
+/// - save states: `states/<PROGRAMID>.<NN>.cst`, NN 00..10 (`SaveStateSlotCount` is 11).
+/// - SD save data: `sdmc/Nintendo 3DS/<32 zeros>/<32 zeros>/title/<hi:08x>/<lo:08x>/data/00000001`.
+///
+/// shortcut: extra data (`extdata/`, keyed by an id that is not the program id) is not listed.
+/// `None` when the user dir does not exist. The save-data row reuses `Kind::NandSave` so the web
+/// app (typed on the Dolphin kinds) still renders it; its label says "Wii save" until the UI learns 3DS.
+pub fn list_azahar(user: &Path, program_id: &str) -> Option<Vec<SaveItem>> {
+    plain(user).or_else(|| std::fs::metadata(user).ok())?;
+    let mut out = vec![];
+    let pid = program_id.to_ascii_uppercase();
+    if pid.len() != 16 || !pid.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Some(out);
+    }
+    if dir_under(user, &["states"]).is_some() {
+        for n in 0..11 {
+            let name = format!("{pid}.{n:02}.cst");
+            out.extend(file_item(user, &["states", &name], Kind::State, None));
+        }
+    }
+    let zeros = "0".repeat(32);
+    let (hi, lo) = (pid[..8].to_ascii_lowercase(), pid[8..].to_ascii_lowercase());
+    let parts = [
+        "sdmc",
+        "Nintendo 3DS",
+        &zeros,
+        &zeros,
+        "title",
+        &hi,
+        &lo,
+        "data",
+        "00000001",
+    ];
+    if let Some(dir) = dir_under(user, &parts) {
+        let (files, size, modified) = walk(&dir);
+        out.push(SaveItem {
+            kind: Kind::NandSave,
+            name: "3DS save data".into(),
+            path: rel(&parts),
+            size,
+            modified,
+            files: Some(files),
+            note: None,
+        });
+    }
+    out.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.path.cmp(&b.path)));
+    Some(out)
+}
+
 /// The saves of one game; `None` when the user dir does not exist. Newest first.
 pub fn list(user: &Path, disc: &str, system: &str) -> Option<Vec<SaveItem>> {
     plain(user).or_else(|| std::fs::metadata(user).ok())?;
@@ -229,6 +286,34 @@ mod tests {
         assert_eq!(disc_id(&g("emu:dolphin:rmce01")).as_deref(), Some("RMCE01"));
         assert_eq!(disc_id(&g("emu:dolphin:mario-kart-wii")), None);
         assert_eq!(disc_id(&g("emu:dolphin:rmce0")), None);
+    }
+
+    #[test]
+    fn azahar_states_and_sd_save() {
+        let t = tempfile::tempdir().unwrap();
+        let z = "0".repeat(32);
+        put(t.path(), "states/0004000000123400.00.cst", 10);
+        put(t.path(), "states/0004000000123400.10.cst", 20);
+        put(t.path(), "states/0004000000123400.11.cst", 5);
+        put(t.path(), "states/0004000000999999.01.cst", 5);
+        let d = format!("sdmc/Nintendo 3DS/{z}/{z}/title/00040000/00123400/data/00000001");
+        put(t.path(), &format!("{d}/a.bin"), 100);
+        put(t.path(), &format!("{d}/sub/b.bin"), 50);
+        let v = list_azahar(t.path(), "0004000000123400").unwrap();
+        assert_eq!(v.iter().filter(|i| i.kind == Kind::State).count(), 2);
+        let n = v.iter().find(|i| i.kind == Kind::NandSave).unwrap();
+        assert_eq!(
+            (n.files, n.size, n.path.as_str()),
+            (Some(2), 150, d.as_str())
+        );
+        assert!(list_azahar(&t.path().join("none"), "0004000000123400").is_none());
+        assert!(list_azahar(t.path(), "zz").unwrap().is_empty());
+        let g = |s: &str| crate::game::GameId::parse(s).unwrap();
+        assert_eq!(
+            program_id(&g("emu:azahar:000400000012340a")).as_deref(),
+            Some("000400000012340A")
+        );
+        assert_eq!(program_id(&g("emu:dolphin:000400000012340a")), None);
     }
 
     #[test]

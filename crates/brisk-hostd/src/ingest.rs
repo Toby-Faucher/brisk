@@ -19,6 +19,7 @@ use std::rc::Rc;
 /// Extensions a scan or an upload looks at.
 pub const EXTS: &[&str] = &[
     "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "gen",
+    "3ds", "cci", "cxi", "cia", "3dsx", "app",
 ];
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;
@@ -41,6 +42,7 @@ pub fn folder(s: System) -> &'static str {
         System::GB => "gb",
         System::GBC => "gbc",
         System::GBA => "gba",
+        System::ThreeDS => "3ds",
         System::Unknown => "unknown",
     }
 }
@@ -134,7 +136,9 @@ pub fn scan(root: &Path) -> Scan {
 /// hex of discid's plain SHA-1, which is NOT the RetroAchievements hash.
 pub fn key(i: &Identity) -> Option<String> {
     match (&i.game_id, &i.hash) {
-        (Some(g), _) if matches!(i.system, System::Wii | System::GameCube) => Some(g.clone()),
+        (Some(g), _) if matches!(i.system, System::Wii | System::GameCube | System::ThreeDS) => {
+            Some(g.clone())
+        }
         (_, Some(h)) => Some(h.chars().take(16).collect()),
         _ => None,
     }
