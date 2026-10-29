@@ -1,6 +1,6 @@
 #!/bin/bash
 # Stubbed test for sunshine-brisk.sh; touches nothing real (systemctl/sudoq/systemd-run/cmake/curl are stubs).
-set -u
+set -eu # setup: any failure stops the test (set +e below, before the cases)
 s=${SB_SCRIPT:-$(cd "$(dirname "$0")" && pwd)/sunshine-brisk.sh} # SB_SCRIPT: run against another copy
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 mkdir -p "$t/bin" "$t/p/bin" "$t/src/.git"; : > "$t/p/bin/sunshine"; chmod +x "$t/p/bin/sunshine"
@@ -12,7 +12,7 @@ printf '#!/bin/sh\necho "git $*" >> "%s/log"\ncase "$*" in *describe*) echo "${G
 printf '#!/bin/sh\necho "systemctl $*" >> "%s/log"\n[ "$2" = is-active ] && [ -n "${INACTIVE:-}" ] && exit 1\n[ "$2" = show ] && echo "ExecStart={ path=${EXEC:-/usr/bin/sunshine} ; }"\nexit 0\n' "$t" > "$t/bin/systemctl"
 # systemd-run: fails if SR_FAIL, else reports the enforced memory.max
 printf '#!/bin/sh\necho "systemd-run $*" >> "%s/log"\n[ -z "${SR_FAIL:-}" ] || exit 1\nwhile [ "$1" != -c3 ]; do shift; done; shift\n[ "$1" = sh ] && { echo "${MEMMAX:-9663676416}"; exit 0; }\nexec "$@"\n' "$t" > "$t/bin/systemd-run"
-printf '#!/bin/sh\nif [ -n "${NOANSWER:-}" ]; then exit 0; fi\necho "<currentgame>0</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>"\n' > "$t/bin/curl"
+printf '#!/bin/sh\nif [ -n "${NOANSWER:-}" ]; then exit 0; fi\necho "<currentgame>${GAME:-0}</currentgame><state>${STATE:-SUNSHINE_SERVER_FREE}</state>"\n' > "$t/bin/curl"
 printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/ionice"; printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/nice"
 chmod +x "$t"/bin/*
 export PATH=$t/bin:$PATH SB_PREFIX=$t/p SB_DROPIN_DIR=$t/d SB_SRC=$t/src
@@ -21,10 +21,11 @@ no() { ! grep -q -- "$1" "$2" || { echo "FAIL: unexpected '$1'"; cat "$2"; exit 
 fail() { echo "FAIL: $*"; exit 1; }
 L=$t/log; B=$t/p/bin/sunshine
 CAP="-p MemoryHigh=7G -p MemoryMax=9G -p MemorySwapMax=0 -p CPUWeight=20 nice -n 19 ionice -c3"
+set +e
 
 $s install >/dev/null
 chk "sudoq run --why KMS capture caps for patched sunshine -- setcap cap_sys_admin,cap_sys_nice+p $B" $L
-printf '[Service]\nExecStart=\nExecStart=%%h/.local/opt/sunshine-brisk/bin/sunshine\n' | cmp - "$t/d/brisk.conf" || fail dropin
+printf '[Service]\nExecStart=\nExecStart=%s\n' "$B" | cmp - "$t/d/brisk.conf" || fail dropin
 
 # enable: reset-failed precedes restart
 : > $L; $s enable >/dev/null
@@ -32,7 +33,8 @@ chk "systemctl --user restart app-dev.lizardbyte.app.Sunshine.service" $L
 [ "$(grep -n reset-failed $L | head -1 | cut -d: -f1)" -lt "$(grep -n ' restart ' $L | head -1 | cut -d: -f1)" ] || fail "reset-failed must precede restart"
 # enable no-op when already running brisk
 : > $L; EXEC=$B $s enable >/dev/null; no restart $L
-# busy / no answer refuse
+# busy / an app still running / no answer refuse
+: > $L; GAME=5 $s enable >/dev/null 2>&1 && fail "currentgame != 0 should refuse"; no restart $L
 : > $L; STATE=SUNSHINE_SERVER_BUSY $s enable >/dev/null 2>&1 && fail "busy should refuse"; no restart $L
 : > $L; NOANSWER=1 $s enable >/dev/null 2>&1 && fail "no answer should refuse"; no restart $L
 : > $L; NOANSWER=1 FORCE=1 $s enable >/dev/null 2>&1 || fail "FORCE=1 should allow"; chk " restart " $L
@@ -68,4 +70,6 @@ HOME=$t/h SB_SRC=$t/h/recon-pinned/Sunshine $s build >/dev/null 2>&1 && fail "bu
 no "apply" $L; no "^cmake" $L
 # bad SB_JOBS must not break rollback/status
 SB_JOBS=zz $s status >/dev/null || fail "status broke on bad SB_JOBS"
+$s --help | grep -q '^usage: ' || fail "--help"
+$s bogus >/dev/null 2>&1 && fail "unknown command accepted"
 echo "all passed"

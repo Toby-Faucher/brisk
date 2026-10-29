@@ -2,7 +2,7 @@
 # Stubbed test of brisk-service.sh; touches nothing real (systemctl, tailscale, loginctl, ss, curl,
 # journalctl, cargo, npm, systemd-run and sunshine-brisk.sh are stubs; HOME, XDG_RUNTIME_DIR and
 # the checkout are temp dirs).
-set -u
+set -eu # setup: any failure stops the test (set +e below, before the cases)
 s=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 mkdir -p "$t/bin" "$t/home/.config/brisk/tls" "$t/run" "$t/d" "$t/root/target/release" "$t/root/web/src" "$t/root/web/dist" "$t/root/web/node_modules"
@@ -19,6 +19,8 @@ stub systemctl 'case $2 in
   is-enabled) exit "${SVC_ENABLED:-1}";;
   enable|start|restart) [ "$2" = enable ] && [ "$3" != --now ] && exit 0
     if [ -n "${ACT_FAIL:-}" ] && ! grep -q "# old" "$U"; then echo 3 > "$T/state"; exit 1; fi
+    # a hostd binary built "bad" (see the cargo stub) never comes up
+    if grep -qs bad "$BRISK_ROOT/target/service/bin/brisk-hostd"; then echo 3 > "$T/state"; exit 1; fi
     echo 0 > "$T/state";;
 esac; exit 0'
 stub tailscale 'case "$*" in
@@ -67,7 +69,8 @@ stub curl 'a="$*"; case $a in
   *x-brisk-csrf*) echo -n 403;;
   *https*) echo -n "${CODE_NOAUTH:-403}";;
 esac'
-stub cargo ''
+# cargo build writes CARGO_OUT (default "good") into both release binaries
+stub cargo '[ "$1" = build ] || exit 0; for b in brisk-hostd brisk-bridge; do echo "${CARGO_OUT:-good}" > "$BRISK_ROOT/target/release/$b"; done'
 # RUSTUP=fail exits 1; RUSTUP=hang outlives BRISK_RUSTUP_TIMEOUT
 stub rustup 'case ${RUSTUP:-ok} in fail) exit 1;; hang) exec sleep 30;; esac; exit 0'
 # npm run build -- --outDir X: makes X/index.html like astro would
@@ -81,11 +84,18 @@ printf '#!/bin/sh\necho "systemd-run $*" >> "%s"\nwhile [ "$1" != -c3 ]; do shif
 printf '#!/bin/sh\necho "sb $*" >> "%s"\n' "$L" > "$t/sb"
 chmod +x "$t"/bin/* "$t/sb"
 export T=$t PATH=$t/bin:$PATH HOME=$t/home XDG_RUNTIME_DIR=$t/run BRISK_SB=$t/sb SB_DROPIN_DIR=$t/d BRISK_ROOT=$t/root
-export U=$t/home/.config/systemd/user/brisk-hostd.service BRISK_UP_WAIT=2
+export U=$t/home/.config/systemd/user/brisk-hostd.service BRISK_UP_WAIT=2 BRISK_RESTART_GAP=1
+SB_BIN=$t/home/.local/opt/sunshine-brisk/bin/sunshine # the patched Sunshine binary brisk_running looks for
+SV=$t/root/target/service/bin
 # Each run starts with no started/failed state (see the systemctl stub).
 printf '#!/bin/sh\nrm -f "%s/state"\nexec "%s" "$@"\n' "$t" "$s/brisk-service.sh" > "$t/bsvc"; chmod +x "$t/bsvc"
 B=$t/bsvc
 echo 0123456789abcdef0123456789abcdef > "$t/home/.config/brisk/secret"
+# A fake brisk-up hostd: a sleep whose process name is brisk-hostd.
+ln -s "$(command -v sleep)" "$t/brisk-hostd"
+set +e
+# Waits until the fake hostd has exec'd (its name is the parent's until then).
+execed() { for _ in $(seq 100); do [ "$(cat "/proc/$1/comm" 2>/dev/null)" = brisk-hostd ] && return; sleep 0.05; done; echo "fake hostd $1 did not start"; }
 bad=0
 fail() { echo "FAIL: $*"; sed 's/^/    log: /' "$L" 2>/dev/null; bad=1; }
 
@@ -95,13 +105,23 @@ grep -q 'enable' "$L" && fail "enabled without binaries"
 touch "$t/root/target/release/brisk-hostd" "$t/root/target/release/brisk-bridge" "$t/root/web/dist/index.html"
 chmod +x "$t/root/target/release/"*
 : > "$L"; "$B" install >/dev/null 2>&1 || fail "install failed"
-grep -q "^ExecStart=$t/root/target/release/brisk-hostd $t/root/web/dist$" "$U" || fail "unit ExecStart: $(grep ExecStart "$U")"
-grep -q "^Environment=BRISK_BRIDGE_BIN=$t/root/target/release/brisk-bridge$" "$U" || fail "unit bridge path"
+grep -q "^ExecStart=$SV/brisk-hostd $t/root/web/dist$" "$U" || fail "unit ExecStart: $(grep ExecStart "$U")"
+grep -q "^Environment=BRISK_BRIDGE_BIN=$SV/brisk-bridge$" "$U" || fail "unit bridge path"
+grep -q '@ROOT@' "$U" && fail "unit kept an @ROOT@ token"
+[ -x "$SV/brisk-hostd" ] && [ -x "$SV/brisk-bridge" ] || fail "install did not copy the binaries into target/service/bin"
 grep -q '^systemctl --user daemon-reload' "$L" && grep -q '^systemctl --user enable --now brisk-hostd.service' "$L" || fail "no daemon-reload + enable --now"
 grep -q sudo "$L" && fail "install used sudo"
 out=$("$B" install 2>&1) || fail "second install failed"; grep -q 'unit unchanged' <<<"$out" || fail "second install rewrote the unit"
-mkdir -p "$t/run/brisk"; sleep 30 & p=$!; echo $p > "$t/run/brisk/bridge.pid"
-"$B" install >/dev/null 2>&1 && fail "install beside a brisk-up hostd"; kill $p; rm -f "$t/run/brisk/bridge.pid"
+mkdir -p "$t/run/brisk"; "$t/brisk-hostd" 30 & p=$!; execed $p; echo $p > "$t/run/brisk/hostd.pid"
+"$B" install >/dev/null 2>&1 && fail "install beside a brisk-up hostd"; kill $p
+# a stale hostd.pid (the pid now belongs to another process) does not block install
+sleep 30 & p=$!; echo $p > "$t/run/brisk/hostd.pid"
+"$B" install >/dev/null 2>&1 || fail "install refused over a stale hostd.pid"; kill $p; rm -f "$t/run/brisk/hostd.pid"
+# a checkout path with # and & in it is written into the unit as is
+r2="$t/r#1&2"; cp -a "$t/root" "$r2"; rm -rf "$r2/target/service"
+BRISK_ROOT=$r2 BRISK_UNIT_DIR=$t/u2 "$B" install >/dev/null 2>&1 || fail "install from a path with # and &"
+grep -qxF "ExecStart=$r2/target/service/bin/brisk-hostd $r2/web/dist" "$t/u2/brisk-hostd.service" \
+  || fail "path with # and &: $(grep ExecStart "$t/u2/brisk-hostd.service")"
 # a changed unit is applied to a running service by a restart (enable --now would not)
 echo '# old' >> "$U"
 : > "$L"; SVC_ACTIVE=0 "$B" install >/dev/null 2>&1 || fail "install over a changed unit failed"
@@ -171,14 +191,22 @@ grep -h '^tailscale serve' "$L" | grep -v -e 'status --json' -e '--https=8443' &
 # sunshine-permanent: refuses on a busy host, else install + enable through sunshine-brisk.sh.
 : > "$L"; STATE=SUNSHINE_SERVER_BUSY GAME=1 "$B" sunshine-permanent >/dev/null 2>&1 && fail "permanent on a busy host"
 grep -q '^sb ' "$L" && fail "sunshine-brisk ran on a busy host"
+# FREE but an app still running: enable would refuse, so install must not write the drop-in
+: > "$L"; GAME=1 "$B" sunshine-permanent >/dev/null 2>&1 && fail "permanent with an app running"
+grep -q '^sb ' "$L" && fail "sunshine-brisk ran with an app running"
 : > "$L"; "$B" sunshine-permanent >/dev/null 2>&1 || fail "sunshine-permanent failed"
 grep -q '^sb install' "$L" && grep -q '^sb enable' "$L" || fail "no sb install + enable"
-: > "$t/d/brisk.conf"; : > "$L"; EXEC=/x/sunshine-brisk/bin/sunshine "$B" sunshine-permanent >/dev/null 2>&1
+: > "$t/d/brisk.conf"; : > "$L"; EXEC=$SB_BIN "$B" sunshine-permanent >/dev/null 2>&1
 grep -q '^sb ' "$L" && fail "sunshine-permanent not idempotent"
 
 # update: capped build, web build only when sources changed, no restart over a live stream.
 touch -d '2 days ago' "$t/root/web/src/a.ts" "$t/root/web/package-lock.json"; touch "$t/root/web/dist/index.html" "$t/root/web/node_modules/.package-lock.json"
-: > "$L"; SVC_ACTIVE=0 STREAM=live "$B" update >/dev/null 2>&1 && fail "update restarted over a live stream"
+sv0=$(cat "$SV/brisk-hostd")
+: > "$L"; CARGO_OUT=v2 SVC_ACTIVE=0 STREAM=live "$B" update >/dev/null 2>&1 && fail "update restarted over a live stream"
+# ... and the running hostd's binaries stay as they were (the new ones were built, not swapped in)
+[ "$(cat "$t/root/target/release/brisk-hostd")" = v2 ] || fail "cargo stub did not build"
+[ "$(cat "$SV/brisk-hostd")" = "$sv0" ] && [ "$(cat "$SV/brisk-bridge")" = "$sv0" ] || fail "refused update replaced the service binaries"
+ls "$SV"/*.new >/dev/null 2>&1 && fail "refused update left staged binaries: $(ls "$SV")"
 grep -q 'ionice -c3 cargo build --release -q -p brisk-hostd -p brisk-bridge' "$L" || fail "build not capped"
 grep -q '^rustup toolchain install --no-self-update' "$L" || fail "toolchain not installed before the build"
 grep -q '^npm' "$L" && fail "npm ran with web/dist up to date"
@@ -190,6 +218,8 @@ for m in fail hang; do
 done
 : > "$L"; SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 || fail "update failed"
 grep -q '^systemctl --user restart brisk-hostd.service' "$L" || fail "update did not restart"
+[ "$(cat "$SV/brisk-hostd")" = good ] && [ "$(cat "$SV/brisk-bridge")" = good ] || fail "update did not put the new binaries in place"
+[ "$(cat "$SV/brisk-hostd.prev")" = "$sv0" ] || fail "update kept no previous hostd for a rollback"
 touch "$t/root/web/src/a.ts"; touch -d '1 day ago' "$t/root/web/dist/index.html"
 : > "$L"; "$B" update >/dev/null 2>&1; grep -q '^npm run build -- --outDir '"$t/root/web/dist."'[0-9]' "$L" || fail "web not rebuilt into a new dir after a source change"
 grep -q '^npm ci' "$L" && fail "npm ci with node_modules up to date"
@@ -228,10 +258,19 @@ DATE_STAMP=19990101-000000 "$B" update >/dev/null 2>&1 || fail "update with an o
 src_changed; DATE_STAMP=19990101-000000 "$B" update >/dev/null 2>&1 || fail "update with a taken stamp"
 cur=$(readlink "$w/dist"); [ -f "$w/$cur/index.html" ] && [ "$cur" != dist.19990101-000000 ] || fail "taken stamp: dist -> $cur"
 [ "$(builds | wc -l)" = 2 ] || fail "taken stamp: $(builds)"
+# a new build that does not come up: the previous binaries and page go back, restarted and checked
+src_changed; prev=$(readlink "$w/dist"); : > "$L"
+out=$(CARGO_OUT=bad SVC_ACTIVE=0 "$B" update 2>&1) && fail "update succeeded with a hostd that does not come up"
+grep -q 'previous build restored (see' <<<"$out" || fail "rollback: no restore message: $out"
+[ "$(cat "$SV/brisk-hostd")" = good ] && [ "$(cat "$SV/brisk-bridge")" = good ] || fail "rollback: previous binaries not restored"
+[ "$(readlink "$w/dist")" = "$prev" ] || fail "rollback: page not restored ($(readlink "$w/dist"), want $prev)"
+[ "$(grep -c '^systemctl --user restart brisk-hostd' "$L")" = 2 ] || fail "rollback: want two restarts"
+awk '/^systemctl --user restart / { n++ } n == 2 && /^curl .*8443\/api\/host/ { c = 1 } END { exit !c }' "$L" \
+  || fail "rollback: restored build not checked after its restart"
 
 # doctor: all good, then each broken check fails it.
 : > "$t/home/.config/brisk/tls/bridge.pem"
-dr() { env SVC_ACTIVE=0 SVC_ENABLED=0 TS_MAPPED=1 EXEC=/x/sunshine-brisk/bin/sunshine "$@" "$B" doctor 2>&1; }
+dr() { env SVC_ACTIVE=0 SVC_ENABLED=0 TS_MAPPED=1 EXEC="$SB_BIN" "$@" "$B" doctor 2>&1; }
 out=$(dr) || fail "doctor failed on a good setup: $out"
 [ -n "${VERBOSE:-}" ] && echo "$out"
 out=$(dr "SS_ADDR=127.0.0.1:8443 100.64.0.9%tailscale0:443 100.64.0.9%tailscale0:8443 [fd7a:115c:a1e0::9]%tailscale0:8443") \
@@ -243,6 +282,9 @@ for e in SS_ADDR=0.0.0.0:8443 "SS_ADDR=127.0.0.1:8443 [::]:8443" "SS_ADDR=127.0.
   grep -q '^FAIL' <<<"$out" || fail "no FAIL line with $e"
 done
 grep -q '0123456789abcdef0123' "$L" && fail "the secret appeared on a command line"
+# usage
+"$B" --help | grep -q '^usage: ' || fail "--help"
+"$B" bogus >/dev/null 2>&1 && fail "unknown command accepted"
 
 # link, logs, uninstall.
 "$B" link | grep -qx $'page\thttps://bawn.tail0.ts.net:8443/?s=0123456789abcdef0123456789abcdef' || fail "link"

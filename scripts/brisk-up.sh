@@ -4,8 +4,8 @@
 # http://127.0.0.1:8443 (reach it from the laptop over `ssh -L`), starts/stops the bridge itself
 # and makes/renews the bridge certificate at each stream start. Ctrl-C is passed on to hostd
 # as SIGTERM; hostd stops its bridge first (the bridge cancels its Sunshine session); then run
-# scripts/brisk-down.sh to put stock Sunshine back. ($RUN/bridge.pid holds hostd's pid.)
-# Usage: scripts/brisk-up.sh
+# scripts/brisk-down.sh to put stock Sunshine back. ($RUN/hostd.pid holds hostd's pid.)
+# Usage: scripts/brisk-up.sh   (no arguments; -h prints this usage)
 # Env: BRISK_APP (default 870779643, Desktop), BRISK_LISTEN (the bridge's address; default: hostd
 #      asks `tailscale ip -4` at each stream start), plus hostd's own BRISK_* (data dir, steam dir ...).
 set -euo pipefail
@@ -14,7 +14,11 @@ APP=${BRISK_APP:-870779643}
 PORT=8443 # hostd binds 127.0.0.1:8443
 RUN=${XDG_RUNTIME_DIR:?}/brisk
 SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
-die() { echo "brisk-up: $*" >&2; exit 1; }
+ME=brisk-up
+# shellcheck source=scripts/brisk-common.sh
+. "$here/scripts/brisk-common.sh"
+case ${1:-} in -h|--help) echo "usage: $0   (no arguments; settings come from the environment, see the top of this script)"; exit 0 ;; esac
+[ $# -eq 0 ] || die "usage: $0 (no arguments; settings come from the environment)"
 # Two hostds would fight over 8443 (and the service's restart would undo brisk-down).
 if systemctl --user is-active -q brisk-hostd.service 2>/dev/null; then
   die "hostd is running as a service: use scripts/brisk-service.sh (status, logs, link)"
@@ -32,12 +36,10 @@ elif [ -z "$(tailscale ip -4 2>/dev/null | head -1 || true)" ]; then
 fi
 mkdir -p -m 700 "$RUN"
 
-# shellcheck source=scripts/brisk-common.sh
-. "$here/scripts/brisk-common.sh"
 # shellcheck source=scripts/capped.sh
 . "$here/scripts/capped.sh"
 
-[ -f "$RUN/bridge.pid" ] && kill -0 "$(cat "$RUN/bridge.pid")" 2>/dev/null && die "hostd is already running (pid $(cat "$RUN/bridge.pid"))"
+pid_alive "$RUN/hostd.pid" && die "hostd is already running (pid $(cat "$RUN/hostd.pid"))"
 
 # 1. Build (no-op when up to date) inside the same memory-capped scope as the Sunshine build.
 cap_check || die "no enforced resource cap; not building"
@@ -49,27 +51,30 @@ fi
 # 2. (The bridge certificate is hostd's job now: ~/.config/brisk/tls, ECDSA P-256, 13 days,
 #    renewed at a stream start once older than 10 days; see ensure_cert in stream.rs.)
 
-# 3. Patched Sunshine (sunshine-brisk.sh refuses unless serverinfo is FREE).
+# 3. Patched Sunshine (sunshine-brisk.sh refuses unless Sunshine is idle: FREE, no app running).
 if ! brisk_running; then
-  # Before install: a busy host must not get a drop-in that a later restart would pick up.
-  serverinfo_free || die "Sunshine is not FREE (busy or not answering); nothing changed"
+  # Before install, with the same test enable uses: a busy host must not get a drop-in that a
+  # later restart would pick up.
+  sunshine_idle || die "Sunshine is not idle (busy, an app running, or not answering); nothing changed"
   "$SB" install # writes the drop-in; the caps are already set (no root)
   spaced_restart "$SB" enable
-  for _ in $(seq 30); do serverinfo_free && break; sleep 1; done
+  for _ in $(seq 30); do sunshine_idle && break; sleep 1; done
 fi
-serverinfo_free || die "Sunshine is not FREE (busy or not answering); not launching"
+sunshine_idle || die "Sunshine is not idle (busy, an app running, or not answering); not launching"
 
 # 4. hostd (page + API on loopback; the page line with the secret comes from hostd itself).
-trap bridge_exit_cleanup EXIT
+trap hostd_exit_cleanup EXIT
 cat <<MSG
-On the laptop:   ssh -N -L $PORT:127.0.0.1:$PORT $(hostname)
+On the laptop:   ssh -N -L $PORT:127.0.0.1:$PORT ${HOSTNAME:-$(uname -n)}
 Then open the "page" URL below in Chrome (the secret is kept in ~/.config/brisk/secret, so the link
 stays the same across runs). Stop: Ctrl-C here (sent on as SIGTERM), then scripts/brisk-down.sh.
 MSG
+# Background jobs of a script start with SIGINT ignored, so pass Ctrl-C (and TERM/HUP) on as
+# SIGTERM. Set before the launch, so a Ctrl-C right after it still reaches hostd; $! is unset
+# until then (no other background job here), and a Ctrl-C before the launch just ends the script.
+trap 'if [ -n "${!:-}" ]; then kill -TERM "$!" 2>/dev/null; else exit 130; fi' INT TERM HUP
 BRISK_APP=$APP BRISK_BRIDGE_BIN=$here/target/release/brisk-bridge \
   "$here/target/release/brisk-hostd" "$here/web/dist" &
-echo $! > "$RUN/bridge.pid"
-# Background jobs of a script start with SIGINT ignored, so pass Ctrl-C (and TERM/HUP) on as SIGTERM.
-trap 'kill -TERM "$(cat "$RUN/bridge.pid")" 2>/dev/null' INT TERM HUP
-wait "$(cat "$RUN/bridge.pid")" || true
-wait "$(cat "$RUN/bridge.pid")" 2>/dev/null || true
+echo $! > "$RUN/hostd.pid"
+wait $! || true
+wait $! 2>/dev/null || true
