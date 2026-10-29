@@ -167,19 +167,27 @@ pub(crate) async fn host_info() -> HostInfo {
 /// Host facts from `src`, with `runner` for tailscale.
 async fn host_info_with(src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
     let job = tokio::task::spawn_blocking(move || runner.run("tailscale", &["status", "--json"]));
+    // hwmon, uptime and the hostname are file reads: off the runtime thread, next to the tailscale job.
+    let (hwmon, uptime) = (src.hwmon.clone(), src.uptime.clone());
+    let files = tokio::task::spawn_blocking(move || {
+        let uptime_s = std::fs::read_to_string(uptime)
+            .ok()
+            .and_then(|s| s.split('.').next()?.parse().ok());
+        (hostname(), read_temps(&hwmon), uptime_s)
+    });
     let ts = tokio::time::timeout(src.tailscale_timeout, job)
         .await
         .ok()
         .and_then(Result::ok)
         .flatten();
     let (path, relay) = ts.as_deref().map_or((None, None), parse_tailscale);
-    let (cpu, gpu) = read_temps(&src.hwmon);
+    let (name, (cpu, gpu), uptime_s) = files
+        .await
+        .unwrap_or_else(|_| ("unknown".into(), (None, None), None));
     HostInfo {
-        name: hostname(),
+        name,
         sunshine: sunshine_state(&src.sunshine_addr).await,
-        uptime_s: std::fs::read_to_string(&src.uptime)
-            .ok()
-            .and_then(|s| s.split('.').next()?.parse().ok()),
+        uptime_s,
         cpu_temp_c: cpu,
         gpu_temp_c: gpu,
         path,

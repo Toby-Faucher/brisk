@@ -350,10 +350,13 @@ pub(crate) async fn store_get(cfg: &Config, path_query: &str) -> Result<serde_js
 }
 
 async fn json_get(url: String) -> Result<serde_json::Value, String> {
-    let body = tokio::task::spawn_blocking(move || https_get(&url))
-        .await
-        .map_err(|_| "request task failed")??;
-    serde_json::from_slice(&body).map_err(|_| "response is not JSON".into())
+    // The parse runs in the blocking task too; an owned-games list can be large.
+    tokio::task::spawn_blocking(move || {
+        let body = https_get(&url)?;
+        serde_json::from_slice(&body).map_err(|_| "response is not JSON".to_string())
+    })
+    .await
+    .map_err(|_| "request task failed")?
 }
 
 /// One GetOwnedGames call.
@@ -507,7 +510,7 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
         .filter(|g| g.installed)
         .filter_map(|g| Some((g.appid, g.last_played?)))
         .collect();
-    let (running, counts, updated, controls) = tokio::task::spawn_blocking(move || {
+    let (running, counts, updated, controls, emu) = tokio::task::spawn_blocking(move || {
         let counts: HashMap<u32, (u32, u32)> = ids
             .into_iter()
             .filter_map(|id| Some((id, crate::steam_info::ach_counts(&cfg2, id)?)))
@@ -522,11 +525,19 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
             .filter(|&(id, lp)| crate::steam_info::cached_updated(&cfg2, id, lp, t))
             .map(|(id, _)| id)
             .collect();
+        // The emulator half does a /proc scan and a stat per game, so it shares this blocking section.
+        let mut emu = crate::emu::games(
+            &crate::emu::load(&cfg2.data_dir),
+            &cfg2.proc_dir,
+            &cfg2.data_dir,
+        );
+        crate::ra_game::caps_on(&cfg2, &mut emu);
         (
             crate::running::running_appids(&proc),
             counts,
             updated,
             controls,
+            emu,
         )
     })
     .await
@@ -542,12 +553,6 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
             (g.ach_unlocked, g.ach_total) = (Some(u), Some(t));
         }
     }
-    let mut emu = crate::emu::games(
-        &crate::emu::load(&cfg.data_dir),
-        &cfg.proc_dir,
-        &cfg.data_dir,
-    );
-    crate::ra_game::caps_on(cfg, &mut emu);
     games.extend(emu);
     games.sort_by(|a, b| {
         b.last_played
