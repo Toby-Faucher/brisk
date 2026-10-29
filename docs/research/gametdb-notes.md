@@ -59,7 +59,8 @@ the real file size against the 64 MiB cap.
 1. The disc id comes from `discid.rs` (other branch).
 2. On first sight of a game, call `gametdb::lookup(cfg, id)` on a blocking thread. `NotFound` or any error
    means "no card art yet", not a failure. Weak or missing matches go to the confirm queue.
-3. Store the entry's title, year and publisher in the per-game cache. Call `fetch_art` for `Cover` (and
-   `Disc` or `CoverFull` if the UI wants it) and serve the returned path from the existing art route.
+3. Store the entry's title, year and publisher in the per-game cache. The art download code (`fetch_art`, region
+   folders, `BRISK_GAMETDB_ART_BASE`) was removed unused in the round 3 cleanup; it is in git history
+   (before the commit "hostd: drop the unused GameTDB art download").
 4. Add the GameTDB credit link to the UI credits.
-5. `docs/env.md` lists `BRISK_GAMETDB_XML_URL` and `BRISK_GAMETDB_ART_BASE`.
+5. `docs/env.md` lists `BRISK_GAMETDB_XML_URL`.

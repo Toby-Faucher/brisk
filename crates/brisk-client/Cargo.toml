@@ -8,6 +8,7 @@ publish = false
 brisk-proto.workspace = true
 bytes.workspace = true
 rand_core.workspace = true
+tempfile.workspace = true
 rsa.workspace = true
 # SO_PEERCRED, CLOCK_MONOTONIC, uid and MSG_TRUNC for the tap socket.
 rustix = { workspace = true, features = ["net", "time", "process"] }
@@ -26,7 +27,6 @@ aes.workspace = true
 aes-gcm.workspace = true
 # Independent ENet 1.3 implementation (pure Rust) for the fake Sunshine control server in tests.
 rusty_enet = "=0.4.0"
-tempfile.workspace = true
 
 [lints]
 workspace = true

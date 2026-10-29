@@ -1,32 +1,17 @@
 //! Small file helpers shared by the stores.
 
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 /// Atomic 0600 write: a fsynced temp file in the same directory, then rename.
-/// Creates the directory. Each call gets its own temp name, so two writers of one file never
-/// share a temp file; a failure removes the temp file.
+/// Creates the directory. Each call gets its own temp file, and a failure removes it.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let tmp = dir.join(format!(".{name}.{}.{n}.tmp", std::process::id()));
     std::fs::create_dir_all(dir)?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)?;
-    let r = f
-        .write_all(bytes)
-        .and_then(|_| f.sync_all())
-        .and_then(|_| std::fs::rename(&tmp, path));
-    if r.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    r
+    let mut f = tempfile::NamedTempFile::new_in(dir)?; // mode 0600
+    f.write_all(bytes)?;
+    f.as_file().sync_all()?;
+    f.persist(path).map(drop).map_err(|e| e.error)
 }
 
 /// Removes the entry with the lowest key from `by` until `m` holds at most `max`.
