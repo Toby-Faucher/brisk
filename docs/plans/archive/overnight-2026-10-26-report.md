@@ -1,6 +1,8 @@
 # Overnight report, 2026-10-26
 
-Everything in docs/plans/2026-10-25-queue-tooling-hardening.md is built, reviewed, merged to local main (no remote, nothing pushed) and deployed (`scripts/brisk-service.sh update` at 05:20, doctor all OK, stream idle).
+Done and merged. Archived; kept for history.
+
+Everything in docs/plans/archive/2026-10-25-queue-tooling-hardening.md is built, reviewed, merged to local main (no remote, nothing pushed) and deployed (`scripts/brisk-service.sh update` at 05:20, doctor all OK, stream idle).
 
 ## Shipped
 - Pass 1 tooling: FE (exact pins, bumps, TS 6 + svelte-check, axe, variable Geist, Vitest browser mode) and Rust (toolchain 1.99.1, edition 2024 + lints, nextest, cargo-deny, stricter purity script).

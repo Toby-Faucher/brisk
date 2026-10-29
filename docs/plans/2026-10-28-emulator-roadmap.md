@@ -1,6 +1,6 @@
 # Emulator games as first-class games (roadmap)
 
-Status: plan, no product code yet. Branch `emulator-launch`.
+Status: Stages 1 to 6 are merged to main through `stack-all` (PR #13); `2026-10-28-stack-all.md` lists what each brought.
 
 Toby tested the first emulator version (Dolphin, hand-written `emulators.json`, Play and Controls in the
 detail panel). His verdict: it "feels very patched in", and he wants the emulator process "as clean as a
