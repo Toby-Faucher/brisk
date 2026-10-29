@@ -476,6 +476,16 @@ impl Art {
         let old = dir_of(&cfg.data_dir, &format!("{key}.old"));
         let _ = std::fs::remove_dir_all(&old);
         let moved = std::fs::rename(&dir, &old).is_ok();
+        // art a person picked survives the refresh; run() then leaves those kinds alone
+        for (kind, sel) in read_sel(&old).into_iter().filter(|(_, v)| v.user) {
+            if let Some(p) = find_img(&old, &kind)
+                && let Ok(b) = std::fs::read(&p)
+                && let Some(n) = p.file_name()
+                && write_private(&dir.join(n), &b).is_ok()
+            {
+                set_sel(&dir, &kind, sel);
+            }
+        }
         let o = self.run(cfg, id, title, system, disc);
         if moved {
             if matches!(o, Outcome::Failed(_) | Outcome::Halted | Outcome::Off) {
@@ -654,6 +664,26 @@ impl Art {
     }
 }
 
+/// Which image each kind shows (`selected.json`): its SteamGridDB id, and whether a person chose it.
+/// Refreshes keep the chosen ones.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct Sel {
+    id: u64,
+    #[serde(default)]
+    user: bool,
+}
+const SEL: &str = "selected.json";
+
+fn read_sel(dir: &Path) -> BTreeMap<String, Sel> {
+    read_json(&dir.join(SEL)).unwrap_or_default()
+}
+
+fn set_sel(dir: &Path, kind: &str, s: Sel) {
+    let mut m = read_sel(dir);
+    m.insert(kind.into(), s);
+    let _ = write_json(&dir.join(SEL), &m);
+}
+
 fn fetch_all(sgc: &SgdbConfig, key: &str, dir: &Path, cand: &Candidate) -> Result<(), sg::Error> {
     for (name, kind) in KINDS {
         if find_img(dir, name).is_some() {
@@ -667,7 +697,17 @@ fn fetch_all(sgc: &SgdbConfig, key: &str, dir: &Path, cand: &Candidate) -> Resul
         let dest = sg::art_dir(sgc, key)?.join(name);
         for c in list.iter().take(TRIES) {
             match sg::fetch_art(sgc, &c.url, &dest) {
-                Ok(_) => break,
+                Ok(_) => {
+                    set_sel(
+                        dir,
+                        name,
+                        Sel {
+                            id: c.id,
+                            user: false,
+                        },
+                    );
+                    break;
+                }
                 Err(e) if transient(&e) => return Err(e),
                 Err(_) => {}
             }
@@ -837,6 +877,264 @@ pub async fn refresh(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Strin
         axum::Json(serde_json::json!({ "state": "searching" })),
     )
         .into_response()
+}
+
+// ---- the picker: what is available, thumbnails, choose one ----
+
+const PICK_KINDS: usize = 3; // cover, hero, logo (not icon)
+const CANDS_TTL: Duration = Duration::from_secs(600);
+
+fn pick_kind(kind: &str) -> Option<(&'static str, ArtKind)> {
+    KINDS
+        .iter()
+        .take(PICK_KINDS)
+        .find(|(k, _)| *k == kind)
+        .copied()
+}
+
+fn cands_path(dir: &Path, kind: &str) -> PathBuf {
+    dir.join(format!("cands-{kind}.json"))
+}
+
+/// The stored list for a kind: every thumbnail and pick is looked up here by id, so a client
+/// never names a URL. Reused for ten minutes, so opening the picker twice asks SteamGridDB once.
+#[allow(clippy::result_large_err)]
+fn candidates_for(
+    sgc: &SgdbConfig,
+    key: &str,
+    dir: &Path,
+    kind: &str,
+    k: ArtKind,
+) -> Result<Vec<sg::ArtChoice>, Response> {
+    let p = cands_path(dir, kind);
+    let fresh = std::fs::metadata(&p)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|a| a < CANDS_TTL);
+    if fresh && let Some(l) = read_json::<Vec<sg::ArtChoice>>(&p) {
+        return Ok(l);
+    }
+    let Some(m) = sg::load_match(sgc, key) else {
+        return Err(err(StatusCode::NOT_FOUND, "no game match yet"));
+    };
+    let l = sg::art_for(sgc, m.id, k).map_err(|e| {
+        if transient(&e) {
+            err(StatusCode::BAD_GATEWAY, "SteamGridDB did not answer")
+        } else {
+            err(StatusCode::BAD_GATEWAY, "SteamGridDB refused the request")
+        }
+    })?;
+    let _ = write_json(&p, &l);
+    Ok(l)
+}
+
+/// `kind` and `limit` from the query string; kind is checked against the three words later.
+fn cand_query(q: Option<&str>) -> (String, Option<usize>) {
+    let get = |k: &str| {
+        q.unwrap_or("")
+            .split('&')
+            .find_map(|p| p.strip_prefix(k)?.strip_prefix('='))
+    };
+    (
+        get("kind").unwrap_or("").to_string(),
+        get("limit").and_then(|v| v.parse().ok()),
+    )
+}
+
+/// GET /api/art/{id}/candidates?kind=cover|hero|logo&limit=24: the images available, best first,
+/// with the one in use. `thumb` is a path on this machine.
+#[allow(clippy::result_large_err)]
+pub async fn candidates(
+    State(s): State<Arc<AppState>>,
+    UrlPath(raw): UrlPath<String>,
+    axum::extract::RawQuery(q): axum::extract::RawQuery,
+) -> Response {
+    let id = match emu_id(&s, &raw) {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let (qkind, qlimit) = cand_query(q.as_deref());
+    let Some((kind, k)) = pick_kind(&qkind) else {
+        return err(StatusCode::BAD_REQUEST, "kind is cover, hero or logo");
+    };
+    let st = s.clone();
+    let limit = qlimit.unwrap_or(24).clamp(1, 48);
+    let r = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, Response> {
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
+            err(
+                StatusCode::CONFLICT,
+                "Art needs a SteamGridDB key on the machine",
+            )
+        })?;
+        if let Some(wait) = st.art.halted() {
+            let mut r = err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SteamGridDB refused the last request",
+            );
+            r.headers_mut()
+                .insert(header::RETRY_AFTER, header::HeaderValue::from(wait));
+            return Err(r);
+        }
+        let key = key_of(&id).ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad game id"))?;
+        let dir = dir_of(&st.cfg.data_dir, &key);
+        let list = candidates_for(&sgc, &key, &dir, kind, k)?;
+        let sel = read_sel(&dir).remove(kind);
+        let seg = id.as_str().replace(':', "%3A");
+        let items: Vec<_> = list
+            .iter()
+            .take(limit)
+            .map(|c| serde_json::json!({
+                "id": c.id, "width": c.width, "height": c.height, "style": c.style,
+                "thumb": c.thumb.as_ref().map(|_| format!("/api/art/{seg}/thumb/{kind}/{}", c.id)),
+            }))
+            .collect();
+        Ok(serde_json::json!({
+            "kind": kind, "total": list.len(), "items": items,
+            "current": sel.as_ref().map(|v| v.id), "chosen": sel.is_some_and(|v| v.user),
+        }))
+    })
+    .await;
+    match r {
+        Ok(Ok(v)) => axum::Json(v).into_response(),
+        Ok(Err(r)) => r,
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "task failed"),
+    }
+}
+
+/// GET /api/art/{id}/thumb/{kind}/{n}: a preview from the stored list, fetched once from an
+/// allowed SteamGridDB host (same checks as the art itself) and cached on this machine.
+#[allow(clippy::result_large_err)]
+pub async fn thumb(
+    State(s): State<Arc<AppState>>,
+    UrlPath((raw, kind, n)): UrlPath<(String, String, u64)>,
+) -> Response {
+    let Some(id) = GameId::parse(&raw).filter(|i| i.source() == crate::game::Source::Emu) else {
+        return err(StatusCode::BAD_REQUEST, "bad game id");
+    };
+    let Some((kind, _)) = pick_kind(&kind) else {
+        return err(StatusCode::NOT_FOUND, "no such art");
+    };
+    let st = s.clone();
+    let r = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, Response> {
+        let nf = || err(StatusCode::NOT_FOUND, "no such thumbnail");
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
+            err(
+                StatusCode::CONFLICT,
+                "Art needs a SteamGridDB key on the machine",
+            )
+        })?;
+        let key = key_of(&id).ok_or_else(nf)?;
+        let dir = dir_of(&st.cfg.data_dir, &key);
+        let url = read_json::<Vec<sg::ArtChoice>>(&cands_path(&dir, kind))
+            .and_then(|l| l.into_iter().find(|c| c.id == n))
+            .and_then(|c| c.thumb)
+            .ok_or_else(nf)?;
+        let dest = sg::art_dir(&sgc, &key)
+            .map_err(|_| nf())?
+            .join("thumbs")
+            .join(format!("{kind}-{n}"));
+        let p = sg::fetch_art(&sgc, &url, &dest)
+            .map_err(|_| err(StatusCode::BAD_GATEWAY, "could not load the thumbnail"))?;
+        std::fs::read(p).map_err(|_| nf())
+    })
+    .await;
+    match r {
+        Ok(Ok(body)) => match image_type(&body) {
+            Some(ct) => (
+                [
+                    (header::CONTENT_TYPE, ct),
+                    (header::CACHE_CONTROL, "private, max-age=86400"),
+                ],
+                body,
+            )
+                .into_response(),
+            None => err(StatusCode::BAD_GATEWAY, "not an image"),
+        },
+        Ok(Err(r)) => r,
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "task failed"),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PickBody {
+    kind: String,
+    image_id: u64,
+}
+
+/// POST /api/art/{id}/pick `{"kind":"cover","imageId":n}`: downloads that image (from the stored
+/// list) and uses it for the game. Later refreshes keep it.
+#[allow(clippy::result_large_err)]
+pub async fn pick(
+    State(s): State<Arc<AppState>>,
+    UrlPath(raw): UrlPath<String>,
+    b: axum::body::Bytes,
+) -> Response {
+    let id = match emu_id(&s, &raw) {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let Ok(body) = serde_json::from_slice::<PickBody>(&b) else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "bad request: send kind and imageId",
+        );
+    };
+    let Some((kind, _)) = pick_kind(&body.kind) else {
+        return err(StatusCode::BAD_REQUEST, "kind is cover, hero or logo");
+    };
+    if s.art.busy(&id) {
+        return err(StatusCode::CONFLICT, "already looking for art");
+    }
+    let st = s.clone();
+    let r = tokio::task::spawn_blocking(move || -> Result<(), Response> {
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
+            err(
+                StatusCode::CONFLICT,
+                "Art needs a SteamGridDB key on the machine",
+            )
+        })?;
+        let key = key_of(&id).ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad game id"))?;
+        let dir = dir_of(&st.cfg.data_dir, &key);
+        let url = read_json::<Vec<sg::ArtChoice>>(&cands_path(&dir, kind))
+            .and_then(|l| l.into_iter().find(|c| c.id == body.image_id))
+            .map(|c| c.url)
+            .ok_or_else(|| err(StatusCode::NOT_FOUND, "not one of the candidates"))?;
+        let tmp = dir.join(format!("pick-{kind}"));
+        for e in sg::EXTS {
+            let _ = std::fs::remove_file(dir.join(format!("pick-{kind}.{e}")));
+        }
+        let got = sg::fetch_art(&sgc, &url, &tmp)
+            .map_err(|_| err(StatusCode::BAD_GATEWAY, "could not download that image"))?;
+        // the new file replaces every extension the old one could have had
+        for e in sg::EXTS {
+            let _ = std::fs::remove_file(dir.join(format!("{kind}.{e}")));
+        }
+        let ext = got.extension().and_then(|e| e.to_str()).unwrap_or("png");
+        std::fs::rename(&got, dir.join(format!("{kind}.{ext}")))
+            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "could not save"))?;
+        set_sel(
+            &dir,
+            kind,
+            Sel {
+                id: body.image_id,
+                user: true,
+            },
+        );
+        let mut meta: Meta = read_json(&dir.join("meta.json")).unwrap_or_default();
+        if !meta.sources.iter().any(|s| s == CREDIT_SGDB) {
+            meta.sources.push(CREDIT_SGDB.into());
+            let _ = write_json(&dir.join("meta.json"), &meta);
+        }
+        Ok(())
+    })
+    .await;
+    match r {
+        Ok(Ok(())) => axum::Json(serde_json::json!({ "state": "done" })).into_response(),
+        Ok(Err(r)) => r,
+        Err(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "task failed"),
+    }
 }
 
 /// GET /api/games/{id}/art/{kind}: a cached image. The id must be a well-formed emulator id and

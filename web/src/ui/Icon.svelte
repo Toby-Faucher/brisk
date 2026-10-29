@@ -25,6 +25,7 @@
     pad: '<path d="M7.5 6h9a5 5 0 0 1 4.9 4l1 5.2a2.6 2.6 0 0 1-4.5 2.2L15.6 15H8.4l-2.3 2.4a2.6 2.6 0 0 1-4.5-2.2l1-5.2A5 5 0 0 1 7.5 6z"/><rect x="5.6" y="9.9" width="4.4" height="1.6" rx=".6" fill="#0b0c0f"/><rect x="7" y="8.5" width="1.6" height="4.4" rx=".6" fill="#0b0c0f"/><circle cx="16.4" cy="9.6" r="1" fill="#0b0c0f"/><circle cx="16.4" cy="12.8" r="1" fill="#0b0c0f"/>',
     shot: '<path d="M9 4.5 7.6 6.5H5A2.5 2.5 0 0 0 2.5 9v8.5A2.5 2.5 0 0 0 5 20h14a2.5 2.5 0 0 0 2.5-2.5V9A2.5 2.5 0 0 0 19 6.5h-2.6L15 4.5z"/><circle cx="12" cy="13" r="3.8" fill="#0b0c0f"/><circle cx="12" cy="13" r="2.2"/>',
     replay: '<path d="M12 3.5a8.5 8.5 0 1 1-8.2 10.7l2.3-.6A6.1 6.1 0 1 0 7.7 7.7L10 10H3.5V3.5l2.5 2.5A8.5 8.5 0 0 1 12 3.5z"/><path d="M10.2 9v6.4l5.3-3.2z"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>',
     power: '<path d="M12 3v8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M7 6.5a8 8 0 1 0 10 0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>',
   };
 </script>

@@ -44,7 +44,6 @@
     <button class="btn ghost" aria-disabled={q} aria-busy={q} onclick={() => askQuit(game)} aria-label={q ? `Quitting ${game.name}` : `Quit ${game.name}`}><QuitLabel busy={q} icon={14} label="Quit" /></button>
   {/if}
   {#if !gameCaps(game).install}<RemoveGame {game} onremoved={() => onremoved?.()} />{/if}
-  <Dialog.Close class="btn ghost close">Close</Dialog.Close>
 </div>
 
 <ArtActions {game} />
@@ -90,7 +89,6 @@
   :global(.gd-d) { color: #c9d1e0; font-size: 13.5px; }
   .upd { margin: 14px 22px 0; font-size: 13px; color: var(--muted); }
   .acts { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 22px 0; }
-  .acts :global(.close) { margin-left: auto; }
   .sec { padding: 14px 22px 0; display: grid; gap: 10px; }
   .ctl { display: flex; gap: 6px; align-items: center; margin: 0; }
   .facts p { margin: 0; }

@@ -1447,6 +1447,12 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(crate::art::answer).layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route("/art/{id}/refresh", post(crate::art::refresh))
+        .route("/art/{id}/candidates", get(crate::art::candidates))
+        .route("/art/{id}/thumb/{kind}/{n}", get(crate::art::thumb))
+        .route(
+            "/art/{id}/pick",
+            post(crate::art::pick).layer(DefaultBodyLimit::max(4 << 10)),
+        )
         .route(
             "/emulators/dolphin/controls/{kind}",
             get(controls_get)
