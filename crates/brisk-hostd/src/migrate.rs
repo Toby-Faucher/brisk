@@ -236,8 +236,10 @@ pub(crate) fn backup_once(path: &Path) -> std::io::Result<()> {
     b.push(BACKUP_SUFFIX);
     let b = std::path::PathBuf::from(b);
     match std::fs::read(path) {
-        Ok(bytes) if !b.exists() => write_atomic(&b, &bytes),
-        Ok(_) => Ok(()),
+        Ok(bytes) => match crate::fsutil::write_new(&b, &bytes) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            r => r,
+        },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }

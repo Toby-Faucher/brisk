@@ -8,8 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -706,13 +705,8 @@ impl Controls {
 
 /// Copies the original once; an existing backup holds the first original and is never touched.
 fn backup_once(dir: &Path, file: &str, bytes: &[u8]) -> std::io::Result<()> {
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(dir.join(backup_name(file)))
-    {
-        Ok(mut f) => f.write_all(bytes).and_then(|_| f.sync_all()),
+    match crate::fsutil::write_new(&dir.join(backup_name(file)), bytes) {
+        Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e),
     }
