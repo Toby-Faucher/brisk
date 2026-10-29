@@ -132,7 +132,7 @@ pub fn page_line(secret: &str, service: bool) -> String {
 }
 
 /// 128 random bits, hex.
-fn new_secret() -> String {
+pub(crate) fn new_secret() -> String {
     let mut s = [0u8; 16];
     OsRng.fill_bytes(&mut s);
     s.iter().map(|b| format!("{b:02x}")).collect()

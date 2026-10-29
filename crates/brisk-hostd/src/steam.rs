@@ -476,11 +476,12 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
         ]
         .iter()
         .any(|p| i.name.starts_with(p));
-        if if owned_available {
+        let skip = if owned_available {
             !by_id.contains_key(&i.appid)
         } else {
             tool
-        } {
+        };
+        if skip {
             continue;
         }
         let g = by_id.entry(i.appid).or_insert_with(|| {

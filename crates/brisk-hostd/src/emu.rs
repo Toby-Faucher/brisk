@@ -202,10 +202,11 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let pending = crate::art::load_pending(data_dir);
     recs.iter()
         .map(|r| {
-            let mut g = Game::steam(r.legacy(), &r.name);
+            let legacy = r.legacy();
+            let mut g = Game::steam(legacy, &r.name);
             g.id = r.id.clone();
             g.source = Source::Emu;
-            g.legacy_id = Some(r.legacy().to_string());
+            g.legacy_id = Some(legacy.to_string());
             g.caps = caps(&r.emulator);
             // Cheap: no I/O. Only Dolphin's layout is known.
             g.caps.saves =

@@ -24,11 +24,14 @@ const CACHE_MAX: usize = 256;
 impl Config {
     /// The RA client settings for this config (key file and base come from `Config`).
     pub fn ra(&self) -> RaConfig {
-        let mut r = RaConfig::from_env(&self.data_dir);
-        r.key_file = self.ra_key_file.clone();
-        r.base = self.ra_base.clone();
-        r.min_interval = self.ra_min_interval;
-        r
+        RaConfig {
+            data_dir: self.data_dir.clone(),
+            key_file: self.ra_key_file.clone(),
+            base: self.ra_base.clone(),
+            hash_ttl: Duration::from_secs(7 * 86400),
+            progress_ttl: Duration::from_secs(300),
+            min_interval: self.ra_min_interval,
+        }
     }
 }
 

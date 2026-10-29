@@ -30,23 +30,6 @@ pub struct RaConfig {
     pub min_interval: Duration,
 }
 
-impl RaConfig {
-    /// `BRISK_RA_BASE` overrides the host (tests point it at a local mock).
-    pub fn from_env(data_dir: &Path) -> Self {
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        Self {
-            data_dir: data_dir.to_path_buf(),
-            key_file: home.join(".config/brisk/retroachievements"),
-            base: std::env::var("BRISK_RA_BASE").unwrap_or_else(|_| DEFAULT_BASE.into()),
-            hash_ttl: Duration::from_secs(7 * 86400),
-            progress_ttl: Duration::from_secs(300),
-            min_interval: Duration::from_secs(1),
-        }
-    }
-}
-
 /// What the UI can show. No variant carries the URL or the key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RaError {
