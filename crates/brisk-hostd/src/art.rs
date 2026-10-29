@@ -9,6 +9,10 @@
 //! task per game). Nothing here runs on a timer or on `/api/games`; that route only reads the cache
 //! (`decorate`). The title comes from the library record; GameTDB only adds details and a better
 //! title when it is configured. Notes: docs/research/sgdb-notes.md.
+#![allow(
+    clippy::result_large_err,
+    reason = "handlers return an axum Response as their error, as axum does"
+)]
 
 use crate::config::Config;
 use crate::game::{Details, Game, GameId};
@@ -713,7 +717,6 @@ fn fetch_all(sgc: &SgdbConfig, key: &str, dir: &Path, cand: &Candidate) -> Resul
 
 // ---- routes ----
 
-#[allow(clippy::result_large_err)]
 fn emu_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
     let id = s
         .parse_id(raw)
@@ -893,7 +896,6 @@ fn cands_path(dir: &Path, kind: &str) -> PathBuf {
 
 /// The stored list for a kind: every thumbnail and pick is looked up here by id, so a client
 /// never names a URL. Reused for ten minutes, so opening the picker twice asks SteamGridDB once.
-#[allow(clippy::result_large_err)]
 fn candidates_for(
     sgc: &SgdbConfig,
     key: &str,
@@ -939,7 +941,6 @@ fn cand_query(q: Option<&str>) -> (String, Option<usize>) {
 
 /// GET /api/art/{id}/candidates?kind=cover|hero|logo&limit=24: the images available, best first,
 /// with the one in use. `thumb` is a path on this machine.
-#[allow(clippy::result_large_err)]
 pub async fn candidates(
     State(s): State<Arc<AppState>>,
     UrlPath(raw): UrlPath<String>,
@@ -999,7 +1000,6 @@ pub async fn candidates(
 
 /// GET /api/art/{id}/thumb/{kind}/{n}: a preview from the stored list, fetched once from an
 /// allowed SteamGridDB host (same checks as the art itself) and cached on this machine.
-#[allow(clippy::result_large_err)]
 pub async fn thumb(
     State(s): State<Arc<AppState>>,
     UrlPath((raw, kind, n)): UrlPath<(String, String, u64)>,
@@ -1060,7 +1060,6 @@ struct PickBody {
 
 /// POST /api/art/{id}/pick `{"kind":"cover","imageId":n}`: downloads that image (from the stored
 /// list) and uses it for the game. Later refreshes keep it.
-#[allow(clippy::result_large_err)]
 pub async fn pick(
     State(s): State<Arc<AppState>>,
     UrlPath(raw): UrlPath<String>,
