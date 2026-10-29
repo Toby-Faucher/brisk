@@ -4,6 +4,7 @@
 use crate::identity::{Identity, ServerCert};
 use crate::recorder::Recorder;
 use crate::rtsp::{LaunchKey, StreamPorts, handshake};
+use crate::stop::Stop;
 use brisk_proto::http::{
     App, LaunchOpts, LaunchReply, MAX_BODY, ServerInfo, cancel_query, check_status, launch_query,
     parse_applist, parse_field, parse_launch, parse_serverinfo,
@@ -312,6 +313,83 @@ impl Session {
             (Ok(_), Err(c)) => Err(c),
             (Err(e), Ok(())) => Err(e),
             (Err(e), Err(c)) => Err(e.then(c)),
+        }
+    }
+
+    /// [`Self::launch_session`] that stops early on `stop`. Until `during` starts (serverinfo, a
+    /// take-over cancel, `/launch`, the RTSP handshake) a request drops the work in progress and
+    /// cancels whatever this call may have started: nothing before `/launch`, the app only if the
+    /// host runs it after an unanswered `/launch`, the session after a confirmed one. The error
+    /// says which. A second request during that cancel returns [`crate::Error::Abandoned`] at
+    /// once.
+    ///
+    /// Once `during` runs, it owns the stop (it gets a clone) and must return soon after a request,
+    /// so it can release what it holds. The final cancel still runs, and a second request still
+    /// cuts it short. Without a request this is exactly `launch_session`.
+    #[expect(clippy::too_many_arguments)]
+    pub async fn launch_session_until<T, F, Fut>(
+        &mut self,
+        stop: &mut Stop,
+        ident: &Identity,
+        server: &ServerCert,
+        app_id: u32,
+        app_version: &str,
+        cfg: &StreamConfig,
+        take_over: bool,
+        during: F,
+    ) -> crate::Result<T>
+    where
+        F: FnOnce(StreamPorts, Stop) -> Fut,
+        Fut: std::future::Future<Output = crate::Result<T>>,
+    {
+        let host = self.host.clone();
+        let abandoned = || {
+            crate::Error::Abandoned(format!(
+                "second stop request: not waiting for the cancel; run `brisk-probe cancel --host {host}` if the session still runs"
+            ))
+        };
+        let (started, during_stop, mut second) =
+            (std::cell::Cell::new(false), stop.clone(), stop.clone());
+        let sig = {
+            let run =
+                self.launch_session(ident, server, app_id, app_version, cfg, take_over, |p| {
+                    started.set(true);
+                    during(p, during_stop)
+                });
+            let mut run = std::pin::pin!(run);
+            let sig = tokio::select! {
+                r = &mut run => return r,
+                sig = stop.requested() => sig,
+            };
+            if started.get() {
+                return tokio::select! {
+                    r = &mut run => r,
+                    _ = second.repeated() => Err(abandoned()),
+                };
+            }
+            sig
+        };
+        tracing::warn!("{sig}: stopping");
+        if !self.launch_sent() {
+            return Err(crate::Error::Session(if take_over {
+                "interrupted before launch; take-over cancel may have been processed".into()
+            } else {
+                "interrupted before launch; nothing cancelled".into()
+            }));
+        }
+        let confirmed = self.launch_confirmed();
+        let cancel = async {
+            match confirmed {
+                true => self.cancel_retry(ident, server).await,
+                false => self.cancel_if_ours(ident, server, app_id).await,
+            }
+        };
+        tokio::select! {
+            c = cancel => {
+                c?;
+                Err(crate::Error::Session(format!("interrupted ({sig}); session cancelled")))
+            }
+            _ = second.repeated() => Err(abandoned()),
         }
     }
 
