@@ -237,13 +237,6 @@ pub(crate) async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo,
 mod tests {
     use super::*;
 
-    fn tmp(tag: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("brisk-ragame-{}-{tag}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
-    }
-
     fn gc(file: &Path, extra: u8) {
         let mut img = vec![0u8; 0x3300];
         img[..6].copy_from_slice(b"GTESTA");
@@ -255,10 +248,11 @@ mod tests {
 
     #[test]
     fn hash_cache_hits_misses_and_follows_mtime() {
-        let d = tmp("cache");
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         let f = d.join("g.iso");
         gc(&f, 0);
-        let a = hash_for(&d, &f).unwrap();
+        let a = hash_for(d, &f).unwrap();
         assert_eq!(
             (a.console, a.hash.len(), a.container.as_str()),
             (16, 32, "iso")
@@ -272,7 +266,7 @@ mod tests {
             .unwrap()
             .set_modified(m)
             .unwrap();
-        assert_eq!(hash_for(&d, &f).unwrap(), a);
+        assert_eq!(hash_for(d, &f).unwrap(), a);
         // Miss: a new mtime recomputes.
         std::fs::File::options()
             .write(true)
@@ -280,8 +274,9 @@ mod tests {
             .unwrap()
             .set_modified(m + Duration::from_secs(5))
             .unwrap();
-        assert_eq!(hash_for(&d, &f).unwrap().hash.len(), 32);
-        assert_ne!(hash_for(&d, &f).unwrap().hash, a.hash);
+        let b = hash_for(d, &f).unwrap();
+        assert_eq!(b.hash.len(), 32);
+        assert_ne!(b.hash, a.hash);
         // The cache file is private and a corrupt one is tolerated.
         let c = d.join("ra/hash-cache.json");
         use std::os::unix::fs::PermissionsExt;
@@ -290,27 +285,26 @@ mod tests {
             0o600
         );
         std::fs::write(&c, "{{{").unwrap();
-        assert!(hash_for(&d, &f).is_ok());
-        std::fs::remove_dir_all(d).ok();
+        assert_eq!(hash_for(d, &f).unwrap(), b);
     }
 
     #[test]
     fn rvz_and_junk_are_unsupported_never_hashed() {
-        let d = tmp("rvz");
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         let f = d.join("g.rvz");
         let mut b = vec![0u8; 0x200];
         b[..4].copy_from_slice(b"RVZ\x01");
         b[0x58..0x5E].copy_from_slice(b"GTESTA");
         b[0x58 + 0x1C..0x58 + 0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
         std::fs::write(&f, b).unwrap();
-        assert!(matches!(hash_for(&d, &f), Err(HashErr::Unsupported(_))));
+        assert!(matches!(hash_for(d, &f), Err(HashErr::Unsupported(_))));
         std::fs::write(&f, b"nothing").unwrap();
-        assert!(matches!(hash_for(&d, &f), Err(HashErr::Unsupported(_))));
+        assert!(matches!(hash_for(d, &f), Err(HashErr::Unsupported(_))));
         assert!(matches!(
-            hash_for(&d, &d.join("missing")),
+            hash_for(d, &d.join("missing")),
             Err(HashErr::Failed(_))
         ));
-        std::fs::remove_dir_all(d).ok();
     }
 
     #[test]

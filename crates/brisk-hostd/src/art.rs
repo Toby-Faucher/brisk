@@ -1208,7 +1208,8 @@ mod tests {
     }
     #[test]
     fn gametdb_uses_the_disc_id_not_a_slug_id() {
-        let d = std::env::temp_dir().join(format!("brisk-art-{}", std::process::id()));
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path().to_path_buf();
         let mut cfg = Config::from_env(d.clone());
         cfg.data_dir = d.clone();
         let art = Art::new(Box::new(|_| None), |_, id| {
@@ -1221,6 +1222,5 @@ mod tests {
         art.run(&cfg, &id, "Mario Kart Wii", Some("wii"), Some("RMCE01"));
         let meta: Meta = read_json(&dir_of(&d, &key_of(&id).unwrap()).join("meta.json")).unwrap();
         assert!(meta.sources.iter().any(|s| s == CREDIT_TDB));
-        let _ = std::fs::remove_dir_all(&d);
     }
 }
