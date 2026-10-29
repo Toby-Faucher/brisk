@@ -1,27 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Game } from '../../state/api';
 import { fmtPlaytime, gamesHeader, layoutFor, listGames, loadSort, saveSort, stepIndex } from './modal';
+import { testGame } from '../../test/game';
 
-const g = (o: Partial<Game>): Game => ({
-  appid: 1,
-  name: 'A',
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  running: false,
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  ...o,
-});
+const g = (o: Partial<Game>): Game => testGame({ appid: 1, name: 'A', ...o });
 const set = [
   g({ appid: 1, name: 'Zed', sizeBytes: 5e9, lastPlayed: 10, playtimeMin: 30 }),
   g({ appid: 2, name: 'alpha', sizeBytes: 2e10, lastPlayed: 50, playtimeMin: 600 }),

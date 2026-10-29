@@ -30,6 +30,8 @@ describe('onStreamRoute', () => {
     expect(onStreamRoute('/stream')).toBe(true);
     expect(onStreamRoute('/stream/')).toBe(true);
     expect(onStreamRoute('/stream-legacy/')).toBe(true);
+    expect(onStreamRoute('/stream-legacy')).toBe(true);
+    expect(onStreamRoute('/library')).toBe(false);
     expect(onStreamRoute('/')).toBe(false);
     expect(onStreamRoute('/library/stream')).toBe(false);
   });

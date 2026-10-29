@@ -6,6 +6,7 @@ import type { Game } from '../state/api';
 import { games } from '../state/games';
 import { notes } from '../state/notes';
 import CommandMenu from './CommandMenu.svelte';
+import { testGame } from '../test/game';
 
 let before: HTMLButtonElement;
 afterEach(() => before?.remove());
@@ -49,38 +50,23 @@ describe('CommandMenu', () => {
 });
 
 describe('CommandMenu tags and games', () => {
-  const game = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
-    appid,
-    name,
-    installed: true,
-    sizeBytes: null,
-    lastPlayed: null,
-    playtimeMin: 100,
-    playtime2wkMin: 0,
-    cover: '',
-    hero: '',
-    logo: '',
-    achUnlocked: null,
-    achTotal: null,
-    updated: false,
-    update: null,
-    controller: null,
-    coop: false,
-    running: false,
-    ...o,
-  });
+  const game = (appid: number, name: string, o: Partial<Game> = {}): Game => testGame({ appid, name, playtimeMin: 100, ...o });
   beforeEach(() => {
     vi.mocked(navigate).mockClear();
     games.set({ games: [game(1, 'Alpha Quest'), game(2, 'Bravo Run', { playtimeMin: 0, coop: true })], ownedAvailable: true });
     notes.set({ tags: { abc: { name: 'Couch night', color: 'red', symbol: 'star', note: '' } }, games: {} });
   });
 
-  it('choosing a tag entry navigates to the filtered Library', async () => {
+  it.each([
+    ['a tag entry navigates to the filtered Library', 'couch', '/library?tag=abc'],
+    ['Surprise me opens the only Backlog game', 'surprise', '/library?open=2'],
+    ['a game opens its panel', 'alpha', '/library?open=1'],
+  ])('choosing %s', async (_, query, url) => {
     await setup();
     await userEvent.keyboard('{Control>}k{/Control}');
-    await userEvent.keyboard('couch');
+    await userEvent.keyboard(query);
     await userEvent.keyboard('{Enter}');
-    expect(navigate).toHaveBeenCalledWith('/library?tag=abc');
+    expect(navigate).toHaveBeenCalledWith(url);
   });
 
   it('smart tags show their count', async () => {
@@ -88,21 +74,5 @@ describe('CommandMenu tags and games', () => {
     await userEvent.keyboard('{Control>}k{/Control}');
     await userEvent.keyboard('smart tag');
     await expect.element(page.getByRole('option', { name: /Smart tag: Co-op \(1\)/ })).toBeInTheDocument();
-  });
-
-  it('Surprise me opens the only Backlog game', async () => {
-    await setup();
-    await userEvent.keyboard('{Control>}k{/Control}');
-    await userEvent.keyboard('surprise');
-    await userEvent.keyboard('{Enter}');
-    expect(navigate).toHaveBeenCalledWith('/library?open=2');
-  });
-
-  it('choosing a game opens its panel', async () => {
-    await setup();
-    await userEvent.keyboard('{Control>}k{/Control}');
-    await userEvent.keyboard('alpha');
-    await userEvent.keyboard('{Enter}');
-    expect(navigate).toHaveBeenCalledWith('/library?open=1');
   });
 });

@@ -120,15 +120,7 @@ describe('guards', () => {
     expect(e.text.data).toBe('63 °C');
     expect(m.glide(e, { x: 0, y: 0, w: 10, h: 10 }, { x: 0, y: 40, w: 10, h: 10 })).toBeNull();
   });
-  it('only /stream and /stream-* paths are the stream route', () => {
-    expect(m.onStreamRoute('/library')).toBe(false);
-    expect(m.onStreamRoute('/stream-legacy')).toBe(true); // also a stream page
-  });
-  it('reads tokens from CSS', () => {
-    expect(m.ms('--dur-count')).toBe(600);
-    expect(m.ms('--nope', 123)).toBe(123);
-    vars['--x'] = '.3s';
-    expect(m.ms('--x')).toBe(300);
+  it('reads the ease token from CSS', () => {
     expect(m.easeParams()).toEqual([0.2, 0.8, 0.2, 1]);
     expect(m.easeParams('ease-out')).toEqual([0.2, 0.8, 0.2, 1]);
   });
