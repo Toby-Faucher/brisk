@@ -194,6 +194,8 @@ async fn corrupt_or_missing_file_starts_empty_and_recovers() {
     std::fs::write(d.path().join("prefs.json"), "{ not json").unwrap();
     let t = t_in(d);
     assert_eq!(t.all().await, json!({}));
+    let kept = t.file().with_file_name("prefs.json.corrupt");
+    assert_eq!(std::fs::read(kept).unwrap(), b"{ not json");
     assert_eq!(
         t.put("9", json!({"preset":"fast","codec":"h264"})).await,
         StatusCode::OK

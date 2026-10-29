@@ -502,8 +502,7 @@ pub fn update<R>(
             keep_bad_copy(data_dir, skipped);
         }
         let json = emu::library_json(&recs).map_err(|e| format!("library save: {e}"))?;
-        crate::fsutil::write_atomic(&p, &json)
-            .map_err(|e| format!("library save: {e}"))?;
+        crate::fsutil::write_atomic(&p, &json).map_err(|e| format!("library save: {e}"))?;
     }
     Ok(r)
 }

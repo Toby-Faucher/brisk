@@ -1,7 +1,7 @@
 //! Playtime for emulator games (roadmap Stage 6a): time counts while the emulator process runs.
 //! `data_dir/playtime.json` is `{"v":1,"games":{"<id>":{"folded":secs,"sessions":[[start,end],..]}}}`
 //! in unix seconds. This file is the pure store; the watcher that feeds it is `watch` below.
-//! Reading is tolerant (missing or corrupt = empty); writing is atomic and 0600.
+//! Reading is tolerant (missing = empty; corrupt = copied to `.corrupt` once, then empty); writing is atomic and 0600.
 
 use crate::emu::{self, Record};
 use serde::{Deserialize, Serialize};
@@ -30,17 +30,14 @@ pub struct Store {
 }
 
 impl Store {
-    /// A missing or corrupt file is an empty store.
+    /// A missing file is an empty store; a corrupt one is copied to `<file>.corrupt` and starts empty.
     pub fn load(data_dir: &Path) -> Store {
-        #[derive(Deserialize)]
+        #[derive(Default, Deserialize)]
         struct File {
             games: BTreeMap<String, Entry>,
         }
-        let games = std::fs::read(data_dir.join(FILE))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<File>(&b).ok())
-            .map_or_else(BTreeMap::new, |f| f.games);
-        Store { games }
+        let f: File = crate::fsutil::read_json_or_default(&data_dir.join(FILE));
+        Store { games: f.games }
     }
 
     /// Writes the store to `data_dir`; a failure is a warning only.
@@ -238,8 +235,13 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let d = tempfile::tempdir().unwrap();
         assert_eq!(Store::load(d.path()), Store::default());
+        assert!(!d.path().join(format!("{FILE}.corrupt")).exists());
         std::fs::write(d.path().join(FILE), "{not json").unwrap();
         assert_eq!(Store::load(d.path()), Store::default());
+        assert_eq!(
+            std::fs::read(d.path().join(format!("{FILE}.corrupt"))).unwrap(),
+            b"{not json"
+        );
         std::fs::write(d.path().join(FILE), r#"{"v":1,"games":{"g":"nope"}}"#).unwrap();
         assert_eq!(Store::load(d.path()), Store::default());
         let mut s = Store::default();

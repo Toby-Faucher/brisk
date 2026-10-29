@@ -1,5 +1,5 @@
 //! Per-game quality in `data_dir/prefs.json` (`{"<game id>": Entry}`, ids like `steam:620`): written whole to a 0600 temp
-//! file and renamed over the old one, read tolerantly (a missing or corrupt file is just empty).
+//! file and renamed over the old one, read tolerantly (a missing file is empty; a corrupt one is copied to `prefs.json.corrupt` once, then reads as empty).
 //! The Home card order and the Machines page order ride along under
 //! `"layout": {"v": 1, "homeOrder": [...], "machinesOrder": [...], "machineColors": {id: "#rrggbb"}}`
 //! (each key absent when empty).
@@ -102,12 +102,10 @@ pub struct Prefs {
 }
 
 impl Prefs {
-    /// The prefs at `path`; a missing or corrupt file is empty.
+    /// The prefs at `path`; a missing file is empty, a corrupt one is copied to `<path>.corrupt` and starts empty.
     pub fn load(path: PathBuf) -> Prefs {
-        let mut raw: BTreeMap<String, serde_json::Value> = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let mut raw: BTreeMap<String, serde_json::Value> =
+            crate::fsutil::read_json_or_default(&path);
         // another version (or garbage) reads as no saved order
         let layout = raw
             .remove(LAYOUT_KEY)

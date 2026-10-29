@@ -1,6 +1,6 @@
 //! `data_dir/launch.json`: launch option defaults, per-game overrides and the "allow custom commands"
-//! switch. Written whole to a 0600 temp file and renamed over the old one; read tolerantly (missing,
-//! oversized or corrupt = empty defaults, bad entries dropped). Nothing read from it is trusted:
+//! switch. Written whole to a 0600 temp file and renamed over the old one; read tolerantly (missing =
+//! empty defaults; oversized or corrupt = copied to `.corrupt` once, then empty defaults; bad entries dropped). Nothing read from it is trusted:
 //! `command_for` validates again at every use, and an invalid result launches with no options.
 
 use crate::game::GameId;
@@ -28,14 +28,23 @@ pub struct Data {
 /// Reads the file; never fails. Entries that do not parse, or whose key is no game id, are dropped.
 pub(crate) fn read_file(path: &Path) -> Data {
     let mut b = Vec::new();
-    let ok = std::fs::File::open(path)
-        .and_then(|f| f.take(MAX_FILE + 1).read_to_end(&mut b))
-        .is_ok_and(|n| n as u64 <= MAX_FILE);
-    let v: Value = if ok {
-        serde_json::from_slice(&b).unwrap_or_default()
-    } else {
-        Value::Null
-    };
+    // A file we cannot use is copied aside first: the next save would overwrite it.
+    let v: Value =
+        match std::fs::File::open(path).and_then(|f| f.take(MAX_FILE + 1).read_to_end(&mut b)) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
+            Err(e) => {
+                crate::fsutil::set_aside(path, &e);
+                Value::Null
+            }
+            Ok(n) if n as u64 > MAX_FILE => {
+                crate::fsutil::set_aside(path, &"file too large");
+                Value::Null
+            }
+            Ok(_) => serde_json::from_slice(&b).unwrap_or_else(|e| {
+                crate::fsutil::set_aside(path, &e);
+                Value::Null
+            }),
+        };
     let mut d = Data {
         allow_custom_commands: v["allowCustomCommands"].as_bool() == Some(true),
         defaults: serde_json::from_value(v["defaults"].clone()).unwrap_or_default(),
@@ -137,7 +146,7 @@ pub(crate) fn game_rev(d: &Data, id: &str) -> String {
 }
 
 impl LaunchStore {
-    /// The store at `path`; a missing or corrupt file is empty.
+    /// The store at `path`; a missing file is empty, a corrupt one is copied to `<path>.corrupt` first.
     pub fn load(path: PathBuf) -> LaunchStore {
         LaunchStore {
             inner: Mutex::new(read_file(&path)),
@@ -269,8 +278,13 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("launch.json");
         assert_eq!(read_file(&p), Data::default());
+        assert!(!d.path().join("launch.json.corrupt").exists());
         std::fs::write(&p, b"{not json").unwrap();
         assert_eq!(read_file(&p), Data::default());
+        assert_eq!(
+            std::fs::read(d.path().join("launch.json.corrupt")).unwrap(),
+            b"{not json"
+        );
         std::fs::write(&p, vec![b' '; (MAX_FILE + 1) as usize]).unwrap();
         assert_eq!(read_file(&p), Data::default());
         std::fs::write(
