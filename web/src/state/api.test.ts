@@ -167,3 +167,73 @@ describe('removeGame', () => {
     setRoute(null);
   });
 });
+
+describe('tags', () => {
+  it('encodes the tag id in the path', async () => {
+    stubPage('http://localhost:8443/');
+    const f = stubFetch(204);
+    await api.putTag('a/b c', { name: 'x', color: 'mint', pinned: false } as never);
+    await api.deleteTag('a/b c');
+    expect(f.mock.calls.map((c) => (c as unknown as [string])[0])).toEqual(['/api/notes/tags/a%2Fb%20c', '/api/notes/tags/a%2Fb%20c']);
+  });
+});
+
+describe('call timeout', () => {
+  // A fetch that only ends when its signal aborts, like a host that never answers.
+  const hang = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_: string, init: RequestInit) =>
+          new Promise((_, no) => init.signal?.addEventListener('abort', () => no(new DOMException('aborted', 'AbortError')))),
+      ),
+    );
+  afterEach(() => vi.useRealTimers());
+
+  it('fails a call that takes longer than the default with a plain message', async () => {
+    vi.useFakeTimers();
+    stubPage('http://localhost:8443/');
+    hang();
+    const p = api.host();
+    const seen = expect(p).rejects.toMatchObject({ message: 'Request timed out', status: 0 });
+    await vi.advanceTimersByTimeAsync(14_999);
+    await vi.advanceTimersByTimeAsync(1);
+    await seen;
+  });
+
+  it('gives quit 30 s', async () => {
+    vi.useFakeTimers();
+    stubPage('http://localhost:8443/');
+    hang();
+    let done = false;
+    const p = api.quit('570').finally(() => (done = true));
+    p.catch(() => {});
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(p).rejects.toThrow('Request timed out');
+  });
+
+  it('puts no limit on uploads and clears the timer after an answer', async () => {
+    vi.useFakeTimers();
+    stubPage('http://localhost:8443/');
+    stubFetch(200, { name: 'n' });
+    await api.host();
+    expect(vi.getTimerCount()).toBe(0);
+    hang();
+    let done = false;
+    void api
+      .uploadsFor(null)
+      .finish('id')
+      .catch(() => {})
+      .finally(() => (done = true));
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(done).toBe(false);
+  });
+
+  it('keeps a real error as it was', async () => {
+    stubPage('http://localhost:8443/');
+    stubFetch(500, { error: 'boom' });
+    await expect(api.host()).rejects.toMatchObject({ message: 'boom', status: 500 });
+  });
+});
