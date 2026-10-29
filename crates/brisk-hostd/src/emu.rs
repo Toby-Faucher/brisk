@@ -154,9 +154,15 @@ pub(crate) fn parse_library(text: &str) -> Result<Vec<Record>, String> {
         .collect())
 }
 
-/// library.json text for `recs`.
-pub fn library_json(recs: &[Record]) -> Vec<u8> {
-    serde_json::to_vec_pretty(&serde_json::json!({ "v": 1, "games": recs })).unwrap_or_default()
+/// library.json text for `recs`. An error (a path that is not valid UTF-8) means the caller must not write.
+pub fn library_json(recs: &[Record]) -> Result<Vec<u8>, serde_json::Error> {
+    // not json!(): its to_value() panics on a path that is not valid UTF-8
+    #[derive(Serialize)]
+    struct File<'a> {
+        v: u32,
+        games: &'a [Record],
+    }
+    serde_json::to_vec_pretty(&File { v: 1, games: recs })
 }
 
 /// The library records; a missing or corrupt file is empty.
@@ -595,7 +601,7 @@ mod tests {
         let r = rec("MKW", "dolphin", Path::new("/x.iso"));
         std::fs::write(
             d.path().join(LIBRARY_FILE),
-            library_json(std::slice::from_ref(&r)),
+            library_json(std::slice::from_ref(&r)).unwrap(),
         )
         .unwrap();
         let run = Rec::new(4);
@@ -623,7 +629,7 @@ mod tests {
         let r = rec("MKW", "dolphin", Path::new("/x.iso"));
         std::fs::write(
             d.path().join(LIBRARY_FILE),
-            library_json(std::slice::from_ref(&r)),
+            library_json(std::slice::from_ref(&r)).unwrap(),
         )
         .unwrap();
         let run = Rec::new(u32::MAX);
@@ -704,7 +710,7 @@ mod tests {
         assert_eq!(load(d.path())[0].id.as_str(), "emu:dolphin:a");
         // library.json present: the old file is no longer read
         let b = rec("B", "dolphin", Path::new("/b.iso"));
-        std::fs::write(d.path().join(LIBRARY_FILE), library_json(&[b])).unwrap();
+        std::fs::write(d.path().join(LIBRARY_FILE), library_json(&[b]).unwrap()).unwrap();
         let l = load(d.path());
         assert_eq!((l.len(), l[0].id.as_str()), (1, "emu:dolphin:b"));
         std::fs::write(d.path().join(LIBRARY_FILE), "{not json").unwrap();

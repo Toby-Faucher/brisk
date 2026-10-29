@@ -287,7 +287,10 @@ pub fn run(data_dir: &Path) {
         && let Ok(text) = std::fs::read_to_string(data_dir.join(emu::OLD_FILE))
     {
         match library_from_emulators(&text) {
-            Ok(recs) => match write_atomic(&lib, &emu::library_json(&recs)) {
+            Ok(recs) => match emu::library_json(&recs)
+                .map_err(|e| e.to_string())
+                .and_then(|j| write_atomic(&lib, &j).map_err(|e| e.to_string()))
+            {
                 Ok(()) => tracing::info!(
                     "{} -> {} ({} games)",
                     emu::OLD_FILE,

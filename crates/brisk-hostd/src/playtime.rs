@@ -319,7 +319,7 @@ mod tests {
         let (data, proc) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         std::fs::write(
             data.path().join(emu::LIBRARY_FILE),
-            emu::library_json(games),
+            emu::library_json(games).unwrap(),
         )
         .unwrap();
         (data, proc)
