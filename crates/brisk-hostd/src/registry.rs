@@ -25,28 +25,46 @@ pub struct Emulator {
     pub extensions: &'static [&'static str],
 }
 
-pub static EMULATORS: &[Emulator] = &[Emulator {
-    id: "dolphin",
-    name: "Dolphin",
-    cmd: "dolphin-emu",
-    // -b: no UI shell, -e: boot this file.
-    args: &["-b", "-e"],
-    window_class: "dolphin-emu",
-    controller: &["classic", "gamecube"],
-    systems: &[
-        System {
-            id: "gamecube",
-            folder: "GameCube",
-        },
-        System {
-            id: "wii",
-            folder: "Wii",
-        },
-    ],
-    extensions: &[
-        "iso", "rvz", "wbfs", "gcm", "ciso", "gcz", "wia", "wad", "tgc",
-    ],
-}];
+pub static EMULATORS: &[Emulator] = &[
+    Emulator {
+        id: "dolphin",
+        name: "Dolphin",
+        cmd: "dolphin-emu",
+        // -b: no UI shell, -e: boot this file.
+        args: &["-b", "-e"],
+        window_class: "dolphin-emu",
+        controller: &["classic", "gamecube"],
+        systems: &[
+            System {
+                id: "gamecube",
+                folder: "GameCube",
+            },
+            System {
+                id: "wii",
+                folder: "Wii",
+            },
+        ],
+        extensions: &[
+            "iso", "rvz", "wbfs", "gcm", "ciso", "gcz", "wia", "wad", "tgc",
+        ],
+    },
+    Emulator {
+        id: "azahar",
+        name: "Azahar",
+        cmd: "azahar",
+        // -f: fullscreen (the Qt frontend's own flag); the game path is the last argument.
+        args: &["-f"],
+        // UNVERIFIED: Qt's X11 class is the application name; check with swaymsg on the VM.
+        window_class: "azahar",
+        // No controller editor: the input mapping format is not verified (docs/research/azahar-notes.md).
+        controller: &[],
+        systems: &[System {
+            id: "3ds",
+            folder: "3DS",
+        }],
+        extensions: &["3ds", "cci", "cxi", "cia", "3dsx", "app"],
+    },
+];
 
 pub fn get(id: &str) -> Option<&'static Emulator> {
     EMULATORS.iter().find(|e| e.id == id)
@@ -63,6 +81,9 @@ mod tests {
             (d.cmd, d.args, d.window_class),
             ("dolphin-emu", &["-b", "-e"][..], "dolphin-emu")
         );
+        let a = get("azahar").unwrap();
+        assert_eq!((a.cmd, a.args), ("azahar", &["-f"][..]));
+        assert!(a.controller.is_empty() && a.systems[0].id == "3ds");
         assert!(get("mystery").is_none());
         let ids: Vec<_> = EMULATORS.iter().map(|e| e.id).collect();
         assert!(ids.iter().all(|i| {

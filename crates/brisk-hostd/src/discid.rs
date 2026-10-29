@@ -20,6 +20,7 @@ pub enum System {
     GB,
     GBC,
     GBA,
+    ThreeDS,
     Unknown,
 }
 
@@ -31,6 +32,14 @@ pub enum Container {
     Rvz,
     /// A bare cartridge dump.
     Rom,
+    /// 3DS cartridge image (.3ds, .cci): NCSD wrapping NCCH partitions.
+    Ncsd,
+    /// 3DS executable (.cxi, .app): a bare NCCH.
+    Ncch,
+    /// 3DS installable (.cia).
+    Cia,
+    /// 3DS homebrew (.3dsx): no title id, hashed like a cartridge.
+    ThreeDsx,
     Unknown,
 }
 
@@ -192,12 +201,112 @@ pub fn identify_as(path: &Path, ext: Option<&str>) -> Result<Identity, Error> {
             .ok_or(Error::Truncated)?;
         return identify_disc(dhead, c)?.ok_or(Error::Invalid("no disc magic in WIA/RVZ header"));
     }
+    if let Some(id) = threeds(&mut f, &head, len, &ext)? {
+        return Ok(id);
+    }
     if head.len() >= DISC_HEADER_LEN
         && let Some(id) = identify_disc(&head, Container::Iso)?
     {
         return Ok(id);
     }
     cartridge(&mut f, &head, len, &ext)
+}
+
+/// Reads exactly `n` bytes at `off`; past the end is `Truncated`.
+fn read_at(f: &mut File, off: u64, n: usize) -> Result<Vec<u8>, Error> {
+    f.seek(SeekFrom::Start(off))?;
+    let mut b = vec![0u8; n];
+    f.read_exact(&mut b).map_err(|e| match e.kind() {
+        io::ErrorKind::UnexpectedEof => Error::Truncated,
+        _ => Error::Io(e),
+    })?;
+    Ok(b)
+}
+
+/// The NCCH header at `base`: program id (title id) and product code. Layout from 3dbrew.org/wiki/NCCH
+/// (magic 0x100, program id 0x118 LE, product code 0x150); the header is never encrypted.
+fn ncch(f: &mut File, base: u64, container: Container) -> Result<Identity, Error> {
+    let h = read_at(f, base, 0x160)?;
+    if &h[0x100..0x104] != b"NCCH" {
+        return Err(Error::Invalid("no NCCH magic"));
+    }
+    let pid = u64::from_le_bytes(h[0x118..0x120].try_into().unwrap());
+    if pid == 0 {
+        return Err(Error::Invalid("NCCH program id is zero"));
+    }
+    let code = c_text(&h[0x150..0x160]);
+    // "CTR-P-AREE": the last letter is the region letter of the 4-char game code.
+    let region =
+        (code.len() == 10 && code.starts_with("CTR-")).then(|| region_of(code.as_bytes()[9]));
+    Ok(Identity {
+        system: System::ThreeDS,
+        game_id: Some(format!("{pid:016X}")),
+        // The name is in the (encrypted) ExeFS icon, not the header: the caller falls back to the file name.
+        title: None,
+        region,
+        container,
+        hash: None,
+    })
+}
+
+/// 3DS images by content: NCSD (partition 0 is the game), bare NCCH, CIA (title id from the TMD,
+/// layout from 3dbrew.org/wiki/CIA and /wiki/Title_metadata, endianness of the TMD not re-checked)
+/// and 3DSX. `Ok(None)` when it is none of these.
+fn threeds(f: &mut File, head: &[u8], len: u64, ext: &str) -> Result<Option<Identity>, Error> {
+    if head.get(0x100..0x104) == Some(b"NCSD") {
+        // Partition table at 0x120: (offset, size) in 0x200-byte units; Azahar also uses 0x200.
+        let off = u32::from_le_bytes(
+            head.get(0x120..0x124)
+                .ok_or(Error::Truncated)?
+                .try_into()
+                .unwrap(),
+        );
+        if off == 0 {
+            return Err(Error::Invalid("NCSD partition 0 is empty"));
+        }
+        let base = u64::from(off) * 0x200;
+        if base.checked_add(0x160).is_none_or(|e| e > len) {
+            return Err(Error::Truncated);
+        }
+        return ncch(f, base, Container::Ncsd).map(Some);
+    }
+    if head.get(0x100..0x104) == Some(b"NCCH") {
+        return ncch(f, 0, Container::Ncch).map(Some);
+    }
+    if head.starts_with(b"3DSX") {
+        f.seek(SeekFrom::Start(0))?;
+        let mut id = unknown();
+        id.system = System::ThreeDS;
+        id.container = Container::ThreeDsx;
+        id.hash = Some(sha1_hex(f)?);
+        return Ok(Some(id));
+    }
+    if ext == "cia" && head.len() >= 0x14 && head[..4] == 0x2020u32.to_le_bytes() {
+        let u = |o: usize| u64::from(u32::from_le_bytes(head[o..o + 4].try_into().unwrap()));
+        let al = |n: u64| n.div_ceil(0x40) * 0x40;
+        // header, certificate chain, ticket, then the TMD, each padded to 0x40
+        let tmd = al(0x2020) + al(u(8)) + al(u(0xC));
+        let sig = read_at(f, tmd, 4)?;
+        let (sig_len, pad) = match u32::from_be_bytes(sig.try_into().unwrap()) {
+            0x010000 | 0x010003 => (0x200, 0x3C),
+            0x010001 | 0x010004 => (0x100, 0x3C),
+            0x010002 | 0x010005 => (0x3C, 0x40),
+            _ => return Err(Error::Invalid("unknown TMD signature type")),
+        };
+        // type + signature + padding is the TMD header's start; title id at +0x4C
+        let hdr = tmd + 4 + sig_len + pad;
+        let t = read_at(f, hdr + 0x4C, 8)?;
+        let pid = u64::from_be_bytes(t.try_into().unwrap());
+        if pid == 0 {
+            return Err(Error::Invalid("CIA title id is zero"));
+        }
+        let mut id = unknown();
+        id.system = System::ThreeDS;
+        id.container = Container::Cia;
+        id.game_id = Some(format!("{pid:016X}"));
+        return Ok(Some(id));
+    }
+    Ok(None)
 }
 
 fn wbfs(f: &mut File, head: &[u8], len: u64) -> Result<Identity, Error> {
@@ -420,6 +529,83 @@ mod tests {
         f[..4].copy_from_slice(magic);
         f[WIA_DHEAD..WIA_DHEAD + h.len()].copy_from_slice(h);
         f
+    }
+
+    /// Synthetic NCCH header (no real game data): the fields discid reads, at their 3dbrew offsets.
+    fn ncch_hdr(pid: u64, code: &[u8]) -> Vec<u8> {
+        let mut h = vec![0u8; 0x200];
+        h[0x100..0x104].copy_from_slice(b"NCCH");
+        h[0x118..0x120].copy_from_slice(&pid.to_le_bytes());
+        h[0x150..0x150 + code.len()].copy_from_slice(code);
+        h
+    }
+
+    #[test]
+    fn threeds_ncch_ncsd_cia_and_3dsx() {
+        let d = tempfile::tempdir().unwrap();
+        // bare NCCH
+        let p = write(&d, "a.cxi", &ncch_hdr(0x0004_0000_0012_3400, b"CTR-P-AREE"));
+        let id = identify(&p).unwrap();
+        assert_eq!(
+            (id.system, id.container, id.game_id.as_deref(), id.region),
+            (
+                System::ThreeDS,
+                Container::Ncch,
+                Some("0004000000123400"),
+                Some(Region::Usa)
+            )
+        );
+        // NCSD: partition 0 at 0x4000 (32 units of 0x200)
+        let mut f = vec![0u8; 0x4200];
+        f[0x100..0x104].copy_from_slice(b"NCSD");
+        f[0x120..0x124].copy_from_slice(&0x20u32.to_le_bytes());
+        f[0x4000..0x4200].copy_from_slice(&ncch_hdr(0x0004_0000_0000_ABCD, b"CTR-P-BXXJ"));
+        let p = write(&d, "b.3ds", &f);
+        let id = identify(&p).unwrap();
+        assert_eq!(
+            (id.container, id.game_id.as_deref(), id.region),
+            (
+                Container::Ncsd,
+                Some("000400000000ABCD"),
+                Some(Region::Japan)
+            )
+        );
+        // NCSD whose partition lies past the end
+        f.truncate(0x3000);
+        assert!(matches!(
+            identify(&write(&d, "c.3ds", &f)),
+            Err(Error::Truncated)
+        ));
+        // NCCH with a zero program id is damaged
+        assert!(matches!(
+            identify(&write(&d, "d.cxi", &ncch_hdr(0, b""))),
+            Err(Error::Invalid(_))
+        ));
+        // CIA: cert 0x40, ticket 0x80, TMD with an RSA-2048 signature
+        let mut c = vec![0u8; 0x2040 + 0x40 + 0x80 + 0x140 + 0x60];
+        c[..4].copy_from_slice(&0x2020u32.to_le_bytes());
+        c[8..12].copy_from_slice(&0x40u32.to_le_bytes());
+        c[12..16].copy_from_slice(&0x80u32.to_le_bytes());
+        let tmd = 0x2040 + 0x40 + 0x80;
+        c[tmd..tmd + 4].copy_from_slice(&0x010004u32.to_be_bytes());
+        c[tmd + 0x140 + 0x4C..tmd + 0x140 + 0x54]
+            .copy_from_slice(&0x0004_0000_0001_F300u64.to_be_bytes());
+        let id = identify(&write(&d, "e.cia", &c)).unwrap();
+        assert_eq!(
+            (id.container, id.game_id.as_deref()),
+            (Container::Cia, Some("000400000001F300"))
+        );
+        // 3DSX: no id, a hash
+        let id = identify(&write(&d, "f.3dsx", b"3DSXhello")).unwrap();
+        assert_eq!(
+            (id.system, id.game_id, id.hash.is_some()),
+            (System::ThreeDS, None, true)
+        );
+        // a plain file named .3ds is just unknown
+        assert_eq!(
+            identify(&write(&d, "g.3ds", &[1u8; 600])).unwrap().system,
+            System::Unknown
+        );
     }
 
     #[test]

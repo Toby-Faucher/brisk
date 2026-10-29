@@ -336,13 +336,24 @@ async fn game_saves(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String
         return err(StatusCode::NOT_FOUND, "no saves for this game");
     }
     let recs = s.records();
+    let azahar = crate::saves::program_id(&g.id);
+    let label = if azahar.is_some() {
+        "Azahar user folder"
+    } else {
+        "Dolphin user folder"
+    };
     let (disc, system) = (
         crate::emu::find(&recs, &g.id).and_then(crate::emu::disc_id_of),
         g.system.clone().unwrap_or_default(),
     );
-    let dir = s.cfg.dolphin_user_dir.clone();
-    let found = tokio::task::spawn_blocking(move || {
-        disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system))
+    let dir = if azahar.is_some() {
+        s.cfg.azahar_user_dir.clone()
+    } else {
+        s.cfg.dolphin_user_dir.clone()
+    };
+    let found = tokio::task::spawn_blocking(move || match azahar {
+        Some(p) => crate::saves::list_azahar(&dir, &p),
+        None => disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system)),
     })
     .await;
     let Ok(found) = found else {
@@ -350,7 +361,7 @@ async fn game_saves(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<String
     };
     let body = serde_json::json!({
         "available": found.is_some(),
-        "userDir": "Dolphin user folder",
+        "userDir": label,
         "items": found.unwrap_or_default(),
     });
     ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()

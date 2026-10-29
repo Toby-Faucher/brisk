@@ -453,3 +453,22 @@ fn a_damaged_removed_list_is_set_aside_and_the_scan_refuses() {
     std::fs::write(c.data_dir.join("removed.json"), "{oops").unwrap();
     assert_eq!(scan_library_with(&c, true).unwrap().merged.added.len(), 1);
 }
+
+#[test]
+fn a_3ds_file_in_the_scan_gets_an_azahar_record_named_after_the_file() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = vec![0u8; 0x200];
+    h[0x100..0x104].copy_from_slice(b"NCCH");
+    h[0x118..0x120].copy_from_slice(&0x0004_0000_0012_3400u64.to_le_bytes());
+    let p = d.path().join("3ds");
+    std::fs::create_dir(&p).unwrap();
+    std::fs::write(p.join("Some Game.cxi"), &h).unwrap();
+    let s = scan(d.path());
+    assert_eq!(s.found.len(), 1);
+    let r = record(&s.found[0].path, &s.found[0].id, "scan").unwrap();
+    assert_eq!(r.id.as_str(), "emu:azahar:0004000000123400");
+    assert_eq!(
+        (r.emulator.as_str(), r.system.as_deref(), r.name.as_str()),
+        ("azahar", Some("3ds"), "Some Game")
+    );
+}

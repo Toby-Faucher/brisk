@@ -234,9 +234,10 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
             g.source = Source::Emu;
             g.legacy_id = Some(r.legacy().to_string());
             g.caps = caps(&r.emulator);
-            // Cheap: no I/O. Only Dolphin's layout is known.
-            g.caps.saves =
-                r.emulator == "dolphin" && matches!(r.system.as_deref(), Some("wii" | "gamecube"));
+            // Cheap: no I/O. Dolphin's and Azahar's layouts are known.
+            g.caps.saves = (r.emulator == "dolphin"
+                && matches!(r.system.as_deref(), Some("wii" | "gamecube")))
+                || (r.emulator == "azahar" && crate::saves::program_id(&r.id).is_some());
             g.system = r.system.clone();
             g.installed = r.file.is_file();
             g.size_bytes = std::fs::metadata(&r.file).ok().map(|m| m.len());
@@ -497,6 +498,26 @@ mod tests {
             run.log(),
             vec![format!("spawn dolphin-emu -b -e {}", f.display())]
         );
+        std::fs::remove_file(f).ok();
+    }
+
+    #[test]
+    fn azahar_launches_fullscreen_and_is_found_running_by_its_process() {
+        let f = iso("az");
+        let r = rec("Some 3DS Game", "azahar", &f);
+        let run = Rec::new(0);
+        let none = tempfile::tempdir().unwrap();
+        assert!(launch(
+            &*run,
+            none.path(),
+            std::slice::from_ref(&r),
+            &r.id,
+            &[]
+        ));
+        assert_eq!(run.log(), vec![format!("spawn azahar -f {}", f.display())]);
+        let sf = f.to_str().unwrap();
+        let p = fake_proc(&[(5, "azahar", &["azahar", "-f", sf])]);
+        assert_eq!(pids(&procs(p.path()), &r), HashSet::from([5]));
         std::fs::remove_file(f).ok();
     }
 
