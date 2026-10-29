@@ -8,6 +8,7 @@ use brisk_proto::sdp::Codec;
 use brisk_proto::tap::{HEADER_LEN, MAX_PAYLOAD, TapError, TapHeader, parse_tap};
 use bytes::{Bytes, BytesMut};
 use socket2::{Domain, SockAddr, Socket, Type};
+use std::ffi::OsString;
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt};
@@ -23,11 +24,14 @@ const MAX_MESSAGE: usize = u16::MAX as usize + MAX_PAYLOAD;
 
 /// `$BRISK_TAP_SOCK`, else `$XDG_RUNTIME_DIR/brisk/tap.sock` (the patch's rule).
 pub fn tap_path() -> Option<PathBuf> {
-    std::env::var_os("BRISK_TAP_SOCK")
+    tap_path_from(|n| std::env::var_os(n))
+}
+
+/// `tap_path` with the variables read through `var`.
+pub fn tap_path_from(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    var("BRISK_TAP_SOCK")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("XDG_RUNTIME_DIR").map(|d| Path::new(&d).join("brisk/tap.sock"))
-        })
+        .or_else(|| var("XDG_RUNTIME_DIR").map(|d| Path::new(&d).join("brisk/tap.sock")))
 }
 
 /// `CLOCK_MONOTONIC` in ns: the clock of the header's `capture_ns`/`tap_ns` (libstdc++
