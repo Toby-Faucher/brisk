@@ -1,6 +1,6 @@
 <script lang="ts">
   // Emulators.svelte passes every view a focusKey; this one has nothing to focus.
-  const _props: { focusKey?: number } = $props();
+  const { focusKey: _focusKey }: { focusKey?: number } = $props();
   // Settings > Emulators > Dolphin > Art and details: the games whose title matched several things, one question each.
   import { onMount } from 'svelte';
   import { api, ApiError, type ArtPending, type ArtQueue } from '../../state/api';

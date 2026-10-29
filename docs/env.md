@@ -82,7 +82,7 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 |---|---|---|---|
 | `BRISK_HOST`, `BRISK_APP` | Live test only (`cargo test -p brisk-client --test live_stream -- --ignored`): paired Sunshine host and app id (`BRISK_APP` is required). | host `127.0.0.1` | `brisk-client/tests/live_stream.rs` |
 | `BRISK_RA_WII_FILE`, `BRISK_RA_WII_HASH` | Ignored golden test only (`cargo test -p brisk-hostd rahash -- --ignored`): a real Wii disc file and its hash from `dolphin-tool verify -a rchash`. Both are required. | unset | `hostd/src/rahash.rs` |
-| `BRISK_CHROMIUM` | `chrome-headless-shell` for the web checks and browser tests. | Playwright's own, or `~/.cache/ms-playwright/...` for the scripts | `web/scripts/*.mjs`, `web/vitest.config.ts` |
+| `BRISK_CHROMIUM` | `chrome-headless-shell` for the web checks and browser tests. | The shell for the installed `playwright-core` (`web/scripts/browser.mjs`) | `web/scripts/*.mjs`, `web/vitest.config.ts` |
 | `BRISK_HOSTD` | `brisk-hostd` binary for `ui-smoke.mjs`. | `target/release/brisk-hostd` | `web/scripts/ui-smoke.mjs` |
 | `BRISK_SMOKE_ALLOW_SKIP` | `1` makes the smoke's "port 8443 taken" skip exit 0 instead of 3. | unset | `web/scripts/ui-smoke.mjs` |
 | `BRISK_CLIP_OUT` | Directory where `replay.test.ts` writes its MP4s for `clip-check.mjs`. | unset (not written) | `web/src/modules/stream/replay.test.ts` |

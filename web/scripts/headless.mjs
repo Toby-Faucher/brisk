@@ -16,6 +16,7 @@
 // the SPS, and bridge_write - capture looks sane. It decodes in its software H.264 decoder
 // (isConfigSupported: no-preference true, prefer-hardware false on bawn).
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 
 const args = process.argv.slice(2);
 const url = args[0];
@@ -27,9 +28,6 @@ if (!url) {
   console.error('usage: node scripts/headless.mjs URL [--secs N] [--stall MS]');
   process.exit(2);
 }
-const exe =
-  process.env.BRISK_CHROMIUM ??
-  `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await chromium.launch({ executablePath: exe });
@@ -75,16 +73,28 @@ try {
       console.log(`pointer lock ${locked ? 'granted' : 'refused: keyboard-only capture (canvas focus)'}`);
     }
     const gap = () => sleep(60);
-    await page.keyboard.down('Shift'); await gap();
-    await page.keyboard.press('a'); await gap();
-    await page.keyboard.press('b'); await gap();
-    await page.keyboard.up('Shift'); await gap();
+    await page.keyboard.down('Shift');
+    await gap();
+    await page.keyboard.press('a');
+    await gap();
+    await page.keyboard.press('b');
+    await gap();
+    await page.keyboard.up('Shift');
+    await gap();
     // Motion: headless Chromium under Pointer Lock turns each CDP move into a jump from and back
     // to its parked cursor (+640,+360 then -640,-360), so the movementX path is driven with page
     // events carrying movementX/Y instead (+5, -5 per axis; they go through the same handler).
-    for (const [dx, dy] of [[5, 0], [-5, 0], [0, 5], [0, -5]]) {
-      await page.evaluate(([dx, dy]) => document.getElementById('video').dispatchEvent(
-        new MouseEvent('mousemove', { movementX: dx, movementY: dy, bubbles: true })), [dx, dy]);
+    for (const [dx, dy] of [
+      [5, 0],
+      [-5, 0],
+      [0, 5],
+      [0, -5],
+    ]) {
+      await page.evaluate(
+        ([dx, dy]) =>
+          document.getElementById('video').dispatchEvent(new MouseEvent('mousemove', { movementX: dx, movementY: dy, bubbles: true })),
+        [dx, dy],
+      );
       await sleep(20);
     }
     rounds++;
@@ -106,7 +116,13 @@ try {
   });
   const a = await page.evaluate(() => (window.briskAudio ? { ...window.briskAudio.stats } : null));
   const inp = await page.evaluate(() => (window.briskInput ? { ...window.briskInput.stats } : null));
-  console.log(JSON.stringify({ isConfigSupported: support, elapsed, stats: s, audio: a, input: inp, inputRounds: rounds, pointerLock: locked }, null, 1));
+  console.log(
+    JSON.stringify(
+      { isConfigSupported: support, elapsed, stats: s, audio: a, input: inp, inputRounds: rounds, pointerLock: locked },
+      null,
+      1,
+    ),
+  );
   // Frames are counted from the page's start, so the window is a bit longer than `elapsed`.
   const want = 0.9 * 60 * (elapsed - stall / 1000);
   const checks = {

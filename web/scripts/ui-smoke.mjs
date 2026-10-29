@@ -7,6 +7,7 @@
 // It cannot prove video: a real WebTransport connect fails against the fake bridge, so the Stream
 // page is only checked for degrading to its reconnecting/failed state without page errors.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
@@ -15,18 +16,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { axe } from './axe.mjs';
 
-const free = await new Promise((r) => { const s = net.createServer().once('error', () => r(false)).listen(8443, '127.0.0.1', () => s.close(() => r(true))); });
+const free = await new Promise((r) => {
+  const s = net
+    .createServer()
+    .once('error', () => r(false))
+    .listen(8443, '127.0.0.1', () => s.close(() => r(true)));
+});
 if (!free) {
   const code = process.env.BRISK_SMOKE_ALLOW_SKIP === '1' ? 0 : 3;
-  console.log(`SMOKE SKIPPED (exit ${code}): 127.0.0.1:8443 is in use (the live hostd service?). Stop it first, or run scripts/axe-check.mjs for the a11y part.`);
+  console.log(
+    `SMOKE SKIPPED (exit ${code}): 127.0.0.1:8443 is in use (the live hostd service?). Stop it first, or run scripts/axe-check.mjs for the a11y part.`,
+  );
   process.exit(code);
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const FIX = `${root}/crates/brisk-hostd/tests/fixtures`;
-const OUT = '/tmp/claude-1000/-home-toby-Projects/94a1bf04-5503-4de5-ba94-79e19e0c32dd/scratchpad/ui-smoke';
+const OUT = '/tmp/ui-smoke-shots';
 const hostd = process.env.BRISK_HOSTD ?? `${root}/target/release/brisk-hostd`;
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 const KEY = 'SMOKE-SENTINEL-KEY-0123456789';
 const TOTAL = 139;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -38,7 +45,10 @@ const w = (p, s, mode) => (fs.mkdirSync(path.dirname(`${work}/${p}`), { recursiv
 // Installed: Portal 2 and the quoted Pokemon (from the fixtures) plus Half-Life 2 below; everything else is owned only.
 const installed = { 620: 'Portal 2', 1091500: 'Pokemon Legends', 220: 'Half-Life 2' };
 for (const [id, name] of Object.entries(installed))
-  w(`steam/steamapps/appmanifest_${id}.acf`, `"AppState"\n{\n\t"appid"\t\t"${id}"\n\t"name"\t\t"${name}"\n\t"StateFlags"\t\t"4"\n\t"installdir"\t\t"x"\n\t"LastPlayed"\t\t"1700000000"\n\t"SizeOnDisk"\t\t"1000000000"\n}\n`);
+  w(
+    `steam/steamapps/appmanifest_${id}.acf`,
+    `"AppState"\n{\n\t"appid"\t\t"${id}"\n\t"name"\t\t"${name}"\n\t"StateFlags"\t\t"4"\n\t"installdir"\t\t"x"\n\t"LastPlayed"\t\t"1700000000"\n\t"SizeOnDisk"\t\t"1000000000"\n}\n`,
+  );
 w('steam/steamapps/libraryfolders.vdf', `"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"${work}/steam"\n\t}\n}\n`);
 w('steam/config/loginusers.vdf', '"users"\n{\n\t"76561198000000000"\n\t{\n\t\t"MostRecent"\t"1"\n\t}\n}\n');
 w('key', KEY);
@@ -55,14 +65,27 @@ w('bridge.sh', `#!/bin/sh\nFAKE_BRIDGE_LOG='${work}/bridge.log' exec '${FIX}/fak
 const results = [];
 const check = (name, ok, extra = '') => (results.push(ok), console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ` (${extra})` : ''}`));
 let child, browser;
-const a11y = async (page, name) => { const bad = await axe(page); check(`axe (WCAG A/AA, serious+critical): ${name}`, bad.length === 0, bad.join('; ')); };
+const a11y = async (page, name) => {
+  const bad = await axe(page);
+  check(`axe (WCAG A/AA, serious+critical): ${name}`, bad.length === 0, bad.join('; '));
+};
 const shot = async (page, n) => (await page.screenshot({ path: `${OUT}/${n}.png` }), console.log(`screenshot ${OUT}/${n}.png`));
 
 try {
   child = spawn(hostd, [`${root}/web/dist`], {
-    env: { ...process.env, PATH: `${work}/bin:${process.env.PATH}`, BRISK_STEAM_DIR: `${work}/steam`, BRISK_STEAM_KEY_FILE: `${work}/key`,
-      BRISK_STEAM_API_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_STEAM_STORE_BASE: `http://127.0.0.1:${mock.address().port}`, BRISK_BRIDGE_BIN: `${work}/bridge.sh`, BRISK_DATA_DIR: `${work}/data`, BRISK_LISTEN: '127.0.0.1:4433',
-      BRISK_SECRET_FILE: `${work}/secret`, BRISK_TLS_DIR: `${work}/tls` },
+    env: {
+      ...process.env,
+      PATH: `${work}/bin:${process.env.PATH}`,
+      BRISK_STEAM_DIR: `${work}/steam`,
+      BRISK_STEAM_KEY_FILE: `${work}/key`,
+      BRISK_STEAM_API_BASE: `http://127.0.0.1:${mock.address().port}`,
+      BRISK_STEAM_STORE_BASE: `http://127.0.0.1:${mock.address().port}`,
+      BRISK_BRIDGE_BIN: `${work}/bridge.sh`,
+      BRISK_DATA_DIR: `${work}/data`,
+      BRISK_LISTEN: '127.0.0.1:4433',
+      BRISK_SECRET_FILE: `${work}/secret`,
+      BRISK_TLS_DIR: `${work}/tls`,
+    },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   let out = '';
@@ -78,16 +101,25 @@ try {
   await ctx.addInitScript(() => {
     const g = HTMLCanvasElement.prototype.getContext;
     window.__ctx = [];
-    HTMLCanvasElement.prototype.getContext = function (t, ...a) { window.__ctx.push(t); return g.call(this, t, ...a); };
+    HTMLCanvasElement.prototype.getContext = function (t, ...a) {
+      window.__ctx.push(t);
+      return g.call(this, t, ...a);
+    };
   });
   const page = await ctx.newPage();
-  let errs = [];
+  const errs = [];
   page.on('console', (m) => m.type() === 'error' && errs.push(`console: ${m.text()}`));
   page.on('pageerror', (e) => errs.push(`pageerror: ${e}`));
   const take = () => errs.splice(0);
 
   await page.goto(pageUrl);
-  for (const [name, p] of [['home', '/'], ['library', '/library'], ['machines', '/machines'], ['history', '/history'], ['settings', '/settings']]) {
+  for (const [name, p] of [
+    ['home', '/'],
+    ['library', '/library'],
+    ['machines', '/machines'],
+    ['history', '/history'],
+    ['settings', '/settings'],
+  ]) {
     if (p !== '/') await page.goto(new URL(p, pageUrl).href);
     await page.waitForLoadState('networkidle');
     await sleep(500);
@@ -137,7 +169,10 @@ try {
   // Launch Portal 2 from the Library: its card opens the detail panel, Play is in there (fake bridge: no video,
   // WebTransport will fail). The mock answers the Store with 403, so the panel shows "No store details".
   await page.goto(new URL('/library', pageUrl).href);
-  await page.getByRole('button', { name: /^Portal 2, / }).first().click();
+  await page
+    .getByRole('button', { name: /^Portal 2, / })
+    .first()
+    .click();
   const panel = page.getByRole('dialog', { name: 'Portal 2' });
   await panel.getByText('No store details').waitFor();
   await a11y(page, 'game detail panel');
@@ -150,17 +185,40 @@ try {
   }
   check("stream state reaches 'live'", live?.state === 'live', live?.state);
   const bridgeLog = fs.readFileSync(`${work}/bridge.log`, 'utf8');
-  check('default codec is H.264 (--codec h264)', live?.codec === 'h264' && bridgeLog.includes('--codec h264'), `${live?.codec}; ${bridgeLog.trim()}`);
-  const bad = await page.evaluate(async (sec) => (await fetch('/api/stream', { method: 'POST', headers: { 'x-brisk-secret': sec, 'content-type': 'application/json' }, body: '{"preset":"custom","codec":"av1"}' })).status, secret);
+  check(
+    'default codec is H.264 (--codec h264)',
+    live?.codec === 'h264' && bridgeLog.includes('--codec h264'),
+    `${live?.codec}; ${bridgeLog.trim()}`,
+  );
+  const bad = await page.evaluate(
+    async (sec) =>
+      (
+        await fetch('/api/stream', {
+          method: 'POST',
+          headers: { 'x-brisk-secret': sec, 'content-type': 'application/json' },
+          body: '{"preset":"custom","codec":"av1"}',
+        })
+      ).status,
+    secret,
+  );
   check('unknown codec is 400', bad === 400, String(bad));
   await sleep(1000);
   const steamLog = fs.existsSync(`${work}/steam.log`) ? fs.readFileSync(`${work}/steam.log`, 'utf8') : '';
   check('steam://rungameid/620 sent after the tap', steamLog.includes('steam://rungameid/620'), steamLog.trim());
   await page.mouse.move(600, 300);
   await page.mouse.move(600, 1);
-  await page.waitForSelector('[role=toolbar].on', { timeout: 5000 }).then(() => check('ghost bar appears at the top edge', true), () => check('ghost bar appears at the top edge', false));
+  await page.waitForSelector('[role=toolbar].on', { timeout: 5000 }).then(
+    () => check('ghost bar appears at the top edge', true),
+    () => check('ghost bar appears at the top edge', false),
+  );
   await shot(page, 'stream-ghostbar');
-  const degraded = await page.getByText('Lost the connection').waitFor({ timeout: 30000 }).then(() => true, () => false);
+  const degraded = await page
+    .getByText('Lost the connection')
+    .waitFor({ timeout: 30000 })
+    .then(
+      () => true,
+      () => false,
+    );
   await shot(page, 'stream-degraded');
   if (degraded) await a11y(page, 'stream degraded');
   check('stream degrades to the failed state (no real video to connect to)', degraded);
