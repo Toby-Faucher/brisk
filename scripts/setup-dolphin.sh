@@ -37,7 +37,7 @@ add_key() {
   line=$(grep "^$name" "$src/Dolphin.ini.fragment")
   if [ ! -e "$d" ]; then
     printf '[%s]\n%s\n' "$sec" "$line" > "$d"; echo "Dolphin.ini: written with $name"
-  elif grep -q "^$name[ =]" "$d"; then
+  elif grep -q "^${name}[ =]" "$d"; then
     echo "Dolphin.ini: $name already set"
   elif grep -q "^\[$sec\]" "$d"; then
     awk -v s="[$sec]" -v k="$line" '{print} $0==s {print k}' "$d" > "$d.tmp" && mv "$d.tmp" "$d"
