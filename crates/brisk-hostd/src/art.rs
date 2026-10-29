@@ -209,14 +209,11 @@ pub(crate) fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
 
 /// The MIME type of PNG, JPEG or WebP bytes; None for anything else.
 pub(crate) fn image_type(b: &[u8]) -> Option<&'static str> {
-    if b.starts_with(b"\x89PNG\r\n\x1a\n") {
-        Some("image/png")
-    } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        Some("image/jpeg")
-    } else if b.len() > 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WEBP" {
-        Some("image/webp")
-    } else {
-        None
+    match sg::image_ext(b)? {
+        "png" => Some("image/png"),
+        "jpg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        _ => None,
     }
 }
 
@@ -796,6 +793,13 @@ pub async fn answer(
     }
 }
 
+fn no_key() -> Response {
+    err(
+        StatusCode::CONFLICT,
+        "Art needs a SteamGridDB key on the machine",
+    )
+}
+
 /// Starts the art pipeline for `id`; `fresh` for a refresh (`run_fresh`).
 fn start_as(s: &Arc<AppState>, id: &GameId, fresh: bool) {
     let recs = s.records();
@@ -819,10 +823,7 @@ pub async fn refresh(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Strin
         Err(r) => return r,
     };
     if !s.art.has_key(&s.cfg.data_dir) {
-        return err(
-            StatusCode::CONFLICT,
-            "Art needs a SteamGridDB key on the machine",
-        );
+        return no_key();
     }
     if s.art.busy(&id) {
         return err(StatusCode::CONFLICT, "already looking for art");
@@ -941,12 +942,7 @@ pub async fn candidates(
     let st = s.clone();
     let limit = qlimit.unwrap_or(24).clamp(1, 48);
     let r = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, Response> {
-        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
-            err(
-                StatusCode::CONFLICT,
-                "Art needs a SteamGridDB key on the machine",
-            )
-        })?;
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(no_key)?;
         if let Some(wait) = st.art.halted() {
             let mut r = err(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -997,12 +993,7 @@ pub async fn thumb(
     let st = s.clone();
     let r = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, Response> {
         let nf = || err(StatusCode::NOT_FOUND, "no such thumbnail");
-        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
-            err(
-                StatusCode::CONFLICT,
-                "Art needs a SteamGridDB key on the machine",
-            )
-        })?;
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(no_key)?;
         let key = key_of(&id).ok_or_else(nf)?;
         let dir = dir_of(&st.cfg.data_dir, &key);
         let url = read_json::<Vec<sg::ArtChoice>>(&cands_path(&dir, kind))
@@ -1067,12 +1058,7 @@ pub async fn pick(
     }
     let st = s.clone();
     let r = tokio::task::spawn_blocking(move || -> Result<(), Response> {
-        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
-            err(
-                StatusCode::CONFLICT,
-                "Art needs a SteamGridDB key on the machine",
-            )
-        })?;
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(no_key)?;
         let key = key_of(&id).ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad game id"))?;
         let dir = dir_of(&st.cfg.data_dir, &key);
         let url = read_json::<Vec<sg::ArtChoice>>(&cands_path(&dir, kind))

@@ -124,10 +124,7 @@ impl Proxmox {
     fn url(&self, suffix: &str) -> Result<String, String> {
         let c = &self.cfg;
         let api = c.api.trim_end_matches('/');
-        let host = api
-            .strip_prefix("http://")
-            .and_then(|r| r.split([':', '/']).next());
-        if !(api.starts_with("https://") || matches!(host, Some("127.0.0.1" | "localhost"))) {
+        if !crate::steam::base_ok(api) {
             return Err("proxmox api must be https (or http to loopback)".into());
         }
         if c.node.is_empty()

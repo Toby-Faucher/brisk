@@ -99,14 +99,7 @@ impl SgdbConfig {
     /// Config from the key file; None when there is no usable key.
     pub fn with_key_file(key_file: &Path, base: String, data_dir: &Path) -> Option<SgdbConfig> {
         let raw = std::fs::read_to_string(key_file).ok()?;
-        let key = raw.trim();
-        if key.is_empty()
-            || !key
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return None;
-        }
+        let key = crate::steam::plain_key(&raw)?;
         let base = base.trim_end_matches('/').to_string();
         let mut allowed_hosts: Vec<String> = DEFAULT_HOSTS.iter().map(|s| s.to_string()).collect();
         if let Some((_, h)) = split_url(&base)
@@ -488,7 +481,8 @@ pub(crate) fn save_match(cfg: &SgdbConfig, key: &str, c: &Candidate) -> Result<(
     write_private(&art_dir(cfg, key)?.join("match.json"), &body)
 }
 
-fn image_ext(b: &[u8]) -> Option<&'static str> {
+/// The file extension for PNG, JPEG or WebP bytes; None for anything else.
+pub(crate) fn image_ext(b: &[u8]) -> Option<&'static str> {
     if b.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("png")
     } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {

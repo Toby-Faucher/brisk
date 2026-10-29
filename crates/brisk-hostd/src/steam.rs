@@ -307,15 +307,18 @@ pub(crate) fn get_limited_for(
 /// The key from its file; only plain key characters, so it cannot change the shape of the URL.
 pub(crate) fn read_key(cfg: &Config) -> Result<String, &'static str> {
     let key = std::fs::read_to_string(&cfg.steam_key_file).map_err(|_| "no API key file")?;
-    let key = key.trim();
-    if key.is_empty()
-        || !key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err("API key file is not a plain key");
-    }
-    Ok(key.to_string())
+    plain_key(&key)
+        .map(str::to_string)
+        .ok_or("API key file is not a plain key")
+}
+
+/// The key file's text, trimmed, when it is one non-empty run of `A-Za-z0-9_-`.
+pub(crate) fn plain_key(raw: &str) -> Option<&str> {
+    let key = raw.trim();
+    let plain = key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    (!key.is_empty() && plain).then_some(key)
 }
 
 /// A `steam_get` error that will not go away by waiting: Steam refused the key or the list is private
