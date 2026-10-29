@@ -65,10 +65,10 @@ jobs:
       - run: rustup toolchain install --no-self-update
       # The runner image ships shellcheck; install it anyway in case a new image drops it.
       - run: command -v shellcheck || (sudo apt-get update && sudo apt-get install -y shellcheck)
-      - run: shellcheck --version && shellcheck -S warning scripts/check.sh scripts/capped.sh scripts/test-capped.sh .githooks/pre-push
+      - run: shellcheck --version && shellcheck -x -S warning scripts/check.sh scripts/capped.sh scripts/test-capped.sh .githooks/pre-push
       - run: scripts/check.sh wording scripts
       # shortcut: the other scripts still have warnings, so this pass only reports; make it blocking once they are clean.
-      - run: shellcheck -S warning scripts/*.sh
+      - run: shellcheck -x -S warning scripts/*.sh
         continue-on-error: true
 
   web:
