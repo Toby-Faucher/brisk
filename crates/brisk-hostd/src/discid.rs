@@ -156,13 +156,13 @@ pub(crate) fn open_regular(path: &Path) -> Result<File, Error> {
 }
 
 /// Identify `path`. Refuses anything but a regular file.
-pub fn identify(path: &Path) -> Result<Identity, Error> {
+pub(crate) fn identify(path: &Path) -> Result<Identity, Error> {
     identify_as(path, None)
 }
 
 /// `identify`, taking the extension for the header-less cartridge fallback from `ext` instead of
 /// the path (an upload sits in a `.part` file until it is placed).
-pub fn identify_as(path: &Path, ext: Option<&str>) -> Result<Identity, Error> {
+pub(crate) fn identify_as(path: &Path, ext: Option<&str>) -> Result<Identity, Error> {
     let mut f = open_regular(path)?;
     let len = f.metadata()?.len();
     let mut head = Vec::new();

@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub(crate) const DEFAULT_BASE: &str = "https://retroachievements.org/API";
 /// shortcut: console ids from memory of the RA site, not confirmed by the official docs (the docs page
 /// lists no ids); check with API_GetConsoleIDs.php once a key exists.
-pub const CONSOLE_GAMECUBE: u32 = 16;
+pub(crate) const CONSOLE_GAMECUBE: u32 = 16;
 pub const CONSOLE_WII: u32 = 19;
 
 #[derive(Debug, Clone)]
@@ -493,7 +493,7 @@ async fn progress_for_opts(
 
 /// Like `progress_for_opts`, but a hash missing from RA's list falls back to one unambiguous
 /// title match against `names`. A hash hit always wins.
-pub async fn progress_for_names(
+pub(crate) async fn progress_for_names(
     cfg: &RaConfig,
     console: u32,
     hash: &str,

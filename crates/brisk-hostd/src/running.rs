@@ -138,7 +138,7 @@ fn reaper_appid(argv: &[String]) -> Option<u32> {
 }
 
 /// AppIds of every game Steam is running now.
-pub fn running_appids(proc: &Path) -> HashSet<u32> {
+pub(crate) fn running_appids(proc: &Path) -> HashSet<u32> {
     procs(proc)
         .iter()
         .filter_map(|p| reaper_appid(&p.argv))
@@ -317,7 +317,7 @@ async fn focus_window(
 }
 
 /// Focus and fullscreen a Steam game's window (found through its reaper's process tree).
-pub async fn focus_game(
+pub(crate) async fn focus_game(
     runner: Arc<dyn Runner>,
     proc: PathBuf,
     env: Vec<(String, String)>,
@@ -340,7 +340,7 @@ pub async fn focus_game(
 }
 
 /// Focus and fullscreen the newest window of X11 class `class` (an emulator's).
-pub async fn focus_class(
+pub(crate) async fn focus_class(
     runner: Arc<dyn Runner>,
     env: Vec<(String, String)>,
     class: &'static str,

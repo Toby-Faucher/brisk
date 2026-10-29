@@ -135,7 +135,7 @@ pub struct Pending {
 }
 
 /// The pending match queue from disk; a missing or corrupt file is empty.
-pub fn load_pending(data_dir: &Path) -> Pending {
+pub(crate) fn load_pending(data_dir: &Path) -> Pending {
     let mut p: Pending = read_json(&data_dir.join("art").join(PENDING)).unwrap_or_default();
     while p.items.len() > MAX_PENDING {
         p.items.pop_last();
@@ -163,7 +163,7 @@ pub fn stamp(m: &std::fs::Metadata) -> u128 {
 
 /// Fills the art URLs, details, credits and `needsMatch` of an emulator card from the cache. Reads
 /// files only.
-pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
+pub(crate) fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
     if !g.caps.art {
         return;
     }
@@ -204,7 +204,7 @@ pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
 // ---- serving ----
 
 /// The MIME type of PNG, JPEG or WebP bytes; None for anything else.
-pub fn image_type(b: &[u8]) -> Option<&'static str> {
+pub(crate) fn image_type(b: &[u8]) -> Option<&'static str> {
     if b.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("image/png")
     } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {

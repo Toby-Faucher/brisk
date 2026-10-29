@@ -20,7 +20,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 /// The largest body of one PUT.
 const CHUNK: u64 = 32 << 20;
 /// Free space kept after the file.
-pub const RESERVE: u64 = 5 << 30;
+pub(crate) const RESERVE: u64 = 5 << 30;
 const MAX_OPEN: usize = 2;
 const DAY: Duration = Duration::from_secs(24 * 3600);
 

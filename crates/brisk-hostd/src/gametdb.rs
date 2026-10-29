@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// Env: URL of a plain `wiitdb.xml` (no default, see the notes: the zip needs a decision).
-pub const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
+pub(crate) const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
 /// Env: art base URL (tests point it at a mock).
 const ENV_ART_BASE: &str = "BRISK_GAMETDB_ART_BASE";
 /// Art host. Confirmed by search snippets and rom-properties' docs, not by the site itself.
@@ -110,7 +110,7 @@ impl Entry {
 // ---- id and art URLs ----
 
 /// True for a six character GameTDB id.
-pub fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 6 && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 

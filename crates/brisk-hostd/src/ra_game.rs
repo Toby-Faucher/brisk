@@ -212,7 +212,7 @@ fn err_json(e: &RaError) -> Value {
 }
 
 /// The route body for one emulator game. `fresh`: drop the cached progress first.
-pub async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool) -> Value {
+pub(crate) async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool) -> Value {
     let rc = cfg.ra();
     if !rc.key_file.is_file() {
         return json!({ "state": "off" });
@@ -231,7 +231,7 @@ pub async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool
 }
 
 /// The disc hash of `file`, worked out off the async threads.
-pub async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo, HashErr> {
+pub(crate) async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo, HashErr> {
     let (d, f) = (cfg.data_dir.clone(), file.to_path_buf());
     tokio::task::spawn_blocking(move || hash_for(&d, &f))
         .await

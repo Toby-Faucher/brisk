@@ -255,7 +255,7 @@ pub fn ra_hash_gamecube_iso(path: &Path) -> Result<String, Error> {
 /// RA hash (MD5 hex) of a Wii disc in an ISO or WBFS file, as rcheevos computes it for console
 /// 19. Follows `rc_hash_wii_disc` as written, including that the partition data offset read at
 /// +0x2B8 is used as an absolute disc offset. Not yet compared with a real disc's hash.
-pub fn ra_hash_wii(path: &Path) -> Result<String, Error> {
+pub(crate) fn ra_hash_wii(path: &Path) -> Result<String, Error> {
     use discid::Container::{Iso, Wbfs};
     let id = discid::identify(path)?;
     if id.system != System::Wii || !matches!(id.container, Iso | Wbfs) {

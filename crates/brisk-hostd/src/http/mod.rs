@@ -151,7 +151,7 @@ impl AppState {
 
     /// An id as a request writes it (`steam:620`, or a bare number) as a GameId: a bare number
     /// in the old emulator range needs this machine's library to say which game it was.
-    pub fn parse_id(&self, raw: &str) -> Option<GameId> {
+    pub(crate) fn parse_id(&self, raw: &str) -> Option<GameId> {
         let recs = self.records();
         crate::emu::resolve(&recs, raw)
     }

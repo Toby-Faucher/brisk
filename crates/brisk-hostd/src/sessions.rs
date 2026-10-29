@@ -43,7 +43,7 @@ pub struct SessionRec {
 
 impl SessionRec {
     /// Adds one bridge's report (a quality change restarts the bridge, so a session can have several).
-    pub fn add_stats(&mut self, s: Stats) {
+    pub(crate) fn add_stats(&mut self, s: Stats) {
         if s != Stats::default() {
             self.stats = Some(match self.stats.take() {
                 Some(a) => a.merge(s),
@@ -212,7 +212,7 @@ impl Stats {
 }
 
 /// Finite and plausible: t within a week, delay under a minute, fps up to 1000, up to 10 Gbit/s.
-pub fn valid_point(p: &Point) -> bool {
+pub(crate) fn valid_point(p: &Point) -> bool {
     let max = [604_800.0, 60_000.0, 1000.0, 10_000.0];
     p.iter()
         .zip(max)
@@ -226,7 +226,7 @@ pub enum SeriesError {
 }
 
 /// Now, in ms since the epoch.
-pub fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
@@ -290,7 +290,7 @@ impl Sessions {
     /// Merges `pts` (validated by the caller) into the session's series, a later point replacing one
     /// with the same t. Refuses past MAX_POINTS (nothing is written then); drops the series files of
     /// all but the newest MAX_SERIES sessions.
-    pub fn put_series(&self, started: u64, pts: &[Point]) -> Result<(), SeriesError> {
+    pub(crate) fn put_series(&self, started: u64, pts: &[Point]) -> Result<(), SeriesError> {
         if self.get(started).is_none() {
             return Err(SeriesError::NoSession);
         }

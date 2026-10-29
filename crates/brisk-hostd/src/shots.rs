@@ -8,7 +8,7 @@ use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
-pub const MAX_BYTES: usize = 8 << 20;
+pub(crate) const MAX_BYTES: usize = 8 << 20;
 const MAX_DIM: u32 = 8192;
 const MAX_PER_GAME: usize = 200;
 /// Free space kept after a save.
@@ -141,7 +141,7 @@ fn names(d: &Path) -> Vec<String> {
 }
 
 /// The file names of the game's screenshots.
-pub fn list_names(data: &Path, id: &str) -> Vec<String> {
+pub(crate) fn list_names(data: &Path, id: &str) -> Vec<String> {
     names(&dir(data, id))
 }
 

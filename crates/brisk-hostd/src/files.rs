@@ -63,7 +63,7 @@ pub fn candidate(name: &str, i: u32) -> String {
 }
 
 /// Free bytes for an unprivileged user on the filesystem holding `p`.
-pub fn disk_free(p: &Path) -> Option<u64> {
+pub(crate) fn disk_free(p: &Path) -> Option<u64> {
     let s = rustix::fs::statvfs(p).ok()?;
     Some(s.f_bavail * s.f_frsize)
 }

@@ -161,7 +161,7 @@ impl Default for Sources {
 }
 
 /// Host facts from the real sources.
-pub async fn host_info(cfg: &Config) -> HostInfo {
+pub(crate) async fn host_info(cfg: &Config) -> HostInfo {
     let r = Arc::new(RealRunner);
     host_info_with(cfg, &Sources::default(), r).await
 }

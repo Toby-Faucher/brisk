@@ -48,7 +48,7 @@ pub struct SaveItem {
 }
 
 /// The 6-char disc id inside an emulator game id (`emu:dolphin:RMCE01`, any case), if it has one.
-pub fn disc_id(id: &crate::game::GameId) -> Option<String> {
+pub(crate) fn disc_id(id: &crate::game::GameId) -> Option<String> {
     let (_, tail) = id.emu_parts()?;
     (tail.len() == 6 && tail.bytes().all(|b| b.is_ascii_alphanumeric()))
         .then(|| tail.to_ascii_uppercase())

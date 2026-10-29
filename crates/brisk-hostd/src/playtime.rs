@@ -77,7 +77,7 @@ impl Store {
     }
 
     /// Minutes played of game `id`.
-    pub fn total_minutes(&self, id: &str) -> u64 {
+    pub(crate) fn total_minutes(&self, id: &str) -> u64 {
         self.games.get(id).map_or(0, |e| {
             (e.folded
                 + e.sessions
@@ -89,7 +89,7 @@ impl Store {
     }
 
     /// Minutes played in the 14 days up to `now`, counting only the part of a session inside it.
-    pub fn last_two_weeks_minutes(&self, id: &str, now: u64) -> u64 {
+    pub(crate) fn last_two_weeks_minutes(&self, id: &str, now: u64) -> u64 {
         let from = now.saturating_sub(TWO_WEEKS_S);
         self.games.get(id).map_or(0, |e| {
             e.sessions
@@ -101,7 +101,7 @@ impl Store {
     }
 
     /// End of the latest session.
-    pub fn last_end(&self, id: &str) -> Option<u64> {
+    pub(crate) fn last_end(&self, id: &str) -> Option<u64> {
         self.games
             .get(id)
             .and_then(|e| e.sessions.last().map(|s| s.1))
@@ -130,7 +130,7 @@ pub fn tick(store: &mut Store, recs: &[Record], proc: &Path, now: u64) -> HashSe
 
 /// The poll interval from `BRISK_PLAYTIME_POLL_S`: default 15 s, between 5 s and `GAP_S / 2`
 /// (a longer poll would put every tick in a session of its own).
-pub fn poll_from(raw: Option<&str>) -> Duration {
+pub(crate) fn poll_from(raw: Option<&str>) -> Duration {
     Duration::from_secs(
         raw.and_then(|v| v.trim().parse().ok())
             .unwrap_or(15)

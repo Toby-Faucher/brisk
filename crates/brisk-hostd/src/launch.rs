@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const ENV_ALLOWED: &[&str] = &[
+pub(crate) const ENV_ALLOWED: &[&str] = &[
     "MANGOHUD",
     "DXVK_HUD",
     "DXVK_ASYNC",
@@ -163,7 +163,7 @@ fn custom_ok(c: &[String]) -> Result<(), String> {
 }
 
 /// Checks the options; every problem found when they are not usable.
-pub fn validate(o: &LaunchOptions, allow_custom: bool) -> Result<Validated, Vec<Problem>> {
+pub(crate) fn validate(o: &LaunchOptions, allow_custom: bool) -> Result<Validated, Vec<Problem>> {
     let mut bad = Vec::new();
     let mut seen = [false; 3];
     for w in &o.wrappers {

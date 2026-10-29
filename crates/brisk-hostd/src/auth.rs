@@ -92,7 +92,7 @@ fn tailnet_names(json: &str) -> Option<Vec<String>> {
 /// `csrf` is the page's `x-brisk-csrf` header: tailscale attaches the identity to any request from
 /// the laptop, a cross-site one too, and a custom header cannot be sent cross-origin without a
 /// CORS preflight, which hostd never grants.
-pub fn tailnet_ok(users: &[String], loopback: bool, login: Option<&str>, csrf: bool) -> bool {
+pub(crate) fn tailnet_ok(users: &[String], loopback: bool, login: Option<&str>, csrf: bool) -> bool {
     let Some(login) = login.map(str::trim).filter(|l| !l.is_empty()) else {
         return false;
     };

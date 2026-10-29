@@ -61,7 +61,7 @@ pub trait Power: Send + Sync {
 }
 
 /// Power control through the Proxmox API.
-pub fn proxmox(cfg: &ProxmoxCfg) -> Arc<dyn Power> {
+pub(crate) fn proxmox(cfg: &ProxmoxCfg) -> Arc<dyn Power> {
     Arc::new(Proxmox { cfg: cfg.clone() })
 }
 

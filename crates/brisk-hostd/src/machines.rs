@@ -465,7 +465,7 @@ fn do_power(h: &Hub, e: &Entry, p: &dyn Power, v: Verb) -> Result<(StatusCode, S
 }
 
 /// `POST /api/machines/{id}/power`: start or shut down a machine.
-pub async fn power(
+pub(crate) async fn power(
     State(s): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     b: axum::body::Bytes,
@@ -507,7 +507,7 @@ fn path_ok(p: &str) -> bool {
 }
 
 /// ANY /api/m/{id}/{*path}: forwarded to the machine's own `/api/{path}`.
-pub async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
+pub(crate) async fn proxy(State(s): State<Arc<AppState>>, req: Request) -> Response {
     let Some(h) = s.hub.clone() else {
         return StatusCode::NOT_FOUND.into_response();
     };

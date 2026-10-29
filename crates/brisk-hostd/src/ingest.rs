@@ -17,14 +17,14 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// Extensions a scan or an upload looks at.
-pub const EXTS: &[&str] = &[
+pub(crate) const EXTS: &[&str] = &[
     "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "gen",
 ];
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;
 
 /// True when the file name has a game file extension.
-pub fn known_ext(name: &str) -> bool {
+pub(crate) fn known_ext(name: &str) -> bool {
     Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
@@ -314,7 +314,7 @@ fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
 }
 
 /// `tombs_read` where a problem is a warning and an empty list (explicit adds and forgets).
-pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
+pub(crate) fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
     tombs_read(data_dir).unwrap_or_else(|e| {
         eprintln!("warning: {e}");
         vec![]
@@ -322,7 +322,7 @@ pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
 }
 
 /// Atomic 0600 write, the oldest entries dropped past the cap. A failed write is a warning only.
-pub fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
+pub(crate) fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     t.drain(..t.len().saturating_sub(MAX_TOMBS));
     let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
     if let Err(e) = crate::fsutil::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
@@ -437,7 +437,7 @@ impl Drop for Lock {
 }
 
 /// The records, but a `library.json` that does not parse is an error: it must never be overwritten.
-pub fn load_strict(data_dir: &Path) -> Result<Vec<Record>, String> {
+pub(crate) fn load_strict(data_dir: &Path) -> Result<Vec<Record>, String> {
     match std::fs::read_to_string(data_dir.join(emu::LIBRARY_FILE)) {
         Ok(t) => emu::parse_library(&t).map_err(|e| format!("library.json is damaged: {e}")),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(emu::load(data_dir)),
@@ -524,7 +524,7 @@ pub fn scan_library(cfg: &Config) -> Result<ScanReport, String> {
 }
 
 /// `include_removed` ignores the removed list, so those games come back.
-pub fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
+pub(crate) fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
     // Without the removed list a scan would bring removed games back: refuse instead.
     if !include_removed {
         tombs_read(&cfg.data_dir)?;

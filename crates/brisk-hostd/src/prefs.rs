@@ -162,17 +162,17 @@ impl Prefs {
     }
 
     /// The saved Home card order.
-    pub fn home_order(&self) -> Vec<String> {
+    pub(crate) fn home_order(&self) -> Vec<String> {
         self.inner.lock().unwrap().home.clone()
     }
 
     /// The saved Machines page order.
-    pub fn machines_order(&self) -> Vec<String> {
+    pub(crate) fn machines_order(&self) -> Vec<String> {
         self.inner.lock().unwrap().machines.clone()
     }
 
     /// The saved machine colours.
-    pub fn machine_colors(&self) -> BTreeMap<String, String> {
+    pub(crate) fn machine_colors(&self) -> BTreeMap<String, String> {
         self.inner.lock().unwrap().colors.clone()
     }
 
@@ -180,7 +180,7 @@ impl Prefs {
     /// list clears that order. `colors` is merged into the stored map (None removes an id). A bad
     /// id or colour, or more than COLORS_MAX entries after the merge, is an Err and stores nothing.
     /// Returns (home, machines, colors) as stored.
-    pub fn set_layout(
+    pub(crate) fn set_layout(
         &self,
         home: Option<Vec<String>>,
         machines: Option<Vec<String>>,

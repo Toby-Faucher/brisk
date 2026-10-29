@@ -389,7 +389,7 @@ pub struct ArtChoice {
 /// logos and icons, WEBP/JPEG before PNG for big art), then the community score. Content filters
 /// are all `false` (no NSFW, humor or flashing art). First page only; when the sized query is
 /// empty, one unsized retry. shortcut: no paging, 50 results are plenty for picking one.
-pub fn art_for(cfg: &SgdbConfig, game_id: u64, kind: ArtKind) -> Result<Vec<ArtChoice>, Error> {
+pub(crate) fn art_for(cfg: &SgdbConfig, game_id: u64, kind: ArtKind) -> Result<Vec<ArtChoice>, Error> {
     let base = format!(
         "{}/game/{game_id}?types=static&nsfw=false&humor=false&epilepsy=false&mimes={}",
         kind.path(),
@@ -448,7 +448,7 @@ fn io(e: std::io::Error) -> Error {
 }
 
 /// data_dir/art/<key>/, with the key limited to plain file-name characters.
-pub fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
+pub(crate) fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
     let ok = !key.is_empty()
         && key.len() <= 64
         && !key.starts_with('.')
@@ -486,13 +486,13 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
 }
 
 /// The confirmed match for a game, so it is never asked twice.
-pub fn load_match(cfg: &SgdbConfig, key: &str) -> Option<Candidate> {
+pub(crate) fn load_match(cfg: &SgdbConfig, key: &str) -> Option<Candidate> {
     let p = art_dir(cfg, key).ok()?.join("match.json");
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
 /// Saves the chosen candidate for `key`.
-pub fn save_match(cfg: &SgdbConfig, key: &str, c: &Candidate) -> Result<(), Error> {
+pub(crate) fn save_match(cfg: &SgdbConfig, key: &str, c: &Candidate) -> Result<(), Error> {
     let body = serde_json::to_vec(c).map_err(|_| Error::BadResponse)?;
     write_private(&art_dir(cfg, key)?.join("match.json"), &body)
 }
@@ -515,7 +515,7 @@ pub(crate) const EXTS: [&str; 3] = ["png", "jpg", "webp"];
 /// data_dir/art without extension, e.g. `art_dir(..)/grid`). If any such file exists it is
 /// returned without a request. The URL host must be on the allowlist, redirects are refused
 /// (by the shared helper), the body is capped at 10 MiB and checked for PNG/JPEG/WEBP magic.
-pub fn fetch_art(cfg: &SgdbConfig, url: &str, dest: &Path) -> Result<PathBuf, Error> {
+pub(crate) fn fetch_art(cfg: &SgdbConfig, url: &str, dest: &Path) -> Result<PathBuf, Error> {
     let art_root = cfg.data_dir.join("art");
     let rel = dest
         .strip_prefix(&art_root)
