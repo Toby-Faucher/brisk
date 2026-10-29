@@ -6,7 +6,6 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 RUN=${XDG_RUNTIME_DIR:?}/brisk
-SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
 # shellcheck disable=SC2034 # read by die in brisk-common.sh
 ME=brisk-down
 # shellcheck source=scripts/brisk-common.sh

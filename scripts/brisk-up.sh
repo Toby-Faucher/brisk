@@ -13,7 +13,6 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 APP=${BRISK_APP:-870779643}
 PORT=8443 # hostd binds 127.0.0.1:8443
 RUN=${XDG_RUNTIME_DIR:?}/brisk
-SB=${BRISK_SB:-$here/scripts/sunshine-brisk.sh} # BRISK_SB: test stub
 # shellcheck disable=SC2034 # read by die in brisk-common.sh
 ME=brisk-up
 # shellcheck source=scripts/brisk-common.sh
@@ -44,7 +43,7 @@ pid_alive "$RUN/hostd.pid" && die "hostd is already running (pid $(cat "$RUN/hos
 
 # 1. Build (no-op when up to date) inside the same memory-capped scope as the Sunshine build.
 cap_check || die "no enforced resource cap; not building"
-( cd "$here" && PATH=$HOME/.cargo/bin:$PATH CARGO_BUILD_JOBS=4 capped cargo build --release -q -p brisk-bridge -p brisk-hostd )
+build_release "$here"
 if [ ! -f "$here/web/dist/index.html" ]; then
   ( cd "$here/web" && capped npm ci --no-audit --no-fund && capped npm run build )
 fi
@@ -54,11 +53,7 @@ fi
 
 # 3. Patched Sunshine (sunshine-brisk.sh refuses unless Sunshine is idle: FREE, no app running).
 if ! brisk_running; then
-  # Before install, with the same test enable uses: a busy host must not get a drop-in that a
-  # later restart would pick up.
-  sunshine_idle || die "Sunshine is not idle (busy, an app running, or not answering); nothing changed"
-  "$SB" install # writes the drop-in; the caps are already set (no root)
-  spaced_restart "$SB" enable
+  patched_sunshine_on # the caps are already set, so install needs no root
   for _ in $(seq 30); do sunshine_idle && break; sleep 1; done
 fi
 sunshine_idle || die "Sunshine is not idle (busy, an app running, or not answering); not launching"
@@ -77,5 +72,6 @@ trap 'if [ -n "${!:-}" ]; then kill -TERM "$!" 2>/dev/null; else exit 130; fi' I
 BRISK_APP=$APP BRISK_BRIDGE_BIN=$here/target/release/brisk-bridge \
   "$here/target/release/brisk-hostd" "$here/web/dist" &
 echo $! > "$RUN/hostd.pid"
+# The first wait returns as soon as a trapped signal comes in; the second waits for hostd to exit.
 wait $! || true
 wait $! 2>/dev/null || true

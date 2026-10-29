@@ -207,7 +207,7 @@ sv0=$(cat "$SV/brisk-hostd")
 [ "$(cat "$t/root/target/release/brisk-hostd")" = v2 ] || fail "cargo stub did not build"
 [ "$(cat "$SV/brisk-hostd")" = "$sv0" ] && [ "$(cat "$SV/brisk-bridge")" = "$sv0" ] || fail "refused update replaced the service binaries"
 ls "$SV"/*.new >/dev/null 2>&1 && fail "refused update left staged binaries: $(ls "$SV")"
-grep -q 'ionice -c3 cargo build --release -q -p brisk-hostd -p brisk-bridge' "$L" || fail "build not capped"
+grep -q 'ionice -c3 cargo build --release -q -p brisk-bridge -p brisk-hostd' "$L" || fail "build not capped"
 grep -q '^rustup toolchain install --no-self-update' "$L" || fail "toolchain not installed before the build"
 grep -q '^npm' "$L" && fail "npm ran with web/dist up to date"
 grep -q 'restart' "$L" && fail "restart over a live stream"
