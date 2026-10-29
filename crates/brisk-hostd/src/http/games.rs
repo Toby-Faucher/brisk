@@ -455,10 +455,19 @@ pub(super) async fn library_scan(
     .await
     {
         Ok(Ok(r)) => {
-            s.art.trigger_new(&s.cfg, &r.merged.added);
+            let ids = r.merged.added.clone();
+            let added = blocking(&s, move |s| {
+                s.art.trigger_new(&s.cfg, &ids);
+                cards(s, &ids)
+            })
+            .await;
+            let added = match added {
+                Ok(a) => a,
+                Err(r) => return r,
+            };
             axum::Json(serde_json::json!({
                 "scanned": r.scan.scanned,
-                "added": cards(&s, &r.merged.added),
+                "added": added,
                 "aliased": r.merged.aliased,
                 "duplicates": r.merged.duplicates,
                 "unplayable": r.merged.unplayable,
@@ -569,13 +578,17 @@ pub(super) async fn upload_finish(
 ) -> Response {
     match s.uploads.finish(&s.cfg.data_dir, &id).await {
         Ok(f) => {
-            if let Some(g) = &f.game {
-                s.art.trigger_new(&s.cfg, std::slice::from_ref(g));
-            }
-            let game = f
-                .game
-                .as_ref()
-                .and_then(|g| cards(&s, std::slice::from_ref(g)).pop());
+            let id = f.game.clone();
+            let game = blocking(&s, move |s| {
+                let id = id?;
+                s.art.trigger_new(&s.cfg, std::slice::from_ref(&id));
+                cards(s, std::slice::from_ref(&id)).pop()
+            })
+            .await;
+            let game = match game {
+                Ok(g) => g,
+                Err(r) => return r,
+            };
             axum::Json(serde_json::json!({
                 "system": f.system,
                 "registered": f.game.is_some(),

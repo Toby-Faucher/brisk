@@ -43,21 +43,26 @@ pub(super) async fn stream_stop(State(s): State<Arc<AppState>>) -> Response {
 
 pub(super) async fn sessions(State(s): State<Arc<AppState>>) -> Response {
     // Each row carries a 24-point delay sparkline (from its series file) so the list needs no per-card GET.
-    let rows: Vec<serde_json::Value> = s
-        .stream
-        .sessions(100)
-        .into_iter()
-        .filter_map(|r| {
-            let spark = s.stream.sessions.spark(r.started, 24);
-            let id = r.started;
-            let mut v = serde_json::to_value(r)
-                .inspect_err(|e| tracing::warn!("sessions: skipping session {id}: {e}"))
-                .ok()?;
-            v["spark"] = spark.into();
-            Some(v)
-        })
-        .collect();
-    axum::Json(serde_json::json!({ "sessions": rows })).into_response()
+    let rows = blocking(&s, |s| {
+        s.stream
+            .sessions(100)
+            .into_iter()
+            .filter_map(|r| {
+                let spark = s.stream.sessions.spark(r.started, 24);
+                let id = r.started;
+                let mut v = serde_json::to_value(r)
+                    .inspect_err(|e| tracing::warn!("sessions: skipping session {id}: {e}"))
+                    .ok()?;
+                v["spark"] = spark.into();
+                Some(v)
+            })
+            .collect::<Vec<serde_json::Value>>()
+    })
+    .await;
+    match rows {
+        Ok(rows) => axum::Json(serde_json::json!({ "sessions": rows })).into_response(),
+        Err(r) => r,
+    }
 }
 
 /// `{session, series}`; 404 for a session hostd has no record of.
@@ -65,12 +70,17 @@ pub(super) async fn session_get(
     State(s): State<Arc<AppState>>,
     UrlPath(id): UrlPath<u64>,
 ) -> Response {
-    match s.stream.sessions.get(id) {
-        Some(r) => {
-            axum::Json(serde_json::json!({ "session": r, "series": s.stream.sessions.series(id) }))
-                .into_response()
+    let got = blocking(&s, move |s| {
+        let sessions = &s.stream.sessions;
+        sessions.get(id).map(|r| (r, sessions.series(id)))
+    })
+    .await;
+    match got {
+        Ok(Some((r, series))) => {
+            axum::Json(serde_json::json!({ "session": r, "series": series })).into_response()
         }
-        None => err(StatusCode::NOT_FOUND, "no such session"),
+        Ok(None) => err(StatusCode::NOT_FOUND, "no such session"),
+        Err(r) => r,
     }
 }
 

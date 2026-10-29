@@ -180,6 +180,21 @@ pub(crate) fn err(code: StatusCode, msg: &str) -> Response {
     (code, axum::Json(serde_json::json!({ "error": msg }))).into_response()
 }
 
+/// Runs `f` on the blocking pool. hostd's runtime has one thread, so file, /proc and fsync work
+/// in a handler must go through here or it stalls every other request. A panic in `f` is a 500.
+pub(crate) async fn blocking<T: Send + 'static>(
+    s: &Arc<AppState>,
+    f: impl FnOnce(&AppState) -> T + Send + 'static,
+) -> Result<T, Response> {
+    let s = s.clone();
+    tokio::task::spawn_blocking(move || f(&s))
+        .await
+        .map_err(|e| {
+            tracing::error!("blocking task failed: {e}");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+        })
+}
+
 /// JSON body or 400 (axum's `Json` would answer 422). `appid` is a u32 here or the request fails.
 /// True when the query string has exactly `kv` (like `refresh=1`) as one of its parts.
 pub(crate) fn query_flag(q: Option<&str>, kv: &str) -> bool {
