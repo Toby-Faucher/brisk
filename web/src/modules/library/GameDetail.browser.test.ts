@@ -7,26 +7,9 @@ import { api, ApiError, type SessionRec, type Game, type GameInfo, type Achievem
 import '../../styles/tokens.css';
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
+import { testGame } from '../../test/game';
 
-const game: Game = {
-  appid: 620,
-  name: 'Portal 2',
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-};
+const game = testGame();
 const off: Game = { ...game, appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 };
 const info: GameInfo = {
   available: true,

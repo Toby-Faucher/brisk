@@ -5,31 +5,10 @@ import { api, ApiError, type Game } from '../../state/api';
 import ArtActions from './ArtActions.svelte';
 import Cover from './Cover.svelte';
 import Toasts from '../../shell/Toasts.svelte';
+import { testGame } from '../../test/game';
 
 const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false, art: true };
-const game: Game = {
-  id: 'emu:dolphin:RMCE01',
-  source: 'emu',
-  emulator: 'dolphin',
-  caps,
-  appid: 3907440760,
-  name: 'Mario Kart Wii',
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  running: false,
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-};
+const game = testGame({ id: 'emu:dolphin:RMCE01', source: 'emu', emulator: 'dolphin', caps, appid: 3907440760, name: 'Mario Kart Wii' });
 afterEach(() => vi.restoreAllMocks());
 
 const withCover: Game = { ...game, cover: '/api/games/x/art/cover?v=1', credits: ['SteamGridDB'] };

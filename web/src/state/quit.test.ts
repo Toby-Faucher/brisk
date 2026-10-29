@@ -2,26 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { Game } from './api';
 import { quitFlow, quitItems, type QuitState } from './quit';
+import { testGame } from '../test/game';
 
-const g = (appid: number, name: string, running: boolean): Game => ({
-  appid,
-  name,
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running,
-});
+const g = (appid: number, name: string, running: boolean): Game => testGame({ appid, name, running });
 
 function rig(answers: (QuitState | Error)[]) {
   const calls: [string, boolean][] = [];

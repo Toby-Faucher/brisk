@@ -6,6 +6,7 @@ import type { Game } from '../state/api';
 import { games } from '../state/games';
 import { notes } from '../state/notes';
 import CommandMenu from './CommandMenu.svelte';
+import { testGame } from '../test/game';
 
 let before: HTMLButtonElement;
 afterEach(() => before?.remove());
@@ -49,26 +50,7 @@ describe('CommandMenu', () => {
 });
 
 describe('CommandMenu tags and games', () => {
-  const game = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
-    appid,
-    name,
-    installed: true,
-    sizeBytes: null,
-    lastPlayed: null,
-    playtimeMin: 100,
-    playtime2wkMin: 0,
-    cover: '',
-    hero: '',
-    logo: '',
-    achUnlocked: null,
-    achTotal: null,
-    updated: false,
-    update: null,
-    controller: null,
-    coop: false,
-    running: false,
-    ...o,
-  });
+  const game = (appid: number, name: string, o: Partial<Game> = {}): Game => testGame({ appid, name, playtimeMin: 100, ...o });
   beforeEach(() => {
     vi.mocked(navigate).mockClear();
     games.set({ games: [game(1, 'Alpha Quest'), game(2, 'Bravo Run', { playtimeMin: 0, coop: true })], ownedAvailable: true });

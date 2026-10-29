@@ -20,28 +20,10 @@ import {
   visibleRange,
   wheelToX,
 } from './library';
+import { testGame } from '../../test/game';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
-  appid,
-  name,
-  installed: false,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-  ...o,
-});
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => testGame({ appid, name, installed: false, ...o });
 
 describe('library', () => {
   it('updateLabel_names_the_state', () => {

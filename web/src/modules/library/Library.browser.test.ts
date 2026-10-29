@@ -6,27 +6,9 @@ import { games, gamesFailed } from '../../state/games';
 import { notes, notesLoaded } from '../../state/notes';
 import Library from './Library.svelte';
 import Toasts from '../../shell/Toasts.svelte';
+import { testGame } from '../../test/game';
 
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
-  appid,
-  name,
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 100,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-  ...o,
-});
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => testGame({ appid, name, playtimeMin: 100, ...o });
 const list = [
   g(1, 'Alpha', { playtimeMin: 300, achUnlocked: 9, achTotal: 10 }),
   g(2, 'Bravo', { playtimeMin: 200 }),

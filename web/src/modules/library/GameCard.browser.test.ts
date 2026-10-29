@@ -6,26 +6,9 @@ import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 import { notes } from '../../state/notes';
 import { quitting } from '../../shell/QuitDialog.svelte';
+import { testGame } from '../../test/game';
 
-const game: Game = {
-  appid: 400,
-  name: 'Portal',
-  installed: false,
-  sizeBytes: 5e9,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-};
+const game = testGame({ appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 });
 
 describe('GameCard', () => {
   it('clicking a not-installed card calls onpick and never installs', async () => {

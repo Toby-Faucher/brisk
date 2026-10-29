@@ -3,26 +3,9 @@ import { cdp, page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { Game } from '../../state/api';
 import Shelf from './Shelf.svelte';
+import { testGame } from '../../test/game';
 
-const g = (appid: number, name: string, cover = ''): Game => ({
-  appid,
-  name,
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 100,
-  playtime2wkMin: 0,
-  cover,
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-});
+const g = (appid: number, name: string, cover = ''): Game => testGame({ appid, name, playtimeMin: 100, cover });
 const art = (w: number, h: number) => {
   const c = document.createElement('canvas');
   c.width = w;

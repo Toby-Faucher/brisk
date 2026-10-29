@@ -5,27 +5,9 @@ import type { Game } from '../../state/api';
 import { games } from '../../state/games';
 import { notes } from '../../state/notes';
 import TagCard from './TagCard.svelte';
+import { testGame } from '../../test/game';
 
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
-  appid,
-  name,
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: `/c/${appid}.jpg`,
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-  ...o,
-});
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => testGame({ appid, name, cover: `/c/${appid}.jpg`, ...o });
 const tag = (o = {}) => ({
   name: 'Co-op night',
   color: 'teal' as const,
