@@ -54,13 +54,12 @@ fn normalize_color(c: &str) -> Option<String> {
 }
 
 fn clean_ids(ids: Vec<String>, max: usize) -> Vec<String> {
-    let ok = valid_id;
     let mut out: Vec<String> = Vec::new();
     for id in ids {
         if out.len() == max {
             break;
         }
-        if ok(&id) && !out.contains(&id) {
+        if valid_id(&id) && !out.contains(&id) {
             out.push(id);
         }
     }
@@ -133,7 +132,7 @@ impl Prefs {
             })
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|(k, v)| valid_id(&k).then_some((k.clone(), normalize_color(v.as_str()?)?)))
+            .filter_map(|(k, v)| valid_id(&k).then_some((k, normalize_color(v.as_str()?)?)))
             .take(COLORS_MAX)
             .collect();
         // Keys are kept as they are, even an old number the migration could not map (never dropped).

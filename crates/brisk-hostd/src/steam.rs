@@ -128,6 +128,7 @@ fn get_s<'a>(m: &'a [(String, V)], k: &str) -> Option<&'a str> {
 // are from memory and unverified against a live update. 512 (UpdatePaused) counts as needed and wins over the running bits.
 const FULLY_INSTALLED: u32 = 4;
 const UPDATE_REQUIRED: u32 = 2;
+const UPDATE_PAUSED: u32 = 512;
 const UPDATE_RUNNING: u32 = 256 | 1024 | 1_048_576 | 2_097_152 | 4_194_304;
 
 /// Only installed games get a state: an install in progress is shown by the install flow.
@@ -135,7 +136,7 @@ fn update_state(flags: u32) -> Option<String> {
     if flags & FULLY_INSTALLED == 0 {
         return None;
     }
-    if flags & 512 != 0 {
+    if flags & UPDATE_PAUSED != 0 {
         Some("needed".into())
     } else if flags & UPDATE_RUNNING != 0 {
         Some("running".into())
@@ -209,7 +210,9 @@ fn installed_manifests(steam_dir: &Path) -> Vec<Installed> {
                 .and_then(parse_acf)
             {
                 // Same appid in two libraries: prefer the fully installed one, else the first.
-                let better = |o: &Installed| i.state_flags & 4 != 0 && o.state_flags & 4 == 0;
+                let better = |o: &Installed| {
+                    i.state_flags & FULLY_INSTALLED != 0 && o.state_flags & FULLY_INSTALLED == 0
+                };
                 if seen.get(&i.appid).is_none_or(better) {
                     seen.insert(i.appid, i);
                 }
@@ -482,7 +485,7 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
             (g.cover, g.hero, g.logo) = steam_art(i.appid);
             g
         });
-        g.installed = i.state_flags & 4 != 0;
+        g.installed = i.state_flags & FULLY_INSTALLED != 0;
         g.update = i.update.clone();
         if g.installed {
             g.size_bytes = Some(i.size);
