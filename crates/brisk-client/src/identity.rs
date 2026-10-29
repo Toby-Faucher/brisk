@@ -6,9 +6,9 @@ use rsa::pkcs1v15::{Signature, SigningKey};
 use rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::Sha256;
-use std::fs::{self, DirBuilder, OpenOptions};
+use std::fs::{self, DirBuilder};
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
@@ -144,16 +144,10 @@ fn generate() -> Result<Identity, Box<dyn std::error::Error + Send + Sync>> {
 
 /// Atomic 0600 write: fresh temp file in `dir`, fsync, rename over `name`.
 fn write_secret(dir: &Path, name: &str, data: &str) -> crate::Result<()> {
-    let tmp = dir.join(format!(".{name}.tmp"));
-    let _ = fs::remove_file(&tmp); // a stale temp file may have other perms
-    let mut f = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)?;
+    let mut f = tempfile::NamedTempFile::new_in(dir)?; // mode 0600
     f.write_all(data.as_bytes())?;
-    f.sync_all()?;
-    fs::rename(&tmp, dir.join(name))?;
+    f.as_file().sync_all()?;
+    f.persist(dir.join(name)).map_err(|e| e.error)?;
     fs::File::open(dir)?.sync_all()?;
     Ok(())
 }
