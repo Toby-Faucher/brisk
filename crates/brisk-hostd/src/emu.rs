@@ -381,10 +381,11 @@ mod tests {
         d
     }
 
-    fn iso(tag: &str) -> PathBuf {
-        let f = std::env::temp_dir().join(format!("brisk-emu-{tag}-{}.iso", std::process::id()));
-        std::fs::write(&f, b"x").unwrap();
-        f
+    /// A one-byte disc image, removed when dropped.
+    fn iso() -> tempfile::TempPath {
+        let f = tempfile::Builder::new().suffix(".iso").tempfile().unwrap();
+        std::fs::write(f.path(), b"x").unwrap();
+        f.into_temp_path()
     }
 
     #[test]
@@ -419,7 +420,7 @@ mod tests {
 
     #[test]
     fn games_carry_the_new_fields_and_caps_by_emulator() {
-        let f = iso("shape");
+        let f = iso();
         let none = fake_proc(&[]);
         let recs = [rec("MKW", "dolphin", &f), rec("Odd", "mystery", &f)];
         let g = games(&recs, none.path(), none.path());
@@ -432,7 +433,6 @@ mod tests {
         );
         assert!(g[0].caps.controls && !g[0].caps.install && !g[0].caps.achievements);
         assert!(!g[1].caps.controls, "an emulator without an editor");
-        std::fs::remove_file(f).ok();
     }
 
     #[test]
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn launches_dolphin_on_an_existing_file_only() {
-        let f = iso("one");
+        let f = iso();
         let ok = rec("MKW", "dolphin", &f);
         let other = rec("Other", "mystery", &f);
         let none = fake_proc(&[]);
@@ -474,7 +474,6 @@ mod tests {
             run.log(),
             vec![format!("spawn dolphin-emu -b -e {}", f.display())]
         );
-        std::fs::remove_file(f).ok();
     }
 
     /// Records the whole spawn, env included.
@@ -500,7 +499,7 @@ mod tests {
 
     #[test]
     fn launch_options_wrap_the_emulator_and_invalid_ones_are_dropped() {
-        let f = iso("lo");
+        let f = iso();
         let r = rec("MKW", "dolphin", &f);
         let none = fake_proc(&[]);
         let d = tempfile::tempdir().unwrap();
@@ -567,12 +566,11 @@ mod tests {
         for j in [None, Some("{bad")] {
             assert_eq!(go(j).0, "dolphin-emu");
         }
-        std::fs::remove_file(f).ok();
     }
 
     #[test]
     fn running_means_a_dolphin_process_on_that_file_and_a_second_play_spawns_nothing() {
-        let (a, b) = (iso("a"), iso("b"));
+        let (a, b) = (iso(), iso());
         let (ra, rb) = (rec("A", "dolphin", &a), rec("B", "dolphin", &b));
         let (sa, sb) = (a.to_str().unwrap(), b.to_str().unwrap());
         let p = fake_proc(&[
@@ -589,8 +587,6 @@ mod tests {
         assert!(run.log().is_empty());
         assert!(launch(&*run, p.path(), &rs, &rb.id, &[]));
         assert_eq!(run.log(), vec![format!("spawn dolphin-emu -b -e {sb}")]);
-        std::fs::remove_file(a).ok();
-        std::fs::remove_file(b).ok();
     }
 
     /// The focus loop is shared (`stream::focus` picks the class from the source).
@@ -612,6 +608,7 @@ mod tests {
             env,
             r.id.clone(),
             Duration::from_secs(60),
+            Duration::from_secs(1),
         )
         .await;
         assert_eq!(*run.trees.lock().unwrap(), 4);
@@ -638,6 +635,7 @@ mod tests {
             vec![],
             r.id.clone(),
             Duration::from_secs(60),
+            Duration::from_secs(1),
         )
         .await;
         assert!(run.log().is_empty(), "nothing is focused: {:?}", run.log());

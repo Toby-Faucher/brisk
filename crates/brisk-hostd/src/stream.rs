@@ -189,6 +189,8 @@ pub struct Supervisor {
     /// SIGTERM to exit: the bridge cancels its Sunshine session (Sunshine lingers ~10 s).
     pub stop_wait: Duration,
     pub page_wait: Duration,
+    /// Gap between looks for a launched game's window.
+    pub focus_poll: Duration,
 }
 
 impl Supervisor {
@@ -214,6 +216,7 @@ impl Supervisor {
             child: tokio::sync::Mutex::new(None),
             stop_wait: Duration::from_secs(12),
             page_wait: Duration::from_secs(20),
+            focus_poll: Duration::from_secs(1),
         }
     }
 
@@ -330,7 +333,7 @@ impl Supervisor {
         );
         let mut launch = game.as_ref().map(|g| g.id.clone());
         let (proc, data) = (self.proc_dir.clone(), self.data_dir.clone());
-        let quiet = self.quiet;
+        let (quiet, poll) = (self.quiet, self.focus_poll);
         let report = Arc::new(Mutex::new(Report::default()));
         let rep = report.clone();
         // Owns the child: forwards its stdout (keeps the pipe drained), launches the game after
@@ -355,7 +358,7 @@ impl Supervisor {
                             } else if l.starts_with("tap\tconnected")
                                 && let Some(id) = launch.take()
                             {
-                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), data.clone(), id));
+                                tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), data.clone(), id, poll));
                             }
                             rep.lock().unwrap().line(&l);
                             forward(bridge_line(l, quiet, tok.as_deref()));
@@ -525,13 +528,16 @@ impl Supervisor {
         }
         src.after_launch(&self.data_dir, id);
         if src.focus_class(&self.data_dir, id).is_some() {
-            let (r, p, d, id) = (
+            let (r, p, d, id, poll) = (
                 self.runner.clone(),
                 self.proc_dir.clone(),
                 self.data_dir.clone(),
                 id.clone(),
+                self.focus_poll,
             );
-            tokio::spawn(async move { focus(r, p, d, env, id, Duration::from_secs(60)).await });
+            tokio::spawn(
+                async move { focus(r, p, d, env, id, Duration::from_secs(60), poll).await },
+            );
         }
         true
     }
@@ -683,17 +689,24 @@ pub(crate) async fn focus(
     env: Vec<(String, String)>,
     id: GameId,
     wait: Duration,
+    poll: Duration,
 ) {
     if let Some(class) = of(&id).focus_class(&data, &id) {
-        crate::running::focus_class(runner, env, class, id.to_string(), wait).await;
+        crate::running::focus_class(runner, env, class, id.to_string(), wait, poll).await;
     } else if let Some(n) = id.steam_appid() {
-        crate::running::focus_game(runner, proc, env, n, wait).await;
+        crate::running::focus_game(runner, proc, env, n, wait, poll).await;
     }
 }
 
 /// A running game is only brought to the front: launching it again does nothing useful and
 /// leaves its window small on the desktop. Then waits up to a minute for the window to fullscreen it.
-async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf, id: GameId) {
+async fn launch_and_focus(
+    runner: Arc<dyn Runner>,
+    proc: PathBuf,
+    data: PathBuf,
+    id: GameId,
+    poll: Duration,
+) {
     let (r, p, d, i) = (runner.clone(), proc.clone(), data.clone(), id.clone());
     let (ok, env) = tokio::task::spawn_blocking(move || {
         let src = of(&i);
@@ -714,7 +727,7 @@ async fn launch_and_focus(runner: Arc<dyn Runner>, proc: PathBuf, data: PathBuf,
     .await
     .unwrap_or_default();
     if ok {
-        focus(runner, proc, data, env, id, Duration::from_secs(60)).await;
+        focus(runner, proc, data, env, id, Duration::from_secs(60), poll).await;
     }
 }
 
