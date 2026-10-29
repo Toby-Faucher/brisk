@@ -742,7 +742,7 @@ async fn clip_get(State(s): State<Arc<AppState>>, req: Request) -> Response {
     }
 }
 
-/// `text/plain` (UTF-8) or `image/png` body becomes bawn's clipboard.
+/// `text/plain` (UTF-8) or `image/png` body becomes this machine's clipboard.
 async fn clip_post(State(s): State<Arc<AppState>>, req: Request) -> Response {
     let ct = req
         .headers()
@@ -775,7 +775,7 @@ async fn clip_post(State(s): State<Arc<AppState>>, req: Request) -> Response {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         _ => err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "couldn't set bawn's clipboard",
+            "couldn't set this machine's clipboard",
         ),
     }
 }

@@ -9,7 +9,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const RESTART_GAP_S: u64 = 100;
-/// Same port and probe as `serverinfo_free` in scripts/brisk-common.sh.
+/// Same port and `/serverinfo` probe as `sunshine_idle` in scripts/brisk-common.sh. That helper
+/// also needs `currentgame` 0; this check only looks for the FREE state.
 const SUNSHINE_ADDR: &str = "127.0.0.1:47989";
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
@@ -167,8 +168,7 @@ pub async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner
     let (path, relay) = ts.as_deref().map_or((None, None), parse_tailscale);
     let (cpu, gpu) = read_temps(&src.hwmon);
     HostInfo {
-        name: std::fs::read_to_string("/proc/sys/kernel/hostname")
-            .map_or_else(|_| "bawn".into(), |s| s.trim().to_string()),
+        name: hostname(),
         sunshine: sunshine_state(&src.sunshine_addr).await,
         uptime_s: std::fs::read_to_string(&src.uptime)
             .ok()
@@ -178,6 +178,12 @@ pub async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner
         path,
         relay,
     }
+}
+
+/// This machine's hostname, or "unknown" when it cannot be read.
+pub(crate) fn hostname() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map_or_else(|_| "unknown".into(), |s| s.trim().to_string())
 }
 
 async fn sunshine_state(addr: &str) -> Sunshine {

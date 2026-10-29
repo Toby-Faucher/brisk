@@ -416,7 +416,7 @@ impl Supervisor {
                     name: game.map_or_else(|| "Desktop".into(), |g| g.name),
                     started: now_ms(),
                     ended: None,
-                    host: hostname(),
+                    host: crate::host::hostname(),
                     preset: req.preset,
                     codec: Some(req.codec),
                     bitrate_kbps: Some(kbps),
@@ -667,11 +667,6 @@ fn parse_page(p: &str) -> Option<(String, String)> {
     let q = p.split_once("?wt=")?.1;
     let (wt, hash) = q.split_once("&hash=")?;
     (!wt.is_empty() && !hash.is_empty()).then(|| (wt.to_string(), hash.to_string()))
-}
-
-fn hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map_or_else(|_| "bawn".into(), |s| s.trim().to_string())
 }
 
 /// Waits up to `wait` for the game's window, then focuses and fullscreens it: found by the

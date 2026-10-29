@@ -130,7 +130,7 @@ impl Files {
             return Err(too_big());
         }
         let io = |e: std::io::Error| match e.raw_os_error() {
-            Some(libc::ENOSPC) => fail(StatusCode::INSUFFICIENT_STORAGE, "bawn's disk is full"),
+            Some(libc::ENOSPC) => fail(StatusCode::INSUFFICIENT_STORAGE, "this machine's disk is full"),
             _ => fail(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("couldn't save the file: {e}"),
@@ -146,7 +146,7 @@ impl Files {
         let no_space = || {
             fail(
                 StatusCode::INSUFFICIENT_STORAGE,
-                "not enough free disk space on bawn",
+                "not enough free disk space on this machine",
             )
         };
         // Checked up front with a Content-Length, then again while writing (chunked bodies,
