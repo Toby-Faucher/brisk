@@ -25,42 +25,87 @@ const MODIFIER_MASK: u8 = 0x0F;
 pub const MAX_MOUSE_DELTA: i32 = i16::MAX as i32 * 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One input event from the browser, before encoding.
 pub enum InputEvent {
     /// Relative motion. Deltas beyond i16 are split over several packets like
     /// moonlight's input thread (each axis saturates per packet, remainder follows); each axis is
     /// first clamped to +-[`MAX_MOUSE_DELTA`].
-    MouseMoveRel { dx: i32, dy: i32 },
+    MouseMoveRel {
+        /// Horizontal motion.
+        dx: i32,
+        /// Vertical motion.
+        dy: i32,
+    },
     /// `button` 1..=5; `down` = press.
-    MouseButton { button: u8, down: bool },
+    MouseButton {
+        /// Button number.
+        button: u8,
+        /// Pressed, not released.
+        down: bool,
+    },
     /// High-resolution vertical scroll (120 = one notch). 0 sends nothing.
-    Scroll { amount: i16 },
+    Scroll {
+        /// Scroll amount, 120 per notch.
+        amount: i16,
+    },
     /// `vk` is the Windows virtual-key code; the encoder sets the 0x8000 flag real
     /// clients send (Sunshine masks it off). `modifiers` bits: 1 shift, 2 ctrl, 4 alt, 8 meta.
-    Key { vk: u8, down: bool, modifiers: u8 },
+    Key {
+        /// Windows virtual-key code.
+        vk: u8,
+        /// Pressed, not released.
+        down: bool,
+        /// Modifier bits.
+        modifiers: u8,
+    },
     /// Multi-controller packet. `buttons` low 16 bits -> `buttonFlags`, high 16 ->
     /// Sunshine's `buttonFlags2`. `index` 0..16; `active_mask` bit per connected pad
     /// (Sunshine allocates the pad when its bit is set). Layout, all LE:
     /// headerB 0x001A, controller u16, mask u16, midB 0x0014, buttons u16, lt u8, rt u8,
     /// lx,ly,rx,ry i16, tailA 0x009C, buttons2 u16, tailB 0x0055.
     Gamepad {
+        /// Pad index, 0..16.
         index: u8,
+        /// Bit per connected pad.
         active_mask: u16,
+        /// Button bits.
         buttons: u32,
+        /// Left trigger.
         lt: u8,
+        /// Right trigger.
         rt: u8,
+        /// Left stick x.
         lx: i16,
+        /// Left stick y.
         ly: i16,
+        /// Right stick x.
         rx: i16,
+        /// Right stick y.
         ry: i16,
     },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An event the wire format cannot carry.
 pub enum InputError {
+    /// Mouse button outside 1..=5.
     BadMouseButton(u8),
+    /// Modifier bits outside shift, ctrl, alt and meta.
     BadModifiers(u8),
+    /// Gamepad index of 16 or more.
     GamepadIndex(u8),
 }
+
+impl std::fmt::Display for InputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputError::BadMouseButton(b) => write!(f, "bad mouse button {b}"),
+            InputError::BadModifiers(m) => write!(f, "bad key modifiers {m:#04x}"),
+            InputError::GamepadIndex(i) => write!(f, "gamepad index {i} out of range"),
+        }
+    }
+}
+impl std::error::Error for InputError {}
 
 fn packet(magic: u32, body: &[u8]) -> Vec<u8> {
     let mut p = Vec::with_capacity(8 + body.len());

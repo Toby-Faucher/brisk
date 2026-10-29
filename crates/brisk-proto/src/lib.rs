@@ -10,6 +10,9 @@
 //! - [`tap`]: framing of the patched-Sunshine encoded-frame tap.
 //! - [`scrub`]: blanking secrets out of recorded fixtures.
 
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
 pub mod audio;
 pub mod control;
 pub mod enet;
@@ -23,6 +26,8 @@ pub mod scrub;
 pub mod sdp;
 pub mod tap;
 
+/// Version strings Brisk presents to Sunshine.
 pub mod version {
+    /// The moonlight `appversion` Brisk claims.
     pub const SUNSHINE_APPVERSION: &str = "7.1.431.-1";
 }

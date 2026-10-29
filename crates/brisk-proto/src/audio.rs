@@ -16,15 +16,21 @@ use crate::fec::{rs_decode_matrix, rs_encode_matrix};
 use aes::Aes128;
 use aes::cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray};
 
+/// RTP header bytes before every audio payload.
 pub const RTP_HEADER: usize = 12;
+/// `AUDIO_FEC_HEADER` bytes after the RTP header of an FEC packet.
 pub const FEC_HEADER: usize = 12;
 /// Sunshine `MAX_AUDIO_PACKET_SIZE`: payload bytes per packet.
 pub const MAX_PAYLOAD: usize = 1400;
 /// Encrypted payloads are padded up to the AES block size.
 pub const MAX_DATAGRAM: usize = RTP_HEADER + FEC_HEADER + MAX_PAYLOAD.div_ceil(16) * 16;
+/// RTP payload type of audio data packets.
 pub const PT_AUDIO: u8 = 97;
+/// RTP payload type of audio FEC packets.
 pub const PT_FEC: u8 = 127;
+/// Data shards per FEC block.
 pub const DATA_SHARDS: usize = 4;
+/// Parity shards per FEC block.
 pub const FEC_SHARDS: usize = 2;
 /// Row-major `FEC_SHARDS x DATA_SHARDS` parity matrix from Sunshine / moonlight (OpenFEC's).
 pub const PARITY: [u8; 8] = [0x77, 0x40, 0x38, 0x0e, 0xc7, 0xa7, 0x0d, 0x6c];
@@ -40,9 +46,13 @@ const MAX_LOOKAHEAD: u16 = 1024;
 const RESYNC_AFTER: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why an audio packet was rejected.
 pub enum AudioError {
+    /// Datagram over [`MAX_DATAGRAM`].
     TooLarge,
+    /// Shorter than its headers.
     Truncated,
+    /// RTP header that does not parse (not version 2, or a bad field).
     Malformed,
     /// Ciphertext is not a whole number of AES blocks or the padding is wrong (wrong key/IV or
     /// tampering).
@@ -69,17 +79,24 @@ impl std::fmt::Display for AudioError {
 impl std::error::Error for AudioError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One decrypted Opus frame.
 pub struct OpusFrame {
+    /// RTP sequence number.
     pub seq: u16,
+    /// RTP timestamp.
     pub ts: u32,
+    /// The Opus frame.
     pub data: Vec<u8>,
 }
 
 /// An audio data packet's RTP fields plus its (still encrypted) payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioPayload {
+    /// RTP sequence number.
     pub seq: u16,
+    /// RTP timestamp.
     pub ts: u32,
+    /// Payload bytes, still encrypted when `SS_ENC_AUDIO` is on.
     pub payload: Vec<u8>,
 }
 
@@ -171,7 +188,9 @@ pub fn parse_audio_packet(
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Counters of an [`AudioFec`].
 pub struct AudioFecStats {
+    /// Data packets rebuilt from parity.
     pub recovered: u64,
     /// Data packets never received nor recovered when their block was given up on.
     pub lost: u64,
@@ -216,6 +235,7 @@ fn is_before16(a: u16, b: u16) -> bool {
 }
 
 impl AudioFec {
+    /// A queue for packets `packet_duration` RTP ticks apart.
     pub fn new(packet_duration: u32) -> Self {
         Self {
             blocks: Vec::new(),
@@ -227,6 +247,7 @@ impl AudioFec {
         }
     }
 
+    /// Counters so far.
     pub fn stats(&self) -> AudioFecStats {
         self.stats
     }

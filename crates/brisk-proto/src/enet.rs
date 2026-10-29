@@ -18,8 +18,11 @@
 
 use std::collections::HashMap;
 
+/// MTU announced in CONNECT.
 pub const MTU: u32 = 900;
+/// Channels requested in CONNECT.
 pub const CHANNEL_COUNT: u8 = 0x30;
+/// Largest datagram accepted or sent.
 pub const MAX_DATAGRAM: usize = 4096; // ENET_PROTOCOL_MAXIMUM_MTU: ENet never sends more
 const PEER_ID_NONE: u16 = 0xFFF;
 const SYSTEM: u8 = 0xFF; // channel of CONNECT / VERIFY_CONNECT / PING / DISCONNECT
@@ -49,28 +52,43 @@ const H_COMPRESSED: u16 = 0x4000;
 const SIZES: [usize; 13] = [0, 8, 48, 44, 8, 4, 6, 8, 24, 8, 12, 16, 24];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// What a datagram did to the peer.
 pub enum EnetEvent {
+    /// The host verified our CONNECT.
     Connected,
+    /// A packet arrived on `channel`.
     Receive {
+        /// ENet channel.
         channel: u8,
+        /// Packet data.
         data: Vec<u8>,
     },
     /// A reliable command we sent was acknowledged.
     Acked {
+        /// ENet channel of the acked command.
         channel: u8,
+        /// Its reliable sequence number.
         seq: u16,
     },
+    /// The host disconnected.
     Disconnected {
+        /// The DISCONNECT command's data field.
         data: u32,
     },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why ENet refused a datagram or a send.
 pub enum EnetError {
+    /// Datagram or command does not parse.
     Malformed,
+    /// Datagram or packet over the size limit.
     TooLarge,
+    /// Sending before the connection is up, or after it ended.
     NotConnected,
+    /// [`MAX_IN_FLIGHT`] reliable commands are already unacked.
     QueueFull,
+    /// Channel number past [`CHANNEL_COUNT`].
     BadChannel,
     /// VERIFY_CONNECT did not match our CONNECT (connectID, throttle or channel count).
     Refused,
@@ -80,18 +98,31 @@ pub enum EnetError {
 
 impl std::fmt::Display for EnetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "enet: {self:?}")
+        f.write_str(match self {
+            EnetError::Malformed => "malformed enet datagram",
+            EnetError::TooLarge => "enet packet too large",
+            EnetError::NotConnected => "enet peer not connected",
+            EnetError::QueueFull => "enet send queue full",
+            EnetError::BadChannel => "no such enet channel",
+            EnetError::Refused => "host refused the enet connection",
+            EnetError::Timeout => "enet command not acknowledged in time",
+        })
     }
 }
 impl std::error::Error for EnetError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Connection state of an [`EnetPeer`].
 pub enum PeerState {
+    /// CONNECT sent, no VERIFY_CONNECT yet.
     Connecting,
+    /// Connected; packets flow.
     Connected,
     /// `enet_peer_disconnect_later`: DISCONNECT goes out once everything in flight is acked.
     DisconnectLater,
+    /// DISCONNECT sent, waiting for its ack.
     Disconnecting,
+    /// Closed.
     Disconnected,
 }
 
@@ -106,6 +137,7 @@ struct Sent {
     attempts: u32,
 }
 
+/// Client side of one ENet connection (sans-io: datagrams in, datagrams out).
 pub struct EnetPeer {
     state: PeerState,
     connect_id: u32,
@@ -185,9 +217,11 @@ impl EnetPeer {
         (p, d)
     }
 
+    /// Current connection state.
     pub fn state(&self) -> PeerState {
         self.state
     }
+    /// Round-trip time estimate in ms, as ENet keeps it.
     pub fn rtt(&self) -> u32 {
         self.rtt
     }

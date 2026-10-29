@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
-rand_core = { version = "0.6.4", features = ["getrandom"] }
+rand_core.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 http-body-util = "0.1"
@@ -14,8 +14,8 @@ libc = "0.2"
 # Steam HTTPS: pure-Rust TLS (graviola provider, no ring/aws-lc); system roots via the platform verifier.
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 rustls-graviola = "=0.4.0"
-# Safe syscalls (pidfd signalling, uid, parent-death signal); linux_raw backend, no libc.
-rustix = { version = "=1.1.5", default-features = false, features = ["std", "process"] }
+# Safe syscalls (pidfd signalling, uid, parent-death signal, statvfs); linux_raw backend, no libc.
+rustix = { workspace = true, features = ["fs", "process"] }
 # systemd Type=notify readiness + watchdog (only acts when NOTIFY_SOCKET is set).
 sd-notify = { version = "=0.5.0", default-features = false }
 # Static files (web/dist): Range, ETag/Last-Modified + 304, precompressed .br/.gz, HEAD.
@@ -23,7 +23,7 @@ percent-encoding = "2"
 tower-http = { version = "=0.7.1", default-features = false, features = ["fs"] }
 # Feature `embed` only: web/dist compiled into the binary (build.rs, docs/ui-notes.md Hosting).
 include_dir = { version = "=0.7.4", optional = true }
-tokio = { version = "1", features = ["rt", "net", "macros", "fs", "signal", "process", "io-util"] }
+tokio = { workspace = true, features = ["rt", "net", "macros", "fs", "signal", "process", "io-util", "time", "sync"] }
 
 [features]
 # Single-binary release (BRISK_STATIC=embed). Off by default: the service's update/rollback flow
@@ -32,8 +32,8 @@ embed = ["dep:include_dir"]
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false }
-tempfile = "3"
-tokio = { version = "1", features = ["test-util"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }
 
 [lints]

@@ -9,6 +9,9 @@ pub mod session;
 pub mod stream;
 pub mod tap;
 
+use brisk_proto::control::ControlError;
+use brisk_proto::enet::EnetError;
+use brisk_proto::rtsp::RtspError;
 use brisk_proto::{http::HttpError, input::InputError, pair::PairError, tap::TapError};
 
 /// What went wrong, by kind; the strings are context for people, the variant is for callers.
@@ -26,7 +29,13 @@ pub enum Error {
     Tap(TapError),
     /// An input event the wire format cannot carry (control layer).
     Input(InputError),
-    /// Malformed or unexpected bytes from the host (HTTP framing, RTSP, control, certificates).
+    /// An RTSP message from the host did not parse or decrypt (`brisk_proto::rtsp`).
+    Rtsp(RtspError),
+    /// The ENet layer of the control stream failed (`brisk_proto::enet`).
+    Enet(EnetError),
+    /// A control message did not decrypt or could not be sealed (`brisk_proto::control`).
+    Control(ControlError),
+    /// Other malformed or unexpected bytes from the host (HTTP framing, RTSP replies, certificates).
     Protocol(String),
     /// No answer within the deadline (session, RTSP, control and stream layers).
     Timeout(String),
@@ -70,7 +79,10 @@ impl std::fmt::Display for Error {
             Error::Pair(e) => e.fmt(f),
             Error::Tls(e) => e.fmt(f),
             Error::Tap(e) => e.fmt(f),
-            Error::Input(e) => write!(f, "input: {e:?}"),
+            Error::Input(e) => write!(f, "input: {e}"),
+            Error::Rtsp(e) => e.fmt(f),
+            Error::Enet(e) => e.fmt(f),
+            Error::Control(e) => e.fmt(f),
             Error::Protocol(s)
             | Error::Timeout(s)
             | Error::Busy(s)
@@ -92,6 +104,10 @@ impl std::error::Error for Error {
             Error::Pair(e) => Some(e),
             Error::Tls(e) => Some(e),
             Error::Tap(e) => Some(e),
+            Error::Input(e) => Some(e),
+            Error::Rtsp(e) => Some(e),
+            Error::Enet(e) => Some(e),
+            Error::Control(e) => Some(e),
             Error::Context(_, e) | Error::Then(e, _) => Some(e),
             _ => None,
         }
@@ -128,21 +144,21 @@ impl From<TapError> for Error {
         Error::Tap(e)
     }
 }
-/// Host bytes our protocol code rejected.
-macro_rules! protocol_from {
-    ($($t:ty),*) => {$(
-        impl From<$t> for Error {
-            fn from(e: $t) -> Self {
-                Error::Protocol(e.to_string())
-            }
-        }
-    )*};
+impl From<RtspError> for Error {
+    fn from(e: RtspError) -> Self {
+        Error::Rtsp(e)
+    }
 }
-protocol_from!(
-    brisk_proto::control::ControlError,
-    brisk_proto::enet::EnetError,
-    brisk_proto::rtsp::RtspError
-);
+impl From<EnetError> for Error {
+    fn from(e: EnetError) -> Self {
+        Error::Enet(e)
+    }
+}
+impl From<ControlError> for Error {
+    fn from(e: ControlError) -> Self {
+        Error::Control(e)
+    }
+}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -181,4 +197,24 @@ impl tracing::Subscriber for StderrLog {
     }
     fn enter(&self, _: &tracing::span::Id) {}
     fn exit(&self, _: &tracing::span::Id) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error as _;
+
+    #[test]
+    fn proto_errors_keep_their_type_and_source() {
+        let e: Error = RtspError::Replay.into();
+        assert!(matches!(e, Error::Rtsp(RtspError::Replay)));
+        assert_eq!(e.to_string(), "replayed rtsp sequence number");
+        let e: Error = EnetError::Refused.into();
+        assert!(matches!(e, Error::Enet(EnetError::Refused)));
+        let e: Error = ControlError::BadTag.into();
+        assert_eq!(e.to_string(), "control message failed authentication");
+        let e: Error = InputError::GamepadIndex(20).into();
+        assert_eq!(e.to_string(), "input: gamepad index 20 out of range");
+        assert!(e.source().is_some());
+    }
 }

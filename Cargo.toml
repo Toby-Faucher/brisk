@@ -6,6 +6,28 @@ members = ["crates/brisk-proto", "crates/brisk-client", "crates/brisk-bridge", "
 edition = "2024"
 version = "0.0.0"
 
+# Shared by two or more crates. A crate adds its own features with `features = [...]`.
+[workspace.dependencies]
+brisk-client = { path = "crates/brisk-client" }
+brisk-proto = { path = "crates/brisk-proto" }
+aes = "0.8.4"
+aes-gcm = "0.10.3"
+bytes = "1"
+# Property tests. No fork/timeout features (rusty-fork, tempfile): inputs are kept small instead.
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+rsa = { version = "0.9.10", features = ["sha2"] }
+# Safe syscalls; linux_raw backend, no libc.
+rustix = { version = "=1.1.5", default-features = false, features = ["std"] }
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+rustls-rustcrypto = "=0.0.2-alpha"
+sha2 = "0.10.9"
+subtle = "2.6.1"
+tempfile = "3"
+tokio = "1"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+x509-cert = { version = "0.2.5", features = ["pem"] }
+
 # RSA-2048 keygen is very slow unoptimised; tests generate identities.
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
