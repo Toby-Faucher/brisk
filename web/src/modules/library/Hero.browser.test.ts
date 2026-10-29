@@ -41,11 +41,12 @@ describe('Hero art', () => {
     });
     const hero = container.querySelector('.hero')!;
     const logo = hero.querySelector('img.logo')!;
-    expect(logo.classList.contains('on')).toBe(false);
+    const h3 = hero.querySelector('h3')!;
+    expect(getComputedStyle(logo).display).toBe('none');
     logo.dispatchEvent(new Event('load'));
-    await expect.poll(() => logo.classList.contains('on')).toBe(true);
-    expect(hero.querySelector('h3')!.classList.contains('vh')).toBe(true);
-    expect(hero.querySelector('h3')!.textContent).toContain('Portal 2');
+    await expect.poll(() => getComputedStyle(logo).display).toBe('block');
+    expect(h3.getBoundingClientRect().width).toBeLessThanOrEqual(1); // visually hidden, still read out
+    expect(h3.textContent).toContain('Portal 2');
   });
 });
 
