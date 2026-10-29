@@ -316,15 +316,12 @@ fn call(
     body: &[u8],
     timeout: Duration,
 ) -> Result<Up, Fail> {
-    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    let agent = AGENT.get_or_init(|| {
-        crate::net::agent(
-            ureq::tls::RootCerts::PlatformVerifier,
-            Some(Duration::from_secs(3)),
-            Duration::from_secs(3),
-            false,
-        )
-    });
+    let agent = crate::net::agent(
+        ureq::tls::RootCerts::PlatformVerifier,
+        Some(Duration::from_secs(3)),
+        timeout,
+        false,
+    );
     let secret = std::fs::read_to_string(&e.cfg.secret_file).map_err(|_| Fail::Local)?;
     let mut rq = ureq::http::Request::builder()
         .method(method)
@@ -335,10 +332,6 @@ fn call(
         rq = rq.header(*k, *v);
     }
     let rq = rq.body(body).map_err(|_| Fail::Local)?;
-    let rq = agent
-        .configure_request(rq)
-        .timeout_global(Some(timeout))
-        .build();
     let mut r = agent.run(rq).map_err(|_| Fail::Down)?;
     let h = |n: &str| {
         r.headers()

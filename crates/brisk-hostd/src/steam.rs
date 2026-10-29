@@ -280,16 +280,13 @@ pub(crate) fn get_limited_for(
     max: u64,
     total: Duration,
 ) -> Result<Vec<u8>, String> {
-    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    let agent = AGENT.get_or_init(|| {
-        crate::net::agent(
-            ureq::tls::RootCerts::PlatformVerifier,
-            Some(Duration::from_secs(5)),
-            Duration::from_secs(15),
-            true,
-        )
-    });
-    let mut req = agent.get(url).config().timeout_global(Some(total)).build();
+    let agent = crate::net::agent(
+        ureq::tls::RootCerts::PlatformVerifier,
+        Some(Duration::from_secs(5)),
+        total,
+        true,
+    );
+    let mut req = agent.get(url);
     if let Some(t) = bearer {
         req = req.header("Authorization", format!("Bearer {t}"));
     }
