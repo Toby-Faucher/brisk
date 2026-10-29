@@ -6,6 +6,7 @@ Rust workspace (`crates/`) plus an Astro + Svelte UI (`web/`). Details: `docs/ui
 - **Toolchain** is pinned in `rust-toolchain.toml` (1.99.1), edition 2024. Bump deliberately, then `cargo update` and run all checks.
 - **npm pins**: `web/.npmrc` has `save-exact=true`; every dependency is an exact version. A new package or bump takes the newest
   version at least 14 days old, unless the newer one is a security fix. Check `npm audit` after a change.
+- **Rust style** follows Google's Rust guide; the rules we check against, and where we differ, are in `docs/rust-style.md`.
 - **`unsafe`** needs a `// SAFETY:` comment right above the statement (clippy `undocumented_unsafe_blocks`).
 - **`web/dist`** is a symlink to `web/dist.<stamp>`, swapped by `scripts/brisk-service.sh update`. Do not replace it by hand.
 - **Checks** (all must pass): `scripts/check.sh` runs the whole list: fmt, clippy `-D warnings`, nextest, doc tests, `cargo deny check`,
