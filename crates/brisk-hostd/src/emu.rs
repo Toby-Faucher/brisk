@@ -124,7 +124,8 @@ pub fn mark_played(data_dir: &Path, id: &GameId) {
     m.insert(id.to_string(), now);
     crate::fsutil::evict_oldest(&mut m, PLAYED_MAX, |_, t| *t);
     let path = data_dir.join(PLAYED_FILE);
-    if let Err(e) = crate::fsutil::write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default()) {
+    if let Err(e) = crate::fsutil::write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default())
+    {
         eprintln!("warning: {}: {e}", path.display());
     }
 }

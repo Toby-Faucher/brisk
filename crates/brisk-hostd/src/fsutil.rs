@@ -35,7 +35,11 @@ pub(crate) fn evict_oldest<K: Ord + Clone, V, O: Ord>(
     by: impl Fn(&K, &V) -> O,
 ) {
     while m.len() > max {
-        let Some(oldest) = m.iter().min_by_key(|(k, v)| by(k, v)).map(|(k, _)| k.clone()) else {
+        let Some(oldest) = m
+            .iter()
+            .min_by_key(|(k, v)| by(k, v))
+            .map(|(k, _)| k.clone())
+        else {
             return;
         };
         m.remove(&oldest);

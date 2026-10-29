@@ -2,7 +2,7 @@
 //! (docs/plans/machine-hub.md). Secrets are read from their files at each use, never stored and
 //! never in a response, log line or error text.
 
-use crate::http::AppState;
+use crate::http::{AppState, err};
 use crate::idle::{IdleWatch, Observed};
 use crate::power::{Power, PowerCfg, ProxmoxCfg, VmState, VmStats};
 use axum::body::Body;
@@ -395,10 +395,6 @@ fn fetch_temp(url: &str) -> Option<f64> {
         .ok()?;
     let v: Value = serde_json::from_slice(&body).ok()?;
     v["cpuTempC"].as_f64().filter(|c| (0.0..=150.0).contains(c))
-}
-
-fn err(code: StatusCode, msg: &str) -> Response {
-    (code, axum::Json(json!({ "error": msg }))).into_response()
 }
 
 pub async fn list(State(s): State<Arc<AppState>>) -> Response {

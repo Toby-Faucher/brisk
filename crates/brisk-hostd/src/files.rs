@@ -130,7 +130,10 @@ impl Files {
             return Err(too_big());
         }
         let io = |e: std::io::Error| match e.raw_os_error() {
-            Some(libc::ENOSPC) => fail(StatusCode::INSUFFICIENT_STORAGE, "this machine's disk is full"),
+            Some(libc::ENOSPC) => fail(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "this machine's disk is full",
+            ),
             _ => fail(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("couldn't save the file: {e}"),
