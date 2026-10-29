@@ -14,6 +14,8 @@
 //! certificate hash. --secs stops after N seconds (default: until SIGINT/SIGTERM/SIGHUP or the
 //! host ends the session). At exit it prints the latency report and the M2 gate.
 
+#![forbid(unsafe_code)]
+
 use brisk_bridge::session::{AudioRx, Report, forward};
 use brisk_bridge::{input, wt};
 use brisk_client::control::ControlSession;

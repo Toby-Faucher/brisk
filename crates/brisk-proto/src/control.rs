@@ -15,27 +15,45 @@ use aes_gcm::{Aes128Gcm, Nonce, Tag};
 
 /// Packet types: Sunshine stream.cpp `packetTypes`, moonlight `packetTypesGen7Enc`.
 pub mod ptype {
+    /// Envelope of every sealed message.
     pub const ENCRYPTED: u16 = 0x0001;
+    /// Start A.
     pub const START_A: u16 = 0x0305;
+    /// Start B.
     pub const START_B: u16 = 0x0307;
+    /// Reference-frame invalidation request.
     pub const INVALIDATE_REF_FRAMES: u16 = 0x0301;
+    /// IDR frame request.
     pub const IDR_REQUEST: u16 = 0x0302;
+    /// Client loss statistics.
     pub const LOSS_STATS: u16 = 0x0201;
+    /// Client frame statistics.
     pub const FRAME_STATS: u16 = 0x0204;
+    /// Input packet.
     pub const INPUT: u16 = 0x0206;
+    /// Keepalive ping.
     pub const PERIODIC_PING: u16 = 0x0200;
+    /// Gamepad rumble.
     pub const RUMBLE: u16 = 0x010b;
+    /// Host ends the session.
     pub const TERMINATION: u16 = 0x0109;
+    /// Host HDR mode change.
     pub const HDR_MODE: u16 = 0x010e;
+    /// Trigger rumble.
     pub const RUMBLE_TRIGGERS: u16 = 0x5500;
 }
 
 /// ENet channels (Limelight-internal.h `CTRL_CHANNEL_*`).
 pub mod channel {
+    /// Generic channel.
     pub const GENERIC: u8 = 0x00;
+    /// Urgent channel.
     pub const URGENT: u8 = 0x01;
+    /// Keyboard input.
     pub const KEYBOARD: u8 = 0x02;
+    /// Mouse input.
     pub const MOUSE: u8 = 0x03;
+    /// First gamepad channel; pad `n` uses `GAMEPAD_BASE + n`.
     pub const GAMEPAD_BASE: u8 = 0x10;
 }
 
@@ -45,51 +63,77 @@ pub const MAX_PLAINTEXT: usize = 255;
 pub const TERMINATION_GRACEFUL: u32 = 0x8003_0023;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One control-stream message, either direction.
 pub enum ControlMsg {
     /// Gen7Enc has no Start A on the wire from moonlight: its index-0 slot is `IdrRequest`.
     StartA,
+    /// Start B: sent after Start A to begin streaming.
     StartB,
     /// moonlight's 100 ms keepalive (`usePeriodicPing`).
     Ping,
+    /// Ask the host for an IDR frame.
     IdrRequest,
+    /// Ask the host to stop referencing frames `first..=last`.
     InvalidateRefFrames {
+        /// First frame index to invalidate.
         first: u32,
+        /// Last frame index to invalidate.
         last: u32,
     },
+    /// Loss statistics payload, sent as is.
     LossStats(Vec<u8>),
+    /// Frame statistics payload, sent as is.
     FrameStats(Vec<u8>),
     /// One plaintext packet from [`encode_input`] plus the ENet channel moonlight uses for it.
     Input {
+        /// ENet channel for the packet.
         channel: u8,
+        /// The plaintext input packet.
         packet: Vec<u8>,
     },
+    /// Gamepad rumble from the host.
     Rumble {
+        /// Controller index.
         controller: u16,
+        /// Low-frequency motor strength.
         low: u16,
+        /// High-frequency motor strength.
         high: u16,
     },
+    /// Trigger rumble from the host.
     RumbleTriggers {
+        /// Controller index.
         controller: u16,
+        /// Left trigger motor strength.
         left: u16,
+        /// Right trigger motor strength.
         right: u16,
     },
+    /// Host switched HDR on or off.
     HdrMode {
+        /// HDR is on.
         enabled: bool,
     },
     /// Extended form: HRESULT, big-endian. The 2-byte form (u16 LE) is widened.
     Termination(u32),
+    /// Any other type, with its raw payload.
     Unknown(u16, Vec<u8>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why a control message could not be sealed or opened.
 pub enum ControlError {
+    /// Plaintext or envelope over [`MAX_PLAINTEXT`].
     TooLarge,
+    /// Shorter than its headers or its length field.
     Truncated,
     /// Not an `ENCRYPTED` (0x0001) envelope; Sunshine and moonlight drop these.
     Unencrypted,
+    /// AES-GCM tag did not verify: tampered or wrong key.
     BadTag,
     /// Host sequence number not above the last accepted one.
     Replay,
+    /// 2^32 messages sent under one key; sending more would reuse an IV.
     SeqExhausted,
 }
 
@@ -263,6 +307,7 @@ impl Control {
         }
     }
 
+    /// Seals `msg` as the next message in our direction.
     pub fn encode(&mut self, msg: &ControlMsg) -> Result<Vec<u8>, ControlError> {
         let (t, p) = msg.plain();
         if 4 + p.len() > MAX_PLAINTEXT {

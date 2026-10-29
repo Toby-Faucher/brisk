@@ -4,7 +4,9 @@
 
 /// `x-ss-general.encryption*` bits (moonlight-common-c Limelight-internal.h, Sunshine stream.cpp).
 pub const SS_ENC_CONTROL_V2: u32 = 0x01;
+/// Video is encrypted.
 pub const SS_ENC_VIDEO: u32 = 0x02;
+/// Audio is encrypted.
 pub const SS_ENC_AUDIO: u32 = 0x04;
 
 /// `x-nv-general.featureFlags`: base 0x07 | remote-input encryption 0x80; 0x20 = audio encryption.
@@ -14,8 +16,11 @@ const NVFF_AUDIO_ENCRYPTION: u32 = 0x20;
 const ML_FF: u32 = 0x03;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Video codec.
 pub enum Codec {
+    /// H.264.
     H264,
+    /// HEVC (H.265).
     Hevc,
 }
 
@@ -23,11 +28,15 @@ pub enum Codec {
 /// draws a fresh one per launch, so reusing a config can never reuse a GCM key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamConfig {
+    /// Width in pixels.
     pub width: u16,
+    /// Height in pixels.
     pub height: u16,
+    /// Frames per second.
     pub fps: u16,
     /// What the user asked for; Sunshine derives the encoder bitrate from it (`configuredBitrateKbps`).
     pub bitrate_kbps: u32,
+    /// Video codec.
     pub codec: Codec,
     /// Video payload size, sent as is (moonlight subtracts the 32-byte header itself when video is encrypted).
     pub packet_size: u16,
@@ -58,6 +67,7 @@ pub fn sdp_attr(payload: &str, name: &str) -> Option<u32> {
     })
 }
 
+/// The ANNOUNCE body for `cfg`, claiming moonlight `app_version`.
 pub fn build_sdp(cfg: &StreamConfig, app_version: &str) -> String {
     // rtspClientVersion by appversion major: 3 -> 10 ... 7+ -> 14 (RtspConnection.c).
     let major: u32 = app_version

@@ -8,7 +8,9 @@ use quick_xml::events::Event;
 pub const MAX_BODY: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Why an HTTP reply was rejected.
 pub enum HttpError {
+    /// Body over [`MAX_BODY`].
     TooLarge,
     /// Malformed or truncated XML.
     BadXml,
@@ -19,7 +21,9 @@ pub enum HttpError {
     Malformed(&'static str),
     /// Server answered with a non-200 `status_code`.
     Status {
+        /// `status_code` from the reply.
         code: u32,
+        /// `status_message` from the reply.
         message: String,
     },
 }
@@ -217,15 +221,23 @@ pub fn parse_field(xml: &str, name: &'static str) -> Result<String, HttpError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The fields of `/serverinfo` that Brisk uses.
 pub struct ServerInfo {
+    /// `appversion`.
     pub app_version: String,
+    /// `GfeVersion`.
     pub gfe_version: String,
+    /// `uniqueid` of the host.
     pub unique_id: String,
+    /// `HttpsPort`.
     pub https_port: u16,
     /// `PairStatus`: Sunshine reports 1 only on HTTPS requests that carried `uniqueid`.
     pub paired: bool,
+    /// `currentgame`: running app id, 0 when none.
     pub current_game: u32,
+    /// `ServerCodecModeSupport` bits.
     pub codec_mode_support: u32,
+    /// `state`, such as `SUNSHINE_SERVER_FREE` or `_BUSY`.
     pub server_state: String,
 }
 
@@ -240,6 +252,7 @@ impl ServerInfo {
     }
 }
 
+/// Parses a `/serverinfo` reply.
 pub fn parse_serverinfo(xml: &str) -> Result<ServerInfo, HttpError> {
     let d = ok(parse(xml)?)?;
     Ok(ServerInfo {
@@ -259,11 +272,15 @@ pub fn parse_serverinfo(xml: &str) -> Result<ServerInfo, HttpError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One app from `/applist`.
 pub struct App {
+    /// App id to launch.
     pub id: u32,
+    /// App title.
     pub title: String,
 }
 
+/// Parses an `/applist` reply.
 pub fn parse_applist(xml: &str) -> Result<Vec<App>, HttpError> {
     let d = ok(parse(xml)?)?;
     let mut apps = Vec::new();
@@ -293,12 +310,15 @@ pub fn parse_applist(xml: &str) -> Result<Vec<App>, HttpError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The fields of a `/launch` (or `/resume`) reply that Brisk uses.
 pub struct LaunchReply {
     /// `rtsp://` (or `rtspenc://` when launched with corever >= 1) URL of the RTSP server.
     pub session_url: String,
+    /// `gamesession`.
     pub game_session: u32,
 }
 
+/// Parses a `/launch` reply; the session URL must be `rtsp://` or `rtspenc://`.
 pub fn parse_launch(xml: &str) -> Result<LaunchReply, HttpError> {
     let d = ok(parse(xml)?)?;
     let session_url = d.field("sessionUrl0")?.trim().to_string();
@@ -325,6 +345,7 @@ pub struct LaunchOpts {
     pub gcmap: u32,
     /// `sops`: let the host optimise game settings for the mode.
     pub sops: bool,
+    /// `hdrMode`: ask for HDR.
     pub hdr: bool,
 }
 

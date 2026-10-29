@@ -16,14 +16,20 @@
 //! 40  4   dropped_total
 //! ```
 
+/// First 4 bytes of every message.
 pub const MAGIC: [u8; 4] = *b"BTAP";
+/// Header version this parser reads.
 pub const VERSION: u8 = 1;
+/// Size of the fixed header.
 pub const HEADER_LEN: usize = 44;
 /// Largest Annex B payload accepted (a 1080p IDR is about 100-500 KB \[U\]).
 pub const MAX_PAYLOAD: usize = 4 << 20;
 
+/// The frame is an IDR.
 pub const FLAG_IDR: u8 = 0x01;
+/// The frame follows a reference-frame invalidation.
 pub const FLAG_AFTER_RFI: u8 = 0x02;
+/// `capture_ns` is not a real capture time.
 pub const FLAG_NO_CAPTURE_TS: u8 = 0x04;
 /// Frames were dropped (socket full) before this one; it is the recovery IDR.
 pub const FLAG_GAP: u8 = 0x08;
@@ -32,13 +38,21 @@ pub const FLAG_GAP: u8 = 0x08;
 /// module docs above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TapHeader {
+    /// `FLAG_*` bits.
     pub flags: u8,
+    /// Header bytes; the payload starts here.
     pub header_len: u16,
+    /// `X-SS-Connect-Data` of the session.
     pub connect_data: u32,
+    /// 0 H.264, 1 HEVC, 2 AV1.
     pub codec: u32,
+    /// Encoder frame index.
     pub frame_index: u64,
+    /// Capture time, `CLOCK_MONOTONIC` ns (0 if none).
     pub capture_ns: u64,
+    /// Send time, `CLOCK_MONOTONIC` ns.
     pub tap_ns: u64,
+    /// Frames the tap dropped in total.
     pub dropped_total: u32,
 }
 
@@ -62,10 +76,13 @@ impl TapHeader {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why a tap message was rejected.
 pub enum TapError {
     /// Fewer than [`HEADER_LEN`] bytes.
     Short(usize),
+    /// First bytes are not [`MAGIC`].
     BadMagic,
+    /// Header version other than [`VERSION`].
     BadVersion(u8),
     /// `header_len` below 44 or past the end of the message.
     BadHeaderLen(u16),
