@@ -63,6 +63,10 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_EXIT_WAIT` | Seconds `brisk-up.sh`'s exit cleanup waits for the bridge to finish cancelling. | `90` | `scripts/brisk-common.sh` |
 | `BRISK_SB` | Path of `sunshine-brisk.sh` (a stub in tests). | `scripts/sunshine-brisk.sh` | `brisk-up.sh`, `brisk-down.sh`, `brisk-service.sh` |
 | `SB_DROPIN_DIR` | Directory of Sunshine's systemd drop-in (`brisk.conf`). | `~/.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service.d` | `scripts/sunshine-brisk.sh`, `brisk-common.sh` |
+| `SB_PREFIX` | Install prefix of the patched Sunshine. | `~/.local/opt/sunshine-brisk` | `scripts/sunshine-brisk.sh` |
+| `SB_SRC` | Sunshine clone the patch is applied to. | `~/build/sunshine-brisk-build` | `scripts/sunshine-brisk.sh` |
+| `SB_PATCH` | The tap patch. | `patches/sunshine/0001-brisk-tap.patch` | `scripts/sunshine-brisk.sh` |
+| `SB_SERVERINFO` | Sunshine `serverinfo` URL for the idle check (a stub in tests). | `http://127.0.0.1:47989/serverinfo` | `scripts/sunshine-brisk.sh` |
 | `SB_JOBS` | Parallel jobs for the patched Sunshine build, 1 to 6 (bawn hung at unbounded `-j`). | `3` | `scripts/sunshine-brisk.sh` |
 | `FORCE` | `1` restarts even when a stream may be live: `sunshine-brisk.sh` restarts Sunshine when it is busy or gives no answer, `brisk-service.sh install` and `update` restart hostd. | unset | `scripts/sunshine-brisk.sh`, `scripts/brisk-service.sh` |
 | `BRISK_RESTART_GAP` | Seconds to wait between two Sunshine restarts. | `100` | `scripts/sunshine-brisk.sh` (added in a later change) |
