@@ -145,17 +145,8 @@ pub(crate) fn running_appids(proc: &Path) -> HashSet<u32> {
         .collect()
 }
 
-/// The descendants of `appid`'s reapers, not the reapers themselves (so never Steam, their
-/// parent); `None` when the game is not running.
-fn game_pids(proc: &Path, appid: u32) -> Option<HashSet<u32>> {
-    game_tree(proc, appid).map(|t| t.1)
-}
-
-/// `(reapers, their descendants)` of `appid`; `None` when no reaper is alive.
-fn game_tree(proc: &Path, appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
-    tree(&procs(proc), appid)
-}
-
+/// `(reapers, their descendants)` of `appid`; `None` when no reaper is alive. The descendants
+/// never include the reapers themselves (so never Steam, their parent).
 pub(crate) fn tree(ps: &[Proc], appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
     let reapers: HashSet<u32> = ps
         .iter()
@@ -332,7 +323,7 @@ pub(crate) async fn focus_game(
         wait,
         poll,
         move |r, sock| {
-            let pids = game_pids(&proc, appid)?;
+            let (_, pids) = tree(&procs(&proc), appid)?;
             find_windows(r, sock, Find::Pids(&pids)).last().copied()
         },
     )

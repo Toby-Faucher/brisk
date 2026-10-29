@@ -517,18 +517,6 @@ impl Art {
         self.spawn_as(cfg, id, title, system, disc, false)
     }
 
-    /// `spawn` for a refresh (`run_fresh`).
-    fn spawn_fresh(
-        self: &Arc<Self>,
-        cfg: Config,
-        id: GameId,
-        title: String,
-        system: Option<String>,
-        disc: Option<String>,
-    ) -> bool {
-        self.spawn_as(cfg, id, title, system, disc, true)
-    }
-
     fn spawn_as(
         self: &Arc<Self>,
         cfg: Config,
@@ -796,7 +784,7 @@ pub async fn answer(
             axum::Json(serde_json::json!({ "state": "none" })).into_response()
         }
         Ok(Ok(())) => {
-            start(&s, &id);
+            start_as(&s, &id, false);
             (
                 StatusCode::ACCEPTED,
                 axum::Json(serde_json::json!({ "state": "fetching" })),
@@ -808,21 +796,17 @@ pub async fn answer(
     }
 }
 
-fn start(s: &Arc<AppState>, id: &GameId) {
-    start_as(s, id, false);
-}
-
+/// Starts the art pipeline for `id`; `fresh` for a refresh (`run_fresh`).
 fn start_as(s: &Arc<AppState>, id: &GameId, fresh: bool) {
     let recs = s.records();
     if let Some(r) = crate::emu::find(&recs, id) {
-        let spawn = if fresh { Art::spawn_fresh } else { Art::spawn };
-        spawn(
-            &s.art,
+        s.art.spawn_as(
             s.cfg.clone(),
             r.id.clone(),
             r.name.clone(),
             r.system.clone(),
             crate::emu::disc_id_of(r),
+            fresh,
         );
     }
 }

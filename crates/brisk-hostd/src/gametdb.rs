@@ -383,11 +383,11 @@ fn lookup_at(data_dir: &Path, xml_url: Option<&str>, id: &str, at: u64) -> Resul
     }
     let path = data_dir.join("gametdb/index.json");
     let cached = read_cache(&path);
-    let fresh = cached
-        .as_ref()
-        .is_some_and(|c| at.saturating_sub(c.fetched) < TTL_S);
-    let cache = if fresh {
-        cached.ok_or(Error::BadContent)?
+    let cache = if let Some(c) = cached
+        .clone()
+        .filter(|c| at.saturating_sub(c.fetched) < TTL_S)
+    {
+        c
     } else if failed_recently(&data_dir.join("gametdb"), at) {
         // The last download failed lately: stale (or nothing) until the cool-down ends.
         cached.ok_or_else(|| Error::Network("database download failed lately".into()))?

@@ -208,12 +208,14 @@ fn real_canon(p: &Path) -> Option<PathBuf> {
     p.canonicalize().ok()
 }
 
-/// Adds what is new. Same path under another id: that record keeps its id and gains the new one
-/// as an alias. Same id (or alias) at another path: a duplicate, not added.
-pub fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
+/// `merge_with` resolving paths on the real filesystem.
+#[cfg(test)]
+fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
     merge_with(recs, found, source, &mut Canon::new(&real_canon))
 }
 
+/// Adds what is new. Same path under another id: that record keeps its id and gains the new one
+/// as an alias. Same id (or alias) at another path: a duplicate, not added.
 fn merge_with(recs: &mut Vec<Record>, found: &[Found], source: &str, c: &mut Canon) -> Merged {
     let mut m = Merged::default();
     // Lookups by id and by path (as written and as resolved), built once: the first record wins.

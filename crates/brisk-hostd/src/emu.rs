@@ -231,19 +231,10 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
 /// Starts the emulator on the game file, detached, in the graphical session, unless it already
 /// runs that file: then nothing is spawned. True when the game is running afterwards. False for an
 /// unknown id, a missing file, an emulator we don't know, or a failed start. Blocking.
-pub fn launch(
-    runner: &dyn Runner,
-    proc: &Path,
-    recs: &[Record],
-    id: &GameId,
-    env: &[(String, String)],
-) -> bool {
-    launch_with(runner, proc, recs, id, env, None)
-}
-
-/// `launch` with the launch options in `launch_json` (`data_dir/launch.json`) wrapped around the
-/// emulator command. Options that are not valid at this moment are not applied (and the log says
-/// why): a game always starts.
+///
+/// The launch options in `launch_json` (`data_dir/launch.json`) are wrapped around the emulator
+/// command. Options that are not valid at this moment are not applied (and the log says why): a
+/// game always starts.
 pub(crate) fn launch_with(
     runner: &dyn Runner,
     proc: &Path,
@@ -302,6 +293,16 @@ pub(crate) fn launch_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn launch(
+        runner: &dyn Runner,
+        proc: &Path,
+        recs: &[Record],
+        id: &GameId,
+        env: &[(String, String)],
+    ) -> bool {
+        launch_with(runner, proc, recs, id, env, None)
+    }
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
