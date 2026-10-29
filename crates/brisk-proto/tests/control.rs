@@ -109,8 +109,7 @@ fn control_rejects_tampered_tag() {
 }
 
 #[test]
-#[allow(non_snake_case)]
-fn control_unknown_type_is_Unknown_not_panic() {
+fn control_unknown_type_is_unknown_not_panic() {
     let mut c = Control::new(KEY);
     let mut h = Control::host(KEY);
     let m = ControlMsg::Unknown(0x5504, vec![1, 2, 3]);

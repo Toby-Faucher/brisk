@@ -2,7 +2,7 @@ use brisk_proto::tap::*;
 
 /// One tap message laid out as the Sunshine patch's `brisk_tap_send` writes it (little-endian,
 /// research/m2-tap-design.md section 2), with `extra` unknown header bytes before the payload.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn msg(
     flags: u8,
     connect_data: u32,

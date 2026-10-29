@@ -53,6 +53,13 @@ impl ServerCert {
     }
 }
 
+/// `$XDG_CONFIG_HOME/brisk`, else `$HOME/.config/brisk`: the default `--config` of the binaries.
+pub fn default_config_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(|d| Path::new(&d).join("brisk"))
+        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".config/brisk")))
+}
+
 /// Loads the existing identity in `dir`; never creates or overwrites anything.
 pub fn load_identity(dir: &Path) -> crate::Result<Identity> {
     load(dir)?.ok_or_else(|| {
