@@ -43,7 +43,11 @@ const DISCONNECT: u8 = 4;
 const PING: u8 = 5;
 const SEND_RELIABLE: u8 = 6;
 const SEND_UNRELIABLE: u8 = 7;
+const SEND_FRAGMENT: u8 = 8;
 const SEND_UNSEQUENCED: u8 = 9;
+const BANDWIDTH_LIMIT: u8 = 10;
+const THROTTLE_CONFIGURE: u8 = 11;
+const SEND_UNRELIABLE_FRAGMENT: u8 = 12;
 const F_ACK: u8 = 0x80;
 const F_UNSEQ: u8 = 0x40;
 const H_SENT_TIME: u16 = 0x8000;
@@ -295,7 +299,11 @@ impl EnetPeer {
         if channel >= self.channels {
             return Err(EnetError::BadChannel);
         }
-        let hdr = if reliable { 6 } else { 8 };
+        let hdr = SIZES[if reliable {
+            SEND_RELIABLE
+        } else {
+            SEND_UNRELIABLE
+        } as usize];
         if 4 + hdr + payload.len() > self.mtu as usize {
             return Err(EnetError::TooLarge);
         }
@@ -376,9 +384,10 @@ impl EnetPeer {
             }
             // enet_protocol_check_timeouts: back off by attempts, capped at the timeout limit.
             let rto = self.rto_base() * self.sent[i].attempts.clamp(1, TIMEOUT_LIMIT);
-            let cmd = self.sent[i].cmd.clone();
+            let cmd = std::mem::take(&mut self.sent[i].cmd);
             out.push(self.datagram(now, &[&cmd], true));
             let s = &mut self.sent[i];
+            s.cmd = cmd;
             s.rto = rto;
             s.attempts += 1;
             s.sent_at = now;
@@ -447,7 +456,9 @@ impl EnetPeer {
             i += size;
             let data_len = match number {
                 SEND_RELIABLE => be16(c, 4) as usize,
-                SEND_UNRELIABLE | SEND_UNSEQUENCED | 8 | 12 => be16(c, 6) as usize,
+                SEND_UNRELIABLE | SEND_UNSEQUENCED | SEND_FRAGMENT | SEND_UNRELIABLE_FRAGMENT => {
+                    be16(c, 6) as usize
+                }
                 _ => 0,
             };
             if i + data_len > d.len() {
@@ -573,8 +584,9 @@ impl EnetPeer {
                 });
                 Ok(true)
             }
-            10 | 11 => Ok(live), // bandwidth limit / throttle configure: ACK, otherwise ignore
-            8 | 12 => Ok(false), // shortcut: fragments unsupported; Sunshine's messages fit one datagram
+            BANDWIDTH_LIMIT | THROTTLE_CONFIGURE => Ok(live), // ACK, otherwise ignore
+            // shortcut: fragments unsupported; Sunshine's messages fit one datagram
+            SEND_FRAGMENT | SEND_UNRELIABLE_FRAGMENT => Ok(false),
             _ => Err(EnetError::Malformed),
         }
     }

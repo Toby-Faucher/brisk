@@ -2,6 +2,8 @@
 //! reads, with the values moonlight-common-c `SdpGenerator.c` sends for a generation-7 Sunshine host
 //! (appversion `7.1.431.-1`): local stream, SDR, stereo, no reference-frame invalidation.
 
+use std::fmt::Write;
+
 /// `x-ss-general.encryption*` bits (moonlight-common-c Limelight-internal.h, Sunshine stream.cpp).
 pub const SS_ENC_CONTROL_V2: u32 = 0x01;
 /// Video is encrypted.
@@ -120,7 +122,7 @@ pub fn build_sdp(cfg: &StreamConfig, app_version: &str) -> String {
         "v=0\r\no=android 0 {client_version} IN IPv4 0.0.0.0\r\ns=NVIDIA Streaming Client\r\n"
     );
     for (k, v) in attrs {
-        s.push_str(&format!("a={k}:{v} \r\n"));
+        let _ = write!(s, "a={k}:{v} \r\n"); // writing to a String cannot fail
     }
     if cfg.tap {
         s.push_str("a=x-brisk.tap:1 \r\n");

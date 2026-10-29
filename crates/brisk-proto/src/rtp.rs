@@ -44,6 +44,8 @@ const FLAG_EXTENSION: u8 = 0x10;
 /// Sunshine sends up to 4 FEC blocks per frame (2-bit counters).
 const MAX_FEC_BLOCKS: usize = 4;
 const SHORT_FRAME_HEADER: usize = 8;
+/// `video_short_frame_header_t.frameType` of an IDR frame.
+const FRAME_TYPE_IDR: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Why a video packet was rejected.
@@ -464,16 +466,14 @@ fn finish(frame: Frame) -> Option<(AssembledFrame, bool)> {
     if last_len as usize <= last.len() && last_len != 0 {
         *last = &last[..last_len as usize];
     }
-    let mut annexb: Vec<u8> = payloads.concat();
-    if annexb.len() < SHORT_FRAME_HEADER {
-        return None;
-    }
-    annexb.drain(..SHORT_FRAME_HEADER);
+    // frame_header saw at least SHORT_FRAME_HEADER bytes in payloads[0]; only a single, trimmed
+    // payload can be shorter now, and then the frame is too short.
+    payloads[0] = payloads[0].get(SHORT_FRAME_HEADER..)?;
     Some((
         AssembledFrame {
             idx: frame.idx,
-            is_idr: ty == 2,
-            annexb,
+            is_idr: ty == FRAME_TYPE_IDR,
+            annexb: payloads.concat(),
             host_latency_100us: latency,
         },
         recovered,
