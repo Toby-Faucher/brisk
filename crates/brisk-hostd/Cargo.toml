@@ -14,8 +14,8 @@ libc = "0.2"
 # Steam HTTPS: pure-Rust TLS (graviola provider, no ring/aws-lc); system roots via the platform verifier.
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 rustls-graviola = "=0.4.0"
-# Safe syscalls (pidfd signalling, uid, parent-death signal); linux_raw backend, no libc.
-rustix = { workspace = true, features = ["process"] }
+# Safe syscalls (pidfd signalling, uid, parent-death signal, statvfs); linux_raw backend, no libc.
+rustix = { workspace = true, features = ["fs", "process"] }
 # systemd Type=notify readiness + watchdog (only acts when NOTIFY_SOCKET is set).
 sd-notify = { version = "=0.5.0", default-features = false }
 # Static files (web/dist): Range, ETag/Last-Modified + 304, precompressed .br/.gz, HEAD.

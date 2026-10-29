@@ -10,7 +10,6 @@ use bytes::{Bytes, BytesMut};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::io;
 use std::mem::MaybeUninit;
-use std::os::fd::AsRawFd;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt};
 use std::path::{Path, PathBuf};
 use tokio::io::Interest;
@@ -34,12 +33,7 @@ pub fn tap_path() -> Option<PathBuf> {
 /// `CLOCK_MONOTONIC` in ns: the clock of the header's `capture_ns`/`tap_ns` (libstdc++
 /// `steady_clock` \[U\]). `Instant` does not expose its value, so it cannot be compared.
 pub fn monotonic_ns() -> u64 {
-    let mut t = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: valid out-pointer; CLOCK_MONOTONIC cannot fail on Linux.
-    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
+    let t = rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
     t.tv_sec as u64 * 1_000_000_000 + t.tv_nsec as u64
 }
 
@@ -49,26 +43,7 @@ fn async_fd(s: Socket) -> io::Result<AsyncFd<Socket>> {
 }
 
 fn peer_uid(s: &Socket) -> io::Result<u32> {
-    let mut c = libc::ucred {
-        pid: 0,
-        uid: 0,
-        gid: 0,
-    };
-    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    // SAFETY: `c` and `len` are valid for getsockopt(SO_PEERCRED) on a live socket.
-    let r = unsafe {
-        libc::getsockopt(
-            s.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            &mut c as *mut _ as *mut libc::c_void,
-            &mut len,
-        )
-    };
-    if r != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(c.uid)
+    Ok(rustix::net::sockopt::socket_peercred(s)?.uid.as_raw())
 }
 
 pub struct TapListener {
@@ -97,8 +72,7 @@ impl TapListener {
         Ok(TapListener {
             fd: async_fd(s)?,
             path: path.to_owned(),
-            // SAFETY: getuid cannot fail.
-            uid: unsafe { libc::getuid() },
+            uid: rustix::process::getuid().as_raw(),
         })
     }
 
@@ -242,7 +216,8 @@ impl TapConn {
             .fd
             .async_io(Interest::READABLE, |s| {
                 // MSG_TRUNC: the full length of the next message, without taking it.
-                let len = s.recv_with_flags(&mut [], libc::MSG_PEEK | libc::MSG_TRUNC)?;
+                use rustix::net::RecvFlags;
+                let (_, len) = rustix::net::recv(s, &mut [0u8; 0], RecvFlags::PEEK | RecvFlags::TRUNC)?;
                 let mut m = BytesMut::with_capacity(len.min(MAX_MESSAGE));
                 let n = s.recv(m.spare_capacity_mut())?; // an oversize message is cut here
                 // SAFETY: recv initialised the first `n` bytes.

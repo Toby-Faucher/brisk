@@ -7,9 +7,10 @@ publish = false
 [dependencies]
 brisk-proto.workspace = true
 bytes.workspace = true
-libc = "0.2"
 rand_core.workspace = true
 rsa.workspace = true
+# SO_PEERCRED, CLOCK_MONOTONIC, uid and MSG_TRUNC for the tap socket.
+rustix = { workspace = true, features = ["net", "time", "process"] }
 rustls = { workspace = true, features = ["tls12"] }
 rustls-rustcrypto.workspace = true
 sha2.workspace = true
