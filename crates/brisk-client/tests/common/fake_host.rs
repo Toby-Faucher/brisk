@@ -433,7 +433,8 @@ pub fn fake_with(cfg: Cfg) -> Fake {
                             msg.extend(now.to_le_bytes());
                             msg.extend(0u32.to_le_bytes());
                             msg.extend(&annexb);
-                            if rustix::net::send(t, &msg, rustix::net::SendFlags::DONTWAIT).is_ok() {
+                            if rustix::net::send(t, &msg, rustix::net::SendFlags::DONTWAIT).is_ok()
+                            {
                                 let mut log = l.lock().unwrap();
                                 log.frames += 1;
                                 log.idr_frames += u32::from(idr);

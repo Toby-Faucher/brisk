@@ -217,7 +217,8 @@ impl TapConn {
             .async_io(Interest::READABLE, |s| {
                 // MSG_TRUNC: the full length of the next message, without taking it.
                 use rustix::net::RecvFlags;
-                let (_, len) = rustix::net::recv(s, &mut [0u8; 0], RecvFlags::PEEK | RecvFlags::TRUNC)?;
+                let (_, len) =
+                    rustix::net::recv(s, &mut [0u8; 0], RecvFlags::PEEK | RecvFlags::TRUNC)?;
                 let mut m = BytesMut::with_capacity(len.min(MAX_MESSAGE));
                 let n = s.recv(m.spare_capacity_mut())?; // an oversize message is cut here
                 // SAFETY: recv initialised the first `n` bytes.
