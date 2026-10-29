@@ -11,7 +11,7 @@
   import { readyFirst } from '../modules/machines/machines';
   import { attachShortcuts, rank } from './keys';
   import { loadModules, type CommandItem } from './registry';
-  import { toast } from './Toasts.svelte';
+  import { toast, toastError } from './Toasts.svelte';
   import { askQuit, stuck } from './QuitDialog.svelte';
   import { quitItems } from '../state/quit';
   import Icon from '../ui/Icon.svelte';
@@ -32,7 +32,7 @@
       id: `game:${gameKey(g)}`,
       label: `Launch ${g.name}`,
       icon: 'play',
-      run: () => void readyFirst().then(() => api.launch(gameKey(g))).catch((e) => toast(`Could not launch ${g.name}: ${e.message}`, { error: true })),
+      run: () => void readyFirst().then(() => api.launch(gameKey(g))).catch((e) => toastError(`launch ${g.name}`, e)),
     })),
     ...tagEntries($notes, $games?.games ?? [], go),
     ...[surpriseEntry($games?.games ?? [], go)].flatMap((e) => (e ? [e] : [])),
@@ -40,7 +40,7 @@
     ...($hub === true
       ? machineEntries($machines, $selected, {
           select: (id) => void selectMachine(id),
-          start: (id) => void powerMachine(id, 'start').catch((e) => toast(`Could not start it: ${e.message}`, { error: true })),
+          start: (id) => void powerMachine(id, 'start').catch((e) => toastError('start it', e)),
         })
       : []),
     { id: 'cmd:machine', label: 'Switch machine', hint: $host?.name ?? 'host', icon: 'host', run: () => go('/machines') },

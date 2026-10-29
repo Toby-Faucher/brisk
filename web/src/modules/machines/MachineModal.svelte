@@ -8,7 +8,8 @@
   import { findGame, gameKey } from '../../state/gameId';
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
+  import { errMsg } from '../../state/errMsg';
   import Dropdown from '../../ui/Dropdown.svelte';
   import Icon from '../../ui/Icon.svelte';
   import LatencyLayers from '../../ui/LatencyLayers.svelte';
@@ -51,7 +52,7 @@
       const r = await api.forMachine(machineId).games(refresh);
       if (n === gseq) gl = { state: 'idle', data: r.games.filter((g) => g.installed), error: '' };
     } catch (e) {
-      if (n === gseq) gl = { ...gl, state: 'error', error: (e as Error).message };
+      if (n === gseq) gl = { ...gl, state: 'error', error: errMsg(e) };
     }
   }
   async function loadSessions() {
@@ -61,7 +62,7 @@
       const r = await api.forMachine(machineId).sessions();
       if (n === sseq) sl = { state: 'idle', data: r.sessions.slice(0, 8), error: '' };
     } catch (e) {
-      if (n === sseq) sl = { ...sl, state: 'error', error: (e as Error).message };
+      if (n === sseq) sl = { ...sl, state: 'error', error: errMsg(e) };
     }
   }
   $effect(() => {
@@ -90,7 +91,7 @@
   }
 
   // ---- actions ----
-  const failed = (what: string, e: unknown) => toast(`Could not ${what}: ${(e as Error).message}`, { error: true });
+  const failed = toastError;
   const start = () => m && powerMachine(m.id, 'start').catch((e) => failed(`start ${m.name}`, e));
   async function shutDown() {
     shutting = false;
@@ -153,7 +154,7 @@
     try {
       await setMachineColor(machineId, c);
     } catch (e) {
-      colorErr = `Could not save the colour: ${(e as Error).message}`;
+      colorErr = `Could not save the colour: ${errMsg(e)}`;
     }
   }
   const SUN = { ready: 'Ready', busy: 'Streaming', down: 'Down' } as const;

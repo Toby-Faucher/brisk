@@ -1,4 +1,6 @@
 // Keeping a stream screenshot with the game on the machine that streams it.
+import { errMsg } from '../../state/errMsg';
+
 export const MAX_SHOT_BYTES = 8 << 20;
 
 export type Kept = { ok: true } | { ok: false; why: string };
@@ -10,6 +12,6 @@ export async function keepShot(png: Blob, post: (b: Blob) => Promise<unknown>): 
     await post(png);
     return { ok: true };
   } catch (e) {
-    return { ok: false, why: (e as Error).message };
+    return { ok: false, why: errMsg(e) };
   }
 }

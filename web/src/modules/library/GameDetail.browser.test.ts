@@ -1200,7 +1200,7 @@ describe('stored stream screenshots (emulator games)', () => {
     await open();
     await page.getByRole('button', { name: 'Delete screenshot 1', exact: true }).click();
     await page.getByRole('group', { name: 'Delete screenshot 1?' }).getByRole('button', { name: 'Delete' }).click();
-    await expect.element(page.getByText(/Couldn't delete the screenshot/)).toBeInTheDocument();
+    await expect.element(page.getByText(/Could not delete the screenshot/)).toBeInTheDocument();
     await expect.element(page.getByRole('button', { name: 'Open Mario Kart Wii screenshot 1 from this PC' })).toBeInTheDocument();
   });
 

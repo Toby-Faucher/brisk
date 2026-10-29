@@ -1,3 +1,4 @@
+import { errMsg } from '../../state/errMsg';
 import { get } from 'svelte/store';
 import { ApiError, type HostInfo } from '../../state/api';
 import { DASH, fmtTemp, fmtUptime } from '../home/home';
@@ -10,7 +11,7 @@ export const machinesFrom = (info: HostInfo): SoloMachine[] => [{ id: info.name.
 
 export function restartError(e: unknown): string {
   if (e instanceof ApiError && e.status === 429) return 'Sunshine was restarted a moment ago, try again in a minute';
-  return `Could not restart Sunshine: ${(e as Error).message}`;
+  return `Could not restart Sunshine: ${errMsg(e)}`;
 }
 
 export const STATE_LABEL: Record<MachineState, string> = {

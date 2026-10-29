@@ -9,7 +9,7 @@
   import QuitLabel from '../../ui/QuitLabel.svelte';
   import { askQuit, quitting } from '../../shell/QuitDialog.svelte';
   import { host as hostStore, refreshHost } from '../../state/host';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import HeaderSpark from '../../ui/HeaderSpark.svelte';
   import Ring from '../../ui/Ring.svelte';
@@ -42,7 +42,7 @@
   });
   const machines = $derived<Entry[]>(hubOn ? ordered.map((m) => ({ id: m.id, name: m.name, state: m.state, canPower: m.canPower, info: m.host, vm: m.vm })) : ($hostStore ? machinesFrom($hostStore) : []).map((m) => ({ id: m.id, name: m.info.name, state: 'ready', canPower: false, info: m.info, vm: null })));
   let shutting = $state<Entry | null>(null);
-  const failed = (what: string, e: unknown) => toast(`Could not ${what}: ${(e as Error).message}`, { error: true });
+  const failed = toastError;
   const start = (m: Entry) => powerMachine(m.id, 'start').catch((e) => failed(`start ${m.name}`, e));
   async function shutDown(m: Entry) {
     shutting = null;

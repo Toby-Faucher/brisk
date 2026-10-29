@@ -4,7 +4,7 @@
   import { navigate } from 'astro:transitions/client';
   import { games } from '../../state/games';
   import { startGame, watchPrefs } from '../../state/prefs';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
   import Card from '../../ui/Card.svelte';
   import Icon from '../../ui/Icon.svelte';
   import PlayIcon from '../../ui/PlayIcon.svelte';
@@ -22,7 +22,7 @@
       await startGame(g, toast);
       await navigate('/stream');
     } catch (e) {
-      toast(`Could not start ${g.name}: ${(e as Error).message}`, { error: true });
+      toastError(`start ${g.name}`, e);
     } finally {
       busy = false;
     }

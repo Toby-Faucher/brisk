@@ -10,7 +10,8 @@
   import { forgetPrefs, prefs, saver, savedBody, startGame, watchPrefs } from '../../state/prefs';
   import { onCommand } from '../../state/commands';
   import Smoke from '../../ui/Smoke.svelte';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
+  import { errMsg } from '../../state/errMsg';
   import { startVideo } from '../../lib/video';
   import { startAudio } from '../../lib/audio';
   import { startInput } from '../../lib/input';
@@ -60,7 +61,7 @@
   const uploads = uploadQueue(api.uploadFile, {
     progress: (u, queued) => (upload = u && { u, queued }),
     done: (_, path) => toast(`Saved ${path}`, { ms: 6000 }),
-    error: (name, msg) => toast(`Couldn't send ${name}: ${msg}`, { error: true }),
+    error: (name, msg) => toast(`Could not send ${name}: ${msg}`, { error: true }),
   });
   const pct = (u: Upload) => (u.total ? Math.floor((u.loaded / u.total) * 100) : 100);
 
@@ -84,7 +85,7 @@
     try {
       info = await pollLive(api, () => !destroyed);
     } catch (e) {
-      toast(`Couldn't reach the host: ${(e as Error).message}`, { error: true });
+      toastError('reach the host', e);
       return void (page = 'idle');
     }
     if (!info) return; // left the page while waiting
@@ -107,7 +108,7 @@
       page = 'session';
       await session.connect(info);
     } catch (e) {
-      toast(`Couldn't start the stream: ${(e as Error).message}`, { error: true });
+      toastError('start the stream', e);
     } finally {
       starting = false;
     }
@@ -151,8 +152,8 @@
       setTimeout(() => URL.revokeObjectURL(thumb), 6000);
       toast(`${text} · kept with ${g.name}`, { thumb, ms: 5000 });
     } catch (e) {
-      const m = (e as Error).name === 'SecurityError' ? 'the browser will not let this page read the video frame' : (e as Error).message;
-      toast(`Couldn't take the screenshot: ${m}`, { error: true });
+      const m = (e as Error | null)?.name === 'SecurityError' ? 'the browser will not let this page read the video frame' : errMsg(e);
+      toast(`Could not take the screenshot: ${m}`, { error: true });
     } finally {
       shooting = false;
     }
@@ -172,8 +173,8 @@
       download(blob, name);
       toast(`Saved ${name} · ${Math.round(seconds)} s · ${(blob.size / 1e6).toFixed(1)} MB`, { ms: 5000 });
     } catch (e) {
-      const m = (e as Error).message;
-      toast(m === 'nothing to save yet' ? 'Nothing to save yet' : `Couldn't save the clip: ${m}`, { error: m !== 'nothing to save yet' });
+      const m = errMsg(e);
+      toast(m === 'nothing to save yet' ? 'Nothing to save yet' : `Could not save the clip: ${m}`, { error: m !== 'nothing to save yet' });
     } finally {
       saving = false;
     }
@@ -185,7 +186,7 @@
       await forgetPrefs(appid);
       toast(`Forgot the saved quality for ${gameName}`);
     } catch (e) {
-      toast(`Couldn't forget it: ${(e as Error).message}`, { error: true });
+      toastError('forget it', e);
     }
   }
 

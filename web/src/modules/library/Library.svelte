@@ -9,7 +9,7 @@
   import { notes, watchNotes } from '../../state/notes';
   import { watchRemap } from '../../state/remap';
   import TagChip from './TagChip.svelte';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toast, toastError } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import Dropdown from '../../ui/Dropdown.svelte';
   import { glideSwap, splitIn } from '../../ui/motion';
@@ -157,7 +157,7 @@
     try {
       await task();
     } catch (e) {
-      toast(`Could not ${verb} ${g.name}: ${(e as Error).message}`, { error: true });
+      toastError(`${verb} ${g.name}`, e);
     } finally {
       busy = null;
     }
@@ -203,7 +203,7 @@
 
 <div class="body" bind:this={body}>
   {#if $games && !$games.ownedAvailable}
-    <div class="banner" role="status">Couldn't reach Steam. Showing installed games only for now.</div>
+    <div class="banner" role="status">Could not reach Steam. Showing installed games only for now.</div>
   {/if}
 
   {#if !$games}

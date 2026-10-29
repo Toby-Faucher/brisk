@@ -3,7 +3,7 @@
   import { Dialog } from 'bits-ui';
   import { api } from '../../state/api';
   import { newTagId, notes, tagUses, TAG_COLORS, TAG_SYMBOLS, withoutTag, type Tag, type TagColor } from '../../state/notes';
-  import { toast } from '../../shell/Toasts.svelte';
+  import { toastError } from '../../shell/Toasts.svelte';
   import TagChip from './TagChip.svelte';
 
   /** `id` null: a new tag. `onsaved` gets the id once hostd has stored it; `ondeleted` places focus (the trigger is gone). */
@@ -46,7 +46,7 @@
       onsaved?.(tid);
       open = false;
     } catch (err) {
-      toast(`Could not save the tag: ${(err as Error).message}`, { error: true });
+      toastError('save the tag', err);
     } finally {
       busy = false;
     }
@@ -62,7 +62,7 @@
       confirming = false;
       open = false;
     } catch (err) {
-      toast(`Could not delete the tag: ${(err as Error).message}`, { error: true });
+      toastError('delete the tag', err);
     } finally {
       busy = false;
     }

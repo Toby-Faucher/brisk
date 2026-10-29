@@ -6,6 +6,7 @@
   import { gameKey } from '../../state/gameId';
   import { refreshGames } from '../../state/games';
   import { toast } from '../../shell/Toasts.svelte';
+  import { errMsg } from '../../state/errMsg';
 
   let { game, onremoved }: { game: Game; onremoved: () => void } = $props();
   let open = $state(false);
@@ -19,7 +20,7 @@
     try {
       await api.removeGame(gameKey(game));
     } catch (e) {
-      failed = `Could not remove it: ${(e as Error).message}`;
+      failed = `Could not remove it: ${errMsg(e)}`;
       busy = false;
       return;
     }
