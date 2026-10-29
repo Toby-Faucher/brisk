@@ -11,12 +11,9 @@
   let { game, style = '', children }: { game: Game; style?: string; children?: Snippet } = $props();
   // The disc's own system when hostd knows it (Dolphin plays both); else a name for the emulator.
   const SYSTEMS: Record<string, string> = { wii: 'Wii', gamecube: 'GameCube', dolphin: 'Wii' };
-  let failed = $state(false);
+  // set by onerror; a different cover in the same slot gets another try
+  let failed = $derived.by(() => (void game.cover, false));
   const h = $derived(hue(game));
-  $effect(() => {
-    void game.cover;
-    failed = false; // a different game in the same slot gets another try
-  });
 </script>
 
 <div class="cover" style="background:{game.emulator && !(game.cover && !failed) ? `linear-gradient(160deg,hsl(${h} 45% 26%),#12151c)` : `linear-gradient(145deg,hsl(${h} 62% 48%),hsl(${(h + 50) % 360} 55% 24%))`};{style}">

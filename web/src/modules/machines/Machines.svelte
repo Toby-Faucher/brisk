@@ -294,8 +294,8 @@
   .hub .sel { margin-right: 28px; }
   /* Spotlight: the selected card is lit, the others rest dimmed (their content, not .actions, so Use/Start stay full contrast) */
   @media (prefers-reduced-motion: no-preference) {
-    .hub :global(.card) { transition: transform var(--spring-soft-dur) var(--spring-soft), scale .3s cubic-bezier(.2, .8, .2, 1), box-shadow .25s, border-color .3s cubic-bezier(.2, .8, .2, 1); }
-    .hub :global(.card.dim > :not(.actions, .grip, .fill)) { transition: opacity .3s cubic-bezier(.2, .8, .2, 1), filter .3s cubic-bezier(.2, .8, .2, 1); }
+    .hub :global(.card) { transition: transform var(--spring-soft-dur) var(--spring-soft), scale .3s var(--ease), box-shadow .25s, border-color .3s var(--ease); }
+    .hub :global(.card.dim > :not(.actions, .grip, .fill)) { transition: opacity .3s var(--ease), filter .3s var(--ease); }
     .sel { animation: sel-in .16s .12s ease-out backwards; }
   }
   .hub :global(.card.on:not([data-lifted])) { border-color: var(--accent); scale: 1.012; }
