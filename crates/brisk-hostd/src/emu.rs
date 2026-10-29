@@ -149,7 +149,7 @@ pub fn parse_library(text: &str) -> Result<Vec<Record>, String> {
                         r.id, r.emulator
                     )),
                 })
-                .inspect_err(|e| eprintln!("warn: {LIBRARY_FILE}: skipping a game: {e}"))
+                .inspect_err(|e| eprintln!("warning: {LIBRARY_FILE}: skipping a game: {e}"))
                 .ok()
         })
         .collect())
@@ -162,7 +162,7 @@ pub fn library_json(recs: &[Record]) -> Vec<u8> {
 pub fn load(data_dir: &Path) -> Vec<Record> {
     match std::fs::read_to_string(data_dir.join(LIBRARY_FILE)) {
         Ok(text) => parse_library(&text).unwrap_or_else(|e| {
-            eprintln!("warn: {LIBRARY_FILE} ignored: {e}");
+            eprintln!("warning: {LIBRARY_FILE} ignored: {e}");
             vec![]
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -170,12 +170,12 @@ pub fn load(data_dir: &Path) -> Vec<Record> {
                 return vec![];
             };
             crate::migrate::library_from_emulators(&text).unwrap_or_else(|e| {
-                eprintln!("warn: {OLD_FILE} ignored: {e}");
+                eprintln!("warning: {OLD_FILE} ignored: {e}");
                 vec![]
             })
         }
         Err(e) => {
-            eprintln!("warn: {LIBRARY_FILE} unreadable: {e}");
+            eprintln!("warning: {LIBRARY_FILE} unreadable: {e}");
             vec![]
         }
     }
@@ -275,7 +275,7 @@ pub fn launch_with(
         Some(p) => {
             let (c, note) = command_for(&read_file(p), id.as_str(), &base);
             if let Some(n) = note {
-                eprintln!("warn: {n}; starting {} without them", r.name);
+                eprintln!("warning: {n}; starting {} without them", r.name);
             }
             c
         }
@@ -290,7 +290,7 @@ pub fn launch_with(
     // A wrapper that is not installed must not stop the game.
     if wrapped {
         eprintln!(
-            "warn: could not start {} through {}; starting it plain",
+            "warning: could not start {} through {}; starting it plain",
             r.name, cmd.program
         );
         let args: Vec<&str> = base[1..].iter().map(String::as_str).collect();

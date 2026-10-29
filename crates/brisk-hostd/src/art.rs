@@ -357,7 +357,7 @@ impl Art {
         f(&mut p);
         let path = data_dir.join("art").join(PENDING);
         if let Err(e) = write_json(&path, &p) {
-            eprintln!("art: could not save the queue ({e})");
+            eprintln!("warning: art: could not save the queue ({e})");
         }
     }
 
@@ -562,11 +562,11 @@ impl Art {
             match r {
                 Ok(Outcome::Halted) => {}
                 Ok(Outcome::Failed(why)) => {
-                    eprintln!("art: {id}: {why}");
+                    eprintln!("warning: art: {id}: {why}");
                     record_failure(&data_dir, &key);
                 }
-                Ok(o) => eprintln!("art: {id}: {o:?}"),
-                Err(_) => eprintln!("art: {id}: task failed"),
+                Ok(o) => eprintln!("info: art: {id}: {o:?}"),
+                Err(_) => eprintln!("error: art: {id}: task failed"),
             }
             me.inflight
                 .lock()

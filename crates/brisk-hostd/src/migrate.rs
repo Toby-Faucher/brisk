@@ -74,7 +74,7 @@ pub fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
         });
         let Some(id) = id else {
             eprintln!(
-                "warn: {}: skipping {:?}, bad emulator name",
+                "warning: {}: skipping {:?}, bad emulator name",
                 emu::OLD_FILE,
                 e.name
             );
@@ -253,13 +253,13 @@ fn apply(data_dir: &Path, name: &str, convert: impl Fn(&str) -> Result<Out, Stri
     let out = match convert(&old) {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("warn: {name}: left alone, not migrated: {e}");
+            eprintln!("warning: {name}: left alone, not migrated: {e}");
             return;
         }
     };
     if !out.unmapped.is_empty() {
         eprintln!(
-            "warn: {name}: {} keys kept as they are (no game has that id): {}",
+            "warning: {name}: {} keys kept as they are (no game has that id): {}",
             out.unmapped.len(),
             out.unmapped.join(", ")
         );
@@ -275,7 +275,7 @@ fn apply(data_dir: &Path, name: &str, convert: impl Fn(&str) -> Result<Out, Stri
         Ok(()) => eprintln!(
             "info: {name}: keys moved to the new game ids (backup: {name}{BACKUP_SUFFIX})"
         ),
-        Err(e) => eprintln!("warn: {name}: not migrated: {e}"),
+        Err(e) => eprintln!("warning: {name}: not migrated: {e}"),
     }
 }
 
@@ -293,9 +293,9 @@ pub fn run(data_dir: &Path) {
                     emu::LIBRARY_FILE,
                     recs.len()
                 ),
-                Err(e) => eprintln!("warn: {}: {e}", lib.display()),
+                Err(e) => eprintln!("warning: {}: {e}", lib.display()),
             },
-            Err(e) => eprintln!("warn: {} left alone, not migrated: {e}", emu::OLD_FILE),
+            Err(e) => eprintln!("warning: {} left alone, not migrated: {e}", emu::OLD_FILE),
         }
     }
     let legacy = legacy_map(&emu::load(data_dir));

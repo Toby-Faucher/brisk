@@ -188,7 +188,7 @@ async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
         Err(e) => {
-            eprintln!("games: serializing the cache failed: {e}");
+            eprintln!("error: games: serializing the cache failed: {e}");
             err(StatusCode::INTERNAL_SERVER_ERROR, "games unavailable")
         }
     }
@@ -668,7 +668,7 @@ async fn sessions(State(s): State<Arc<AppState>>) -> Response {
             let spark = s.stream.sessions.spark(r.started, 24);
             let id = r.started;
             let mut v = serde_json::to_value(r)
-                .inspect_err(|e| eprintln!("sessions: skipping session {id}: {e}"))
+                .inspect_err(|e| eprintln!("warning: sessions: skipping session {id}: {e}"))
                 .ok()?;
             v["spark"] = spark.into();
             Some(v)

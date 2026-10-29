@@ -646,7 +646,7 @@ pub fn ensure_cert(
         );
     }
     eprintln!(
-        "new bridge certificate {} ({CERT_DAYS} days)",
+        "info: new bridge certificate {} ({CERT_DAYS} days)",
         cert.display()
     );
     Ok((cert, key))
