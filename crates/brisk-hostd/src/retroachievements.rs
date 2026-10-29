@@ -369,7 +369,7 @@ async fn fetch_lists(
 /// RA marks subsets "[Subset - X]", and those must not equal the base game ("[tag]" of a file name is
 /// removed from the library name in `resolve_title`).
 /// shortcut: no roman numerals, "the" or subtitle folding; an odd title just stays unmatched.
-pub fn norm_title(t: &str) -> String {
+fn norm_title(t: &str) -> String {
     let mut out = String::new();
     let mut depth = 0u32;
     for c in t.chars() {
@@ -409,7 +409,7 @@ fn strip_square(t: &str) -> String {
 }
 
 /// The one game id whose normalised title equals a normalised name; none or several = NotFound.
-pub async fn resolve_title(cfg: &RaConfig, console: u32, names: &[String]) -> Result<u64, RaError> {
+async fn resolve_title(cfg: &RaConfig, console: u32, names: &[String]) -> Result<u64, RaError> {
     let creds = read_creds(cfg)?;
     let path = cfg.data_dir.join(format!("ra/titles-{console}.json"));
     let titles: Vec<(String, u64)> = match read_cache(&path, cfg.hash_ttl) {
@@ -477,7 +477,7 @@ pub async fn progress_for(
 }
 
 /// `fresh` drops the cached progress first (the hash list cache is kept).
-pub async fn progress_for_opts(
+async fn progress_for_opts(
     cfg: &RaConfig,
     console: u32,
     hash: &str,

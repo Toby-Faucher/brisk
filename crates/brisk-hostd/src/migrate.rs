@@ -22,7 +22,7 @@ use std::path::Path;
 /// Old hash id -> new id text.
 pub type LegacyMap = HashMap<u32, String>;
 
-pub const BACKUP_SUFFIX: &str = ".pre-ids";
+const BACKUP_SUFFIX: &str = ".pre-ids";
 
 /// Lowercase ASCII letters and digits, anything else a single `-`; at most 48 chars. A name with
 /// no ASCII letters at all (a Japanese title) falls back to `g` plus its old hash, so it is still
@@ -97,7 +97,7 @@ pub fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
 }
 
 /// Old numeric id to new id for each record.
-pub fn legacy_map(recs: &[Record]) -> LegacyMap {
+fn legacy_map(recs: &[Record]) -> LegacyMap {
     recs.iter()
         .map(|r| (r.legacy(), r.id.to_string()))
         .collect()

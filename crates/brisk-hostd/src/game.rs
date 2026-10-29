@@ -194,7 +194,7 @@ pub struct Details {
     pub languages: Vec<String>,
 }
 
-pub const STEAM_CAPS: Caps = Caps {
+const STEAM_CAPS: Caps = Caps {
     install: true,
     controls: false,
     achievements: true,

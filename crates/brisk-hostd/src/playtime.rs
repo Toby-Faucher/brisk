@@ -9,9 +9,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub const FILE: &str = "playtime.json";
+const FILE: &str = "playtime.json";
 /// Sessions closer than this (end to next start) are one session: a quick restart.
-pub const GAP_S: u64 = 30;
+const GAP_S: u64 = 30;
 const MAX_SESSIONS: usize = 500;
 const MAX_GAMES: usize = 500;
 const TWO_WEEKS_S: u64 = 14 * 24 * 3600;

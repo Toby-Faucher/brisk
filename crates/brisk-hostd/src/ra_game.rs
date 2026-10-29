@@ -75,7 +75,7 @@ fn cache_key(file: &Path) -> Option<String> {
 }
 
 /// Blocking: reads up to a GB on a miss, so callers use `spawn_blocking`.
-pub fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
+fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
     let cache = data_dir.join("ra/hash-cache.json");
     let key = cache_key(file).ok_or_else(|| HashErr::Failed("game file unreadable".into()))?;
     // A corrupt or missing cache is an empty one.
@@ -170,7 +170,7 @@ fn ach_json(a: &Achievement) -> Value {
 
 /// Steam's `Achievements` shape (`available`, `unlocked`, `total`, `list` of `id name description
 /// icon unlockedAt`) plus `state`, `source`, points and hardcore.
-pub fn ok_json(p: &GameProgress, how: Matched) -> Value {
+fn ok_json(p: &GameProgress, how: Matched) -> Value {
     let un = |a: &&Achievement| a.unlocked.is_some();
     json!({
         "state": "ok",
@@ -200,7 +200,7 @@ fn not_found_reason(console: u32) -> &'static str {
 }
 
 /// The panel state for a RetroAchievements error.
-pub fn err_json(e: &RaError) -> Value {
+fn err_json(e: &RaError) -> Value {
     let state = match e {
         RaError::Off => "off",
         RaError::BadCredentials | RaError::Unauthorized => "bad-credentials",

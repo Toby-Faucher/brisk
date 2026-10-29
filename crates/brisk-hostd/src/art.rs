@@ -35,21 +35,21 @@ const MAX_PENDING: usize = 50;
 const MAX_CANDS: usize = 3;
 /// Images tried per kind before giving up on that kind.
 const TRIES: usize = 3;
-pub const CREDIT_SGDB: &str = "SteamGridDB";
-pub const CREDIT_TDB: &str = "GameTDB";
+const CREDIT_SGDB: &str = "SteamGridDB";
+const CREDIT_TDB: &str = "GameTDB";
 
 // ---- names and keys ----
 
 /// The art directory name for a game: `emu:dolphin:RSBE01` is `emu_dolphin_RSBE01`. The emulator
 /// part has no `_`, so two ids never share a key. None when it would be over 64 characters.
-pub fn key_of(id: &GameId) -> Option<String> {
+fn key_of(id: &GameId) -> Option<String> {
     let k = id.as_str().replace(':', "_");
     (k.len() <= 64).then_some(k)
 }
 
 /// The title to search for: bracketed tags and a "Disc N" suffix gone, underscores as spaces,
 /// a trailing system word dropped, blanks collapsed.
-pub fn clean_name(raw: &str) -> String {
+fn clean_name(raw: &str) -> String {
     let mut s = String::new();
     let mut depth = 0u32;
     for c in raw.chars() {
@@ -217,11 +217,7 @@ pub fn image_type(b: &[u8]) -> Option<&'static str> {
 }
 
 /// One cached image: (content type, etag, bytes). None for an unknown kind or a missing file.
-pub fn read_art(
-    data_dir: &Path,
-    id: &GameId,
-    kind: &str,
-) -> Option<(&'static str, String, Vec<u8>)> {
+fn read_art(data_dir: &Path, id: &GameId, kind: &str) -> Option<(&'static str, String, Vec<u8>)> {
     let (name, _) = KINDS.iter().find(|(k, _)| *k == kind)?;
     let p = find_img(&dir_of(data_dir, &key_of(id)?), name)?;
     let body = std::fs::read(&p).ok()?;
@@ -351,7 +347,7 @@ impl Art {
     }
 
     /// True when a SteamGridDB key is set up.
-    pub fn has_key(&self, data_dir: &Path) -> bool {
+    fn has_key(&self, data_dir: &Path) -> bool {
         (self.sgdb)(data_dir).is_some()
     }
 
@@ -524,7 +520,7 @@ impl Art {
     }
 
     /// `spawn` for a refresh (`run_fresh`).
-    pub fn spawn_fresh(
+    fn spawn_fresh(
         self: &Arc<Self>,
         cfg: Config,
         id: GameId,

@@ -8,15 +8,15 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-pub const MAX_TAGS: usize = 64;
+const MAX_TAGS: usize = 64;
 pub const MAX_GAMES: usize = 2000;
-pub const TAG_ID_MAX: usize = 16;
-pub const TAG_NAME_MAX: usize = 24;
-pub const TAG_NOTE_MAX: usize = 500;
-pub const GAME_NOTE_MAX: usize = 4000;
-pub const GAME_TAGS_MAX: usize = 16;
-pub const SYMBOL_MAX: usize = 16;
-pub const COLORS: [&str; 9] = [
+const TAG_ID_MAX: usize = 16;
+const TAG_NAME_MAX: usize = 24;
+const TAG_NOTE_MAX: usize = 500;
+const GAME_NOTE_MAX: usize = 4000;
+const GAME_TAGS_MAX: usize = 16;
+const SYMBOL_MAX: usize = 16;
+const COLORS: [&str; 9] = [
     "gray", "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink",
 ];
 
@@ -81,7 +81,7 @@ fn charset(s: &str, max: usize, ok: impl Fn(u8) -> bool) -> bool {
 }
 
 /// True for a valid tag id.
-pub fn valid_tag_id(id: &str) -> bool {
+fn valid_tag_id(id: &str) -> bool {
     crate::fsutil::slug_ok(id, TAG_ID_MAX)
 }
 

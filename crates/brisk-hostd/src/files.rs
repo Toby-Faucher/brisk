@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tokio::io::AsyncWriteExt;
 
-pub const MAX_UPLOAD: u64 = 8 << 30;
+const MAX_UPLOAD: u64 = 8 << 30;
 const MAX_NAME: usize = 200;
 /// Left free on the disk after an upload.
 const RESERVE: u64 = 256 << 20;

@@ -81,7 +81,7 @@ impl Hosts {
 }
 
 /// `Self.DNSName` without its trailing dot, as `name:8443` (the only port tailscale serve maps to us).
-pub fn tailnet_names(json: &str) -> Option<Vec<String>> {
+fn tailnet_names(json: &str) -> Option<Vec<String>> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let n = v["Self"]["DNSName"].as_str()?.trim_end_matches('.');
     (!n.is_empty()).then(|| vec![format!("{}:8443", n.to_ascii_lowercase())])

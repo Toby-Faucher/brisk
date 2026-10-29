@@ -13,20 +13,20 @@ use std::sync::Mutex;
 
 pub const MAX_ENTRIES: usize = 500;
 /// Home cards are a handful; the caps only bound what a client can make hostd store.
-pub const HOME_MAX: usize = 32;
-pub const HOME_ID_MAX: usize = 32;
-pub const MACHINES_MAX: usize = 64;
-pub const COLORS_MAX: usize = 64;
+const HOME_MAX: usize = 32;
+const HOME_ID_MAX: usize = 32;
+const MACHINES_MAX: usize = 64;
+const COLORS_MAX: usize = 64;
 const LAYOUT_KEY: &str = "layout";
 const LAYOUT_V: u64 = 1;
 
 /// Keeps the ids that are 1..=HOME_ID_MAX of `a-z 0-9 -`, first occurrence only, at most HOME_MAX.
-pub fn clean_home_order(ids: Vec<String>) -> Vec<String> {
+fn clean_home_order(ids: Vec<String>) -> Vec<String> {
     clean_ids(ids, HOME_MAX)
 }
 
 /// Same rules as `clean_home_order`, at most MACHINES_MAX ids.
-pub fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
+fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
     clean_ids(ids, MACHINES_MAX)
 }
 
@@ -35,7 +35,7 @@ fn valid_id(s: &str) -> bool {
 }
 
 /// `#rgb` or `#rrggbb` in any case -> lowercase `#rrggbb`; anything else is None.
-pub fn normalize_color(c: &str) -> Option<String> {
+fn normalize_color(c: &str) -> Option<String> {
     let h = c.strip_prefix('#')?;
     if !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;

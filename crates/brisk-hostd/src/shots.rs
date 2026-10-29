@@ -9,8 +9,8 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 pub const MAX_BYTES: usize = 8 << 20;
-pub const MAX_DIM: u32 = 8192;
-pub const MAX_PER_GAME: usize = 200;
+const MAX_DIM: u32 = 8192;
+const MAX_PER_GAME: usize = 200;
 /// Free space kept after a save.
 const RESERVE: u64 = 256 << 20;
 const MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
@@ -35,7 +35,7 @@ pub struct Shot {
 }
 
 /// Width and height from a whole, sane PNG; None for anything else.
-pub fn png_dims(b: &[u8]) -> Result<(u32, u32), &'static str> {
+fn png_dims(b: &[u8]) -> Result<(u32, u32), &'static str> {
     if b.len() < 8 + 25 || &b[..8] != MAGIC {
         return Err("not a PNG");
     }
@@ -54,7 +54,7 @@ pub fn png_dims(b: &[u8]) -> Result<(u32, u32), &'static str> {
 }
 
 /// Only the names we generate (digits of a unix ms, then `.png`): the ms.
-pub fn valid_name(n: &str) -> Option<u64> {
+fn valid_name(n: &str) -> Option<u64> {
     let ms = n.strip_suffix(".png")?;
     let ok = (10..=16).contains(&ms.len())
         && ms.bytes().all(|b| b.is_ascii_digit())

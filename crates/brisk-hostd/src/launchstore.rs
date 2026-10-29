@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub const MAX_FILE: u64 = 256 << 10;
+const MAX_FILE: u64 = 256 << 10;
 pub const MAX_GAMES: usize = 500;
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
@@ -100,7 +100,7 @@ pub fn describe(p: &Problem) -> String {
 }
 
 /// All problems in one line.
-pub fn describe_all(p: &[Problem]) -> String {
+fn describe_all(p: &[Problem]) -> String {
     p.iter().map(describe).collect::<Vec<_>>().join("; ")
 }
 

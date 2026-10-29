@@ -18,7 +18,7 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 /// The largest body of one PUT.
-pub const CHUNK: u64 = 32 << 20;
+const CHUNK: u64 = 32 << 20;
 /// Free space kept after the file.
 pub const RESERVE: u64 = 5 << 30;
 const MAX_OPEN: usize = 2;

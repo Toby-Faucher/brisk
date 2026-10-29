@@ -242,7 +242,7 @@ pub fn search(cfg: &SgdbConfig, name: &str) -> Result<Vec<Candidate>, Error> {
 /// Lowercase words: bracketed tags removed, "&" as "and", punctuation gone, a leading "the" and a
 /// trailing platform word dropped, roman numerals II..XX (after the first word) as digits.
 /// shortcut: a lone "I" stays as is, and "Final Fantasy X" equals "Final Fantasy 10" (intended).
-pub fn normalize(name: &str) -> String {
+fn normalize(name: &str) -> String {
     let mut s = String::new();
     let mut depth = 0u32;
     for c in name.chars() {

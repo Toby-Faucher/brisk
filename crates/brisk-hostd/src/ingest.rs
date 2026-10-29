@@ -47,7 +47,7 @@ pub fn folder(s: System) -> &'static str {
 }
 
 /// The emulator that runs system `s`.
-pub fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
+fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
     registry::EMULATORS
         .iter()
         .find(|e| e.systems.iter().any(|x| x.id == folder(s)))
@@ -289,7 +289,7 @@ fn unix_now() -> u64 {
 
 /// The removed list. Missing is empty. Damaged: the file is moved to `removed.json.bad-<time>`
 /// and this is an error (the list is lost, so the caller must not guess). Unreadable: an error.
-pub fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
+fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
     #[derive(serde::Deserialize)]
     struct F {
         removed: Vec<Tomb>,

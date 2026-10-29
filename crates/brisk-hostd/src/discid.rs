@@ -102,12 +102,6 @@ fn region_of(c: u8) -> Region {
     }
 }
 
-/// Plain GameCube/Wii disc header (ISO, GCM, or the copy inside RVZ/WBFS). `Ok(None)` when neither
-/// magic is present; `Err(Truncated)` if there are fewer than 0x60 bytes but the data is not clearly foreign.
-pub fn identify_header(b: &[u8]) -> Result<Identity, Error> {
-    identify_disc(b, Container::Iso)?.ok_or(Error::Invalid("no GameCube or Wii magic"))
-}
-
 fn identify_disc(b: &[u8], container: Container) -> Result<Option<Identity>, Error> {
     if b.len() < DISC_HEADER_LEN {
         return Err(Error::Truncated);
@@ -372,6 +366,11 @@ impl Sha1 {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// A plain disc header, with "no magic" turned into an error.
+    fn identify_header(b: &[u8]) -> Result<Identity, Error> {
+        identify_disc(b, Container::Iso)?.ok_or(Error::Invalid("no GameCube or Wii magic"))
+    }
 
     #[test]
     fn a_fifo_is_refused_without_blocking_and_the_extension_can_be_given() {

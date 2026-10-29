@@ -21,9 +21,9 @@ use std::sync::{Arc, Mutex};
 /// Env: URL of a plain `wiitdb.xml` (no default, see the notes: the zip needs a decision).
 pub const ENV_XML_URL: &str = "BRISK_GAMETDB_XML_URL";
 /// Env: art base URL (tests point it at a mock).
-pub const ENV_ART_BASE: &str = "BRISK_GAMETDB_ART_BASE";
+const ENV_ART_BASE: &str = "BRISK_GAMETDB_ART_BASE";
 /// Art host. Confirmed by search snippets and rom-properties' docs, not by the site itself.
-pub const DEFAULT_ART_BASE: &str = "https://art.gametdb.com";
+const DEFAULT_ART_BASE: &str = "https://art.gametdb.com";
 
 /// Database download cap. shortcut: real size of wiitdb.xml is UNVERIFIED (believed ~20 MB), raise if refused.
 const MAX_DB: u64 = 64 << 20;
@@ -142,7 +142,7 @@ impl ArtKind {
 /// Region folders to try, best first, from the 4th character of the id. shortcut: the letter
 /// to folder table is UNVERIFIED (US, EN, DE, FR, ES, IT, NL, JA, KO, TW, AU, RU are seen in
 /// the wild); PAL ids fall back to EN, and `fetch_art` tries the next folder on a 404.
-pub fn regions(id: &str) -> Vec<&'static str> {
+fn regions(id: &str) -> Vec<&'static str> {
     let first = match id.as_bytes().get(3).map(u8::to_ascii_uppercase) {
         Some(b'E') => "US",
         Some(b'J') => "JA",
@@ -174,11 +174,6 @@ fn art_url_at(base: &str, id: &str, kind: ArtKind, region: &str) -> Result<Strin
         base.trim_end_matches('/'),
         kind.dir()
     ))
-}
-
-/// First-choice art URL on the default host. Pure; rejects anything but a 6-character id.
-pub fn art_url(id: &str, kind: ArtKind) -> Result<String, Error> {
-    art_url_at(DEFAULT_ART_BASE, id, kind, regions(id)[0])
 }
 
 // ---- wiitdb.xml scanner ----
@@ -336,20 +331,8 @@ fn games(xml: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// One game from the database text, by exact id. Pure.
-pub fn parse_game(xml: &str, id: &str) -> Option<Entry> {
-    if !valid_id(id) {
-        return None;
-    }
-    let needle = format!(">{id}</id>");
-    games(xml)
-        .filter(|g| g.contains(&needle))
-        .find_map(parse_one)
-        .filter(|e| e.id == id)
-}
-
 /// Every game in the text (capped at 200k games).
-pub fn build_index(xml: &str) -> Vec<Entry> {
+fn build_index(xml: &str) -> Vec<Entry> {
     games(xml).filter_map(parse_one).take(MAX_GAMES).collect()
 }
 
@@ -546,6 +529,23 @@ mod tests {
     use std::collections::HashMap;
     use std::io::Read;
     use std::net::TcpListener;
+
+    /// First-choice art URL on the default host.
+    fn art_url(id: &str, kind: ArtKind) -> Result<String, Error> {
+        art_url_at(DEFAULT_ART_BASE, id, kind, regions(id)[0])
+    }
+
+    /// One game from the database text, by exact id.
+    fn parse_game(xml: &str, id: &str) -> Option<Entry> {
+        if !valid_id(id) {
+            return None;
+        }
+        let needle = format!(">{id}</id>");
+        games(xml)
+            .filter(|g| g.contains(&needle))
+            .find_map(parse_one)
+            .filter(|e| e.id == id)
+    }
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

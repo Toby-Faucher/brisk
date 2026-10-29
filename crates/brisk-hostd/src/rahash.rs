@@ -96,7 +96,7 @@ impl Md5 {
     }
 
     /// Lowercase hex digest.
-    pub fn finish_hex(mut self) -> String {
+    fn finish_hex(mut self) -> String {
         let bits = self.len.wrapping_mul(8);
         self.update(&[0x80]);
         while self.fill != 56 {

@@ -167,7 +167,7 @@ pub async fn host_info(cfg: &Config) -> HostInfo {
 }
 
 /// Host facts from `src`, with `runner` for tailscale.
-pub async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
+async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
     let job = tokio::task::spawn_blocking(move || runner.run("tailscale", &["status", "--json"]));
     let ts = tokio::time::timeout(src.tailscale_timeout, job)
         .await
