@@ -560,23 +560,23 @@ mod steam_id_tests {
 
     #[test]
     fn hostile_id_is_rejected() {
-        let d = std::env::temp_dir().join(format!("brisk-sid-bad-{}", std::process::id()));
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         std::fs::create_dir_all(d.join("config")).unwrap();
         let vdf = "\"users\"\n{\n\t\"1\\\"\\nurl=x\"\n\t{\n\t\t\"timestamp\"\t\"5\"\n\t}\n}\n";
         std::fs::write(d.join("config/loginusers.vdf"), vdf).unwrap();
-        assert_eq!(steam_id(&d), None);
-        std::fs::remove_dir_all(&d).ok();
+        assert_eq!(steam_id(d), None);
     }
 
     #[test]
     fn newest_timestamp_when_no_mostrecent() {
-        let d = std::env::temp_dir().join(format!("brisk-sid-{}", std::process::id()));
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
         std::fs::create_dir_all(d.join("config")).unwrap();
         let u = |id: &str, t: u32| format!("\t\"{id}\"\n\t{{\n\t\t\"timestamp\"\t\"{t}\"\n\t}}\n");
         let vdf = format!("\"users\"\n{{\n{}{}}}\n", u("111", 5), u("222", 9));
         std::fs::write(d.join("config/loginusers.vdf"), vdf).unwrap();
-        assert_eq!(steam_id(&d).as_deref(), Some("222"));
-        std::fs::remove_dir_all(&d).ok();
+        assert_eq!(steam_id(d).as_deref(), Some("222"));
     }
 }
 
