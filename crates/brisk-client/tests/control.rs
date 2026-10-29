@@ -81,12 +81,22 @@ async fn control_session_against_fake_sunshine() {
     }
     let stats = c.disconnect().await.unwrap();
     assert!(!stats.host_disconnected);
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(
-        f.log.lock().unwrap().disconnects,
-        1,
+    assert!(
+        eventually(|| f.log.lock().unwrap().disconnects == 1).await,
         "graceful DISCONNECT acked"
     );
+}
+
+/// Polls `f` until it holds or 5 s pass.
+async fn eventually(f: impl Fn() -> bool) -> bool {
+    let end = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < end {
+        if f() {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    f()
 }
 
 /// Sunshine tears the session down when no video/audio ping arrives within ping_timeout.
@@ -270,8 +280,9 @@ async fn run_with_loss(lose_frame: fn(u32) -> bool, interval: Duration, ms: u64)
     .await
     .unwrap();
     let st = c.disconnect().await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    let idr = types(&f).iter().filter(|m| m.1 == 0x0302).count();
+    let count = || types(&f).iter().filter(|m| m.1 == 0x0302).count();
+    eventually(|| count() == st.idr_sent as usize).await;
+    let idr = count();
     (st.idr_on_loss, idr)
 }
 
@@ -453,10 +464,11 @@ async fn control_handle_idr_is_rate_limited_to_one_per_100ms() {
     r.unwrap();
     let sent = c.stats.idr_sent - 1; // minus the opening request
     assert!((4..=7).contains(&sent), "{sent}");
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    assert_eq!(
-        types(&f).iter().filter(|m| m.1 == 0x0302).count(),
-        1 + sent as usize
+    let count = || types(&f).iter().filter(|m| m.1 == 0x0302).count();
+    assert!(
+        eventually(|| count() == 1 + sent as usize).await,
+        "{}",
+        count()
     );
     c.disconnect().await.unwrap();
 }

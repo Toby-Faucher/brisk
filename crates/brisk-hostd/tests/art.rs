@@ -659,9 +659,10 @@ async fn refresh_during_an_outage_keeps_the_old_art() {
 }
 
 #[tokio::test]
-async fn a_revoked_key_stops_the_batch_after_one_call_and_retries_after_the_cool_down() {
+async fn a_revoked_key_stops_the_batch_after_one_call() {
     let m = mock(|_| vec![("search/autocomplete/", 401, b"{}".to_vec())]).await;
-    let r = rig_full(Some(&m.base), Duration::ZERO, Duration::from_millis(400));
+    // a cool-down far longer than the batch, so no lookup can land after it ends
+    let r = rig_full(Some(&m.base), Duration::ZERO, Duration::from_secs(600));
     let ids = [
         "emu:dolphin:RMCE01",
         "emu:dolphin:RSBE01",
@@ -672,7 +673,18 @@ async fn a_revoked_key_stops_the_batch_after_one_call_and_retries_after_the_cool
     r.add(b"GALE01", "Melee").await;
     idle_all(&r, &ids).await;
     assert_eq!(m.count("search/autocomplete/"), 1);
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(r.state.art.halted().is_some());
+}
+
+#[tokio::test]
+async fn a_revoked_key_retries_after_the_cool_down() {
+    let m = mock(|_| vec![("search/autocomplete/", 401, b"{}".to_vec())]).await;
+    let r = rig_full(Some(&m.base), Duration::ZERO, Duration::from_millis(50));
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.idle().await;
+    assert_eq!(m.count("search/autocomplete/"), 1);
+    // waiting longer than the cool-down is safe however slow the machine is
+    tokio::time::sleep(Duration::from_millis(100)).await;
     let (s, _) = r
         .call("POST", &format!("/api/art/{ID}/refresh"), Value::Null)
         .await;
