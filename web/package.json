@@ -39,7 +39,7 @@
     "playwright": "1.64.1",
     "playwright-core": "1.64.1",
     "svelte-check": "4.7.6",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "5.0.5",
     "vitest-browser-svelte": "3.1.0"
   }
