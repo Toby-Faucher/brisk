@@ -52,7 +52,8 @@ run_step() {
     test) step "nextest"; capped cargo nextest run --workspace --profile ci ;;
     doc) step "doc tests"; capped cargo test --doc --workspace ;;
     deny) step "cargo deny"; capped cargo deny check ;;
-    pure) step "check-pure-rust"; scripts/check-pure-rust.sh ;;
+    # shortcut: bash, because its `echo "$meta"` breaks the JSON under dash's echo (Ubuntu's /bin/sh); drop once it uses printf.
+    pure) step "check-pure-rust"; bash scripts/check-pure-rust.sh ;;
     wording) step "check-wording"; scripts/check-wording.sh ;;
     embed)
       step "clippy, embed feature"
@@ -63,7 +64,8 @@ run_step() {
     scripts)
       for t in scripts/test-*.sh; do
         step "$t"
-        timeout 300 "$t"
+        # The tests stub systemd-run and expect the capped commands, so they never see BRISK_NO_CAP.
+        env -u BRISK_NO_CAP timeout 300 "$t"
       done
       ;;
     web) step "web: npm run ci"; capped npm --prefix web run ci ;;
