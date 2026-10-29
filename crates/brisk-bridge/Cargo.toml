@@ -11,7 +11,7 @@ brisk-client.workspace = true
 brisk-proto.workspace = true
 bytes.workspace = true
 hkdf = "0.12.4"
-hmac = "0.12.1"
+hmac = "0.13.0"
 http = "1"
 # No rustls/ring feature: quinn's own rustls glue needs ring or aws-lc (C/asm); src/quic_crypto.rs
 # is the pure-Rust replacement.
