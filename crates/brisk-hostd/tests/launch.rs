@@ -1,13 +1,10 @@
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use brisk_hostd::config::Config;
+mod common;
+use axum::http::StatusCode;
 use brisk_hostd::http::{AppState, router};
+use common::{call, data_cfg};
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
-use tower::ServiceExt;
-
-const SECRET: &str = "s3cret";
 
 struct T {
     app: axum::Router,
@@ -16,11 +13,8 @@ struct T {
 
 fn t() -> T {
     let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::from_env(dir.path().to_path_buf());
-    cfg.secret = SECRET.into();
-    cfg.data_dir = dir.path().to_path_buf();
     T {
-        app: router(Arc::new(AppState::new(cfg))),
+        app: router(Arc::new(AppState::new(data_cfg(dir.path())))),
         dir,
     }
 }
@@ -33,20 +27,7 @@ impl T {
         secret: bool,
         body: Option<Value>,
     ) -> (StatusCode, Value) {
-        let mut r = Request::builder()
-            .method(m)
-            .uri(u)
-            .header("host", "localhost:8443");
-        if secret {
-            r = r.header("x-brisk-secret", SECRET);
-        }
-        let b = body.map_or(Body::empty(), |v| Body::from(v.to_string()));
-        let res = self.app.clone().oneshot(r.body(b).unwrap()).await.unwrap();
-        let st = res.status();
-        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
-            .await
-            .unwrap();
-        (st, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+        call(&self.app, m, u, secret, body.map(|v| v.to_string())).await
     }
     async fn c(&self, m: &str, u: &str, body: Option<Value>) -> (StatusCode, Value) {
         self.call(m, u, true, body).await
@@ -272,14 +253,9 @@ async fn switching_custom_off_later_shows_problems_for_saved_options() {
     let mut j: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
     j["allowCustomCommands"] = json!(false);
     std::fs::write(&f, j.to_string()).unwrap();
-    let t2 = {
-        let mut cfg = Config::from_env(t.dir.path().to_path_buf());
-        cfg.secret = SECRET.into();
-        cfg.data_dir = t.dir.path().to_path_buf();
-        T {
-            app: router(Arc::new(AppState::new(cfg))),
-            dir: tempfile::tempdir().unwrap(),
-        }
+    let t2 = T {
+        app: router(Arc::new(AppState::new(data_cfg(t.dir.path())))),
+        dir: tempfile::tempdir().unwrap(),
     };
     let (_, v) = t2.c("GET", "/api/games/steam:1/launch", None).await;
     assert!(v["problems"][0].as_str().unwrap().contains("switched off"));
