@@ -9,6 +9,17 @@ updates:
     cooldown:
       default-days: 14
     open-pull-requests-limit: 3
+    # The RustCrypto crates must move together, and rsa still uses digest 0.10. A lone bump fails
+    # to compile and trips cargo deny's duplicate check. Remove these once rsa ships on digest 0.11.
+    ignore:
+      - dependency-name: "aes-gcm"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "hmac"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "sha2"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "x509-cert"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /web
@@ -18,6 +29,10 @@ updates:
       default-days: 14
     versioning-strategy: increase
     open-pull-requests-limit: 3
+    # @astrojs/check and @volar/kit do not accept TypeScript 7 yet (npm ci fails). Remove when they do.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
