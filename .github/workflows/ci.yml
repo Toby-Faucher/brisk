@@ -19,7 +19,7 @@ jobs:
   lint-rust:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       # Installs the toolchain pinned in rust-toolchain.toml (with clippy and rustfmt).
       - run: rustup toolchain install --no-self-update
       - uses: Swatinem/rust-cache@v2.9.2
@@ -28,7 +28,7 @@ jobs:
   test-rust:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - run: rustup toolchain install --no-self-update
       - uses: Swatinem/rust-cache@v2.9.2
       - uses: taiki-e/install-action@v2.87.28
@@ -39,7 +39,7 @@ jobs:
   embed:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - run: rustup toolchain install --no-self-update
       - uses: Swatinem/rust-cache@v2.9.2
       - uses: taiki-e/install-action@v2.87.28
@@ -51,7 +51,7 @@ jobs:
   supply-chain:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - run: rustup toolchain install --no-self-update
       - uses: taiki-e/install-action@v2.87.28
         with:
@@ -61,7 +61,7 @@ jobs:
   shell:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - run: rustup toolchain install --no-self-update
       # The runner image ships shellcheck; install it anyway in case a new image drops it.
       - run: command -v shellcheck || (sudo apt-get update && sudo apt-get install -y shellcheck)
@@ -74,7 +74,7 @@ jobs:
   web:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: web/.nvmrc # @types/node is 26.x
@@ -89,7 +89,7 @@ jobs:
   web-browser:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: web/.nvmrc
