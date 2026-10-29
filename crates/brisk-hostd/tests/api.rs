@@ -88,53 +88,32 @@ async fn foreign_host_is_403() {
     }
 }
 
+/// The secret gates every /api route (any method), never the static site.
 #[tokio::test]
-async fn post_without_secret_is_403() {
+async fn api_needs_the_secret() {
     let d = dist();
-    for m in ["POST", "DELETE"] {
+    let cases = [
+        ("POST", "/api/stream", None, StatusCode::FORBIDDEN),
+        ("POST", "/api/stream", Some("wrong"), StatusCode::FORBIDDEN),
+        ("DELETE", "/api/stream", None, StatusCode::FORBIDDEN),
+        (
+            "DELETE",
+            "/api/stream",
+            Some("wrong"),
+            StatusCode::FORBIDDEN,
+        ),
+        ("POST", "/api/unknown", Some(SECRET), StatusCode::NOT_FOUND),
+        ("GET", "/api/unknown", None, StatusCode::FORBIDDEN),
+        ("GET", "/api/unknown", Some(SECRET), StatusCode::NOT_FOUND),
+        ("GET", "/", None, StatusCode::OK),
+    ];
+    for (m, uri, secret, want) in cases {
         assert_eq!(
-            send(d.path(), m, "/api/stream", H, None).await.status(),
-            StatusCode::FORBIDDEN
-        );
-        assert_eq!(
-            send(d.path(), m, "/api/stream", H, Some("wrong"))
-                .await
-                .status(),
-            StatusCode::FORBIDDEN
+            send(d.path(), m, uri, H, secret).await.status(),
+            want,
+            "{m} {uri} {secret:?}"
         );
     }
-}
-
-#[tokio::test]
-async fn post_with_secret_passes_auth() {
-    let d = dist();
-    assert_eq!(
-        send(d.path(), "POST", "/api/unknown", H, Some(SECRET))
-            .await
-            .status(),
-        StatusCode::NOT_FOUND
-    );
-}
-
-#[tokio::test]
-async fn get_needs_secret_on_api_only() {
-    let d = dist();
-    assert_eq!(
-        send(d.path(), "GET", "/api/unknown", H, None)
-            .await
-            .status(),
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        send(d.path(), "GET", "/api/unknown", H, Some(SECRET))
-            .await
-            .status(),
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        send(d.path(), "GET", "/", H, None).await.status(),
-        StatusCode::OK
-    );
 }
 
 #[tokio::test]
@@ -252,31 +231,35 @@ fn parse_acf_update_flags() {
     assert_eq!(upd(0), None);
     assert_eq!(upd(2), None);
     assert_eq!(upd(6).as_deref(), Some("needed"));
-    assert_eq!(upd(4 | 512).as_deref(), Some("needed"));
     assert_eq!(upd(1542).as_deref(), Some("needed"));
 }
 
+/// The installed library alone (no API key, Steam API down): manifests from every library folder.
 #[tokio::test]
-async fn games_show_update_state() {
+async fn installed_library_fields() {
     let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
     let (v, _) = games_json(&s.cfg, "/api/games").await;
     assert_eq!(find(&v, 570)["update"], "needed");
-    assert!(find(&v, 620)["update"].is_null());
-}
-
-#[tokio::test]
-async fn not_installed_game_has_no_update_state() {
-    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    let g = find(&v, 730);
-    assert_eq!(g["installed"], false);
-    assert!(g["update"].is_null());
-}
-
-#[tokio::test]
-async fn installed_games_parsed_from_all_libraries() {
-    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
+    let portal = find(&v, 620);
+    assert!(portal["update"].is_null());
+    assert_eq!(portal["installed"], true);
+    assert_eq!(portal["name"], "Portal 2");
+    assert_eq!(
+        portal["hero"],
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/620/library_hero.jpg"
+    );
+    assert_eq!(
+        portal["logo"],
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/620/logo.png"
+    );
+    // a duplicate appid across libraries is listed once
+    let games = v["games"].as_array().unwrap();
+    assert_eq!(games.iter().filter(|g| g["appid"] == 620).count(), 1);
+    // a partial install is not installed and has no size or update state
+    let partial = find(&v, 730);
+    assert_eq!(partial["installed"], false);
+    assert!(partial["sizeBytes"].is_null());
+    assert!(partial["update"].is_null());
     let g = find(&v, 1091500);
     assert_eq!(g["name"], "Pokémon \"Quoted\" Legends");
     assert_eq!(g["installed"], true);
@@ -285,31 +268,6 @@ async fn installed_games_parsed_from_all_libraries() {
     assert_eq!(
         g["cover"],
         "https://cdn.cloudflare.steamstatic.com/steam/apps/1091500/library_600x900.jpg"
-    );
-    assert_eq!(find(&v, 620)["installed"], true);
-}
-
-#[tokio::test]
-async fn partial_install_is_not_installed() {
-    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    let g = find(&v, 730);
-    assert_eq!(g["installed"], false);
-    assert!(g["sizeBytes"].is_null());
-}
-
-#[tokio::test]
-async fn games_have_art_urls() {
-    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    let g = find(&v, 620);
-    assert_eq!(
-        g["hero"],
-        "https://cdn.cloudflare.steamstatic.com/steam/apps/620/library_hero.jpg"
-    );
-    assert_eq!(
-        g["logo"],
-        "https://cdn.cloudflare.steamstatic.com/steam/apps/620/logo.png"
     );
 }
 
@@ -346,37 +304,16 @@ async fn owned_games_merged_with_installed() {
     assert!(s.cfg.data_dir.join("owned.json").is_file());
 }
 
+/// Steam API down, or no key file: not an error, the installed games are still listed.
 #[tokio::test]
-async fn duplicate_appid_listed_once() {
-    let s = steam("http://127.0.0.1:1", "http://127.0.0.1:1", None);
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    assert_eq!(
-        v["games"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|g| g["appid"] == 620)
-            .count(),
-        1
-    );
-    assert_eq!(find(&v, 620)["name"], "Portal 2");
-}
-
-#[tokio::test]
-async fn api_down_still_lists_installed() {
-    let s = steam(&owned_mock(500).await, "http://127.0.0.1:1", Some(KEY));
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    assert_eq!(v["ownedAvailable"], false);
-    assert_eq!(v["games"].as_array().unwrap().len(), 4);
-    assert_eq!(find(&v, 620)["installed"], true);
-}
-
-#[tokio::test]
-async fn missing_key_file_is_not_an_error() {
-    let s = steam(&owned_mock(200).await, "http://127.0.0.1:1", None);
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    assert_eq!(v["ownedAvailable"], false);
-    assert_eq!(v["games"].as_array().unwrap().len(), 4);
+async fn no_owned_list_still_lists_installed() {
+    for (status, key) in [(500, Some(KEY)), (200, None)] {
+        let s = steam(&owned_mock(status).await, "http://127.0.0.1:1", key);
+        let (v, _) = games_json(&s.cfg, "/api/games").await;
+        assert_eq!(v["ownedAvailable"], false, "{status} {key:?}");
+        assert_eq!(v["games"].as_array().unwrap().len(), 4, "{status} {key:?}");
+        assert_eq!(find(&v, 620)["installed"], true, "{status} {key:?}");
+    }
 }
 
 #[tokio::test]

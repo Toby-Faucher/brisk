@@ -362,18 +362,21 @@ fn close() -> Vec<String> {
     CLOSE.map(String::from).to_vec()
 }
 
+/// By the old `appid` and by the new `id` alike.
 #[tokio::test(start_paused = true)]
 async fn graceful_quit_closes_the_game_windows_through_sway_only() {
-    let r = rig(Exits::OnClose);
-    let (st, v) = r.quit(r#"{"appid":10}"#).await;
-    assert_eq!(
-        (st, v["state"].as_str()),
-        (StatusCode::OK, Some("closed")),
-        "{v}"
-    );
-    // Only its two windows: never Big Picture (6, 7), game 20 (26) or the reaper's own (9).
-    assert_eq!(r.calls(), CLOSE);
-    assert!(!r.calls().iter().any(|c| c.contains("con_id=9]")));
+    for body in [r#"{"appid":10}"#, r#"{"id":"steam:10"}"#] {
+        let r = rig(Exits::OnClose);
+        let (st, v) = r.quit(body).await;
+        assert_eq!(
+            (st, v["state"].as_str()),
+            (StatusCode::OK, Some("closed")),
+            "{body} {v}"
+        );
+        // Only its two windows: never Big Picture (6, 7), game 20 (26) or the reaper's own (9).
+        assert_eq!(r.calls(), CLOSE, "{body}");
+        assert!(!r.calls().iter().any(|c| c.contains("con_id=9]")));
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -632,15 +635,19 @@ const EMU_CLOSE: &str = "swaymsg [con_id=40] kill";
 
 #[tokio::test(start_paused = true)]
 async fn emulator_quit_closes_its_window_politely_and_touches_nothing_else() {
-    let r = rig(Exits::OnClose);
-    let (st, v) = r.quit(&format!(r#"{{"id":"{}"}}"#, emu_id())).await;
-    assert_eq!(
-        (st, v["state"].as_str()),
-        (StatusCode::OK, Some("closed")),
-        "{v}"
-    );
-    assert_eq!(r.calls(), [EMU_CLOSE]);
-    assert!(!r.alive(800) && r.alive(801) && r.alive(802));
+    // 3907440760 is what the first emulator version called "Mario Kart Wii": it quits by that too.
+    let by_id = format!(r#"{{"id":"{}"}}"#, emu_id());
+    for body in [by_id.as_str(), r#"{"appid":3907440760}"#] {
+        let r = rig(Exits::OnClose);
+        let (st, v) = r.quit(body).await;
+        assert_eq!(
+            (st, v["state"].as_str()),
+            (StatusCode::OK, Some("closed")),
+            "{body} {v}"
+        );
+        assert_eq!(r.calls(), [EMU_CLOSE], "{body}");
+        assert!(!r.alive(800) && r.alive(801) && r.alive(802), "{body}");
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -694,29 +701,4 @@ async fn emulator_game_that_is_not_running_is_409() {
     let (st, _) = r.quit(&format!(r#"{{"id":"{}"}}"#, emu_id())).await;
     assert_eq!(st, StatusCode::CONFLICT);
     assert!(r.calls().is_empty());
-}
-
-#[tokio::test(start_paused = true)]
-async fn an_emulator_game_quits_by_its_old_number_too() {
-    // 3907440760 is what the first emulator version called "Mario Kart Wii".
-    let r = rig(Exits::OnClose);
-    let (st, v) = r.quit(r#"{"appid":3907440760}"#).await;
-    assert_eq!(
-        (st, v["state"].as_str()),
-        (StatusCode::OK, Some("closed")),
-        "{v}"
-    );
-    assert_eq!(r.calls(), [EMU_CLOSE]);
-    assert!(!r.alive(800) && r.alive(801) && r.alive(802));
-}
-
-#[tokio::test(start_paused = true)]
-async fn steam_games_quit_by_the_new_id_as_well() {
-    let r = rig(Exits::OnClose);
-    let (st, v) = r.quit(r#"{"id":"steam:10"}"#).await;
-    assert_eq!(
-        (st, v["state"].as_str()),
-        (StatusCode::OK, Some("closed")),
-        "{v}"
-    );
 }
