@@ -10,12 +10,22 @@ Design: `research/m2-tap-design.md` sections 1 and 2.
 
 ## Apply
 
+The patch path is relative to the brisk checkout, not to the Sunshine tree, so set `BRISK_REPO` first.
+
+    BRISK_REPO=/path/to/brisk
     git clone --branch v2026.914.233613 https://github.com/LizardByte/Sunshine ~/build/sunshine-brisk
     cd ~/build/sunshine-brisk
     git rev-parse HEAD            # must start with 63d35f7
     git submodule update --init --recursive
-    git apply --check patches/sunshine/0001-brisk-tap.patch
-    git apply patches/sunshine/0001-brisk-tap.patch
+    git apply --check "$BRISK_REPO/patches/sunshine/0001-brisk-tap.patch"
+    git apply "$BRISK_REPO/patches/sunshine/0001-brisk-tap.patch"
+
+`scripts/sunshine-brisk.sh build` does all of this for you.
+
+## License
+
+The patch changes Sunshine source, so it is a derivative work of Sunshine and is licensed under
+Sunshine's GPL-3.0. The rest of brisk is MIT. The bridge does not link Sunshine: it only reads the socket.
 
 ## Behaviour
 

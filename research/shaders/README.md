@@ -4,8 +4,8 @@ Blender node files by celestialmaze (cmzw_, github.com/williamchange), re-implem
 Licence of the originals: not yet checked (the `.blend` files, renders and zips are git-ignored on purpose).
 
 ## Layout
-- `dump_nodes.py`, `show.py`, `show2.py`: dump a `.blend`'s node trees to JSON (`blender -b FILE --python dump_nodes.py -- out.json`) and print them compactly.
-- `render*.py`, `cam.py`, `cm.py`, `pl*.py`, `noisecal*.py`, `fieldrender.py`: headless Blender helpers (EEVEE renders on bawn work; they gave the ground truth used to match each port).
+- `dump_nodes.py`, `show2.py`: dump a `.blend`'s node trees to JSON (`blender -b FILE --python dump_nodes.py -- out.json`) and print them compactly.
+- `render4.py`, `cam.py`, `cm.py`, `pl2.py`, `noisecal*.py`, `fieldrender.py`: headless Blender helpers (EEVEE renders on bawn work; they gave the ground truth used to match each port).
 - `dumps/` (node-graph JSON) and `ports/ref/` (Blender reference renders) are generated from the creator's files and are git-ignored; regenerate them with the scripts. `ports/`: the GLSL (`common.glsl` = Blender's exact Noise/Voronoi hash + AgX; one `.frag` per shader, optional `.post.frag`), `build.py` -> a single showcase HTML (needs `ports/ref/*.jpg` for the reference thumbnails, otherwise they are skipped).
 - `ports/wip/storm-flow-water.frag`: Storm Flow with a real wave-equation water layer (needs the simulation code in `showcase.tpl.html`, currently unused). Shelved by Toby on 2026-10-25 ("come back later").
 

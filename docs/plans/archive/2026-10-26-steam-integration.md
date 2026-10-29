@@ -1,5 +1,7 @@
 # Steam integration (items 1-7) Implementation Plan
 
+Done and merged. Archived; kept for history.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Show more of Steam in Brisk: a "this fortnight" shelf, hero/logo art, a game detail panel (store info), achievements, an "updated since you played" badge, friends online, and screenshots and save info read from bawn.

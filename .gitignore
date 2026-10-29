@@ -1,14 +1,12 @@
 target/
+target-*/
 *.pem
 *.key
 identity/
 .superpowers/
-research/c17-offline/.venv/
-research/c17-offline/downloads/
 research/c17-offline/
-fixtures/audio/*.key
+research/moonlight-compare/
 web/node_modules/
-web/dist/
 # brisk-service.sh update: web/dist is a symlink to web/dist.<stamp>
 web/dist
 web/dist.*
@@ -18,3 +16,5 @@ fuzz/artifacts/
 fuzz/corpus/
 fuzz/coverage/
 .claude/worktrees/
+# prebuilt binary copied in for the hub image (deploy/hub/Dockerfile)
+deploy/hub/brisk-hostd

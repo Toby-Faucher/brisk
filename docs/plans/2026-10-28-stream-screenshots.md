@@ -1,5 +1,7 @@
 # Stream screenshots (roadmap Stage 6b)
 
+Status: merged to main (through `stack-all`, PR #13).
+
 An experiment on `exp/stream-screenshots`. A screenshot of an emulator game is a frame grab from the stream
 in the browser, kept on the machine that runs the game.
 

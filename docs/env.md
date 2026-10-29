@@ -1,6 +1,6 @@
 # Environment variables
 
-Every `BRISK_*` variable read by the code, scripts and tests. "hostd" means `crates/brisk-hostd`. Lists
+Every `BRISK_*` variable, and the few unprefixed ones, read by the code, scripts and tests. "hostd" means `crates/brisk-hostd`. Lists
 (`BRISK_ALLOWED_*`) are split on commas and newlines; `#` starts a comment.
 
 Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host` header against it
@@ -19,8 +19,9 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_STEAM_STORE_BASE` | Steam store base URL (tests point it at a mock). | `https://store.steampowered.com` | `hostd/src/config.rs` |
 | `BRISK_SGDB_BASE` | SteamGridDB API base URL (tests point it at a mock). | `https://www.steamgriddb.com/api/v2` | `hostd/src/steamgriddb.rs` |
 | `BRISK_SGDB_KEY_FILE` | File with the SteamGridDB API key, one line (0600). Missing = art lookup off (read when art is needed, no restart). | `~/.config/brisk/steamgriddb-api-key` | `hostd/src/steamgriddb.rs` |
-| `BRISK_GAMETDB_XML_URL` | URL of a plain `wiitdb.xml` for Wii and GameCube titles (no default; a `.zip` is refused). Optional: adds year, publisher, developer, languages and a better title to emulator games |. | unset | `hostd/src/gametdb.rs` |
+| `BRISK_GAMETDB_XML_URL` | URL of a plain `wiitdb.xml` for Wii and GameCube titles (no default; a `.zip` is refused). Optional: adds year, publisher, developer, languages and a better title to emulator games. | unset | `hostd/src/gametdb.rs` |
 | `BRISK_GAMETDB_ART_BASE` | GameTDB art base URL (tests point it at a mock). Art lookup does not use GameTDB images yet. | `https://art.gametdb.com` | `hostd/src/gametdb.rs` |
+| `BRISK_MACHINES_FILE` | Hub machine list (`machines.json`, see `deploy/hub/machines.example.json`). Default path missing = single host. Set explicitly, a missing file is an error and hostd exits. | `~/.config/brisk/machines.json` | `hostd/src/config.rs`, `main.rs`, `machines.rs` |
 | `BRISK_BRIDGE_BIN` | `brisk-bridge` binary hostd starts per stream. | `brisk-bridge` (on PATH) | `hostd/src/config.rs` |
 | `BRISK_LISTEN` | Bridge address, `IPv4:PORT`; `scripts/brisk-up.sh` rejects `0.0.0.0`. | the Tailscale IPv4 on `:4433`, asked at each stream start | `hostd/src/config.rs`, `scripts/brisk-up.sh` |
 | `BRISK_TLS_DIR` | Bridge certificate directory. | `~/.config/brisk/tls` | `hostd/src/config.rs` |
@@ -61,12 +62,26 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_DOWN_WAIT` | Seconds `brisk-down.sh` waits for the bridge to exit. | `60` | `scripts/brisk-down.sh` |
 | `BRISK_EXIT_WAIT` | Seconds `brisk-up.sh`'s exit cleanup waits for the bridge to finish cancelling. | `90` | `scripts/brisk-common.sh` |
 | `BRISK_SB` | Path of `sunshine-brisk.sh` (a stub in tests). | `scripts/sunshine-brisk.sh` | `brisk-up.sh`, `brisk-down.sh`, `brisk-service.sh` |
+| `SB_DROPIN_DIR` | Directory of Sunshine's systemd drop-in (`brisk.conf`). | `~/.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service.d` | `scripts/sunshine-brisk.sh`, `brisk-common.sh` |
+| `SB_PREFIX` | Install prefix of the patched Sunshine. | `~/.local/opt/sunshine-brisk` | `scripts/sunshine-brisk.sh` |
+| `SB_SRC` | Sunshine clone the patch is applied to. | `~/build/sunshine-brisk-build` | `scripts/sunshine-brisk.sh` |
+| `SB_PATCH` | The tap patch. | `patches/sunshine/0001-brisk-tap.patch` | `scripts/sunshine-brisk.sh` |
+| `SB_SERVERINFO` | Sunshine `serverinfo` URL for the idle check (a stub in tests). | `http://127.0.0.1:47989/serverinfo` | `scripts/sunshine-brisk.sh` |
+| `SB_JOBS` | Parallel jobs for the patched Sunshine build, 1 to 6 (bawn hung at unbounded `-j`). | `3` | `scripts/sunshine-brisk.sh` |
+| `FORCE` | `1` restarts even when a stream may be live: `sunshine-brisk.sh` restarts Sunshine when it is busy or gives no answer, `brisk-service.sh install` and `update` restart hostd. | unset | `scripts/sunshine-brisk.sh`, `scripts/brisk-service.sh` |
+| `BRISK_RESTART_GAP` | Seconds to wait between two Sunshine restarts. | `100` | `scripts/sunshine-brisk.sh` (added in a later change) |
+| `BRISK_NO_CAP` | `1` runs cargo and npm without the systemd memory cap of `scripts/capped.sh`, for CI. | unset | `scripts/capped.sh` (added in a later change) |
+| `WORDING_ROOT` | Repo root that `check-wording.sh` scans (its test points it at a temp tree). | the script's checkout | `scripts/check-wording.sh` |
+| `WORDING_BANNED` | Banned phrase list, relative to the root. | `scripts/wording-banned.txt` | `scripts/check-wording.sh` |
+| `WORDING_ALLOW` | Allowlist of real uses, relative to the root. | `scripts/wording-allow.txt` | `scripts/check-wording.sh` |
+| `PURE_ALLOW_FILE` | Allowlist path for `check-pure-rust.sh` (its test points it at a stub). | `scripts/pure-rust-allow.txt` | `scripts/check-pure-rust.sh` |
 
 ## Tests and web checks
 
 | Variable | Meaning | Default | Read in |
 |---|---|---|---|
 | `BRISK_HOST`, `BRISK_APP` | Live test only (`cargo test -p brisk-client --test live_stream -- --ignored`): paired Sunshine host and app id (`BRISK_APP` is required). | host `127.0.0.1` | `brisk-client/tests/live_stream.rs` |
+| `BRISK_RA_WII_FILE`, `BRISK_RA_WII_HASH` | Ignored golden test only (`cargo test -p brisk-hostd rahash -- --ignored`): a real Wii disc file and its hash from `dolphin-tool verify -a rchash`. Both are required. | unset | `hostd/src/rahash.rs` |
 | `BRISK_CHROMIUM` | `chrome-headless-shell` for the web checks and browser tests. | Playwright's own, or `~/.cache/ms-playwright/...` for the scripts | `web/scripts/*.mjs`, `web/vitest.config.ts` |
 | `BRISK_HOSTD` | `brisk-hostd` binary for `ui-smoke.mjs`. | `target/release/brisk-hostd` | `web/scripts/ui-smoke.mjs` |
 | `BRISK_SMOKE_ALLOW_SKIP` | `1` makes the smoke's "port 8443 taken" skip exit 0 instead of 3. | unset | `web/scripts/ui-smoke.mjs` |
@@ -74,4 +89,5 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | `BRISK_NOTIFY_CHILD`, `BRISK_ENV_OUT` | Internal: set by hostd's own `notify.rs` tests for their child processes. | | `hostd/src/notify.rs` |
 
 Not environment variables, although they match the pattern: `__BRISK_COMMIT__` is a Vite define (short git hash, from
-`web/astro.config.mjs`), and `BRISK_DROPIN` is a shell variable in `scripts/brisk-common.sh` (derived from `SB_DROPIN_DIR`).
+`web/astro.config.mjs`), and `BRISK_DROPIN` is a shell variable in `scripts/brisk-common.sh` (derived from `SB_DROPIN_DIR`). `BUSY_OK` and
+`ALLOW_DEAD` are internal to `sunshine-brisk.sh`.

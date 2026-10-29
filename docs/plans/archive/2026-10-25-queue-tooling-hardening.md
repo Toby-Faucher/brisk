@@ -1,6 +1,8 @@
 # Queued work: tooling, Rust hardening, platform pass
 
-Status: DONE 2026-10-26, see docs/plans/overnight-2026-10-26-report.md. Was: IN PROGRESS overnight 2026-10-26 (Toby: 'do all of the things in the queue including this stuff here ... I am going to sleep so just continue implementing'). Originally QUEUED by Toby on 2026-10-25 ("queue up changes 1-11 frontend and 1-10 for the rust side ... done afterwards").
+Done and merged. Archived; kept for history.
+
+Status: DONE 2026-10-26, see docs/plans/archive/overnight-2026-10-26-report.md. Was: IN PROGRESS overnight 2026-10-26 (Toby: 'do all of the things in the queue including this stuff here ... I am going to sleep so just continue implementing'). Originally QUEUED by Toby on 2026-10-25 ("queue up changes 1-11 frontend and 1-10 for the rust side ... done afterwards").
 Do NOT start until `hosting` and `anime-pass` are merged (they touch package.json / lockfile / hostd). Sources:
 `research/ecosystem-frontend-2026-10.md`, `research/ecosystem-rust-2026-10.md`, `research/anime-feature-map.md`.
 
@@ -58,5 +60,5 @@ From research/anime-feature-map.md tier 1-2 ideas not yet built, with the rules 
 - rust-embed ships as an OPTIONAL cargo feature `embed`; the default build keeps serving web/dist from disk because the hosting update/rollback flow (atomic dist symlink swap) depends on it.
 - sd-notify: hostd calls sd_notify only when NOTIFY_SOCKET is set; the unit moves to Type=notify only after a transient-unit test; deploy keeps a backup of the previous unit file and `doctor` must pass or the previous unit is restored.
 - npm packages: pick the newest exact version that is at least 14 days old (supply-chain caution after the Aug 2026 crates.io campaign), unless it is a security fix.
-- ntfy: still no topic from Toby; phone push (Remote Control) inactive: results are written to docs/plans/overnight-2026-10-26-report.md and the chat.
+- ntfy: still no topic from Toby; phone push (Remote Control) inactive: results are written to docs/plans/archive/overnight-2026-10-26-report.md and the chat.
 - Nothing needing root/sudoq is run overnight; no reboot test; no live service restart except `scripts/brisk-service.sh update` which fails closed when a stream is live.
