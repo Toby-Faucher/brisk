@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stand-in for brisk-bridge in tests. Logs "start <pid> <argv>" and "term <pid>" to $FAKE_BRIDGE_LOG.
 # FAKE_BRIDGE_MODE: early_exit (dies before the page line), quit (exits 0.3 s after tap),
-# slow_term (takes 1 s to exit after SIGTERM, logging "term" when it does), else runs until SIGTERM.
+# exit_after_page (exits 0 right after the page line), slow_term (takes 1 s to exit after SIGTERM, logging "term" when it does), else runs until SIGTERM.
 # On exit it prints a real bridge end-of-session report (bridge-report.txt without the hostd prefix).
 log=${FAKE_BRIDGE_LOG:?}
 report() { cut -f2- "$(dirname "$0")/bridge-report.txt"; }
@@ -19,6 +19,7 @@ while [ $# -gt 0 ]; do
 done
 printf 'listening\t%s (udp)\n' "$listen"
 printf 'page\thttp://localhost:8443/?wt=https://%s/tok%s&hash=ab12cd\n' "$listen" "$$"
+[ "$FAKE_BRIDGE_MODE" = exit_after_page ] && exit 0
 sleep 0.3 >/dev/null
 printf 'tap\tconnected at 0.3s\n'
 if [ "$FAKE_BRIDGE_MODE" = quit ]; then

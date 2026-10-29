@@ -410,6 +410,17 @@ impl Supervisor {
                 });
             }
         };
+        // The watcher may have seen the bridge exit after it sent the page line. It resets the state
+        // under this lock, so a dead bridge shows as done or as a state that is no longer Starting.
+        let gone = {
+            let s = self.shared.lock().unwrap();
+            s.info.state != State::Starting || slot.as_ref().is_none_or(|r| *r.done.borrow())
+        };
+        if gone {
+            self.stop_locked(&mut slot).await;
+            self.fail(rec);
+            return Err("the bridge stopped before it was ready".into());
+        }
         let mut fresh = None;
         let rec = match rec {
             Some(mut r) => {
