@@ -58,7 +58,6 @@
 
   const running = $derived(($games?.games ?? []).filter((g) => g.running));
 
-  let grid: HTMLElement | undefined = $state();
   let modal = $state<{ id: string; origin: DOMRect } | null>(null);
   let opener: HTMLElement | null = null;
   let said = $state('');
@@ -125,7 +124,7 @@
   <span class="sr" role="status">{said}</span>
 {/if}
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (the keyboard path is each card's .fill button) -->
-<div class="grid" class:hub={hubOn} bind:this={grid} onpointerdown={(e) => (down = { x: e.clientX, y: e.clientY })} onclick={cardClick} {@attach hubOn ? drag : undefined}>
+<div class="grid" class:hub={hubOn} onpointerdown={(e) => (down = { x: e.clientX, y: e.clientY })} onclick={cardClick} {@attach hubOn ? drag : undefined}>
   {#each machines as m (m.id)}
     {#if hubOn}
       <Slot id={m.id} label={m.name}>{@render card(m)}</Slot>

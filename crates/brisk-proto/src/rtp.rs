@@ -34,8 +34,11 @@ pub const MAX_VIDEO_PACKET: usize = 4096;
 /// Frames kept open at once waiting for late shards; older ones are evicted.
 pub const MAX_PENDING_FRAMES: usize = 3;
 
+/// The packet carries picture data.
 pub const FLAG_CONTAINS_PIC_DATA: u8 = 0x1;
+/// Last packet of a frame.
 pub const FLAG_EOF: u8 = 0x2;
+/// First packet of a frame.
 pub const FLAG_SOF: u8 = 0x4;
 const FLAG_EXTENSION: u8 = 0x10;
 /// Sunshine sends up to 4 FEC blocks per frame (2-bit counters).
@@ -43,12 +46,17 @@ const MAX_FEC_BLOCKS: usize = 4;
 const SHORT_FRAME_HEADER: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why a video packet was rejected.
 pub enum RtpError {
+    /// Packet over [`MAX_VIDEO_PACKET`].
     TooLarge,
+    /// Shorter than its headers.
     Truncated,
+    /// Header fields that cannot be right.
     Malformed,
     /// Encrypted bytes handed to the plain parser; decrypt with [`VideoCipher::open`] first.
     Encrypted,
+    /// AES-GCM tag did not verify: tampered or wrong key.
     BadTag,
 }
 
@@ -67,12 +75,17 @@ impl std::fmt::Display for RtpError {
 impl std::error::Error for RtpError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One parsed video datagram; borrows the bytes it came from.
 pub struct VideoPacket<'a> {
+    /// RTP sequence number.
     pub seq: u16,
+    /// RTP timestamp.
     pub ts: u32,
+    /// Frame index.
     pub frame_idx: u32,
     /// Index within the FEC block (fecInfo bits 12-21); data shards come first.
     pub shard_idx: u16,
+    /// A parity shard, not data.
     pub is_parity: bool,
     /// `NV_VIDEO_PACKET.flags` (`FLAG_*`).
     pub flags: u8,
@@ -80,10 +93,15 @@ pub struct VideoPacket<'a> {
     pub payload: &'a [u8],
     /// Sunshine frame processing latency in 0.1 ms, on a frame's first data packet only.
     pub host_latency_100us: Option<u16>,
+    /// Data shards in this FEC block.
     pub data_shards: u16,
+    /// Parity shards in this FEC block.
     pub parity_shards: u16,
+    /// FEC percentage Sunshine used.
     pub fec_percent: u8,
+    /// This packet's FEC block within the frame.
     pub fec_block: u8,
+    /// Index of the frame's last FEC block.
     pub last_fec_block: u8,
     /// The whole packet: the Reed-Solomon shard.
     pub raw: &'a [u8],
@@ -171,6 +189,7 @@ pub struct VideoCipher {
 }
 
 impl VideoCipher {
+    /// A cipher for the session key.
     pub fn new(key: &[u8; 16]) -> Self {
         Self {
             gcm: Aes128Gcm::new(key.into()),
@@ -200,15 +219,22 @@ impl VideoCipher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A complete frame.
 pub struct AssembledFrame {
+    /// Frame index.
     pub idx: u32,
+    /// The frame is an IDR.
     pub is_idr: bool,
+    /// The frame as Annex B bytes.
     pub annexb: Vec<u8>,
+    /// Host processing latency in 0.1 ms, if Sunshine sent it.
     pub host_latency_100us: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Counters of a [`FrameAssembler`].
 pub struct AssemblerStats {
+    /// Frames handed out whole.
     pub frames_ok: u64,
     /// Frame indices skipped when a later frame completed (lost, unrecoverable or corrupt).
     pub frames_dropped: u64,
@@ -276,6 +302,7 @@ fn consistent(p: &VideoPacket) -> bool {
 }
 
 impl FrameAssembler {
+    /// An assembler waiting for frame 1.
     pub fn new() -> Self {
         Self::default()
     }
@@ -289,6 +316,7 @@ impl FrameAssembler {
         }
     }
 
+    /// Counters so far.
     pub fn stats(&self) -> AssemblerStats {
         self.stats
     }
@@ -304,6 +332,7 @@ impl FrameAssembler {
         self.unreported_drops += n;
     }
 
+    /// Feeds one packet; returns the frames it completed, in order.
     pub fn push(&mut self, p: VideoPacket) -> Vec<AssembledFrame> {
         let next = self.next;
         if is_before32(p.frame_idx, next) {

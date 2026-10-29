@@ -98,7 +98,6 @@ function fake(
   return s;
 }
 
-const noSleep = async () => {};
 function rig(s: ReturnType<typeof fake>, extra = {}) {
   const log: Item[][] = [];
   const sleeps: number[] = [];

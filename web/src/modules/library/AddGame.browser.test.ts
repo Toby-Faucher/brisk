@@ -10,7 +10,7 @@ function fake(o: { createFail?: unknown; finish?: UploadDone } = {}) {
   const gates: (() => void)[] = [];
   const log: string[] = [];
   const a: UploadApi = {
-    async create(name, size) {
+    async create(name, _size) {
       log.push(`create ${name}`);
       if (o.createFail) throw o.createFail;
       return { id: `u${log.length}`, chunk: 32 << 20, offset: 0 };

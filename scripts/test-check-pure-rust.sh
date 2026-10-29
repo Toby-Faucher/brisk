@@ -41,7 +41,7 @@ printf '# comment\nfoo-sys | vendored zlib, no pure alternative | 2026-10-26\nzl
 printf 'foo-sys | no date\n' > "$t/badallow"
 fail=0
 expect() { # name want-rc tree meta allow [text that must appear]  (env vars pass through)
-    out=$(TREE=$3 META=$4 PURE_ALLOW_FILE=$5 "$s" 2>&1); rc=$?
+    out=$(TREE=$3 META=$4 PURE_ALLOW_FILE=$5 ${PURE_SH:+"$PURE_SH"} "$s" 2>&1); rc=$?
     { [ "$rc" = "$2" ] && { [ -z "${6:-}" ] || echo "$out" | grep -qF -- "$6"; }; } \
         || { echo "FAIL: $1 (rc=$rc)"; echo "$out"; fail=1; }
 }
@@ -60,5 +60,12 @@ TREE_RC=1 expect "cargo tree failing fails closed" 1 "$t/clean" "$t/nolinks" "$t
 expect "empty tree fails closed" 1 "$t/empty" "$t/nolinks" "$t/none" "unexpected cargo tree"
 expect "unexpected tree format fails closed" 1 "$t/badfmt" "$t/nolinks" "$t/none" "unexpected cargo tree"
 HIT=1 expect "hit on the first per-package check fails" 1 "$t/clean" "$t/nolinks" "$t/none" "NOT PURE: ring"
+# A \n escape inside a JSON string (cargo metadata has them in descriptions) must reach python
+# as is: dash's echo would turn it into a newline and break the parse.
+sed 's/"name":"zlib-native"/"name":"zlib-native","description":"one\\ntwo"/' "$t/links" > "$t/esc"
+expect "metadata with a \\n escape parses" 1 "$t/zl" "$t/esc" "$t/none" "NOT PURE: zlib-native"
+if command -v dash >/dev/null; then
+    PURE_SH=dash expect "metadata with a \\n escape parses under dash" 1 "$t/zl" "$t/esc" "$t/none" "NOT PURE: zlib-native"
+fi
 [ $fail = 0 ] && echo "all passed"
 exit $fail

@@ -1,7 +1,11 @@
 # web/scripts
 
 Check scripts for the UI. Run them from `web/`. None are part of `npm run ci` (that is `biome check` + `check` + `test` + `build`).
-Most drive headless Chrome with `playwright-core` (`BRISK_CHROMIUM` overrides the browser path) and print PASS/FAIL.
+Most drive headless Chrome with `playwright-core` and print PASS/FAIL. They find it through `browser.mjs`: the
+chrome-headless-shell for the revision in `playwright-core/browsers.json`, or the path in `BRISK_CHROMIUM` when set.
+The browser tests (`vitest.config.ts`) use the same helper.
+Biome lints every script. `npm run check` type-checks the ones that start with `// @ts-check` (the helpers,
+`gen-spring-tokens.mjs` and `axe-check.mjs` so far); add it to a script once its JSDoc is in place.
 The "preview" scripts need `npx astro preview --host 127.0.0.1 --port <port> &` running first (build with `npm run build`);
 they mock `/api`, so no hostd is needed. Screenshots go to `$OUT`. Details and results: `docs/ui-notes.md`.
 
@@ -10,6 +14,7 @@ they mock `/api`, so no hostd is needed. Screenshots go to `$OUT`. Details and r
 | `ui-smoke.mjs` (`npm run smoke`) | Real hostd on fixtures + fake bridge, every main view, restart dialog, Ctrl+K, a launch to `live`, axe on each view. Needs `target/release/brisk-hostd` (or `BRISK_HOSTD`) and port 8443 free (exit 3 = skipped). | Before merging UI or hostd API changes. |
 | `axe-check.mjs` | axe-core WCAG A/AA on all views against preview (port 4424). Same rules as the smoke, no hostd. | Any markup or colour change; use it when 8443 is taken. |
 | `axe.mjs` | Helper, not a command: the shared axe pass and its `EXCEPTIONS` list. Imported by the checks marked axe below. | Edit when an axe exception is justified. |
+| `browser.mjs` | Helper, not a command: the headless shell path (`exe`) for every script here and the browser tests. `BRISK_CHROMIUM` overrides it. | Edit if Playwright changes its install layout. |
 | `gen-spring-tokens.mjs` (`npm run springs:check`) | Writes (or with `--check` verifies) the generated spring block in `src/styles/tokens.css`. | After changing a spring definition. |
 | `headless.mjs` (`npm run headless`) | Against a running `brisk-bridge`: WebTransport connect, framing, H.264/Opus decode, input. Uses `/stream-legacy/`. | Bridge or stream pipeline changes (see `docs/m2-notes.md`). |
 | `clip-check.mjs` | Screenshot and replay-clip code in headless Chrome: native-size PNG, Crisp-size ring, long tasks, MP4 playback, hotkeys. | Changes to `src/modules/stream` replay, screenshot or hotkeys. |

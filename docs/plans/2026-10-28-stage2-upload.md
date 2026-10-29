@@ -1,6 +1,6 @@
 # Stage 2 backend: games folder, scan, resumable upload, remove, add
 
-Status: built in hostd on branch `stage2-ingest`. Context: `docs/plans/2026-10-28-emulator-roadmap.md` (Stage 2).
+Status: built and merged to main (through `stack-all`, PR #13). Context: `docs/plans/2026-10-28-emulator-roadmap.md` (Stage 2).
 Header reading: `docs/research/discid-notes.md`. The web half and the hub half are separate (see the end).
 
 ## Three ways in

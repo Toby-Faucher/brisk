@@ -8,15 +8,22 @@ use quick_xml::events::Event;
 pub const MAX_BODY: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Why an HTTP reply was rejected.
 pub enum HttpError {
+    /// Body over [`MAX_BODY`].
     TooLarge,
     /// Malformed or truncated XML.
     BadXml,
     /// Missing or non-numeric required field.
     BadField(&'static str),
+    /// HTTP framing we cannot read: no header end, bad status line or Content-Length, chunked,
+    /// a body shorter than declared, non-UTF-8.
+    Malformed(&'static str),
     /// Server answered with a non-200 `status_code`.
     Status {
+        /// `status_code` from the reply.
         code: u32,
+        /// `status_message` from the reply.
         message: String,
     },
 }
@@ -27,6 +34,7 @@ impl std::fmt::Display for HttpError {
             HttpError::TooLarge => write!(f, "http response too large"),
             HttpError::BadXml => write!(f, "http response is not valid xml"),
             HttpError::BadField(n) => write!(f, "http response missing or bad field {n}"),
+            HttpError::Malformed(s) => f.write_str(s),
             HttpError::Status { code, message } => write!(f, "server status {code}: {message}"),
         }
     }
@@ -58,6 +66,53 @@ impl Doc {
             .parse()
             .map_err(|_| HttpError::BadField(name))
     }
+}
+
+/// End of the header block (index of the blank line's `\r\n\r\n`), shared with RTSP framing.
+pub(crate) fn header_end(raw: &[u8]) -> Option<usize> {
+    raw.windows(4).position(|w| w == b"\r\n\r\n")
+}
+
+/// Body of a raw HTTP/1.1 response; enforces Content-Length (required when `need_len`, i.e. over
+/// TLS where a close without close_notify is tolerated), rejects chunked. A non-200 reply with an
+/// empty body is [`HttpError::Status`]; one with a body is returned for the XML parser to report.
+pub fn response_body(raw: &[u8], need_len: bool) -> Result<String, HttpError> {
+    use HttpError::Malformed as bad;
+    let end = header_end(raw).ok_or(bad("truncated http response (no header end)"))?;
+    let head = std::str::from_utf8(&raw[..end]).map_err(|_| bad("non-utf8 http header"))?;
+    let mut lines = head.split("\r\n");
+    let status: u16 = lines
+        .next()
+        .and_then(|l| l.split(' ').nth(1))
+        .and_then(|c| c.parse().ok())
+        .ok_or(bad("bad http status line"))?;
+    let mut body = &raw[end + 4..];
+    let mut has_len = false;
+    for (k, v) in lines.filter_map(|l| l.split_once(':')) {
+        match k.trim().to_ascii_lowercase().as_str() {
+            "transfer-encoding" => return Err(bad("chunked http response not supported")),
+            "content-length" => {
+                has_len = true;
+                let n: usize = v.trim().parse().map_err(|_| bad("bad content-length"))?;
+                if body.len() < n {
+                    return Err(bad("truncated http response body"));
+                }
+                body = &body[..n];
+            }
+            _ => {}
+        }
+    }
+    if need_len && !has_len {
+        return Err(bad("https response without content-length"));
+    }
+    let body = String::from_utf8(body.to_vec()).map_err(|_| bad("non-utf8 http body"))?;
+    if status != 200 && body.trim().is_empty() {
+        return Err(HttpError::Status {
+            code: status.into(),
+            message: "empty body".into(),
+        });
+    }
+    Ok(body) // non-200 with XML: the parser reports Sunshine's status_message
 }
 
 /// Text under a longer element path is not kept: every path a reply is read by is shorter
@@ -166,15 +221,23 @@ pub fn parse_field(xml: &str, name: &'static str) -> Result<String, HttpError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The fields of `/serverinfo` that Brisk uses.
 pub struct ServerInfo {
+    /// `appversion`.
     pub app_version: String,
+    /// `GfeVersion`.
     pub gfe_version: String,
+    /// `uniqueid` of the host.
     pub unique_id: String,
+    /// `HttpsPort`.
     pub https_port: u16,
     /// `PairStatus`: Sunshine reports 1 only on HTTPS requests that carried `uniqueid`.
     pub paired: bool,
+    /// `currentgame`: running app id, 0 when none.
     pub current_game: u32,
+    /// `ServerCodecModeSupport` bits.
     pub codec_mode_support: u32,
+    /// `state`, such as `SUNSHINE_SERVER_FREE` or `_BUSY`.
     pub server_state: String,
 }
 
@@ -189,6 +252,7 @@ impl ServerInfo {
     }
 }
 
+/// Parses a `/serverinfo` reply.
 pub fn parse_serverinfo(xml: &str) -> Result<ServerInfo, HttpError> {
     let d = ok(parse(xml)?)?;
     Ok(ServerInfo {
@@ -208,11 +272,15 @@ pub fn parse_serverinfo(xml: &str) -> Result<ServerInfo, HttpError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One app from `/applist`.
 pub struct App {
+    /// App id to launch.
     pub id: u32,
+    /// App title.
     pub title: String,
 }
 
+/// Parses an `/applist` reply.
 pub fn parse_applist(xml: &str) -> Result<Vec<App>, HttpError> {
     let d = ok(parse(xml)?)?;
     let mut apps = Vec::new();
@@ -242,12 +310,15 @@ pub fn parse_applist(xml: &str) -> Result<Vec<App>, HttpError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The fields of a `/launch` (or `/resume`) reply that Brisk uses.
 pub struct LaunchReply {
     /// `rtsp://` (or `rtspenc://` when launched with corever >= 1) URL of the RTSP server.
     pub session_url: String,
+    /// `gamesession`.
     pub game_session: u32,
 }
 
+/// Parses a `/launch` reply; the session URL must be `rtsp://` or `rtspenc://`.
 pub fn parse_launch(xml: &str) -> Result<LaunchReply, HttpError> {
     let d = ok(parse(xml)?)?;
     let session_url = d.field("sessionUrl0")?.trim().to_string();
@@ -274,6 +345,7 @@ pub struct LaunchOpts {
     pub gcmap: u32,
     /// `sops`: let the host optimise game settings for the mode.
     pub sops: bool,
+    /// `hdrMode`: ask for HDR.
     pub hdr: bool,
 }
 
@@ -287,10 +359,6 @@ impl Default for LaunchOpts {
             hdr: false,
         }
     }
-}
-
-fn hex_upper(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02X}")).collect()
 }
 
 /// Query for `GET /launch` (HTTPS). `corever=1` selects encrypted RTSP (`rtspenc://`, Gen7Enc),
@@ -312,7 +380,7 @@ pub fn launch_query(
         ("appid", app_id.to_string()),
         ("mode", format!("{w}x{h}x{fps}")),
         ("sops", b(opts.sops)),
-        ("rikey", hex_upper(&rikey)),
+        ("rikey", crate::pair::hex(&rikey)),
         ("rikeyid", rikeyid.to_string()),
         ("localAudioPlayMode", b(opts.host_audio)),
         ("surroundAudioInfo", opts.surround_info.to_string()),
@@ -328,4 +396,52 @@ pub fn launch_query(
 /// Query for `GET /cancel`.
 pub fn cancel_query(unique_id: &str) -> Vec<(String, String)> {
     vec![("uniqueid".into(), unique_id.into())]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_body_checks_length_and_status() {
+        let ok = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello trailing";
+        assert_eq!(response_body(ok, false).unwrap(), "hello");
+        assert!(
+            response_body(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort", false).is_err()
+        );
+        assert!(
+            response_body(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello",
+                false
+            )
+            .is_err()
+        );
+        assert!(response_body(b"HTTP/1.1 404 Not Found\r\n\r\n", false).is_err());
+        assert!(response_body(b"HTTP/1.1 200 OK\r\nContent", false).is_err());
+        assert!(response_body(b"HTTP/1.1 200 OK\r\n\r\nhi", true).is_err());
+        assert_eq!(
+            response_body(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", true).unwrap(),
+            "hi"
+        );
+    }
+
+    proptest::proptest! {
+        /// Any response bytes (and any declared Content-Length): no panic, and the body is cut
+        /// from the bytes that arrived, never sized by the header.
+        #[test]
+        fn response_body_takes_any_response(
+            raw in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..400),
+            n in proptest::prelude::any::<u64>(),
+            tail in "[ -~]{0,80}",
+        ) {
+            let shaped = format!("HTTP/1.1 200 OK\r\nContent-Length: {n}\r\n\r\n{tail}");
+            for r in [&raw[..], shaped.as_bytes()] {
+                for need_len in [false, true] {
+                    if let Ok(b) = response_body(r, need_len) {
+                        proptest::prop_assert!(b.len() <= r.len());
+                    }
+                }
+            }
+        }
+    }
 }

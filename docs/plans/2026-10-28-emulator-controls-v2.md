@@ -1,6 +1,6 @@
 # Emulator mappings editor, v2 (design)
 
-Status: design, replaces the approach of `2026-10-27-emulator-controls.md`. Branch `emulator-launch`.
+Status: built and merged to main (Settings, Emulators tab). Replaces the approach of `2026-10-27-emulator-controls.md`.
 Anything marked "my call" is a decision I made so nobody has to ask. Anything marked "unverified" must be
 checked against a file Dolphin wrote before it is relied on.
 

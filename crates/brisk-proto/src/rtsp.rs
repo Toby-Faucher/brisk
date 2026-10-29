@@ -19,10 +19,13 @@ const ENCRYPTED_BIT: u32 = 0x8000_0000;
 const HEADER: usize = 24; // typeAndLength(4) + sequenceNumber(4) + tag(16)
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Why an RTSP message was rejected.
 pub enum RtspError {
+    /// Message over the size limit.
     TooLarge,
     /// Message or frame ends early.
     Truncated,
+    /// Start line, header or Content-Length does not parse.
     Malformed,
     /// Plain bytes where an encrypted frame was required.
     Unencrypted,
@@ -51,17 +54,26 @@ impl std::fmt::Display for RtspError {
 impl std::error::Error for RtspError {}
 
 #[derive(Debug, PartialEq, Eq)]
+/// A parsed RTSP request.
 pub struct RtspRequest {
+    /// Method, such as `DESCRIBE`.
     pub method: String,
+    /// Request target.
     pub target: String,
+    /// Headers in order.
     pub headers: Vec<(String, String)>,
+    /// Body bytes.
     pub body: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
+/// A parsed RTSP reply.
 pub struct RtspReply {
+    /// Status code.
     pub status: u16,
+    /// Headers in order.
     pub headers: Vec<(String, String)>,
+    /// Body bytes.
     pub body: Vec<u8>,
 }
 
@@ -83,6 +95,7 @@ impl RtspReply {
     pub fn header(&self, name: &str) -> Option<&str> {
         find(&self.headers, name)
     }
+    /// `CSeq` as a number.
     pub fn cseq(&self) -> Option<u32> {
         self.header("CSeq")?.parse().ok()
     }
@@ -128,10 +141,7 @@ fn parse(raw: &[u8]) -> Result<Parts, RtspError> {
     if raw.len() > MAX_MESSAGE {
         return Err(RtspError::TooLarge);
     }
-    let end = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or(RtspError::Truncated)?;
+    let end = crate::http::header_end(raw).ok_or(RtspError::Truncated)?;
     let head = std::str::from_utf8(&raw[..end]).map_err(|_| RtspError::Malformed)?;
     let mut lines = head.split("\r\n");
     let mut start = lines.next().unwrap_or("").splitn(3, ' ');
@@ -153,6 +163,7 @@ fn parse(raw: &[u8]) -> Result<Parts, RtspError> {
     Ok((first, headers, body.to_vec()))
 }
 
+/// Parses an RTSP/1.0 request.
 pub fn parse_request(raw: &[u8]) -> Result<RtspRequest, RtspError> {
     let ([method, target, proto], headers, body) = parse(raw)?;
     if proto != "RTSP/1.0" {
@@ -166,6 +177,7 @@ pub fn parse_request(raw: &[u8]) -> Result<RtspRequest, RtspError> {
     })
 }
 
+/// Parses an RTSP/1.0 reply.
 pub fn parse_response(raw: &[u8]) -> Result<RtspReply, RtspError> {
     let ([proto, code, _reason], headers, body) = parse(raw)?;
     let status = code.parse().map_err(|_| RtspError::Malformed)?;
@@ -191,6 +203,7 @@ pub struct RtspCipher {
 }
 
 impl RtspCipher {
+    /// The client side.
     pub fn client(key: [u8; 16]) -> Self {
         Self::new(key, b'C', b'H')
     }
@@ -216,6 +229,7 @@ impl RtspCipher {
         iv
     }
 
+    /// Seals `plain` as our next message, in wire framing.
     pub fn seal(&mut self, plain: &[u8]) -> Result<Vec<u8>, RtspError> {
         if plain.len() > MAX_MESSAGE {
             return Err(RtspError::TooLarge);

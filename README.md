@@ -49,44 +49,49 @@ It exists because the existing web clients felt laggy and clunky. Brisk aims at 
 | `brisk-proto` | Sans-IO protocol: RTSP, RTP, ENet, control messages, audio, pairing. No sockets. Fuzzed. |
 | `brisk-client` | Session client and the `brisk-probe` CLI. |
 | `brisk-bridge` | Runs beside Sunshine and speaks QUIC and WebTransport to the browser. |
-| `brisk-hostd` | Host agent: serves the UI and API, auth, the games library, restarting Sunshine. |
+| `brisk-hostd` | Host agent: serves the UI and API, auth, the Steam and emulator game library, starts the bridge per stream, restarts Sunshine. With a `machines.json` it is the machine hub. |
 
 ## Status
 
 | | |
 |---|---|
 | **Works today** | Streaming from a Sunshine host in Chrome with video, audio, keyboard, mouse and gamepad (with rumble), clips and replay, session history, a game library with search and per-game quality. |
+| **Steam** | A game panel with store info, achievements, news, friends online, your screenshots, and your own notes and colored tags. |
+| **Emulator games** | Wii and GameCube games through Dolphin: uploads from the browser or a games folder scan, a controller mappings editor, launch options, playtime, a read-only saves list and stream screenshots. |
+| **Art and progress** | SteamGridDB art, GameTDB details, and RetroAchievements progress for emulator games. |
+| **Machine hub** | One page for several streaming machines, with power on and idle shutdown for a Proxmox VM. See [`docs/hosting-runbook.md`](docs/hosting-runbook.md#machine-hub). |
 | **Browsers** | Chrome is the target. Firefox 158+ on desktop connects and streams but is rough (about 100 ms latency, 30-40 fps, no HEVC, no Keyboard Lock). |
-| **In progress** | Steam integration: a click-through game page with store info, achievements, friends online, screenshots, and your own notes and colored tags. See [`docs/plans/2026-10-26-steam-integration.md`](docs/plans/2026-10-26-steam-integration.md). |
 | **Not planned** | Safari, mobile, non-Sunshine hosts, public internet exposure. |
 
-## Run it
+## Prerequisites
 
-The web UI lives in `web/`:
+- **Rust** through rustup. `rust-toolchain.toml` pins the version, so rustup installs the right one on the first `cargo` call.
+- **Node 26** and npm for the web UI in `web/`.
+- **Sunshine with the tap patch** on the host. `scripts/sunshine-brisk.sh build` clones, patches and builds it; see [`patches/sunshine/`](patches/sunshine/README.md).
+- **Tailscale** on the host and the laptop. The bridge listens on the host's tailnet address.
 
-```sh
-cd web
-npm ci
-npm run dev      # dev server on 127.0.0.1
-npm run ci       # biome check, svelte-check, unit tests, production build
-npm run fmt      # format and apply safe lint fixes
-```
+## Run locally
 
-The Rust side builds with the pinned toolchain. Use `cargo test` for the tests, or `cargo build --release` for `brisk-hostd`, `brisk-bridge` and `brisk-probe`. `scripts/check.sh` runs every check (Rust and web) in order.
+- `scripts/brisk-up.sh` builds the bridge and hostd, switches to the patched Sunshine and runs hostd in the foreground. It prints the page link. `scripts/brisk-down.sh` puts stock Sunshine back.
+- `scripts/check.sh` runs every check (Rust and web) in order. All of them must pass.
+- In `web/`: `npm ci`, then `npm run dev` for a dev server on 127.0.0.1, `npm run ci` for the web checks and `npm run fmt` to format.
 
-Hosting it for real, with the systemd user service and Tailscale, is in [`docs/hosting-runbook.md`](docs/hosting-runbook.md). The patched Sunshine build is described in [`patches/sunshine/`](patches/sunshine/README.md).
+How it is built and checked: [`docs/dev.md`](docs/dev.md). Hosting it for real, with the systemd user service and Tailscale, is in [`docs/hosting-runbook.md`](docs/hosting-runbook.md).
 
 ## Read more
 
 - [`docs/design.md`](docs/design.md): goals, non-goals and the architecture decisions
-- [`docs/ui-notes.md`](docs/ui-notes.md): the UI, hosting and the full list of checks
+- [`docs/architecture.md`](docs/architecture.md): processes, crates, data files and the path of a stream
+- [`docs/ui-notes.md`](docs/ui-notes.md): the UI, the API and how each part behaves
+- [`docs/dev.md`](docs/dev.md): toolchain, lints, the full list of checks, fuzzing
 - [`docs/hosting-runbook.md`](docs/hosting-runbook.md): standing it up on a host
 - [`docs/env.md`](docs/env.md): every `BRISK_*` environment variable
 - [`docs/moonlight-compare.md`](docs/moonlight-compare.md): how it compares with Moonlight
 - [`docs/fuzz-inventory.md`](docs/fuzz-inventory.md): what is fuzzed
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): how to send a change
 
 ## Scope
 
 Brisk is a personal project, built around one setup: a Sunshine host, Chrome clients and a Tailscale network. Safari, mobile, non-Sunshine hosts and public internet exposure are out of scope for now, and Firefox is best effort (see Status).
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE). The Sunshine tap patch in `patches/sunshine/` is a derivative of Sunshine and is under Sunshine's GPL-3.0 license.

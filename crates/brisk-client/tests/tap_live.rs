@@ -91,8 +91,7 @@ async fn listener_rejects_foreign_uid() {
     let t = tempfile::tempdir().unwrap();
     let path = t.path().join("tap.sock");
     // Pretend we run as another user, so this process's own peer is the foreign one.
-    // SAFETY: getuid cannot fail.
-    let uid = unsafe { libc::getuid() };
+    let uid = rustix::process::getuid().as_raw();
     let l = TapListener::bind(&path).unwrap().expect_uid(uid + 1);
     let p = peer(&path);
     p.send(&msg(1, CD, 1, 1, 0, ANNEXB)).unwrap();
