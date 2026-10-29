@@ -15,6 +15,7 @@
   import { startVideo } from '../../lib/video';
   import { startAudio } from '../../lib/audio';
   import { startInput } from '../../lib/input';
+  import { listener } from '../../lib/listen';
   import workletUrl from '../../lib/audio-worklet.ts?worker&url';
   import { StreamSession, pollLive } from './session';
   import { SeriesUploader } from './series';
@@ -90,11 +91,16 @@
     }
     if (!info) return; // left the page while waiting
     if (info.state !== 'live') return void (page = 'idle');
+    await enter(info);
+  }
+
+  /** Show the session for `info` and connect to it. */
+  function enter(info: StreamInfo) {
     appid = rowKey(info);
     preset = info.preset;
     codec = info.codec;
     page = 'session';
-    await session.connect(info);
+    return session.connect(info);
   }
 
   async function start() {
@@ -102,11 +108,7 @@
     try {
       const info = await startGame(undefined, toast); // the Desktop: no saved quality
       if (destroyed) return; // left the page during the POST: the session is closed anyway
-      appid = rowKey(info);
-      preset = info.preset;
-      codec = info.codec;
-      page = 'session';
-      await session.connect(info);
+      await enter(info);
     } catch (e) {
       toastError('start the stream', e);
     } finally {
@@ -284,7 +286,7 @@
     const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
     // dragenter/dragleave fire per element crossed: count them, the overlay shows while > 0.
     let depth = 0;
-    const enter = (e: DragEvent) => {
+    const dragIn = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       dropping = ++depth > 0;
@@ -304,29 +306,35 @@
       dropping = false;
       uploads.add(Array.from(e.dataTransfer!.files));
     };
-    const drag: [string, (e: DragEvent) => void][] = [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop]];
-    for (const [k, f] of drag) window.addEventListener(k, f as EventListener);
-    window.addEventListener('focus', clipFocus);
-    document.addEventListener('visibilitychange', clipFocus);
-    document.addEventListener('pointerlockchange', clipFocus);
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    document.addEventListener('pointerlockchange', cap);
-    document.addEventListener('focusin', cap);
-    const out = () => setTimeout(cap);
-    document.addEventListener('focusout', out);
-    document.addEventListener('fullscreenchange', fs);
+    // Every listener below goes when the page unmounts.
+    const gone = new AbortController();
+    const on = listener(gone.signal);
+    on(window, 'dragenter', dragIn);
+    on(window, 'dragover', over);
+    on(window, 'dragleave', leave);
+    on(window, 'drop', drop);
+    on(window, 'focus', clipFocus);
+    on(document, 'visibilitychange', clipFocus);
+    on(document, 'pointerlockchange', clipFocus);
+    on(window, 'keydown', down);
+    on(window, 'keyup', up);
+    on(document, 'pointerlockchange', cap);
+    on(document, 'focusin', cap);
+    let outT: ReturnType<typeof setTimeout> | undefined;
+    on(document, 'focusout', () => (clearTimeout(outT), (outT = setTimeout(cap))));
+    on(document, 'fullscreenchange', fs);
     const off = onCommand((c) => {
       if (c.type === 'stats') statsOn = !statsOn;
       else if (page === 'session' && c.preset !== preset) void quality({ preset: c.preset });
     });
     void boot();
     const flushOnHide = () => (saver.flush(), series.close());
-    window.addEventListener('pagehide', flushOnHide); // closing the tab never runs the cleanup below
+    on(window, 'pagehide', flushOnHide); // closing the tab never runs the cleanup below
     const unwatchPrefs = watchPrefs();
     const unwatchGames = watchGames(); // the game's name for "Saved for …"
     return () => {
-      window.removeEventListener('pagehide', flushOnHide);
+      gone.abort();
+      clearTimeout(outT);
       unwatchPrefs();
       unwatchGames();
       // Leaving /stream (the island unmounts on navigation): release keys, close everything.
@@ -337,19 +345,9 @@
       clip.stop();
       awake?.stop();
       uploads.cancel();
-      for (const [k, f] of drag) window.removeEventListener(k, f as EventListener);
-      window.removeEventListener('focus', clipFocus);
-      document.removeEventListener('visibilitychange', clipFocus);
-      document.removeEventListener('pointerlockchange', clipFocus);
       off();
       cancelAnimationFrame(raf);
       unhot();
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-      document.removeEventListener('pointerlockchange', cap);
-      document.removeEventListener('focusin', cap);
-      document.removeEventListener('focusout', out);
-      document.removeEventListener('fullscreenchange', fs);
       if (document.pointerLockElement) document.exitPointerLock();
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     };
