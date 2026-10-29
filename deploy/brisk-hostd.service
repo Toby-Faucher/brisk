@@ -1,9 +1,10 @@
 # brisk-hostd as a systemd USER service (linger on). Installed by scripts/brisk-service.sh
 # install into ~/.config/systemd/user/. Page + API on 127.0.0.1:8443 only; the laptop reaches it
 # through `tailscale serve` at https://bawn.tail0.ts.net:8443 (docs/ui-notes.md, Hosting).
+# install writes the checkout's path in for each ROOT token between @ signs.
 [Unit]
 Description=Brisk host agent (page, API, bridge supervisor)
-Documentation=file://%h/Projects/brisk/docs/hosting-runbook.md
+Documentation=file://@ROOT@/docs/hosting-runbook.md
 # Patched Sunshine (drop-in by scripts/sunshine-brisk.sh). Wants, not Requires: hostd still serves
 # the page (Sunshine "down") when Sunshine is stopped or restarting.
 Wants=app-dev.lizardbyte.app.Sunshine.service
@@ -21,8 +22,10 @@ Type=notify
 NotifyAccess=main
 WatchdogSec=60
 TimeoutStartSec=30
-ExecStart=%h/Projects/brisk/target/release/brisk-hostd %h/Projects/brisk/web/dist
-Environment=BRISK_BRIDGE_BIN=%h/Projects/brisk/target/release/brisk-bridge
+# target/service/bin holds copies of the binaries that brisk-service.sh update replaces only
+# together with a restart, so cargo can rebuild target/release under a live hostd.
+ExecStart=@ROOT@/target/service/bin/brisk-hostd @ROOT@/web/dist
+Environment=BRISK_BRIDGE_BIN=@ROOT@/target/service/bin/brisk-bridge
 # `steam steam://…` runs in its own systemd-run scope, so a Steam it cold-starts (and its games)
 # is outside this unit's cgroup: not under MemoryMax, not killed by a restart.
 Environment=BRISK_SPAWN_SCOPE=1
