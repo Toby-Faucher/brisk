@@ -12,7 +12,11 @@ updates:
     # The RustCrypto crates must move together, and rsa still uses digest 0.10. A lone bump fails
     # to compile and trips cargo deny's duplicate check. Remove these once rsa ships on digest 0.11.
     ignore:
+      - dependency-name: "aes"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "aes-gcm"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "hkdf"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "hmac"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
