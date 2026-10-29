@@ -15,6 +15,7 @@ const SUNSHINE_ADDR: &str = "127.0.0.1:47989";
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+/// Sunshine as `/serverinfo` reports it.
 pub enum Sunshine {
     Ready,
     Busy,
@@ -23,6 +24,7 @@ pub enum Sunshine {
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// The answer of `GET /api/host`.
 pub struct HostInfo {
     pub name: String,
     pub sunshine: Sunshine,
@@ -35,6 +37,7 @@ pub struct HostInfo {
 
 /// Runs a command and returns its stdout on success. Blocking; call from `spawn_blocking`.
 pub trait Runner: Send + Sync {
+    /// Runs `prog` and waits; stdout on success.
     fn run(&self, prog: &str, args: &[&str]) -> Option<String>;
     /// Starts a command detached and returns once it is running (false if it could not start).
     /// The default only suits fakes; `RealRunner` never waits.
@@ -43,6 +46,7 @@ pub trait Runner: Send + Sync {
     }
 }
 
+/// Runs real programs.
 pub struct RealRunner;
 impl Runner for RealRunner {
     /// Own process group and null stdio, so it outlives hostd's terminal and signals; a thread reaps it.
@@ -119,9 +123,12 @@ fn on_path(prog: &str) -> bool {
         .is_some_and(|ps| std::env::split_paths(&ps).any(|d| exec(&d.join(prog))))
 }
 
+/// Seconds since some fixed start; tests use a fake.
 pub trait Clock: Send + Sync {
+    /// Seconds since the clock started.
     fn now_s(&self) -> u64;
 }
+/// The real clock.
 pub struct SystemClock(std::time::Instant);
 impl Default for SystemClock {
     fn default() -> Self {
@@ -153,11 +160,13 @@ impl Default for Sources {
     }
 }
 
+/// Host facts from the real sources.
 pub async fn host_info(cfg: &Config) -> HostInfo {
     let r = Arc::new(RealRunner);
     host_info_with(cfg, &Sources::default(), r).await
 }
 
+/// Host facts from `src`, with `runner` for tailscale.
 pub async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
     let job = tokio::task::spawn_blocking(move || runner.run("tailscale", &["status", "--json"]));
     let ts = tokio::time::timeout(src.tailscale_timeout, job)
@@ -270,6 +279,7 @@ pub struct Restarter {
 }
 
 #[derive(Debug, PartialEq)]
+/// Why a Sunshine restart did not happen.
 pub enum RestartError {
     /// Seconds until the next restart is allowed (the `Retry-After`).
     TooSoon(u64),
@@ -277,6 +287,7 @@ pub enum RestartError {
 }
 
 impl Restarter {
+    /// A restarter that runs commands through `runner`.
     pub fn new(runner: Arc<dyn Runner>, clock: Arc<dyn Clock>) -> Self {
         Restarter {
             runner,
@@ -286,6 +297,7 @@ impl Restarter {
         }
     }
 
+    /// Restarts Sunshine unless the last restart was too recent.
     pub async fn restart(&self) -> Result<(), RestartError> {
         let now = self.clock.now_s();
         let prev = {

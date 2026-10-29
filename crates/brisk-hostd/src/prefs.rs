@@ -77,6 +77,7 @@ struct Inner {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Stream quality saved for one game.
 pub struct Entry {
     pub preset: Preset,
     pub codec: Codec,
@@ -95,12 +96,14 @@ pub struct Entry {
 /// (homeOrder, machinesOrder, machineColors)
 pub type Layout = (Vec<String>, Vec<String>, BTreeMap<String, String>);
 
+/// Per-game stream quality and the layout prefs, kept in prefs.json.
 pub struct Prefs {
     path: PathBuf,
     inner: Mutex<Inner>,
 }
 
 impl Prefs {
+    /// The prefs at `path`; a missing or corrupt file is empty.
     pub fn load(path: PathBuf) -> Prefs {
         let mut raw: BTreeMap<String, serde_json::Value> = std::fs::read(&path)
             .ok()
@@ -153,18 +156,22 @@ impl Prefs {
         }
     }
 
+    /// Every game's saved quality.
     pub fn all(&self) -> BTreeMap<String, Entry> {
         self.inner.lock().unwrap().map.clone()
     }
 
+    /// The saved Home card order.
     pub fn home_order(&self) -> Vec<String> {
         self.inner.lock().unwrap().home.clone()
     }
 
+    /// The saved Machines page order.
     pub fn machines_order(&self) -> Vec<String> {
         self.inner.lock().unwrap().machines.clone()
     }
 
+    /// The saved machine colours.
     pub fn machine_colors(&self) -> BTreeMap<String, String> {
         self.inner.lock().unwrap().colors.clone()
     }
@@ -252,6 +259,7 @@ impl Prefs {
         moved
     }
 
+    /// Forgets the game's saved quality.
     pub fn delete(&self, id: &str) {
         let mut m = self.inner.lock().unwrap();
         if m.map.remove(id).is_some() {

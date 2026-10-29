@@ -46,17 +46,21 @@ pub struct VmStats {
     pub mem_total: u64,
 }
 
+/// Power control of one machine.
 pub trait Power: Send + Sync {
+    /// Whether the machine is running.
     fn status(&self) -> Result<VmState, String>;
     /// Returns once Proxmox accepted the request, not when the guest is up.
     fn start(&self) -> Result<(), String>;
     /// ACPI shutdown (never a hard stop).
     fn shutdown(&self) -> Result<(), String>;
+    /// Load figures; not every backend has them.
     fn stats(&self) -> Result<VmStats, String> {
         Err("unsupported".into())
     }
 }
 
+/// Power control through the Proxmox API.
 pub fn proxmox(cfg: &ProxmoxCfg) -> Arc<dyn Power> {
     Arc::new(Proxmox { cfg: cfg.clone() })
 }

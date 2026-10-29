@@ -156,10 +156,12 @@ pub fn parse_library(text: &str) -> Result<Vec<Record>, String> {
         .collect())
 }
 
+/// library.json text for `recs`.
 pub fn library_json(recs: &[Record]) -> Vec<u8> {
     serde_json::to_vec_pretty(&serde_json::json!({ "v": 1, "games": recs })).unwrap_or_default()
 }
 
+/// The library records; a missing or corrupt file is empty.
 pub fn load(data_dir: &Path) -> Vec<Record> {
     match std::fs::read_to_string(data_dir.join(LIBRARY_FILE)) {
         Ok(text) => parse_library(&text).unwrap_or_else(|e| {
@@ -182,6 +184,7 @@ pub fn load(data_dir: &Path) -> Vec<Record> {
     }
 }
 
+/// What an emulator game of this emulator can do.
 pub fn caps(emulator: &str) -> Caps {
     Caps {
         controls: registry::get(emulator).is_some_and(|e| !e.controller.is_empty()),

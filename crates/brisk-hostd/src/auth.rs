@@ -19,6 +19,7 @@ pub struct Hosts {
 }
 
 impl Hosts {
+    /// The fixed local hosts plus `extra`; tailnet names are looked up later.
     pub fn new(extra: &[String], runner: Arc<dyn Runner>) -> Self {
         let mut fixed = vec!["localhost:8443".to_string(), "127.0.0.1:8443".to_string()];
         fixed.extend(extra.iter().map(|h| h.to_ascii_lowercase()));

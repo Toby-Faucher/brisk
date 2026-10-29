@@ -141,6 +141,7 @@ pub struct Entry {
     power: Option<Arc<dyn Power>>,
 }
 
+/// The machines behind this hub and their state.
 pub struct Hub {
     machines: Vec<Arc<Entry>>,
     cache: Mutex<HashMap<String, (Instant, Value)>>,
@@ -397,6 +398,7 @@ fn fetch_temp(url: &str) -> Option<f64> {
     v["cpuTempC"].as_f64().filter(|c| (0.0..=150.0).contains(c))
 }
 
+/// `GET /api/machines`: every machine with its state; 404 without a hub.
 pub async fn list(State(s): State<Arc<AppState>>) -> Response {
     let Some(h) = s.hub.clone() else {
         return StatusCode::NOT_FOUND.into_response();
@@ -469,6 +471,7 @@ fn do_power(h: &Hub, e: &Entry, p: &dyn Power, v: Verb) -> Result<(StatusCode, S
     Ok(r)
 }
 
+/// `POST /api/machines/{id}/power`: start or shut down a machine.
 pub async fn power(
     State(s): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,

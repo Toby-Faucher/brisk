@@ -23,6 +23,7 @@ pub const EXTS: &[&str] = &[
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;
 
+/// True when the file name has a game file extension.
 pub fn known_ext(name: &str) -> bool {
     Path::new(name)
         .extension()
@@ -45,6 +46,7 @@ pub fn folder(s: System) -> &'static str {
     }
 }
 
+/// The emulator that runs system `s`.
 pub fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
     registry::EMULATORS
         .iter()
@@ -406,6 +408,7 @@ fn register_with(
 /// Exclusive lock on `data_dir/library.lock`, shared with other hostd processes (`add`).
 pub struct Lock(File);
 
+/// Takes the library lock in `data_dir`; it is held until dropped.
 pub fn lock(data_dir: &Path) -> io::Result<Lock> {
     std::fs::create_dir_all(data_dir)?;
     let f = std::fs::OpenOptions::new()

@@ -32,6 +32,7 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// The controller type a URL names (`classic`, `gamecube`).
     pub fn parse(s: &str) -> Option<Kind> {
         match s {
             "classic" => Some(Kind::Classic),
@@ -69,6 +70,7 @@ impl Kind {
             Kind::GameCube => GAMECUBE_INI,
         }
     }
+    /// The button ids of this controller type, in editor order.
     pub fn ids(self) -> &'static [&'static str] {
         match self {
             Kind::Classic => &[
@@ -541,6 +543,7 @@ pub struct Controls {
 }
 
 impl Controls {
+    /// The editor for the config files in Dolphin's config dir `dir`.
     pub fn new(dir: PathBuf) -> Controls {
         Controls {
             dir,
@@ -594,11 +597,13 @@ impl Controls {
         })
     }
 
+    /// The current mapping of `kind`.
     pub fn get(&self, kind: Kind, running: bool) -> Result<View, CtlError> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         self.view(kind, running)
     }
 
+    /// Validates and saves a new mapping; `Changed` when the file moved on since `rev`.
     pub fn put(&self, kind: Kind, body: &[u8], running: bool) -> Result<View, CtlError> {
         let (p, pads, dz) = validate(kind, body)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());

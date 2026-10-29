@@ -225,6 +225,7 @@ pub enum SeriesError {
     TooMany,
 }
 
+/// Now, in ms since the epoch.
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -238,6 +239,7 @@ pub struct Sessions {
 }
 
 impl Sessions {
+    /// Sessions kept in `path`.
     pub fn new(path: PathBuf) -> Sessions {
         Sessions {
             path,
@@ -341,6 +343,7 @@ impl Sessions {
         }
     }
 
+    /// Adds one line to the log; a failure is a warning only.
     pub fn append(&self, r: &SessionRec) {
         let write = || -> std::io::Result<()> {
             if let Some(d) = self.path.parent() {
@@ -357,6 +360,7 @@ impl Sessions {
         }
     }
 
+    /// Marks the session ended now and logs it.
     pub fn close(&self, mut r: SessionRec) {
         r.ended = Some(now_ms().max(r.started));
         self.append(&r);

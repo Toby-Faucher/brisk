@@ -134,6 +134,7 @@ pub struct Pending {
     pub items: BTreeMap<String, PendingItem>,
 }
 
+/// The pending match queue from disk; a missing or corrupt file is empty.
 pub fn load_pending(data_dir: &Path) -> Pending {
     let mut p: Pending = read_json(&data_dir.join("art").join(PENDING)).unwrap_or_default();
     while p.items.len() > MAX_PENDING {
@@ -202,6 +203,7 @@ pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
 
 // ---- serving ----
 
+/// The MIME type of PNG, JPEG or WebP bytes; None for anything else.
 pub fn image_type(b: &[u8]) -> Option<&'static str> {
     if b.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("image/png")
@@ -317,6 +319,7 @@ fn transient(e: &sg::Error) -> bool {
 }
 
 impl Art {
+    /// An art worker with the given SteamGridDB key loader and GameTDB lookup.
     pub fn new(sgdb: KeyLoader, tdb: fn(&Config, &str) -> Option<gametdb::Entry>) -> Art {
         Art {
             sgdb,
@@ -347,6 +350,7 @@ impl Art {
         Outcome::Failed(e.to_string())
     }
 
+    /// True when a SteamGridDB key is set up.
     pub fn has_key(&self, data_dir: &Path) -> bool {
         (self.sgdb)(data_dir).is_some()
     }
@@ -576,6 +580,7 @@ impl Art {
         true
     }
 
+    /// True while a lookup for this game is running.
     pub fn busy(&self, id: &GameId) -> bool {
         key_of(id).is_some_and(|k| {
             self.inflight

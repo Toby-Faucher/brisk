@@ -66,6 +66,7 @@ fn dir(data: &Path, id: &str) -> PathBuf {
     data.join("shots").join(id.replace(':', "_"))
 }
 
+/// Stores a PNG for game `id`; checks the image and the free space first.
 pub fn save(
     data: &Path,
     id: &str,
@@ -139,10 +140,12 @@ fn names(d: &Path) -> Vec<String> {
     v.into_iter().map(|x| x.1).collect()
 }
 
+/// The file names of the game's screenshots.
 pub fn list_names(data: &Path, id: &str) -> Vec<String> {
     names(&dir(data, id))
 }
 
+/// The game's screenshots.
 pub fn list(data: &Path, id: &str) -> Vec<Shot> {
     let d = dir(data, id);
     names(&d)
@@ -165,6 +168,7 @@ pub fn list(data: &Path, id: &str) -> Vec<Shot> {
         .collect()
 }
 
+/// One screenshot's bytes, if `name` is a valid listed name.
 pub fn read(data: &Path, id: &str, name: &str) -> Option<Vec<u8>> {
     valid_name(name)?;
     let f = crate::discid::open_regular(&dir(data, id).join(name)).ok()?;

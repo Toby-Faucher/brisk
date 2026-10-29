@@ -97,6 +97,7 @@ fn fail(code: StatusCode, msg: &str) -> Fail {
 }
 
 impl Files {
+    /// File drop into `dir`.
     pub fn new(dir: PathBuf) -> Self {
         Files {
             dir,

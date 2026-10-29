@@ -96,6 +96,7 @@ pub fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
     Ok(out)
 }
 
+/// Old numeric id to new id for each record.
 pub fn legacy_map(recs: &[Record]) -> LegacyMap {
     recs.iter()
         .map(|r| (r.legacy(), r.id.to_string()))

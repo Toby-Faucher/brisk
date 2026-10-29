@@ -52,6 +52,7 @@ pub fn read_file(path: &Path) -> Data {
 }
 
 impl Data {
+    /// The options that apply to game `id`.
     pub fn effective(&self, id: &str) -> LaunchOptions {
         launch::effective(&self.defaults, self.games.get(id))
     }
@@ -72,6 +73,7 @@ pub fn command_for(d: &Data, id: &str, base: &[String]) -> (Command, Option<Stri
     }
 }
 
+/// The command `base` as it is, with no wrappers.
 pub fn plain(base: &[String]) -> Command {
     Command {
         program: base.first().cloned().unwrap_or_default(),
@@ -80,6 +82,7 @@ pub fn plain(base: &[String]) -> Command {
     }
 }
 
+/// A problem as a short sentence for the page.
 pub fn describe(p: &Problem) -> String {
     match p {
         Problem::DuplicateWrapper(w) => format!("{w} is listed twice"),
@@ -96,6 +99,7 @@ pub fn describe(p: &Problem) -> String {
     }
 }
 
+/// All problems in one line.
 pub fn describe_all(p: &[Problem]) -> String {
     p.iter().map(describe).collect::<Vec<_>>().join("; ")
 }
@@ -122,15 +126,18 @@ fn rev_of<T: Serialize>(t: &T) -> String {
     format!("{:016x}", h.finish())
 }
 
+/// The revision of the defaults.
 pub fn defaults_rev(d: &Data) -> String {
     rev_of(&(d.allow_custom_commands, &d.defaults))
 }
 
+/// The revision of one game's override.
 pub fn game_rev(d: &Data, id: &str) -> String {
     rev_of(&d.games.get(id))
 }
 
 impl LaunchStore {
+    /// The store at `path`; a missing or corrupt file is empty.
     pub fn load(path: PathBuf) -> LaunchStore {
         LaunchStore {
             inner: Mutex::new(read_file(&path)),
@@ -138,6 +145,7 @@ impl LaunchStore {
         }
     }
 
+    /// Everything stored.
     pub fn all(&self) -> Data {
         self.inner.lock().unwrap().clone()
     }
@@ -185,6 +193,7 @@ impl LaunchStore {
         self.commit(&mut g, n)
     }
 
+    /// Removes the game's override.
     pub fn delete_game(&self, id: &str) -> Result<Data, StoreError> {
         let mut g = self.lock();
         let mut n = g.clone();

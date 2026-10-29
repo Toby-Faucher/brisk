@@ -48,6 +48,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use stream::*;
 
+/// State shared by every route.
 pub struct AppState {
     pub cfg: Config,
     /// Last `/api/games` result, for `game`.
@@ -91,12 +92,14 @@ pub struct AppState {
 type LibCache = Option<((u64, std::time::SystemTime), Arc<Vec<crate::emu::Record>>)>;
 
 #[derive(Default)]
+/// When the last games-folder scan ran and whether one is running.
 pub struct ScanGate {
     running: bool,
     last: Option<std::time::Instant>,
 }
 
 impl AppState {
+    /// State with the real runner and clock.
     pub fn new(cfg: Config) -> Self {
         Self::with_host(cfg, Arc::new(RealRunner), Arc::new(SystemClock::default()))
     }

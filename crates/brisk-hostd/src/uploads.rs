@@ -24,6 +24,7 @@ pub const RESERVE: u64 = 5 << 30;
 const MAX_OPEN: usize = 2;
 const DAY: Duration = Duration::from_secs(24 * 3600);
 
+/// An error status and its JSON body.
 pub type Fail = (StatusCode, Value);
 
 fn fail(code: StatusCode, msg: &str) -> Fail {
@@ -83,6 +84,7 @@ fn io_fail(e: std::io::Error) -> Fail {
 }
 
 impl Uploads {
+    /// Uploads into the games folder `games`.
     pub fn new(games: PathBuf) -> Self {
         Uploads {
             games,
@@ -138,6 +140,7 @@ impl Uploads {
             .ok_or_else(|| fail(StatusCode::NOT_FOUND, "unknown upload"))
     }
 
+    /// Starts an upload of `size` bytes named `name`.
     pub fn create(&self, name: &str, size: u64) -> Result<Value, Fail> {
         if name.contains(['/', '\\', '\0']) {
             return Err(fail(
@@ -215,6 +218,7 @@ impl Uploads {
         Ok(json!({ "id": id, "chunk": CHUNK, "offset": 0 }))
     }
 
+    /// Where an upload stands.
     pub fn status(&self, id: &str) -> Result<Value, Fail> {
         let e = self.get(id)?;
         let st = e.st.lock().unwrap();
@@ -224,6 +228,7 @@ impl Uploads {
         }))
     }
 
+    /// Appends the body at the offset it claims.
     pub async fn put(
         &self,
         id: &str,
@@ -300,6 +305,7 @@ impl Uploads {
         Ok(json!({ "offset": st.offset }))
     }
 
+    /// Drops an upload and its partial file.
     pub fn abort(&self, id: &str) {
         if let Some(e) = self.open.lock().unwrap().remove(id) {
             e.st.lock().unwrap().aborted = true;

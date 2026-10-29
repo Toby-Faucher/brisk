@@ -21,6 +21,7 @@ pub struct GamesResult {
 }
 
 impl GamesResult {
+    /// The game with this id.
     pub fn find(&self, id: &GameId) -> Option<&Game> {
         self.games.iter().find(|g| g.id == *id)
     }
@@ -439,10 +440,12 @@ fn steam_art(id: u32) -> (String, String, String) {
     )
 }
 
+/// The games list, from cache where it can.
 pub async fn load_games(cfg: &Config) -> GamesResult {
     load_games_with(cfg, false).await
 }
 
+/// The games list; `refresh` skips the owned games cache.
 pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let steam_dir = cfg.steam_dir.clone();
     let installed = tokio::task::spawn_blocking(move || installed_manifests(&steam_dir))

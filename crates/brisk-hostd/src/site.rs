@@ -28,6 +28,7 @@ pub enum Site {
 pub use crate::embed::Mem;
 
 impl Site {
+    /// Where the static files come from, for the log.
     pub fn describe(&self) -> String {
         match self {
             Site::Disk(d) => format!("static files from disk: {}", d.display()),

@@ -68,6 +68,7 @@ pub enum RawId {
 }
 
 impl RawId {
+    /// The id as text.
     pub fn text(&self) -> String {
         match self {
             RawId::Num(n) => n.to_string(),
@@ -191,6 +192,7 @@ pub struct Supervisor {
 }
 
 impl Supervisor {
+    /// A supervisor with no bridge running.
     pub fn new(cfg: &Config, runner: Arc<dyn Runner>) -> Self {
         Supervisor {
             bin: cfg.bridge_bin.clone(),
@@ -215,6 +217,7 @@ impl Supervisor {
         }
     }
 
+    /// The current stream state.
     pub fn info(&self) -> StreamInfo {
         self.shared.lock().unwrap().view()
     }
@@ -224,6 +227,7 @@ impl Supervisor {
         self.shared.try_lock().ok().map(|s| s.view())
     }
 
+    /// The `n` newest sessions.
     pub fn sessions(&self, n: usize) -> Vec<SessionRec> {
         self.sessions.latest(n)
     }
@@ -446,6 +450,7 @@ impl Supervisor {
         Ok(s.view())
     }
 
+    /// True once shutdown began.
     pub fn shutting_down(&self) -> bool {
         self.closing.load(std::sync::atomic::Ordering::SeqCst)
     }

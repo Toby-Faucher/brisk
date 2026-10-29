@@ -199,6 +199,7 @@ fn not_found_reason(console: u32) -> &'static str {
     }
 }
 
+/// The panel state for a RetroAchievements error.
 pub fn err_json(e: &RaError) -> Value {
     let state = match e {
         RaError::Off => "off",
@@ -229,6 +230,7 @@ pub async fn state_json(cfg: &Config, file: &Path, names: &[String], fresh: bool
     }
 }
 
+/// The disc hash of `file`, worked out off the async threads.
 pub async fn hash_blocking(cfg: &Config, file: &Path) -> Result<HashInfo, HashErr> {
     let (d, f) = (cfg.data_dir.clone(), file.to_path_buf());
     tokio::task::spawn_blocking(move || hash_for(&d, &f))
