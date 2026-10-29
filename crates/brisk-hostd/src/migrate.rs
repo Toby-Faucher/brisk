@@ -11,7 +11,8 @@
 //! there up becomes the library's id for that old hash, or stays as it is (and is logged) when no
 //! library game has it. Nothing is dropped.
 
-use crate::emu::{self, Record, legacy_hash, write_atomic};
+use crate::emu::{self, Record, legacy_hash};
+use crate::fsutil::write_atomic;
 use crate::game::{GameId, LEGACY_EMU_BASE};
 use serde::Deserialize;
 use serde_json::{Map, Value};

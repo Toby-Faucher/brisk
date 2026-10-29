@@ -47,7 +47,7 @@ impl Store {
         let bytes = serde_json::to_vec(&serde_json::json!({"v": 1, "games": self.games}))
             .unwrap_or_default();
         let path = data_dir.join(FILE);
-        if let Err(e) = emu::write_atomic(&path, &bytes) {
+        if let Err(e) = crate::fsutil::write_atomic(&path, &bytes) {
             eprintln!("warning: {}: {e}", path.display());
         }
     }

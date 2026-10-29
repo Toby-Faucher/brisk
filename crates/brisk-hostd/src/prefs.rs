@@ -8,8 +8,6 @@ use crate::sessions::now_ms;
 use crate::stream::{Codec, Preset};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -33,9 +31,7 @@ pub fn clean_machines_order(ids: Vec<String>) -> Vec<String> {
 }
 
 fn valid_id(s: &str) -> bool {
-    (1..=HOME_ID_MAX).contains(&s.len())
-        && s.bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    crate::fsutil::slug_ok(s, HOME_ID_MAX)
 }
 
 /// `#rgb` or `#rrggbb` in any case -> lowercase `#rrggbb`; anything else is None.
@@ -280,23 +276,7 @@ impl Prefs {
                 }
                 doc[LAYOUT_KEY] = l;
             }
-            let dir = self.path.parent().unwrap_or(std::path::Path::new("."));
-            std::fs::create_dir_all(dir)?;
-            let tmp = dir.join(format!(".prefs.json.{}.tmp", std::process::id()));
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)?;
-            let r = f
-                .write_all(&serde_json::to_vec(&doc)?)
-                .and_then(|_| f.sync_all())
-                .and_then(|_| std::fs::rename(&tmp, &self.path));
-            if r.is_err() {
-                let _ = std::fs::remove_file(&tmp);
-            }
-            r
+            crate::fsutil::write_atomic(&self.path, &serde_json::to_vec(&doc)?)
         };
         if let Err(e) = write() {
             eprintln!("warning: {}: {e}", self.path.display());
@@ -306,13 +286,7 @@ impl Prefs {
 
 /// Drops the oldest by `updated` (lowest id text on a tie) until the cap holds.
 fn evict(m: &mut BTreeMap<String, Entry>) {
-    while m.len() > MAX_ENTRIES {
-        let oldest = m
-            .iter()
-            .min_by_key(|(id, e)| (e.updated, id.as_str()))
-            .map(|(id, _)| id.clone());
-        m.remove(&oldest.unwrap());
-    }
+    crate::fsutil::evict_oldest(m, MAX_ENTRIES, |id, e| (e.updated, id.clone()));
 }
 
 #[cfg(test)]

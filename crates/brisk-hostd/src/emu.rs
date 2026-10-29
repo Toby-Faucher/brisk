@@ -17,8 +17,6 @@ use crate::registry;
 use crate::running::{Proc, procs};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 pub const LIBRARY_FILE: &str = "library.json";
@@ -116,28 +114,6 @@ fn played(data_dir: &Path) -> BTreeMap<String, u64> {
         .unwrap_or_default()
 }
 
-/// Atomic 0600 write: a temp file in the same directory, then rename.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
-    let write = || -> std::io::Result<()> {
-        std::fs::create_dir_all(dir)?;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, path)
-    };
-    write().inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
-}
-
 /// Records now as the game's last-played time: atomic 0600 write, the oldest entries dropped
 /// past a cap. A failed write is a warning only.
 pub fn mark_played(data_dir: &Path, id: &GameId) {
@@ -146,12 +122,9 @@ pub fn mark_played(data_dir: &Path, id: &GameId) {
         .map_or(0, |d| d.as_secs());
     let mut m = played(data_dir);
     m.insert(id.to_string(), now);
-    while m.len() > PLAYED_MAX {
-        let oldest = m.iter().min_by_key(|(_, t)| **t).map(|(k, _)| k.clone());
-        m.remove(&oldest.unwrap());
-    }
+    crate::fsutil::evict_oldest(&mut m, PLAYED_MAX, |_, t| *t);
     let path = data_dir.join(PLAYED_FILE);
-    if let Err(e) = write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default()) {
+    if let Err(e) = crate::fsutil::write_atomic(&path, &serde_json::to_vec(&m).unwrap_or_default()) {
         eprintln!("warning: {}: {e}", path.display());
     }
 }

@@ -117,12 +117,7 @@ pub fn parse(text: &str) -> Result<Vec<MachineCfg>, String> {
     let mut seen = std::collections::HashSet::new();
     for m in &f.machines {
         let id = &m.id;
-        if id.is_empty()
-            || id.len() > 32
-            || !id
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        {
+        if !crate::fsutil::slug_ok(id, 32) {
             return Err(format!("machine id {id:?} must be 1-32 of a-z, 0-9, -"));
         }
         if !seen.insert(id.as_str()) {

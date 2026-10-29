@@ -8,8 +8,7 @@ use crate::launch::{self, Command, LaunchOptions, LaunchOverride, Problem};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -202,23 +201,7 @@ impl LaunchStore {
     }
 
     fn save(&self, d: &Data) -> std::io::Result<()> {
-        let dir = self.path.parent().unwrap_or(Path::new("."));
-        std::fs::create_dir_all(dir)?;
-        let tmp = dir.join(format!(".launch.json.{}.tmp", std::process::id()));
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        let r = f
-            .write_all(&serde_json::to_vec(d)?)
-            .and_then(|_| f.sync_all())
-            .and_then(|_| std::fs::rename(&tmp, &self.path));
-        if r.is_err() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-        r
+        crate::fsutil::write_atomic(&self.path, &serde_json::to_vec(d)?)
     }
 }
 

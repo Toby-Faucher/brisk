@@ -8,6 +8,7 @@ pub mod discid;
 pub mod embed;
 pub mod emu;
 pub mod files;
+pub(crate) mod fsutil;
 pub mod game;
 pub mod gametdb;
 pub mod host;

@@ -323,7 +323,7 @@ pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
 pub fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     t.drain(..t.len().saturating_sub(MAX_TOMBS));
     let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
-    if let Err(e) = emu::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
+    if let Err(e) = crate::fsutil::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
         eprintln!("warning: removed list: {e}");
     }
 }
@@ -487,7 +487,7 @@ pub fn update<R>(
         if skipped > 0 {
             keep_bad_copy(data_dir, skipped);
         }
-        emu::write_atomic(&p, &emu::library_json(&recs))
+        crate::fsutil::write_atomic(&p, &emu::library_json(&recs))
             .map_err(|e| format!("library save: {e}"))?;
     }
     Ok(r)

@@ -13,6 +13,8 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::fsutil::write_atomic;
+
 /// The known-good files; used when the machine has no file or no pad section yet.
 const CLASSIC_INI: &str = include_str!("../../../deploy/dolphin/WiimoteNew.ini");
 const GAMECUBE_INI: &str = include_str!("../../../deploy/dolphin/GCPadNew.ini");
@@ -709,27 +711,6 @@ fn backup_once(dir: &Path, file: &str, bytes: &[u8]) -> std::io::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e),
     }
-}
-
-/// Temp file in the same directory (0600, fsynced), then rename; a failure removes the temp file.
-fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
-    let _ = std::fs::remove_file(&tmp); // a leftover of a crashed run
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)?;
-    let r = f
-        .write_all(bytes)
-        .and_then(|_| f.sync_all())
-        .and_then(|_| std::fs::rename(&tmp, path));
-    if r.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    r
 }
 
 #[cfg(test)]
