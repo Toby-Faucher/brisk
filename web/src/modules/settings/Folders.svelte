@@ -1,6 +1,6 @@
 <script lang="ts">
   // Emulators.svelte passes every view a focusKey; this one has nothing to focus.
-  const _props: { focusKey?: number } = $props();
+  const { focusKey: _focusKey }: { focusKey?: number } = $props();
   // Settings > Emulators > Dolphin > Games folders. hostd does not tell the folder yet, so it is described in words.
   import ScanGames from '../library/ScanGames.svelte';
 </script>

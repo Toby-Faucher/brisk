@@ -11,7 +11,7 @@
   import { gameCaps, gameKey } from '../../state/gameId';
   import { padChoices, padView, type PadView } from './controllertest';
   import { Listener, wrongKind } from './emulators/listen';
-  import { accepts, ACCEPTS, bind, CONTROL_SETS, controlOf, drawnLabels, padHolder, PAD_BY_INDEX, TYPE_LABEL } from './emulators/mapping';
+  import { accepts, ACCEPTS, bind, CONTROL_SETS, controlOf, drawnLabels, padHolder, TYPE_LABEL } from './emulators/mapping';
   import { createMappings, SAVED, type State, type Target } from './emulators/store';
   import PadDiagram from './PadDiagram.svelte';
   import { PAD_LABEL, type PadName } from './pad.svg';
