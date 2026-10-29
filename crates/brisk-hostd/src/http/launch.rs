@@ -103,12 +103,16 @@ pub(super) async fn launch_defaults_put(
         Ok(p) => p,
         Err(r) => return r,
     };
-    let r = launch_reply(
-        s.launch
-            .put_defaults(p.rev.as_deref(), p.allow_custom_commands, p.options),
-        defaults_view,
-    );
-    with_current(r, defaults_view(&s.launch.all()))
+    blocking(&s, move |s| {
+        let r = launch_reply(
+            s.launch
+                .put_defaults(p.rev.as_deref(), p.allow_custom_commands, p.options),
+            defaults_view,
+        );
+        with_current(r, defaults_view(&s.launch.all()))
+    })
+    .await
+    .unwrap_or_else(|r| r)
 }
 
 pub(super) fn launch_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
@@ -139,11 +143,15 @@ pub(super) async fn game_launch_put(
         Ok(p) => p,
         Err(r) => return r,
     };
-    let r = launch_reply(
-        s.launch.put_game(id.as_str(), p.rev.as_deref(), p.over),
-        |d| game_launch_view(d, &id),
-    );
-    with_current(r, game_launch_view(&s.launch.all(), &id))
+    blocking(&s, move |s| {
+        let r = launch_reply(
+            s.launch.put_game(id.as_str(), p.rev.as_deref(), p.over),
+            |d| game_launch_view(d, &id),
+        );
+        with_current(r, game_launch_view(&s.launch.all(), &id))
+    })
+    .await
+    .unwrap_or_else(|r| r)
 }
 
 pub(super) async fn game_launch_delete(
@@ -151,9 +159,13 @@ pub(super) async fn game_launch_delete(
     UrlPath(raw): UrlPath<String>,
 ) -> Response {
     match launch_id(&s, &raw) {
-        Ok(id) => launch_reply(s.launch.delete_game(id.as_str()), |d| {
-            game_launch_view(d, &id)
-        }),
+        Ok(id) => blocking(&s, move |s| {
+            launch_reply(s.launch.delete_game(id.as_str()), |d| {
+                game_launch_view(d, &id)
+            })
+        })
+        .await
+        .unwrap_or_else(|r| r),
         Err(r) => r,
     }
 }

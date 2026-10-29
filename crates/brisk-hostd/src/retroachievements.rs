@@ -234,16 +234,36 @@ async fn get_json<T: serde::de::DeserializeOwned + Send + 'static>(
     pace(cfg.min_interval).await;
     let url = format!("{base}/{script}?y={}&{query}", creds.key);
     // Body is capped at 8 MiB by https_get (shortcut: a Wii list with hashes is believed smaller; unmeasured).
-    let body = tokio::task::spawn_blocking(move || https_get(&url))
-        .await
-        .map_err(|_| RaError::Network("request task failed".into()))?
+    // The parse is in the blocking task too: a game list is up to 8 MiB.
+    off_thread(move || https_get(&url).map(|b| serde_json::from_slice(&b)))
+        .await?
         .map_err(|e| match e.as_str() {
             "HTTP 401" | "HTTP 403" => RaError::Unauthorized,
             "HTTP 429" => RaError::RateLimited,
             "response too large" => RaError::TooLarge,
             _ => RaError::Network(e),
-        })?;
-    serde_json::from_slice(&body).map_err(|_| RaError::BadResponse)
+        })?
+        .map_err(|_| RaError::BadResponse)
+}
+
+/// Runs disk or parse work on the blocking pool; hostd's runtime has one thread.
+async fn off_thread<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, RaError> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|_| RaError::Network("task failed".into()))
+}
+
+/// `read_cache` off the runtime thread; a task that died counts as a miss.
+async fn read_cache_off<T: serde::de::DeserializeOwned + Send + 'static>(
+    path: PathBuf,
+    ttl: Duration,
+) -> Option<T> {
+    off_thread(move || read_cache(&path, ttl))
+        .await
+        .ok()
+        .flatten()
 }
 
 // ---- disk cache ----
@@ -283,7 +303,7 @@ async fn resolve_with(
     hash: &str,
 ) -> Result<u64, RaError> {
     let path = cfg.data_dir.join(format!("ra/hashes-{console}.json"));
-    let map: HashMap<String, u64> = match read_cache(&path, cfg.hash_ttl) {
+    let map: HashMap<String, u64> = match read_cache_off(path, cfg.hash_ttl).await {
         Some(m) => m,
         None => fetch_lists(cfg, creds, console).await?.0,
     };
@@ -307,21 +327,22 @@ async fn fetch_lists(
     )
     .await?;
     let titles: Vec<(String, u64)> = games.iter().map(|g| (g.title.clone(), g.id)).collect();
-    let m: HashMap<String, u64> = games
-        .into_iter()
-        .flat_map(|g| {
-            g.hashes
-                .into_iter()
-                .map(move |h| (h.to_ascii_lowercase(), g.id))
-        })
-        .collect();
-    // shortcut: a failed cache write only costs a refetch next time.
-    let _ = write_cache(&cfg.data_dir.join(format!("ra/hashes-{console}.json")), &m);
-    let _ = write_cache(
-        &cfg.data_dir.join(format!("ra/titles-{console}.json")),
-        &titles,
-    );
-    Ok((m, titles))
+    let dir = cfg.data_dir.clone();
+    off_thread(move || {
+        let m: HashMap<String, u64> = games
+            .into_iter()
+            .flat_map(|g| {
+                g.hashes
+                    .into_iter()
+                    .map(move |h| (h.to_ascii_lowercase(), g.id))
+            })
+            .collect();
+        // shortcut: a failed cache write only costs a refetch next time.
+        let _ = write_cache(&dir.join(format!("ra/hashes-{console}.json")), &m);
+        let _ = write_cache(&dir.join(format!("ra/titles-{console}.json")), &titles);
+        (m, titles)
+    })
+    .await
 }
 
 /// Lowercase alphanumerics of a title with "(USA)" groups and a trailing "disc N" dropped. "[...]" is kept:
@@ -371,7 +392,7 @@ fn strip_square(t: &str) -> String {
 async fn resolve_title(cfg: &RaConfig, console: u32, names: &[String]) -> Result<u64, RaError> {
     let creds = read_creds(cfg)?;
     let path = cfg.data_dir.join(format!("ra/titles-{console}.json"));
-    let titles: Vec<(String, u64)> = match read_cache(&path, cfg.hash_ttl) {
+    let titles: Vec<(String, u64)> = match read_cache_off(path, cfg.hash_ttl).await {
         Some(t) => t,
         None => fetch_lists(cfg, &creds, console).await?.1,
     };
@@ -411,7 +432,7 @@ async fn progress_with(
     game_id: u64,
 ) -> Result<GameProgress, RaError> {
     let path = cfg.data_dir.join(format!("ra/game-{game_id}.json"));
-    if let Some(p) = read_cache(&path, cfg.progress_ttl) {
+    if let Some(p) = read_cache_off(path.clone(), cfg.progress_ttl).await {
         return Ok(p);
     }
     let w: WireProgress = get_json(
@@ -422,8 +443,11 @@ async fn progress_with(
     )
     .await?;
     let p = GameProgress::from(w);
-    let _ = write_cache(&path, &p);
-    Ok(p)
+    off_thread(move || {
+        let _ = write_cache(&path, &p);
+        p
+    })
+    .await
 }
 
 /// Hash to progress in one call: the entry point for the UI.
@@ -453,7 +477,8 @@ pub(crate) async fn progress_for_names(
         Err(e) => return Err(e),
     };
     if fresh {
-        let _ = std::fs::remove_file(cfg.data_dir.join(format!("ra/game-{id}.json")));
+        let path = cfg.data_dir.join(format!("ra/game-{id}.json"));
+        let _ = off_thread(move || std::fs::remove_file(path)).await?;
     }
     Ok((progress_with(cfg, &creds, id).await?, how))
 }

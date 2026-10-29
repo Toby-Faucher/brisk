@@ -224,3 +224,39 @@ async fn keeps_series_of_the_newest_sessions_only() {
     );
     assert!(!tmp.exists(), "leftover temp file swept");
 }
+
+/// A handler stuck in a file read must not stop the single-threaded runtime serving other routes.
+/// `sessions.jsonl` is a FIFO, so the read blocks until the test opens it for writing.
+#[tokio::test(flavor = "current_thread")]
+async fn blocked_file_read_does_not_stall_other_routes() {
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("sessions.jsonl");
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        &fifo,
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+        0,
+    )
+    .unwrap();
+    let app = router(Arc::new(AppState::new(data_cfg(dir.path()))));
+    let slow = {
+        let app = app.clone();
+        tokio::spawn(async move { call(&app, "GET", "/api/sessions", true, None).await })
+    };
+    // The writer opens the FIFO only after the ping answered. With the read inline the runtime
+    // thread would sit in it and never answer the ping, so nextest ends the test.
+    let (go, gate) = std::sync::mpsc::channel::<()>();
+    let writer = std::thread::spawn(move || {
+        gate.recv().unwrap();
+        std::fs::write(&fifo, rec(7) + "\n").unwrap();
+    });
+    tokio::task::yield_now().await; // lets the sessions request start
+    let (st, _) = call(&app, "GET", "/api/stream", true, None).await;
+    assert_eq!(st, StatusCode::OK);
+    go.send(()).unwrap();
+    let (st, body) = slow.await.unwrap();
+    writer.join().unwrap();
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body["sessions"][0]["started"], 7);
+}

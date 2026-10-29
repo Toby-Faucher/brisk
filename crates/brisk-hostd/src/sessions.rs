@@ -372,19 +372,13 @@ impl Sessions {
     /// Newest first. shortcut: reads the whole file each time, fine for years of play; rotate if it grows past MBs.
     pub fn latest(&self, n: usize) -> Vec<SessionRec> {
         let text = std::fs::read_to_string(&self.path).unwrap_or_default();
-        let mut out: Vec<SessionRec> = vec![];
-        for r in text
+        // The last line of a session wins; the map keeps one row per `started`.
+        let by_start: BTreeMap<u64, SessionRec> = text
             .lines()
             .filter_map(|l| serde_json::from_str::<SessionRec>(l).ok())
-        {
-            match out.iter_mut().find(|o| o.started == r.started) {
-                Some(o) => *o = r,
-                None => out.push(r),
-            }
-        }
-        out.sort_by_key(|r| std::cmp::Reverse(r.started));
-        out.truncate(n);
-        out
+            .map(|r| (r.started, r))
+            .collect();
+        by_start.into_values().rev().take(n).collect()
     }
 }
 
@@ -558,5 +552,34 @@ mod tests {
         ] {
             assert!(!valid_point(&p), "{p:?}");
         }
+    }
+
+    /// The last line of a session wins, rows come newest first, garbled lines are skipped.
+    #[test]
+    fn latest_dedupes_by_started_and_sorts_newest_first() {
+        let line = |started: u64, name: &str| {
+            format!(
+                r#"{{"appid":null,"name":"{name}","started":{started},"ended":null,"host":"h","preset":"fast"}}"#
+            )
+        };
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("sessions.jsonl");
+        let text = [
+            line(5, "a"),
+            line(9, "b"),
+            "not json".into(),
+            line(5, "a2"),
+            line(7, "c"),
+        ]
+        .join("\n");
+        std::fs::write(&path, text).unwrap();
+        let log = Sessions::new(path);
+        let got: Vec<_> = log
+            .latest(10)
+            .into_iter()
+            .map(|r| (r.started, r.name))
+            .collect();
+        assert_eq!(got, [(9, "b".into()), (7, "c".into()), (5, "a2".into())]);
+        assert_eq!(log.latest(2).len(), 2);
     }
 }

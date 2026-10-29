@@ -161,9 +161,9 @@ fn wayland_env() -> Vec<(String, String)> {
     env
 }
 
-fn cmd(prog: &str, args: &[&str]) -> Command {
+fn cmd(prog: &str, args: &[&str], env: &[(String, String)]) -> Command {
     let mut c = Command::new(prog);
-    c.args(args).envs(wayland_env());
+    c.args(args).envs(env.iter().map(|(k, v)| (k, v)));
     crate::notify::scrub(&mut c)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -172,10 +172,13 @@ fn cmd(prog: &str, args: &[&str]) -> Command {
 }
 
 /// `wl-paste <args>` stdout, None on failure or over `MAX`.
-fn paste(args: &[&str]) -> Option<Vec<u8>> {
+fn paste(env: &[(String, String)], args: &[&str]) -> Option<Vec<u8>> {
     let mut a = vec!["5", "wl-paste"];
     a.extend_from_slice(args);
-    let mut c = cmd("timeout", &a).stdout(Stdio::piped()).spawn().ok()?;
+    let mut c = cmd("timeout", &a, env)
+        .stdout(Stdio::piped())
+        .spawn()
+        .ok()?;
     let mut out = Vec::new();
     let _ = c.stdout.take()?.take(MAX as u64 + 1).read_to_end(&mut out);
     // The pipe is closed here: an oversized paste dies on SIGPIPE instead of blocking.
@@ -193,7 +196,8 @@ fn reap(slot: &mut Option<Child>) {
 
 impl Backend for WlBackend {
     fn read(&self) -> Option<Clip> {
-        let types = String::from_utf8(paste(&["--list-types"])?).ok()?;
+        let env = wayland_env();
+        let types = String::from_utf8(paste(&env, &["--list-types"])?).ok()?;
         let has = |f: &dyn Fn(&str) -> bool| types.lines().any(f);
         let kind = if has(&|t| t == "image/png") {
             Kind::Image
@@ -207,7 +211,7 @@ impl Backend for WlBackend {
         } else {
             "text"
         };
-        let data = paste(&["--no-newline", "--type", t])?;
+        let data = paste(&env, &["--no-newline", "--type", t])?;
         Some(Clip {
             kind,
             data: data.into(),
@@ -216,10 +220,13 @@ impl Backend for WlBackend {
 
     fn write(&self, c: &Clip) -> bool {
         let mut slot = self.copy.lock().unwrap();
-        let Ok(mut new) = cmd("wl-copy", &["--foreground", "--type", c.kind.mime()])
-            .stdin(Stdio::piped())
-            .spawn()
-        else {
+        let Ok(mut new) = cmd(
+            "wl-copy",
+            &["--foreground", "--type", c.kind.mime()],
+            &wayland_env(),
+        )
+        .stdin(Stdio::piped())
+        .spawn() else {
             return false;
         };
         // wl-copy reads all of stdin before it takes the selection; dropping stdin ends it.
@@ -253,7 +260,7 @@ impl Backend for WlBackend {
         let mut w = self.watch.lock().unwrap();
         if w.is_none() {
             use std::os::unix::process::CommandExt;
-            let mut c = cmd("wl-paste", &["--watch", "echo"]);
+            let mut c = cmd("wl-paste", &["--watch", "echo"], &wayland_env());
             c.stdout(Stdio::piped());
             // SAFETY: the hook only makes one raw prctl syscall (rustix, no allocation or locks),
             // which is async-signal-safe after fork. The death signal follows the spawning
@@ -312,12 +319,17 @@ mod tests {
         };
         assert!(c.set(clip.clone()));
         std::thread::sleep(Duration::from_millis(800));
-        let out = paste(&["--no-newline", "--type", "text/plain;charset=utf-8"]);
+        let out = paste(
+            &wayland_env(),
+            &["--no-newline", "--type", "text/plain;charset=utf-8"],
+        );
         assert_eq!(out.as_deref(), Some(&b"brisk live check"[..]));
         assert_eq!(b.read(), Some(clip));
         assert_eq!(c.since(Some(s0)), (s0, None), "own write echoed");
         // A change made by someone else bumps the seq.
-        let st = cmd("wl-copy", &["--clear"]).status().unwrap();
+        let st = cmd("wl-copy", &["--clear"], &wayland_env())
+            .status()
+            .unwrap();
         assert!(st.success());
         std::thread::sleep(Duration::from_millis(800));
         assert!(c.since(None).0 > s0);

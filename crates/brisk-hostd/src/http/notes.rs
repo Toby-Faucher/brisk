@@ -42,11 +42,17 @@ pub(super) async fn ids_remap(State(s): State<Arc<AppState>>, b: axum::body::Byt
             })
             .collect()
     };
-    let notes = match s.notes.rekey(&m) {
-        Ok(n) => n,
-        Err(e) => return notes_err(e),
-    };
-    axum::Json(serde_json::json!({ "notes": notes, "prefs": s.prefs.rekey(&m) })).into_response()
+    match blocking(&s, move |s| {
+        s.notes.rekey(&m).map(|n| (n, s.prefs.rekey(&m)))
+    })
+    .await
+    {
+        Ok(Ok((notes, prefs))) => {
+            axum::Json(serde_json::json!({ "notes": notes, "prefs": prefs })).into_response()
+        }
+        Ok(Err(e)) => notes_err(e),
+        Err(r) => r,
+    }
 }
 
 pub(super) fn notes_err(e: NotesError) -> Response {
@@ -67,7 +73,11 @@ pub(super) async fn tag_put(
     UrlPath(id): UrlPath<String>,
     b: axum::body::Bytes,
 ) -> Response {
-    match parse::<Tag>(&b).map(|t| s.notes.put_tag(&id, t)) {
+    let tag = match parse::<Tag>(&b) {
+        Ok(t) => t,
+        Err(r) => return r,
+    };
+    match blocking(&s, move |s| s.notes.put_tag(&id, tag)).await {
         Ok(Ok(t)) => axum::Json(t).into_response(),
         Ok(Err(e)) => notes_err(e),
         Err(r) => r,
@@ -79,9 +89,10 @@ pub(super) async fn tag_delete(
     State(s): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
 ) -> Response {
-    match s.notes.delete_tag(&id) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => notes_err(e),
+    match blocking(&s, move |s| s.notes.delete_tag(&id)).await {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => notes_err(e),
+        Err(r) => r,
     }
 }
 
@@ -94,7 +105,11 @@ pub(super) async fn game_note_put(
     let Some(id) = s.parse_id(&raw) else {
         return err(StatusCode::BAD_REQUEST, "bad game id");
     };
-    match parse::<GameNote>(&b).map(|g| s.notes.put_game(id.as_str(), g)) {
+    let note = match parse::<GameNote>(&b) {
+        Ok(g) => g,
+        Err(r) => return r,
+    };
+    match blocking(&s, move |s| s.notes.put_game(id.as_str(), note)).await {
         Ok(Ok(g)) => axum::Json(g).into_response(),
         Ok(Err(e)) => notes_err(e),
         Err(r) => r,
