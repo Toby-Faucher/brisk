@@ -7,6 +7,7 @@
 // It cannot prove video: a real WebTransport connect fails against the fake bridge, so the Stream
 // page is only checked for degrading to its reconnecting/failed state without page errors.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
@@ -24,9 +25,8 @@ if (!free) {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const FIX = `${root}/crates/brisk-hostd/tests/fixtures`;
-const OUT = '/tmp/claude-1000/-home-toby-Projects/94a1bf04-5503-4de5-ba94-79e19e0c32dd/scratchpad/ui-smoke';
+const OUT = '/tmp/ui-smoke-shots';
 const hostd = process.env.BRISK_HOSTD ?? `${root}/target/release/brisk-hostd`;
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 const KEY = 'SMOKE-SENTINEL-KEY-0123456789';
 const TOTAL = 139;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

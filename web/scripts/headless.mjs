@@ -16,6 +16,7 @@
 // the SPS, and bridge_write - capture looks sane. It decodes in its software H.264 decoder
 // (isConfigSupported: no-preference true, prefer-hardware false on bawn).
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 
 const args = process.argv.slice(2);
 const url = args[0];
@@ -27,9 +28,6 @@ if (!url) {
   console.error('usage: node scripts/headless.mjs URL [--secs N] [--stall MS]');
   process.exit(2);
 }
-const exe =
-  process.env.BRISK_CHROMIUM ??
-  `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await chromium.launch({ executablePath: exe });

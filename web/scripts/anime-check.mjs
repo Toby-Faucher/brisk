@@ -2,13 +2,13 @@
 //   npx astro preview --host 127.0.0.1 --port 4423 &   then   node scripts/anime-check.mjs [section...]
 // Sections: graph stream count revert reduce glide chart flip. Screenshots go to $OUT.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4423';
 const OUT = process.env.OUT ?? '/tmp/anime-shots';
 const DIST = new URL('../dist/', import.meta.url).pathname;
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 const only = process.argv.slice(2);
 const want = (s) => !only.length || only.includes(s);
 fs.mkdirSync(OUT, { recursive: true });

@@ -2,11 +2,11 @@
 //   npx astro preview --host 127.0.0.1 --port 4421 &   then   node scripts/motion-check.mjs
 // Animation cannot be seen in a still, so it records document.getAnimations() from document start (rAF) and asserts.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import fs from 'node:fs';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4421';
 const OUT = process.env.OUT ?? '/tmp/motion-shots';
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;

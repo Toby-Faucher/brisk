@@ -12,6 +12,7 @@
 //
 //   OUT=/some/dir node scripts/clip-check.mjs [file.mp4 ...]
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import { createServer } from 'vite';
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -30,7 +31,6 @@ Object.assign(window, { Replay, clipInWorker, reserveHotkeys, screenshot, attach
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { port: 0, fs: { allow: [web, root] } } });
 await server.listen();
 const url = server.resolvedUrls.local[0];
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 const browser = await chromium.launch({ executablePath: exe, args: ['--autoplay-policy=no-user-gesture-required'] });
 let fail = 0;
 const check = (ok, what) => (console.log(`${ok ? 'PASS' : 'FAIL'} ${what}`), ok || fail++);

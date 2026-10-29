@@ -3,13 +3,13 @@
 //   npx astro preview --host 127.0.0.1 --port 4490 &   then   node scripts/f3b-check.mjs [section...]
 // Sections: status stream picker reduce fail. Screenshots go to $OUT.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { axe } from './axe.mjs';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4490';
-const OUT = process.env.OUT ?? '/tmp/claude-1000/-home-toby-Projects/94a1bf04-5503-4de5-ba94-79e19e0c32dd/scratchpad/f3b';
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
+const OUT = process.env.OUT ?? '/tmp/f3b-shots';
 const only = process.argv.slice(2);
 const want = (s) => !only.length || only.includes(s);
 fs.mkdirSync(OUT, { recursive: true });

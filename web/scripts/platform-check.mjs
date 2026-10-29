@@ -2,12 +2,12 @@
 //   npx astro preview --host 127.0.0.1 --port 4470 &   then   node scripts/platform-check.mjs [dialog tip vt wake]
 // Screenshots go to $OUT.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import fs from 'node:fs';
 import { axe } from './axe.mjs';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4470';
 const OUT = process.env.OUT ?? '/tmp/platform-shots';
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 const only = process.argv.slice(2);
 const want = (s) => !only.length || only.includes(s);
 fs.mkdirSync(OUT, { recursive: true });

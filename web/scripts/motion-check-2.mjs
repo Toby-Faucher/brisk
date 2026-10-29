@@ -2,11 +2,11 @@
 //   npx astro preview --host 127.0.0.1 --port 4422 &   then   node scripts/motion-check-2.mjs
 // Library's /api/games is delayed by 700 ms to reproduce skeleton -> data. Animations are recorded from document start.
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import fs from 'node:fs';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4422';
 const OUT = process.env.OUT ?? '/tmp/motion2-shots';
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;

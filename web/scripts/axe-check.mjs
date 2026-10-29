@@ -2,10 +2,10 @@
 // mocked /api, so it needs no hostd. The same helper (./axe.mjs) runs inside ui-smoke.mjs against the real hostd.
 //   npx astro preview --host 127.0.0.1 --port 4424 &   then   node scripts/axe-check.mjs
 import { chromium } from 'playwright-core';
+import { exe } from './browser.mjs';
 import { axe } from './axe.mjs';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4424';
-const exe = process.env.BRISK_CHROMIUM ?? `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const check = (n, ok, x = '') => (ok || fails++, console.log(`${ok ? 'ok  ' : 'FAIL'} ${n}${x ? `\n    ${x}` : ''}`));
