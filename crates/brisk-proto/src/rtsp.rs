@@ -6,6 +6,7 @@
 
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce, Tag};
+use std::fmt::Write;
 
 /// Replies and frames larger than this are rejected, never truncated.
 pub const MAX_MESSAGE: usize = 64 * 1024;
@@ -127,7 +128,7 @@ pub fn request(
         "{method} {target} RTSP/1.0\r\nCSeq: {seq}\r\nX-GS-ClientVersion: {CLIENT_VERSION}\r\n"
     );
     for (k, v) in headers {
-        s.push_str(&format!("{k}: {v}\r\n"));
+        let _ = write!(s, "{k}: {v}\r\n"); // writing to a String cannot fail
     }
     s.push_str("\r\n");
     let mut out = s.into_bytes();

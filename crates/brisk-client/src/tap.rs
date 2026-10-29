@@ -606,22 +606,12 @@ mod tests {
             }
         }
 
-        /// Any bytes, either codec: no panic, never longer, and a second pass changes nothing.
-        #[test]
-        fn strip_filler_shrinks_and_is_idempotent(
-            b in prop::collection::vec(prop::sample::select(vec![0u8, 0, 1, 0x0c, 0x4c, 0x67, 0xff]), 0..200),
-            codec in 0u32..3
-        ) {
-            let once = strip_filler(Bytes::from(b.clone()), codec);
-            prop_assert!(once.len() <= b.len());
-            prop_assert_eq!(strip_filler(once.clone(), codec), once);
-        }
-
-        /// Any Annex B bytes, any codec value: no panic, no filler NAL header after any start code
-        /// of the output, and input without filler comes back as the same bytes (no copy).
+        /// Any Annex B bytes, any codec value: no panic, never longer, no filler NAL header after
+        /// any start code of the output, a second pass changes nothing, and input without filler
+        /// comes back as the same bytes (no copy).
         #[test]
         fn strip_filler_takes_any_annexb(
-            b in prop::collection::vec(prop::sample::select(vec![0u8, 0, 1, 0x0c, 0x4c, 0x41, 0xff]), 0..200),
+            b in prop::collection::vec(prop::sample::select(vec![0u8, 0, 1, 0x0c, 0x4c, 0x41, 0x67, 0xff]), 0..200),
             codec in 0u32..4
         ) {
             let has_filler = |s: &[u8]| {
@@ -636,7 +626,9 @@ mod tests {
             };
             let input = Bytes::from(b);
             let out = strip_filler(input.clone(), codec);
+            prop_assert!(out.len() <= input.len());
             prop_assert!(!has_filler(&out), "filler left in {:?}", out);
+            prop_assert_eq!(strip_filler(out.clone(), codec), out.clone());
             if !has_filler(&input) {
                 prop_assert_eq!(out.as_ptr(), input.as_ptr());
                 prop_assert_eq!(out, input);

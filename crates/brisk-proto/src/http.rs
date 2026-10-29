@@ -363,7 +363,7 @@ impl Default for LaunchOpts {
 
 /// Query for `GET /launch` (HTTPS). `corever=1` selects encrypted RTSP (`rtspenc://`, Gen7Enc),
 /// keyed by `rikey` with IV prefix `rikeyid`. Required by Sunshine: rikey, rikeyid, localAudioPlayMode, appid.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn launch_query(
     unique_id: &str,
     app_id: u32,

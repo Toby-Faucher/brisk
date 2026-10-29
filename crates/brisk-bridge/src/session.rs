@@ -556,7 +556,7 @@ enum Ev {
 /// newest viewer until the tap or the control session fails; never returns `Ok`. A new viewer
 /// replaces the old one (a reloaded tab). Each viewer's input streams feed `input` (sent to the
 /// host by [`input::send_loop`], which runs beside this).
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub async fn forward(
     tap: &mut TapConn,
     ep: &quinn::Endpoint,

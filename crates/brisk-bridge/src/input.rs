@@ -184,16 +184,19 @@ fn is_release(e: &InputEvent) -> bool {
 /// keys, buttons and pads are released, so a reloaded page's new stream keeps what it holds.
 pub type StreamId = u64;
 
+/// Mouse buttons are 1..=5; slot 0 is unused so a button indexes its own slot.
+const BUTTON_SLOTS: usize = 6;
+
 #[derive(Default)]
 pub struct InputQueue {
     q: VecDeque<InputEvent>,
     /// Pressed (sent or queued, not yet released), by vk, with the stream that pressed it.
     keys: Vec<(u8, StreamId)>,
     /// Pressed buttons and their stream.
-    buttons: [Option<StreamId>; 6],
+    buttons: [Option<StreamId>; BUTTON_SLOTS],
     /// Every key and button pressed this session, for [`Self::shutdown`].
     ever_keys: Vec<u8>,
-    ever_buttons: [bool; 6],
+    ever_buttons: [bool; BUTTON_SLOTS],
     /// Per attached pad: its last state queued (mask = its own bit) and the stream that sent it.
     pads: [Option<(InputEvent, StreamId)>; MAX_PADS as usize],
     /// Pads detached since [`Self::take_detached`] (their rumble must stop).
@@ -519,7 +522,7 @@ impl InputQueue {
             down: false,
             modifiers: 0,
         });
-        let buttons = (1..6u8)
+        let buttons = (1..BUTTON_SLOTS as u8)
             .filter(|&b| std::mem::take(&mut self.ever_buttons[b as usize]))
             .map(|button| InputEvent::MouseButton {
                 button,

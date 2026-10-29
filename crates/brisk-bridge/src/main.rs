@@ -19,7 +19,7 @@
 use brisk_bridge::session::{AudioRx, Report, forward};
 use brisk_bridge::{input, wt};
 use brisk_client::control::ControlSession;
-use brisk_client::identity::{ServerCert, load_identity};
+use brisk_client::identity::{ServerCert, default_config_dir, load_identity};
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
 use brisk_client::stream::{StreamRx, media_setup, race};
@@ -96,8 +96,7 @@ fn parse_from(args: impl Iterator<Item = String>) -> Result<Args, String> {
         }
     }
     let config = config
-        .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(|d| PathBuf::from(d).join("brisk")))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/brisk")))
+        .or_else(default_config_dir)
         .ok_or("no --config, XDG_CONFIG_HOME or HOME")?;
     Ok(Args {
         host: host.ok_or("missing --host")?,

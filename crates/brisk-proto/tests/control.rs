@@ -8,26 +8,6 @@ use brisk_proto::input::InputEvent;
 const KEY: [u8; 16] = *b"0123456789abcdef";
 
 #[test]
-fn control_gcm_roundtrip() {
-    let mut c = Control::new(KEY);
-    let mut h = Control::host(KEY);
-    for m in [ControlMsg::IdrRequest, ControlMsg::StartB, ControlMsg::Ping] {
-        assert_eq!(h.decode(&c.encode(&m).unwrap()).unwrap(), m);
-    }
-    for m in [
-        ControlMsg::Rumble {
-            controller: 1,
-            low: 0x1234,
-            high: 0xFFFF,
-        },
-        ControlMsg::Termination(TERMINATION_GRACEFUL),
-        ControlMsg::HdrMode { enabled: false },
-    ] {
-        assert_eq!(c.decode(&h.encode(&m).unwrap()).unwrap(), m);
-    }
-}
-
-#[test]
 fn control_wire_layout_matches_stream_cpp() {
     let mut c = Control::new(KEY);
     c.encode(&ControlMsg::Ping).unwrap(); // seq 0
@@ -109,8 +89,7 @@ fn control_rejects_tampered_tag() {
 }
 
 #[test]
-#[allow(non_snake_case)]
-fn control_unknown_type_is_Unknown_not_panic() {
+fn control_unknown_type_is_unknown_not_panic() {
     let mut c = Control::new(KEY);
     let mut h = Control::host(KEY);
     let m = ControlMsg::Unknown(0x5504, vec![1, 2, 3]);
@@ -128,22 +107,7 @@ fn control_unknown_type_is_Unknown_not_panic() {
     ] {
         assert!(c.decode(d).is_err());
     }
-    let mut x = 7u32;
-    for n in 0..200 {
-        let mut d: Vec<u8> = (0..n)
-            .map(|_| {
-                x = x.wrapping_mul(1103515245).wrapping_add(12345);
-                (x >> 16) as u8
-            })
-            .collect();
-        if n >= 4 {
-            d[0] = 1;
-            d[1] = 0;
-            d[2] = (n - 4) as u8;
-            d[3] = 0;
-        }
-        let _ = c.decode(&d);
-    }
+    // Random envelopes: prop_parsers.rs control_decoder_takes_any_bytes.
 }
 
 #[test]
@@ -188,16 +152,7 @@ fn control_input_routes_like_moonlight() {
     assert_eq!(m[0].route(), (channel::MOUSE, true));
     assert_eq!(ControlMsg::IdrRequest.route(), (channel::URGENT, true));
     assert_eq!(ControlMsg::Ping.route(), (channel::GENERIC, true));
-    // Sunshine strips type+len and passes the NV_INPUT packet through unchanged.
-    let mut c = Control::new(KEY);
-    let mut h = Control::host(KEY);
-    let ControlMsg::Input { packet, .. } = &m[0] else {
-        unreachable!()
-    };
-    match h.decode(&c.encode(&m[0]).unwrap()).unwrap() {
-        ControlMsg::Input { packet: p, .. } => assert_eq!(&p, packet),
-        o => panic!("{o:?}"),
-    }
+    // The Input packet passing through sealing unchanged: control_round_trip_both_directions.
 }
 
 #[test]

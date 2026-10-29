@@ -116,7 +116,6 @@ impl Acceptor {
 
     /// The handshake to run (spawn it), or `None` when the connection was refused because
     /// [`MAX_PENDING`] handshakes are running or [`MAX_CONNECTIONS`] are open.
-    #[allow(clippy::type_complexity)]
     pub fn admit(
         &self,
         ep: &quinn::Endpoint,
@@ -221,7 +220,7 @@ async fn handshake(
 
 /// HTTP datagram prefix for the session on CONNECT stream `stream_id`: the quarter stream id
 /// (`stream_id / 4`, RFC 9297 section 2.1) as a varint.
-pub fn datagram_header(stream_id: u64) -> Vec<u8> {
+fn datagram_header(stream_id: u64) -> Vec<u8> {
     let mut h = Vec::new();
     VarInt::try_from(stream_id / 4)
         .expect("a stream id / 4 fits a varint")
@@ -259,10 +258,13 @@ async fn browser_uni(mut s: quinn::RecvStream, tx: mpsc::Sender<Bytes>) -> Optio
     Some(())
 }
 
+/// Signal value that opens a WebTransport bidirectional stream (`WT_STREAM`).
+const BIDI_WEBTRANSPORT: u64 = 0x41;
+
 /// Reads a browser bidi stream's header: true for a WebTransport stream (`0x41`, session id).
 /// A connection has one session, so the id is not checked.
 pub async fn is_webtransport_bi(s: &mut quinn::RecvStream) -> bool {
-    matches!(VarInt::read(&mut *s).await, Ok(t) if t.into_inner() == 0x41)
+    matches!(VarInt::read(&mut *s).await, Ok(t) if t.into_inner() == BIDI_WEBTRANSPORT)
         && VarInt::read(&mut *s).await.is_ok()
 }
 

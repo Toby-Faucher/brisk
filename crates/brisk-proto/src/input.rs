@@ -128,9 +128,8 @@ pub fn encode_input(ev: &InputEvent) -> Result<Vec<Vec<u8>>, InputError> {
                 );
                 dx -= cx;
                 dy -= cy;
-                let mut b = (cx as i16).to_be_bytes().to_vec();
-                b.extend_from_slice(&(cy as i16).to_be_bytes());
-                out.push(packet(7, &b));
+                let ([x0, x1], [y0, y1]) = ((cx as i16).to_be_bytes(), (cy as i16).to_be_bytes());
+                out.push(packet(7, &[x0, x1, y0, y1]));
             }
             out
         }

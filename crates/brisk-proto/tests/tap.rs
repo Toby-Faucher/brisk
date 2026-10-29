@@ -2,7 +2,7 @@ use brisk_proto::tap::*;
 
 /// One tap message laid out as the Sunshine patch's `brisk_tap_send` writes it (little-endian,
 /// research/m2-tap-design.md section 2), with `extra` unknown header bytes before the payload.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn msg(
     flags: u8,
     connect_data: u32,
@@ -84,14 +84,6 @@ fn parse_tap_rejects_oversize_payload() {
     assert_eq!(parse_tap(&m), Err(TapError::TooLarge(MAX_PAYLOAD + 1)));
     let m = msg(0, 1, 0, 0, 0, 0, 0, 0, &big[..MAX_PAYLOAD]);
     assert_eq!(parse_tap(&m).unwrap().1.len(), MAX_PAYLOAD);
-}
-
-#[test]
-fn parse_tap_skips_unknown_trailing_header_bytes() {
-    let m = msg(1, 9, 0, 7, 1, 2, 0, 8, ANNEXB);
-    let (h, p) = parse_tap(&m).unwrap();
-    assert_eq!((h.header_len, h.connect_data, h.frame_index), (52, 9, 7));
-    assert_eq!(p, ANNEXB);
 }
 
 /// Every recorded frame from the live tap (fixtures/tap, see its README) parses, carries one

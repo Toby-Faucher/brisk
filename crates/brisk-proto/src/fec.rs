@@ -219,15 +219,16 @@ fn decode_with(
         let p = (c..w).find(|&r| m[r][c] != 0).ok_or(FecError::BadScheme)?;
         m.swap(c, p);
         minv.swap(c, p);
-        let s = inv(m[c][c]);
+        let s = &MUL[inv(m[c][c]) as usize];
         for x in 0..w {
-            m[c][x] = MUL[s as usize][m[c][x] as usize];
-            minv[c][x] = MUL[s as usize][minv[c][x] as usize];
+            m[c][x] = s[m[c][x] as usize];
+            minv[c][x] = s[minv[c][x] as usize];
         }
+        // Row c is not changed below, so one copy serves every row it is subtracted from.
+        let (mc, ic) = (m[c].clone(), minv[c].clone());
         for r in 0..w {
             let f = m[r][c];
             if r != c && f != 0 {
-                let (mc, ic) = (m[c].clone(), minv[c].clone());
                 axpy(&mut m[r], &mc, f);
                 axpy(&mut minv[r], &ic, f);
             }

@@ -177,7 +177,7 @@ fn key_down_up() {
 }
 
 #[test]
-fn multi_gamepad_index_ge_4_rejected() {
+fn gamepad_index_up_to_15_encodes_and_16_up_is_rejected() {
     // Classic GFE wraps `% 4`; Sunshine (Input.c `% MAX_GAMEPADS`, input.cpp gamepads[16])
     // accepts 0..16 and ignores >= 16 ("ControllerNumber out of range"). We target Sunshine:
     // 4..15 encode, >= 16 is rejected rather than silently wrapped onto another pad.

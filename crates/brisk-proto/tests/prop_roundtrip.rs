@@ -456,6 +456,7 @@ proptest! {
         prop_assert_eq!(a("x-brisk.tap"), tap.then_some(1));
     }
 
+    /// Any header values, and up to 63 unknown trailing header bytes that the parser skips.
     #[test]
     fn tap_header_round_trip(
         flags in any::<u8>(), cd in any::<u32>(), codec in any::<u32>(), idx in any::<u64>(),
@@ -472,8 +473,8 @@ proptest! {
         m.extend(&payload);
         let (h, p) = brisk_proto::tap::parse_tap(&m).unwrap();
         prop_assert_eq!(
-            (h.flags, h.connect_data, h.codec, h.frame_index, h.capture_ns, h.tap_ns, h.dropped_total),
-            (flags, cd, codec, idx, cap, tap, dropped)
+            (h.flags, h.header_len, h.connect_data, h.codec, h.frame_index, h.capture_ns, h.tap_ns, h.dropped_total),
+            (flags, 44 + extra as u16, cd, codec, idx, cap, tap, dropped)
         );
         prop_assert_eq!(p, &payload[..]);
     }
