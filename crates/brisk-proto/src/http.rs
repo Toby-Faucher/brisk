@@ -340,10 +340,6 @@ impl Default for LaunchOpts {
     }
 }
 
-fn hex_upper(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02X}")).collect()
-}
-
 /// Query for `GET /launch` (HTTPS). `corever=1` selects encrypted RTSP (`rtspenc://`, Gen7Enc),
 /// keyed by `rikey` with IV prefix `rikeyid`. Required by Sunshine: rikey, rikeyid, localAudioPlayMode, appid.
 #[allow(clippy::too_many_arguments)]
@@ -363,7 +359,7 @@ pub fn launch_query(
         ("appid", app_id.to_string()),
         ("mode", format!("{w}x{h}x{fps}")),
         ("sops", b(opts.sops)),
-        ("rikey", hex_upper(&rikey)),
+        ("rikey", crate::pair::hex(&rikey)),
         ("rikeyid", rikeyid.to_string()),
         ("localAudioPlayMode", b(opts.host_audio)),
         ("surroundAudioInfo", opts.surround_info.to_string()),
