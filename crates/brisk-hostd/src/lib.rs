@@ -19,6 +19,7 @@ pub mod launch;
 pub mod launchstore;
 pub mod machines;
 pub mod migrate;
+pub(crate) mod net;
 pub mod notes;
 pub mod notify;
 pub mod playtime;

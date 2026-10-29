@@ -305,7 +305,7 @@ struct Up {
     body: Vec<u8>,
 }
 
-/// Blocking call to `{url}/api/{pq}`. TLS as in steam.rs `https_get`; no proxy, no redirects, so
+/// Blocking call to `{url}/api/{pq}`. TLS from `net::agent`: no proxy, no redirects, so
 /// the machine's secret only ever goes to the configured URL.
 fn call(
     e: &Entry,
@@ -315,22 +315,16 @@ fn call(
     body: &[u8],
     timeout: Duration,
 ) -> Result<Up, Fail> {
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    let agent = AGENT.get_or_init(|| {
+        crate::net::agent(
+            ureq::tls::RootCerts::PlatformVerifier,
+            Some(Duration::from_secs(3)),
+            Duration::from_secs(3),
+            false,
+        )
+    });
     let secret = std::fs::read_to_string(&e.cfg.secret_file).map_err(|_| Fail::Local)?;
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::PlatformVerifier)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .proxy(None)
-        .max_redirects(0)
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(3)))
-        .timeout_global(Some(timeout))
-        .build()
-        .into();
     let mut rq = ureq::http::Request::builder()
         .method(method)
         .uri(format!("{}/api/{pq}", e.cfg.url))
@@ -340,6 +334,10 @@ fn call(
         rq = rq.header(*k, *v);
     }
     let rq = rq.body(body).map_err(|_| Fail::Local)?;
+    let rq = agent
+        .configure_request(rq)
+        .timeout_global(Some(timeout))
+        .build();
     let mut r = agent.run(rq).map_err(|_| Fail::Down)?;
     let h = |n: &str| {
         r.headers()
@@ -379,19 +377,15 @@ fn get_json(e: &Entry, path: &str) -> Option<Value> {
 
 /// `{"cpuTempC": n}` from the configured sensor URL, 2 s at most; any failure is `None`.
 fn fetch_temp(url: &str) -> Option<f64> {
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::PlatformVerifier)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .proxy(None)
-        .max_redirects(0)
-        .timeout_global(Some(Duration::from_secs(2)))
-        .build()
-        .into();
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    let agent = AGENT.get_or_init(|| {
+        crate::net::agent(
+            ureq::tls::RootCerts::PlatformVerifier,
+            None,
+            Duration::from_secs(2),
+            true,
+        )
+    });
     let mut r = agent.get(url).call().ok()?;
     let body = r
         .body_mut()
