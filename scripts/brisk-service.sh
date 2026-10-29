@@ -16,7 +16,6 @@ UNIT=brisk-hostd.service
 UNIT_DIR=${BRISK_UNIT_DIR:-$HOME/.config/systemd/user}
 CONF=$HOME/.config/brisk
 RUN=${XDG_RUNTIME_DIR:?}/brisk
-SB=${BRISK_SB:-$src/scripts/sunshine-brisk.sh}
 SERVE=(tailscale serve --bg --https=8443 http://127.0.0.1:8443)
 SERVE_OFF=(tailscale serve --https=8443 off)
 USAGE="usage: $0 install|update|status|logs|link|uninstall|serve-on|serve-off|sunshine-permanent|doctor"
@@ -50,6 +49,8 @@ secret_header() {
   trap 'rm -f "$HDR"' EXIT
   printf 'x-brisk-secret: %s\n' "$(tr -d '[:space:]' < "$CONF/secret")" > "$HDR"
 }
+# The HTTP status code of a request (curl options and URL in "$@"); 000 or empty when no answer.
+http_code() { curl -s -o /dev/null -w '%{http_code}' "$@" || true; }
 is_operator() { tailscale debug prefs 2>/dev/null | grep -q "\"OperatorUser\": *\"$(id -un)\""; }
 # Our mapping exactly: a Web entry "<name>:8443" whose handler proxies to http://127.0.0.1:8443
 # (the root entry "<name>:443" -> orch must not count, nor another port pointing at us).
@@ -147,7 +148,7 @@ cmd_install() {
   fi
   # The first install (or one from before target/service) copies the release binaries in.
   if [ ! -x "$SVC_BIN/brisk-hostd" ] || [ ! -x "$SVC_BIN/brisk-bridge" ]; then
-    for b in brisk-hostd brisk-bridge; do
+    for b in "${BINS[@]}"; do
       [ -x "$here/target/release/$b" ] || die "$here/target/release/$b missing; run: $0 update (or cargo build --release)"
     done
     stage_bin; swap_bin
@@ -197,7 +198,7 @@ came_up() {
   local i code
   for ((i = 0; i < ${BRISK_UP_WAIT:-45}; i++)); do
     if systemctl --user is-active -q "$UNIT"; then
-      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8443/api/host || true)
+      code=$(http_code --max-time 2 http://127.0.0.1:8443/api/host)
       [[ $code =~ ^[1-5][0-9][0-9]$ ]] && return 0
     fi
     sleep 1
@@ -236,7 +237,7 @@ cmd_update() {
   ( cd "$here" && PATH=$HOME/.cargo/bin:$PATH timeout "${BRISK_RUSTUP_TIMEOUT:-900}" rustup toolchain install --no-self-update ) \
     || die "pinned toolchain not installed; service unchanged"
   cap_check || die "no enforced resource cap; not building"
-  ( cd "$here" && PATH=$HOME/.cargo/bin:$PATH CARGO_BUILD_JOBS=4 capped cargo build --release -q -p brisk-hostd -p brisk-bridge )
+  build_release "$here"
   local w=$here/web
   if [ ! -f "$w/node_modules/.package-lock.json" ] || [ "$w/package-lock.json" -nt "$w/node_modules/.package-lock.json" ]; then
     ( cd "$w" && capped npm ci --no-audit --no-fund )
@@ -314,10 +315,7 @@ cmd_serve_off() {
 # Patched Sunshine for good (the tap falls back to plain RTP without a bridge, so Moonlight works).
 cmd_sunshine_permanent() {
   if brisk_running && [ -f "$BRISK_DROPIN" ]; then echo "patched Sunshine already runs with its drop-in"; return; fi
-  # The same test sunshine-brisk.sh enable uses, so a refused enable never strands the drop-in.
-  sunshine_idle || die "Sunshine is not idle (busy, an app running, or not answering); nothing changed"
-  "$SB" install
-  spaced_restart "$SB" enable
+  patched_sunshine_on
 }
 
 cmd_doctor() {
@@ -348,13 +346,13 @@ cmd_doctor() {
   n=$(ts_name)
   if [ -z "$n" ]; then no "no tailscale name (tailscale down?)"
   else
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$n:8443/api/host" || true)
+    code=$(http_code --max-time 10 "https://$n:8443/api/host")
     if [ "$code" = 403 ]; then ok "https://$n:8443 answers 403 without credentials"; else no "https://$n:8443/api/host without credentials: '$code' (want 403)"; fi
     if secret_header; then
-      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "@$HDR" "https://$n:8443/api/host" || true); rm -f "$HDR"
+      code=$(http_code --max-time 10 -H "@$HDR" "https://$n:8443/api/host"); rm -f "$HDR"
       if [ "$code" = 200 ]; then ok "https://$n:8443 answers 200 with the secret"; else no "https://$n:8443/api/host with the secret: '$code' (want 200)"; fi
     else no "no $CONF/secret (hostd never started?)"; fi
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'x-brisk-csrf: 1' "https://$n:8443/api/host" || true)
+    code=$(http_code --max-time 10 -H 'x-brisk-csrf: 1' "https://$n:8443/api/host")
     info "with this machine's own tailnet login (no secret): $code (200 only if it is in allowed-users)"
   fi
   local pem=$CONF/tls/bridge.pem d
