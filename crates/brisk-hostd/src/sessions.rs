@@ -6,7 +6,6 @@ use crate::stream::{Codec, Preset};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -226,6 +225,7 @@ pub enum SeriesError {
     TooMany,
 }
 
+/// Now, in ms since the epoch.
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -239,6 +239,7 @@ pub struct Sessions {
 }
 
 impl Sessions {
+    /// Sessions kept in `path`.
     pub fn new(path: PathBuf) -> Sessions {
         Sessions {
             path,
@@ -308,22 +309,7 @@ impl Sessions {
         let all: Vec<Point> = m.into_values().collect();
         let path = self.series_path(started);
         let write = || -> std::io::Result<()> {
-            let dir = self.series_dir();
-            std::fs::create_dir_all(&dir)?;
-            let tmp = dir.join(format!(".{started}.{}.tmp", std::process::id()));
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)?;
-            let r = f
-                .write_all(&serde_json::to_vec(&all)?)
-                .and_then(|_| std::fs::rename(&tmp, &path));
-            if r.is_err() {
-                let _ = std::fs::remove_file(&tmp);
-            }
-            r
+            crate::fsutil::write_atomic(&path, &serde_json::to_vec(&all)?)
         };
         if let Err(e) = write() {
             eprintln!("warning: {}: {e}", path.display());
@@ -357,6 +343,7 @@ impl Sessions {
         }
     }
 
+    /// Adds one line to the log; a failure is a warning only.
     pub fn append(&self, r: &SessionRec) {
         let write = || -> std::io::Result<()> {
             if let Some(d) = self.path.parent() {
@@ -373,6 +360,7 @@ impl Sessions {
         }
     }
 
+    /// Marks the session ended now and logs it.
     pub fn close(&self, mut r: SessionRec) {
         r.ended = Some(now_ms().max(r.started));
         self.append(&r);

@@ -36,6 +36,8 @@ pub struct Config {
     pub scan_on_start: bool,
     /// Hub machine list (`BRISK_MACHINES_FILE`); read by main.rs, absent = single host.
     pub machines_file: PathBuf,
+    /// `BRISK_MACHINES_FILE` was set, so a missing file is an error rather than single host.
+    pub machines_explicit: bool,
     /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
     pub dolphin_dir: PathBuf,
     /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
@@ -89,6 +91,7 @@ impl Config {
             proc_dir: "/proc".into(),
             machines_file: env_path("BRISK_MACHINES_FILE")
                 .unwrap_or_else(|| home.join(".config/brisk/machines.json")),
+            machines_explicit: std::env::var_os("BRISK_MACHINES_FILE").is_some(),
             dolphin_dir: env_path("BRISK_DOLPHIN_DIR").unwrap_or_else(|| {
                 env_path("XDG_CONFIG_HOME")
                     .filter(|p| !p.as_os_str().is_empty())

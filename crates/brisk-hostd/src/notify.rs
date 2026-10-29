@@ -39,6 +39,7 @@ pub fn watchdog_every() -> Option<Duration> {
         .map(|d| d / 4)
 }
 
+/// The status line sent to systemd.
 pub fn status_text(
     listen: SocketAddr,
     site: &crate::site::Site,
@@ -51,10 +52,12 @@ pub fn status_text(
     )
 }
 
+/// Tells systemd hostd is ready.
 pub fn ready(status: &str) {
     send(&[NotifyState::Ready, NotifyState::Status(status)]);
 }
 
+/// Tells systemd hostd is stopping.
 pub fn stopping() {
     send(&[NotifyState::Stopping, NotifyState::Status("stopping")]);
 }

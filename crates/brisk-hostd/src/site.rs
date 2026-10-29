@@ -28,6 +28,7 @@ pub enum Site {
 pub use crate::embed::Mem;
 
 impl Site {
+    /// Where the static files come from, for the log.
     pub fn describe(&self) -> String {
         match self {
             Site::Disk(d) => format!("static files from disk: {}", d.display()),
@@ -64,7 +65,7 @@ impl Site {
         if matches!(mode, None | Some("")) && !dist.exists() {
             // Sticks for the process lifetime: an `update` swap is not seen until a restart.
             eprintln!(
-                "WARNING: {} is missing: serving the build EMBEDDED in this binary until hostd \
+                "warning: {} is missing: serving the build EMBEDDED in this binary until hostd \
                  restarts (BRISK_STATIC=disk refuses the fallback)",
                 dist.display()
             );
@@ -162,7 +163,7 @@ async fn serve_from<B: Backend>(root: PathBuf, b: B, rel: &Path, mut req: Reques
             StatusCode::NOT_FOUND.into_response()
         }
         Err(e) => {
-            eprintln!("static file error: {e}");
+            eprintln!("error: static file: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

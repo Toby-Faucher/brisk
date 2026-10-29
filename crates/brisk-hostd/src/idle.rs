@@ -17,6 +17,7 @@ pub struct IdleWatch {
 }
 
 impl IdleWatch {
+    /// A watch that shuts down after `after` of idle.
     pub fn new(after: Duration) -> Self {
         IdleWatch { after, since: None }
     }

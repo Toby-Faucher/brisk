@@ -29,6 +29,7 @@ fn id_part(s: &str) -> bool {
 }
 
 impl GameId {
+    /// The id of Steam app `appid`.
     pub fn steam(appid: u32) -> GameId {
         GameId(format!("steam:{appid}"))
     }
@@ -69,10 +70,12 @@ impl GameId {
         GameId::parse(raw)
     }
 
+    /// The id text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Steam or emulator, from the prefix.
     pub fn source(&self) -> Source {
         if self.0.starts_with("steam:") {
             Source::Steam
@@ -81,6 +84,7 @@ impl GameId {
         }
     }
 
+    /// The Steam app id; None for an emulator game.
     pub fn steam_appid(&self) -> Option<u32> {
         self.0.strip_prefix("steam:")?.parse().ok()
     }

@@ -25,6 +25,7 @@ pub struct Emulator {
     pub extensions: &'static [&'static str],
 }
 
+/// Every emulator brisk knows.
 pub static EMULATORS: &[Emulator] = &[Emulator {
     id: "dolphin",
     name: "Dolphin",
@@ -48,6 +49,7 @@ pub static EMULATORS: &[Emulator] = &[Emulator {
     ],
 }];
 
+/// The emulator with this id.
 pub fn get(id: &str) -> Option<&'static Emulator> {
     EMULATORS.iter().find(|e| e.id == id)
 }

@@ -45,6 +45,7 @@ pub fn cached_controls(cfg: &Config, appid: u32) -> Option<(Option<String>, bool
     })
 }
 
+/// Store details of `appid`, cached for a week.
 pub async fn info(cfg: &Config, appid: u32, refresh: bool) -> Info {
     cached_with_misses(
         cfg,

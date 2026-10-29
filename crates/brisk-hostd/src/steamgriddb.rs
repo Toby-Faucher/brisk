@@ -97,6 +97,7 @@ impl SgdbConfig {
         Self::with_key_file(&key_file, base, data_dir)
     }
 
+    /// Config from the key file; None when there is no usable key.
     pub fn with_key_file(key_file: &Path, base: String, data_dir: &Path) -> Option<SgdbConfig> {
         let raw = std::fs::read_to_string(key_file).ok()?;
         let key = raw.trim();
@@ -296,6 +297,7 @@ fn score(want: &str, cand: &str) -> u32 {
     (common * 1000).checked_div(union).unwrap_or(0)
 }
 
+/// Scores the candidates against `name`.
 pub fn rank(name: &str, cands: &[Candidate]) -> Ranked {
     let want = normalize(name);
     let mut seen = std::collections::HashSet::new();
@@ -489,6 +491,7 @@ pub fn load_match(cfg: &SgdbConfig, key: &str) -> Option<Candidate> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
+/// Saves the chosen candidate for `key`.
 pub fn save_match(cfg: &SgdbConfig, key: &str, c: &Candidate) -> Result<(), Error> {
     let body = serde_json::to_vec(c).map_err(|_| Error::BadResponse)?;
     write_private(&art_dir(cfg, key)?.join("match.json"), &body)

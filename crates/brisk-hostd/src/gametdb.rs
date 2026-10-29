@@ -109,6 +109,7 @@ impl Entry {
 
 // ---- id and art URLs ----
 
+/// True for a six character GameTDB id.
 pub fn valid_id(id: &str) -> bool {
     id.len() == 6 && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }

@@ -68,6 +68,7 @@ pub enum RawId {
 }
 
 impl RawId {
+    /// The id as text.
     pub fn text(&self) -> String {
         match self {
             RawId::Num(n) => n.to_string(),
@@ -191,6 +192,7 @@ pub struct Supervisor {
 }
 
 impl Supervisor {
+    /// A supervisor with no bridge running.
     pub fn new(cfg: &Config, runner: Arc<dyn Runner>) -> Self {
         Supervisor {
             bin: cfg.bridge_bin.clone(),
@@ -215,6 +217,7 @@ impl Supervisor {
         }
     }
 
+    /// The current stream state.
     pub fn info(&self) -> StreamInfo {
         self.shared.lock().unwrap().view()
     }
@@ -224,6 +227,7 @@ impl Supervisor {
         self.shared.try_lock().ok().map(|s| s.view())
     }
 
+    /// The `n` newest sessions.
     pub fn sessions(&self, n: usize) -> Vec<SessionRec> {
         self.sessions.latest(n)
     }
@@ -416,7 +420,7 @@ impl Supervisor {
                     name: game.map_or_else(|| "Desktop".into(), |g| g.name),
                     started: now_ms(),
                     ended: None,
-                    host: hostname(),
+                    host: crate::host::hostname(),
                     preset: req.preset,
                     codec: Some(req.codec),
                     bitrate_kbps: Some(kbps),
@@ -446,6 +450,7 @@ impl Supervisor {
         Ok(s.view())
     }
 
+    /// True once shutdown began.
     pub fn shutting_down(&self) -> bool {
         self.closing.load(std::sync::atomic::Ordering::SeqCst)
     }
@@ -646,7 +651,7 @@ pub fn ensure_cert(
         );
     }
     eprintln!(
-        "new bridge certificate {} ({CERT_DAYS} days)",
+        "info: new bridge certificate {} ({CERT_DAYS} days)",
         cert.display()
     );
     Ok((cert, key))
@@ -667,11 +672,6 @@ fn parse_page(p: &str) -> Option<(String, String)> {
     let q = p.split_once("?wt=")?.1;
     let (wt, hash) = q.split_once("&hash=")?;
     (!wt.is_empty() && !hash.is_empty()).then(|| (wt.to_string(), hash.to_string()))
-}
-
-fn hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map_or_else(|_| "bawn".into(), |s| s.trim().to_string())
 }
 
 /// Waits up to `wait` for the game's window, then focuses and fullscreens it: found by the

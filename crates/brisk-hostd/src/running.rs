@@ -396,6 +396,7 @@ impl Drop for Claim<'_> {
 }
 
 impl Quitter {
+    /// A quitter; quit is off when hostd runs as root.
     pub fn new(runner: Arc<dyn Runner>, proc: PathBuf, data_dir: PathBuf) -> Self {
         let as_root = rustix::process::geteuid().is_root();
         if as_root {

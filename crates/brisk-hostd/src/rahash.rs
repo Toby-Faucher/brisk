@@ -39,6 +39,7 @@ impl Default for Md5 {
 }
 
 impl Md5 {
+    /// A new MD5.
     pub fn new() -> Self {
         Md5 {
             state: [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476],
@@ -78,6 +79,7 @@ impl Md5 {
         }
     }
 
+    /// Adds `data` to the hash.
     pub fn update(&mut self, mut data: &[u8]) {
         self.len = self.len.wrapping_add(data.len() as u64);
         while !data.is_empty() {

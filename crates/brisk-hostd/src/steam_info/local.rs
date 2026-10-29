@@ -45,6 +45,7 @@ impl Default for ShotCache {
 }
 
 impl ShotCache {
+    /// A cache that keeps listings for `ttl`.
     pub fn new(ttl: Duration) -> Self {
         ShotCache {
             ttl,

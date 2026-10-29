@@ -21,6 +21,7 @@ pub struct GamesResult {
 }
 
 impl GamesResult {
+    /// The game with this id.
     pub fn find(&self, id: &GameId) -> Option<&Game> {
         self.games.iter().find(|g| g.id == *id)
     }
@@ -257,22 +258,6 @@ pub(crate) fn base_ok(base: &str) -> bool {
     host == "127.0.0.1" || host == "localhost"
 }
 
-/// Error text safe to log: only the kind of failure. ureq's own messages can embed the URL, and
-/// the URL carries the key, so they are never passed on.
-pub(crate) fn safe_err(e: &ureq::Error) -> String {
-    match e {
-        ureq::Error::StatusCode(c) => format!("HTTP {c}"),
-        ureq::Error::Timeout(_) => "timed out".into(),
-        // rustls handshake failures (bad certificate included) surface as InvalidData.
-        ureq::Error::Io(e) if e.kind() == std::io::ErrorKind::InvalidData => "TLS error".into(),
-        ureq::Error::Io(e) => format!("i/o error ({:?})", e.kind()),
-        ureq::Error::HostNotFound => "host not found".into(),
-        ureq::Error::BodyExceedsLimit(_) => "response too large".into(),
-        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => "TLS error".into(),
-        _ => "request failed".into(),
-    }
-}
-
 /// Blocking GET with strict limits: connect 5 s, total 15 s, no redirects, no proxy, 8 MiB body,
 /// certificates checked against the system roots (/etc/ssl/certs via rustls-platform-verifier).
 /// Key safety: ureq logs every request through the `log` crate, and at trace level (and in some
@@ -295,27 +280,17 @@ pub(crate) fn get_limited_for(
     max: u64,
     total: Duration,
 ) -> Result<Vec<u8>, String> {
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::PlatformVerifier)
-        .unversioned_rustls_crypto_provider(
-            std::sync::Arc::new(rustls_graviola::default_provider()),
-        )
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .proxy(None)
-        .max_redirects(0)
-        .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_global(Some(total))
-        .build()
-        .into();
+    let agent = crate::net::agent(
+        ureq::tls::RootCerts::PlatformVerifier,
+        Some(Duration::from_secs(5)),
+        total,
+        true,
+    );
     let mut req = agent.get(url);
     if let Some(t) = bearer {
         req = req.header("Authorization", format!("Bearer {t}"));
     }
-    let mut r = req.call().map_err(|e| safe_err(&e))?;
+    let mut r = req.call().map_err(|e| crate::net::safe_err(&e))?;
     if r.status() != 200 {
         return Err(format!("HTTP {}", r.status().as_u16()));
     }
@@ -323,7 +298,7 @@ pub(crate) fn get_limited_for(
         .with_config()
         .limit(max)
         .read_to_vec()
-        .map_err(|e| safe_err(&e))
+        .map_err(|e| crate::net::safe_err(&e))
 }
 
 /// The key from its file; only plain key characters, so it cannot change the shape of the URL.
@@ -341,7 +316,7 @@ pub(crate) fn read_key(cfg: &Config) -> Result<String, &'static str> {
 }
 
 /// A `steam_get` error that will not go away by waiting: Steam refused the key or the list is private
-/// (the texts come from `safe_err` / `https_get` above).
+/// (the texts come from `net::safe_err` / `https_get` above).
 pub(crate) fn is_refusal(err: &str) -> bool {
     matches!(err, "HTTP 401" | "HTTP 403")
 }
@@ -462,10 +437,12 @@ fn steam_art(id: u32) -> (String, String, String) {
     )
 }
 
+/// The games list, from cache where it can.
 pub async fn load_games(cfg: &Config) -> GamesResult {
     load_games_with(cfg, false).await
 }
 
+/// The games list; `refresh` skips the owned games cache.
 pub async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
     let steam_dir = cfg.steam_dir.clone();
     let installed = tokio::task::spawn_blocking(move || installed_manifests(&steam_dir))

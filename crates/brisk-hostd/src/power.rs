@@ -46,17 +46,21 @@ pub struct VmStats {
     pub mem_total: u64,
 }
 
+/// Power control of one machine.
 pub trait Power: Send + Sync {
+    /// Whether the machine is running.
     fn status(&self) -> Result<VmState, String>;
     /// Returns once Proxmox accepted the request, not when the guest is up.
     fn start(&self) -> Result<(), String>;
     /// ACPI shutdown (never a hard stop).
     fn shutdown(&self) -> Result<(), String>;
+    /// Load figures; not every backend has them.
     fn stats(&self) -> Result<VmStats, String> {
         Err("unsupported".into())
     }
 }
 
+/// Power control through the Proxmox API.
 pub fn proxmox(cfg: &ProxmoxCfg) -> Arc<dyn Power> {
     Arc::new(Proxmox { cfg: cfg.clone() })
 }
@@ -150,7 +154,7 @@ impl Proxmox {
     /// One request (GET, or POST with an empty body). The secret is read here and only goes into
     /// the Authorization header; errors carry only the kind of failure.
     fn call(&self, post: bool, suffix: &str) -> Result<Vec<u8>, String> {
-        use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider, parse_pem};
+        use ureq::tls::{Certificate, RootCerts, parse_pem};
         let url = self.url(suffix)?;
         let secret = std::fs::read_to_string(&self.cfg.token_file).map_err(|_| "no token file")?;
         let secret = secret.trim();
@@ -175,46 +179,24 @@ impl Proxmox {
                 RootCerts::Specific(Arc::new(certs))
             }
         };
-        let tls = TlsConfig::builder()
-            .provider(TlsProvider::Rustls)
-            .root_certs(roots)
-            .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
-            .build();
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .tls_config(tls)
-            .proxy(None)
-            .max_redirects(0)
-            .timeout_connect(Some(Duration::from_secs(5)))
-            .timeout_global(Some(Duration::from_secs(20)))
-            .build()
-            .into();
+        let agent = crate::net::agent(
+            roots,
+            Some(Duration::from_secs(5)),
+            Duration::from_secs(20),
+            true,
+        );
         let auth = format!("PVEAPIToken={}={secret}", self.cfg.token_id);
         let res = if post {
             agent.post(&url).header("Authorization", &auth).send_empty()
         } else {
             agent.get(&url).header("Authorization", &auth).call()
         };
-        let mut r = res.map_err(|e| safe_err(&e))?;
+        let mut r = res.map_err(|e| crate::net::safe_err(&e))?;
         r.body_mut()
             .with_config()
             .limit(1 << 20)
             .read_to_vec()
-            .map_err(|e| safe_err(&e))
-    }
-}
-
-/// Error text safe to pass on: only the kind of failure (ureq's own messages can embed the URL).
-fn safe_err(e: &ureq::Error) -> String {
-    match e {
-        ureq::Error::StatusCode(c) => format!("HTTP {c}"),
-        ureq::Error::Timeout(_) => "timed out".into(),
-        // rustls handshake failures (bad certificate included) surface as InvalidData.
-        ureq::Error::Io(e) if e.kind() == std::io::ErrorKind::InvalidData => "TLS error".into(),
-        ureq::Error::Io(e) => format!("i/o error ({:?})", e.kind()),
-        ureq::Error::HostNotFound => "host not found".into(),
-        ureq::Error::BodyExceedsLimit(_) => "response too large".into(),
-        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => "TLS error".into(),
-        _ => "request failed".into(),
+            .map_err(|e| crate::net::safe_err(&e))
     }
 }
 
