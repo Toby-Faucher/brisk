@@ -196,9 +196,7 @@
   .dt { min-width: 0; }
   .dn { display: flex; align-items: center; gap: 12px; }
   h2:focus { outline: none; } /* focused by script on open (where a keyboard user lands); not a control */
-  .search { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); min-width: 210px; }
-  .search:focus-within { border-color: #3a4152; }
-  .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; }
+  .search { margin-left: auto; } /* the rest: base.css */
   .empty { padding: 28px 2px; }
   .pad { padding: 16px 2px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding-top: 16px; }

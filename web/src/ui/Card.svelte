@@ -34,7 +34,7 @@
     /* scale + box-shadow: the Home drag lift (data-lifted) settling back on the snappy spring */
     transition: transform var(--spring-soft-dur) var(--spring-soft), scale var(--spring-snappy-dur) var(--spring-snappy), box-shadow .25s, border-color .25s;
   }
-  .card:hover { transform: translateY(-3px); border-color: #3a4152; }
+  .card:hover { transform: translateY(-3px); border-color: var(--line-hover); }
   /* link cards (module widgets) give a little under the press; the snappy spring brings them back */
   .card:has(:global(.fill:active)) { transform: translateY(-1px) scale(.99); transition-timing-function: var(--spring-snappy); transition-duration: var(--spring-snappy-dur); }
   .card :global(h4) { font-size: 12px; font-weight: 600; color: #c4cad6; display: flex; gap: 8px; align-items: center; }

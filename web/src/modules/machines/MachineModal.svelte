@@ -366,8 +366,7 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
   .empty { display: grid; gap: 10px; justify-items: start; }
   .tools { display: flex; gap: 8px; align-items: center; }
-  .search { flex: 1; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
-  .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: inherit; width: 100%; min-width: 0; }
+  .search { flex: 1; padding: 6px 10px; border-radius: 10px; min-width: 0; } /* the rest: base.css */
   .games, .sess { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   .row { display: grid; grid-template-columns: 34px 1fr auto auto auto; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
   .row:hover, .row[aria-selected='true'] { background: var(--panel2); }
