@@ -39,11 +39,15 @@ ts_name() {
   [[ $n =~ ^[A-Za-z0-9.-]+$ ]] && echo "$n"
   return 0
 }
-# Header file for curl, so the secret never shows in a process list.
+# Header file for curl, so the secret never shows in a process list: a new 0600 file per call
+# (two runs never share one), its path in HDR. The EXIT trap removes it, also after Ctrl-C.
+# Call it directly, not in $( ): the trap belongs to the shell that uses the file.
+HDR=""
 secret_header() {
   [ -r "$CONF/secret" ] || return 1
-  ( umask 077; printf 'x-brisk-secret: %s\n' "$(tr -d '[:space:]' < "$CONF/secret")" > "$RUN/doctor.hdr" )
-  echo "$RUN/doctor.hdr"
+  HDR=$(mktemp "$RUN/hdr.XXXXXX") || return 1
+  trap 'rm -f "$HDR"' EXIT
+  printf 'x-brisk-secret: %s\n' "$(tr -d '[:space:]' < "$CONF/secret")" > "$HDR"
 }
 is_operator() { tailscale debug prefs 2>/dev/null | grep -q "\"OperatorUser\": *\"$(id -un)\""; }
 # Our mapping exactly: a Web entry "<name>:8443" whose handler proxies to http://127.0.0.1:8443
@@ -58,8 +62,8 @@ serve_mapped() {
 # answer, no secret: no (fail closed); FORCE=1 overrides. Prints why when it refuses.
 restart_ok() {
   [ "${FORCE:-}" = 1 ] && return 0
-  local h st=""
-  if h=$(secret_header); then st=$(curl -s --max-time 5 -H "@$h" http://127.0.0.1:8443/api/stream || true); rm -f "$h"; fi
+  local st=""
+  if secret_header; then st=$(curl -s --max-time 5 -H "@$HDR" http://127.0.0.1:8443/api/stream || true); rm -f "$HDR"; fi
   case $st in
     *'"state":"idle"'*) return 0 ;;
     *'"state":"live"'*|*'"state":"starting"'*) echo "a stream is live" ;;
@@ -316,7 +320,7 @@ cmd_sunshine_permanent() {
 }
 
 cmd_doctor() {
-  local bad=0 n h code l
+  local bad=0 n code l
   ok() { echo "ok    $*"; }
   no() { echo "FAIL  $*"; bad=1; }
   info() { echo "info  $*"; }
@@ -345,8 +349,8 @@ cmd_doctor() {
   else
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$n:8443/api/host" || true)
     if [ "$code" = 403 ]; then ok "https://$n:8443 answers 403 without credentials"; else no "https://$n:8443/api/host without credentials: '$code' (want 403)"; fi
-    if h=$(secret_header); then
-      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "@$h" "https://$n:8443/api/host" || true); rm -f "$h"
+    if secret_header; then
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "@$HDR" "https://$n:8443/api/host" || true); rm -f "$HDR"
       if [ "$code" = 200 ]; then ok "https://$n:8443 answers 200 with the secret"; else no "https://$n:8443/api/host with the secret: '$code' (want 200)"; fi
     else no "no $CONF/secret (hostd never started?)"; fi
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'x-brisk-csrf: 1' "https://$n:8443/api/host" || true)

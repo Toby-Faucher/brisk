@@ -282,6 +282,18 @@ for e in SS_ADDR=0.0.0.0:8443 "SS_ADDR=127.0.0.1:8443 [::]:8443" "SS_ADDR=127.0.
   grep -q '^FAIL' <<<"$out" || fail "no FAIL line with $e"
 done
 grep -q '0123456789abcdef0123' "$L" && fail "the secret appeared on a command line"
+# the secret header files are per run and removed afterwards
+ls "$t/run/brisk" | grep -q -e '^hdr\.' -e '^doctor\.hdr$' && fail "secret header file left: $(ls "$t/run/brisk")"
+# ... also when the run is killed mid-request (a curl that hangs on /api/stream)
+mkdir -p "$t/hang"
+printf '#!/bin/bash\ncase "$*" in *api/stream*) exec sleep 5;; esac\nexec "%s" "$@"\n' "$t/bin/curl" > "$t/hang/curl"; chmod +x "$t/hang/curl"
+PATH=$t/hang:$PATH SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 & k=$!
+for _ in $(seq 50); do ls "$t/run/brisk" | grep -q '^hdr\.' && break; sleep 0.1; done
+ls "$t/run/brisk" | grep -q '^hdr\.' || fail "no header file seen during the hanging request"
+# TERM to the script and to the $(restart_ok) subshell that holds the file
+pkill -TERM -P "$k"; kill -TERM "$k"; wait "$k"
+sleep 0.5; ls "$t/run/brisk" | grep -q '^hdr\.' && fail "header file left after TERM: $(ls "$t/run/brisk")"
+rm -f "$SV"/*.new # the killed update had staged binaries
 # usage
 "$B" --help | grep -q '^usage: ' || fail "--help"
 "$B" bogus >/dev/null 2>&1 && fail "unknown command accepted"
