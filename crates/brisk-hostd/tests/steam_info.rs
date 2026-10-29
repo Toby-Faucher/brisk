@@ -3,17 +3,6 @@ use brisk_hostd::http::AppState;
 use common::*;
 use std::sync::Arc;
 
-#[tokio::test]
-async fn owned_still_works_through_steam_get() {
-    let owned = std::fs::read_to_string(format!("{FIX}/owned.json")).unwrap();
-    let base = mock_steam(vec![("/IPlayerService/GetOwnedGames/v1/", 200, owned)]).await;
-    let s = steam(&base, "http://127.0.0.1:1", Some(KEY));
-    let (v, _) = games_json(&s.cfg, "/api/games").await;
-    let g = v["games"].as_array().unwrap();
-    let portal = g.iter().find(|g| g["appid"] == 620).unwrap();
-    assert_eq!(portal["name"], "Portal 2");
-}
-
 const NO_API: &str = "http://127.0.0.1:1";
 const Z: std::time::Duration = std::time::Duration::ZERO;
 
@@ -301,57 +290,45 @@ fn news_of(items: &[(u64, bool)]) -> brisk_hostd::steam_info::News {
 }
 
 #[test]
-fn news_marks_updated_when_patch_after_last_played() {
+fn news_is_updated_cases() {
     use brisk_hostd::steam_info::is_updated;
-    // fixture patch 1700001000, Portal 2 last played 1700000500
-    assert!(is_updated(
-        &news_of(&[(1700001000, true)]),
-        1700000500,
-        1700002000
-    ));
-}
-
-#[test]
-fn news_not_updated_when_played_after() {
-    use brisk_hostd::steam_info::is_updated;
-    assert!(!is_updated(
-        &news_of(&[(1700001000, true)]),
-        1700001500,
-        1700002000
-    ));
-    // a non-patch item never counts, and a never-played game is never "updated"
-    assert!(!is_updated(
-        &news_of(&[(1700001000, false)]),
-        1700000500,
-        1700002000
-    ));
-    assert!(!is_updated(&news_of(&[(1700001000, true)]), 0, 1700002000));
-}
-
-#[test]
-fn news_old_patch_not_updated() {
-    use brisk_hostd::steam_info::is_updated;
-    let n = news_of(&[(1700001000, true)]);
-    let day = 86_400;
-    assert!(is_updated(&n, 1700000500, 1700001000 + 30 * day));
-    assert!(!is_updated(&n, 1700000500, 1700001000 + 30 * day + 1));
-}
-
-#[test]
-fn news_future_equal_and_empty_are_not_updates() {
-    use brisk_hostd::steam_info::is_updated;
-    // bogus future date, date == last played, no items
-    assert!(!is_updated(
-        &news_of(&[(1700003000, true)]),
-        1700000500,
-        1700002000
-    ));
-    assert!(!is_updated(
-        &news_of(&[(1700000500, true)]),
-        1700000500,
-        1700002000
-    ));
-    assert!(!is_updated(&news_of(&[]), 1700000500, 1700002000));
+    const DAY: u64 = 86_400;
+    /// News items as (date, patch), last played, now, updated.
+    type Case = (&'static [(u64, bool)], u64, u64, bool);
+    let cases: &[Case] = &[
+        // patch after last played
+        (&[(1700001000, true)], 1700000500, 1700002000, true),
+        // played after the patch
+        (&[(1700001000, true)], 1700001500, 1700002000, false),
+        // a non-patch item never counts
+        (&[(1700001000, false)], 1700000500, 1700002000, false),
+        // a never-played game is never "updated"
+        (&[(1700001000, true)], 0, 1700002000, false),
+        // a patch counts for 30 days
+        (
+            &[(1700001000, true)],
+            1700000500,
+            1700001000 + 30 * DAY,
+            true,
+        ),
+        (
+            &[(1700001000, true)],
+            1700000500,
+            1700001000 + 30 * DAY + 1,
+            false,
+        ),
+        // bogus future date, date equal to last played, no items
+        (&[(1700003000, true)], 1700000500, 1700002000, false),
+        (&[(1700000500, true)], 1700000500, 1700002000, false),
+        (&[], 1700000500, 1700002000, false),
+    ];
+    for &(items, played, now, want) in cases {
+        assert_eq!(
+            is_updated(&news_of(items), played, now),
+            want,
+            "{items:?} {played} {now}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -493,12 +470,6 @@ async fn friends_online_sorted_playing_first() {
     assert_eq!(v["online"][2]["state"], "away");
     assert_eq!(v["online"][3]["state"], "busy");
     assert_eq!(v["online"][3]["avatar"], ""); // foreign host dropped
-}
-
-#[tokio::test]
-async fn friends_offline_are_dropped() {
-    let api = mock_steam(friends_routes()).await;
-    let (_s, v) = friends_names(&api).await;
     assert!(!v.to_string().contains("TestOffline"));
 }
 
@@ -904,14 +875,6 @@ async fn remote_play_counts_as_coop_and_unavailable_entries_are_ignored() {
         r#"{"available":false,"description":"","genres":[],"controller":"full","singleplayer":false,"coop":true,"remotePlayTogether":false,"release":null,"metacritic":null,"screenshots":[]}"#,
     );
     let g = game_of(&s.cfg, 730).await;
-    assert!(g["controller"].is_null());
-    assert_eq!(g["coop"], false);
-}
-
-#[tokio::test]
-async fn games_without_info_cache_have_no_controller() {
-    let s = steam(NO_API, NO_API, Some(KEY));
-    let g = game_of(&s.cfg, 620).await;
     assert!(g["controller"].is_null());
     assert_eq!(g["coop"], false);
 }

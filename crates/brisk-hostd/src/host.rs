@@ -1,6 +1,5 @@
 //! Host status (`GET /api/host`) and the rate-limited Sunshine restart. Every source fails to `None`.
 
-use crate::config::Config;
 use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -161,13 +160,12 @@ impl Default for Sources {
 }
 
 /// Host facts from the real sources.
-pub async fn host_info(cfg: &Config) -> HostInfo {
-    let r = Arc::new(RealRunner);
-    host_info_with(cfg, &Sources::default(), r).await
+pub(crate) async fn host_info() -> HostInfo {
+    host_info_with(&Sources::default(), Arc::new(RealRunner)).await
 }
 
 /// Host facts from `src`, with `runner` for tailscale.
-pub async fn host_info_with(_cfg: &Config, src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
+async fn host_info_with(src: &Sources, runner: Arc<dyn Runner>) -> HostInfo {
     let job = tokio::task::spawn_blocking(move || runner.run("tailscale", &["status", "--json"]));
     let ts = tokio::time::timeout(src.tailscale_timeout, job)
         .await
@@ -327,7 +325,7 @@ impl Restarter {
             Ok(Ok(None)) => "systemctl failed (not found, non-zero exit or over 30 s)",
             Ok(Ok(Some(_))) => return Ok(()),
         };
-        eprintln!("warning: sunshine restart failed: {why}");
+        tracing::warn!("sunshine restart failed: {why}");
         *self.last.lock().unwrap() = prev;
         Err(RestartError::Failed)
     }
@@ -379,8 +377,7 @@ mod tests {
             sunshine_addr: "127.0.0.1:1".into(),
             tailscale_timeout: Duration::from_secs(3),
         };
-        let cfg = Config::from_env(d.path().into());
-        let i = host_info_with(&cfg, &src, Fake::new(None)).await;
+        let i = host_info_with(&src, Fake::new(None)).await;
         assert_eq!(
             (
                 i.sunshine,
@@ -467,8 +464,7 @@ mod tests {
             sunshine_addr: "127.0.0.1:1".into(),
             tailscale_timeout: Duration::from_millis(50),
         };
-        let cfg = Config::from_env(d.path().into());
-        let i = host_info_with(&cfg, &src, Arc::new(Hang)).await;
+        let i = host_info_with(&src, Arc::new(Hang)).await;
         assert_eq!((i.path, i.relay), (None, None));
     }
 

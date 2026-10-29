@@ -88,7 +88,7 @@ impl Samples {
         let a = dir.join("audio");
         std::fs::create_dir_all(&a)?;
         let audio = if audio_enc {
-            let hex: String = rikey.iter().map(|b| format!("{b:02x}")).collect();
+            let hex = brisk_proto::pair::hex(rikey).to_ascii_lowercase();
             std::fs::write(a.join("rikey.hex"), format!("{hex} {rikeyid:08x}\n"))?;
             std::fs::write(a.join("README.md"), AUDIO_README)?;
             0

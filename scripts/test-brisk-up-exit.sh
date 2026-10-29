@@ -3,27 +3,23 @@
 # its Sunshine session, so hostd.pid must stay until hostd is gone (brisk-down waits on it).
 # Also spaced_restart's gap. Touches nothing real: "hostd" is a sleep named brisk-hostd, $RUN a
 # temp dir.
-set -eu # setup: any failure stops the test (set +e below, before the cases)
 here=$(cd "$(dirname "$0")" && pwd)
-RUN=$(mktemp -d); trap 'rm -rf "$RUN"' EXIT
-fail() { echo "FAIL: $*"; exit 1; }
+# shellcheck source=scripts/lib-test.sh
+. "$here/lib-test.sh"
+RUN=$t
 # shellcheck source=scripts/brisk-common.sh
 . "$here/brisk-common.sh"
-declare -F hostd_exit_cleanup >/dev/null || fail "brisk-common.sh has no hostd_exit_cleanup"
-ln -s "$(command -v sleep)" "$RUN/brisk-hostd"
 set +e
-# Waits until the fake hostd has exec'd (its name is the parent's until then).
-execed() { for _ in $(seq 100); do [ "$(cat "/proc/$1/comm" 2>/dev/null)" = brisk-hostd ] && return; sleep 0.05; done; echo "fake hostd $1 did not start"; }
 
-"$RUN/brisk-hostd" 2 & execed $!; echo $! > "$RUN/hostd.pid"   # a hostd that needs 2 s to stop
+fake_hostd 1; echo $! > "$RUN/hostd.pid"   # a hostd that needs 1 s to stop
 hostd_exit_cleanup & c=$!
-sleep 0.5
+sleep 0.3
 [ -f "$RUN/hostd.pid" ] || fail "hostd.pid removed while hostd still runs"
 wait $c
 [ -f "$RUN/hostd.pid" ] && fail "hostd.pid kept after hostd exited"
 
 # A hostd that outlives the wait keeps its pid file (brisk-down deals with it).
-"$RUN/brisk-hostd" 5 & b=$!; execed $b; echo $b > "$RUN/hostd.pid"
+fake_hostd 5; b=$!; echo $b > "$RUN/hostd.pid"
 BRISK_EXIT_WAIT=1 hostd_exit_cleanup
 [ -f "$RUN/hostd.pid" ] || fail "pid file of a still-running hostd removed"
 kill $b
@@ -34,11 +30,16 @@ BRISK_EXIT_WAIT=3 hostd_exit_cleanup
 [ -f "$RUN/hostd.pid" ] && fail "stale hostd.pid kept"
 kill $o
 
-# spaced_restart waits out BRISK_RESTART_GAP after the last restart, then records the new one.
-date +%s > "$RUN/last-restart"
-out=$(BRISK_RESTART_GAP=1 spaced_restart echo ran)
-grep -q '^waiting 1s' <<<"$out" && grep -qx ran <<<"$out" || fail "spaced_restart gap: $out"
+# spaced_restart waits out the gap (default 100 s) after the last restart, then records the new
+# one. date and sleep are shell functions here, so the wait is exact and takes no time.
+date() { echo 5000; }
+sleep() { echo "slept $*"; }
+echo 4990 > "$RUN/last-restart"
+out=$(unset BRISK_RESTART_GAP; spaced_restart echo ran)
+[ "$out" = $'waiting 90s (Sunshine restarts stay 100 s apart)\nslept 90\nran' ] || fail "spaced_restart gap: $out"
+[ "$(cat "$RUN/last-restart")" = 5000 ] || fail "last-restart not updated"
 echo 0 > "$RUN/last-restart"
 [ "$(BRISK_RESTART_GAP=1 spaced_restart echo ran)" = ran ] || fail "spaced_restart waited after an old restart"
-[ "$(cat "$RUN/last-restart")" -gt 0 ] || fail "last-restart not updated"
-echo "ok: brisk-up exit cleanup"
+unset -f date sleep
+[ $bad = 0 ] && echo "ok: brisk-up exit cleanup"
+exit $bad

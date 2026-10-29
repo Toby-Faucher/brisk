@@ -24,7 +24,7 @@ impl IdleWatch {
 
     /// `None`: the machine is not `ready` or could not be observed (resets the clock).
     /// True: idle for `after`, shut it down now.
-    pub fn observe(&mut self, now: Instant, o: Option<Observed>) -> bool {
+    pub(crate) fn observe(&mut self, now: Instant, o: Option<Observed>) -> bool {
         match o {
             Some(o) if !(o.streaming || o.game_running || o.updating) => {
                 // Stays true on later idle observations, in case the shutdown failed.

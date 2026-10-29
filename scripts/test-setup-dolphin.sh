@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2015 # A && B || fail asserts both
 # Test of setup-dolphin.sh against a temp dir; touches nothing real.
 set -u
 s=$(cd "$(dirname "$0")" && pwd)

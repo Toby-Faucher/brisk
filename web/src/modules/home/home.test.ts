@@ -1,26 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
 import { moveItem, orderToStore, pickResume, reconcileOrder, tagCardIds } from './home';
+import { testGame } from '../../test/game';
 
-const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game => ({
-  appid,
-  name: `g${appid}`,
-  installed,
-  sizeBytes: null,
-  lastPlayed,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running,
-});
+const g = (appid: number, installed: boolean, lastPlayed: number | null, running = false): Game =>
+  testGame({ appid, name: `g${appid}`, installed, lastPlayed, running });
 
 describe('home', () => {
   it('resume_picks_most_recent_played_installed_game', () => {

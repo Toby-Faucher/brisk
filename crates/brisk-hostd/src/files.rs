@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tokio::io::AsyncWriteExt;
 
-pub const MAX_UPLOAD: u64 = 8 << 30;
+const MAX_UPLOAD: u64 = 8 << 30;
 const MAX_NAME: usize = 200;
-/// Left free on the disk after an upload.
-const RESERVE: u64 = 256 << 20;
+/// Left free on the disk after an upload or a screenshot.
+pub(crate) const RESERVE: u64 = 256 << 20;
 /// Free space is checked again after every this many bytes written.
 const CHECK_EVERY: u64 = 64 << 20;
 
@@ -63,7 +63,7 @@ pub fn candidate(name: &str, i: u32) -> String {
 }
 
 /// Free bytes for an unprivileged user on the filesystem holding `p`.
-pub fn disk_free(p: &Path) -> Option<u64> {
+pub(crate) fn disk_free(p: &Path) -> Option<u64> {
     let s = rustix::fs::statvfs(p).ok()?;
     Some(s.f_bavail * s.f_frsize)
 }

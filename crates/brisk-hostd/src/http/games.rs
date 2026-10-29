@@ -18,10 +18,7 @@ pub(super) async fn path_game(s: &AppState, raw: &str) -> Result<Game, Response>
 }
 
 pub(super) async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
-    let refresh = req
-        .uri()
-        .query()
-        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    let refresh = query_flag(req.uri().query(), "refresh=1");
     let g = steam::load_games_with(&s.cfg, refresh).await;
     *s.games.lock().unwrap() = Some(g.clone());
     // Games with play time are the ones worth warming; the task never delays this answer.
@@ -37,7 +34,7 @@ pub(super) async fn games(State(s): State<Arc<AppState>>, req: Request) -> Respo
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
         Err(e) => {
-            eprintln!("error: games: serializing the cache failed: {e}");
+            tracing::error!("games: serializing the cache failed: {e}");
             err(StatusCode::INTERNAL_SERVER_ERROR, "games unavailable")
         }
     }
@@ -57,10 +54,7 @@ pub(super) async fn game_info(
     let Some(id) = g.id.steam_appid() else {
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
     };
-    let refresh = req
-        .uri()
-        .query()
-        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    let refresh = query_flag(req.uri().query(), "refresh=1");
     axum::Json(steam_info::info(&s.cfg, id, refresh).await).into_response()
 }
 
@@ -75,10 +69,7 @@ pub(super) async fn game_achievements(
         Ok(g) => g,
         Err(r) => return r,
     };
-    let refresh = req
-        .uri()
-        .query()
-        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    let refresh = query_flag(req.uri().query(), "refresh=1");
     let Some(id) = g.id.steam_appid() else {
         return emu_achievements(&s, &g, refresh).await;
     };
@@ -148,10 +139,7 @@ pub(super) async fn game_news(
     let Some(id) = g.id.steam_appid() else {
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
     };
-    let refresh = req
-        .uri()
-        .query()
-        .is_some_and(|q| q.split('&').any(|p| p == "refresh=1"));
+    let refresh = query_flag(req.uri().query(), "refresh=1");
     axum::Json(steam_info::news(&s.cfg, id, refresh).await).into_response()
 }
 
@@ -443,7 +431,7 @@ pub(super) async fn library_scan(
     State(s): State<Arc<AppState>>,
     axum::extract::RawQuery(q): axum::extract::RawQuery,
 ) -> Response {
-    let include_removed = q.is_some_and(|q| q.split('&').any(|p| p == "include_removed=1"));
+    let include_removed = query_flag(q.as_deref(), "include_removed=1");
     {
         let mut g = s.scan_gate.lock().unwrap();
         if g.running {

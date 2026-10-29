@@ -12,9 +12,9 @@
   const label = { ready: 'Sunshine ready', busy: 'Streaming', down: 'Sunshine down' } as const;
 
   let open = $state(false);
-  let root: HTMLElement;
+  let root = $state<HTMLElement>();
   const sel = $derived($selectedMachine);
-  const items = () => [...root.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+  const items = () => [...root!.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
 
   async function toggle(to = !open) {
     open = to;
@@ -23,18 +23,18 @@
   function key(e: KeyboardEvent) {
     const list = items();
     const at = list.indexOf(document.activeElement as HTMLElement);
-    if (e.key === 'Escape') (e.preventDefault(), (open = false), root.querySelector<HTMLElement>('.pill')?.focus());
+    if (e.key === 'Escape') (e.preventDefault(), (open = false), root?.querySelector<HTMLElement>('.pill')?.focus());
     else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), list.at((at + (e.key === 'ArrowDown' ? 1 : -1)) % list.length)?.focus());
     else if (e.key === 'Home' || e.key === 'End') (e.preventDefault(), (e.key === 'Home' ? list[0] : list.at(-1))?.focus());
   }
   function choose(id: string) {
     open = false;
-    root.querySelector<HTMLElement>('.pill')?.focus();
+    root?.querySelector<HTMLElement>('.pill')?.focus();
     void selectMachine(id);
   }
 </script>
 
-<svelte:window onpointerdown={(e) => open && !root.contains(e.target as Node) && (open = false)} />
+<svelte:window onpointerdown={(e) => open && !root?.contains(e.target as Node) && (open = false)} />
 
 {#if $hub === true}
   <div class="wrap" bind:this={root}>

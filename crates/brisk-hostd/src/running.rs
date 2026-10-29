@@ -138,24 +138,15 @@ fn reaper_appid(argv: &[String]) -> Option<u32> {
 }
 
 /// AppIds of every game Steam is running now.
-pub fn running_appids(proc: &Path) -> HashSet<u32> {
+pub(crate) fn running_appids(proc: &Path) -> HashSet<u32> {
     procs(proc)
         .iter()
         .filter_map(|p| reaper_appid(&p.argv))
         .collect()
 }
 
-/// The descendants of `appid`'s reapers, not the reapers themselves (so never Steam, their
-/// parent); `None` when the game is not running.
-fn game_pids(proc: &Path, appid: u32) -> Option<HashSet<u32>> {
-    game_tree(proc, appid).map(|t| t.1)
-}
-
-/// `(reapers, their descendants)` of `appid`; `None` when no reaper is alive.
-fn game_tree(proc: &Path, appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
-    tree(&procs(proc), appid)
-}
-
+/// `(reapers, their descendants)` of `appid`; `None` when no reaper is alive. The descendants
+/// never include the reapers themselves (so never Steam, their parent).
 pub(crate) fn tree(ps: &[Proc], appid: u32) -> Option<(HashSet<u32>, HashSet<u32>)> {
     let reapers: HashSet<u32> = ps
         .iter()
@@ -309,7 +300,7 @@ async fn focus_window(
             return;
         }
         if tokio::time::Instant::now() >= end {
-            eprintln!("warning: no sway window for {what} after {wait:?}; left as is");
+            tracing::warn!("no sway window for {what} after {wait:?}; left as is");
             return;
         }
         tokio::time::sleep(poll).await;
@@ -317,7 +308,7 @@ async fn focus_window(
 }
 
 /// Focus and fullscreen a Steam game's window (found through its reaper's process tree).
-pub async fn focus_game(
+pub(crate) async fn focus_game(
     runner: Arc<dyn Runner>,
     proc: PathBuf,
     env: Vec<(String, String)>,
@@ -332,7 +323,7 @@ pub async fn focus_game(
         wait,
         poll,
         move |r, sock| {
-            let pids = game_pids(&proc, appid)?;
+            let (_, pids) = tree(&procs(&proc), appid)?;
             find_windows(r, sock, Find::Pids(&pids)).last().copied()
         },
     )
@@ -340,7 +331,7 @@ pub async fn focus_game(
 }
 
 /// Focus and fullscreen the newest window of X11 class `class` (an emulator's).
-pub async fn focus_class(
+pub(crate) async fn focus_class(
     runner: Arc<dyn Runner>,
     env: Vec<(String, String)>,
     class: &'static str,
@@ -404,8 +395,8 @@ impl Quitter {
     pub fn new(runner: Arc<dyn Runner>, proc: PathBuf, data_dir: PathBuf) -> Self {
         let as_root = rustix::process::geteuid().is_root();
         if as_root {
-            eprintln!(
-                "warning: hostd runs as root; POST /api/quit is off (run it as the desktop user)"
+            tracing::warn!(
+                "hostd runs as root; POST /api/quit is off (run it as the desktop user)"
             );
         }
         Quitter {
@@ -476,20 +467,20 @@ impl Quitter {
                     Sent::Recycled => recycled += 1,
                     Sent::Denied => denied += 1,
                     Sent::Failed(e) => {
-                        eprintln!("warning: {sig:?} to pid {} of game {id}: {e}", x.pid);
+                        tracing::warn!("{sig:?} to pid {} of game {id}: {e}", x.pid);
                         failed += 1;
                     }
                     Sent::Unsupported => {
-                        eprintln!(
-                            "error: cannot quit game {id}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
+                        tracing::error!(
+                            "cannot quit game {id}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
                         );
                         return;
                     }
                 }
             }
             if denied + recycled + failed > 0 {
-                eprintln!(
-                    "warning: {sig:?} for game {id}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
+                tracing::warn!(
+                    "{sig:?} for game {id}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
                 );
             }
         })
@@ -538,7 +529,7 @@ impl Quitter {
             {
                 return Ok(Quit::Closed);
             }
-            eprintln!("info: game {id} still running after closing its windows; SIGTERM");
+            tracing::info!("game {id} still running after closing its windows; SIGTERM");
         }
         self.signal(id, Sig::Term).await;
         let wait = if force || (lone && !emu) {
@@ -550,7 +541,7 @@ impl Quitter {
             return Ok(Quit::Closed);
         }
         if force {
-            eprintln!("info: game {id} still running after SIGTERM; SIGKILL (forced)");
+            tracing::info!("game {id} still running after SIGTERM; SIGKILL (forced)");
             self.signal(id, Sig::Kill).await;
             if self.gone_within(id, BRIEF).await {
                 return Ok(Quit::Closed);

@@ -9,6 +9,10 @@
 //! task per game). Nothing here runs on a timer or on `/api/games`; that route only reads the cache
 //! (`decorate`). The title comes from the library record; GameTDB only adds details and a better
 //! title when it is configured. Notes: docs/research/sgdb-notes.md.
+#![allow(
+    clippy::result_large_err,
+    reason = "handlers return an axum Response as their error, as axum does"
+)]
 
 use crate::config::Config;
 use crate::game::{Details, Game, GameId};
@@ -35,21 +39,21 @@ const MAX_PENDING: usize = 50;
 const MAX_CANDS: usize = 3;
 /// Images tried per kind before giving up on that kind.
 const TRIES: usize = 3;
-pub const CREDIT_SGDB: &str = "SteamGridDB";
-pub const CREDIT_TDB: &str = "GameTDB";
+const CREDIT_SGDB: &str = "SteamGridDB";
+const CREDIT_TDB: &str = "GameTDB";
 
 // ---- names and keys ----
 
 /// The art directory name for a game: `emu:dolphin:RSBE01` is `emu_dolphin_RSBE01`. The emulator
 /// part has no `_`, so two ids never share a key. None when it would be over 64 characters.
-pub fn key_of(id: &GameId) -> Option<String> {
+fn key_of(id: &GameId) -> Option<String> {
     let k = id.as_str().replace(':', "_");
     (k.len() <= 64).then_some(k)
 }
 
 /// The title to search for: bracketed tags and a "Disc N" suffix gone, underscores as spaces,
 /// a trailing system word dropped, blanks collapsed.
-pub fn clean_name(raw: &str) -> String {
+fn clean_name(raw: &str) -> String {
     let mut s = String::new();
     let mut depth = 0u32;
     for c in raw.chars() {
@@ -135,7 +139,7 @@ pub struct Pending {
 }
 
 /// The pending match queue from disk; a missing or corrupt file is empty.
-pub fn load_pending(data_dir: &Path) -> Pending {
+pub(crate) fn load_pending(data_dir: &Path) -> Pending {
     let mut p: Pending = read_json(&data_dir.join("art").join(PENDING)).unwrap_or_default();
     while p.items.len() > MAX_PENDING {
         p.items.pop_last();
@@ -163,7 +167,7 @@ pub fn stamp(m: &std::fs::Metadata) -> u128 {
 
 /// Fills the art URLs, details, credits and `needsMatch` of an emulator card from the cache. Reads
 /// files only.
-pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
+pub(crate) fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
     if !g.caps.art {
         return;
     }
@@ -204,24 +208,17 @@ pub fn decorate(g: &mut Game, data_dir: &Path, pending: &Pending) {
 // ---- serving ----
 
 /// The MIME type of PNG, JPEG or WebP bytes; None for anything else.
-pub fn image_type(b: &[u8]) -> Option<&'static str> {
-    if b.starts_with(b"\x89PNG\r\n\x1a\n") {
-        Some("image/png")
-    } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        Some("image/jpeg")
-    } else if b.len() > 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WEBP" {
-        Some("image/webp")
-    } else {
-        None
+pub(crate) fn image_type(b: &[u8]) -> Option<&'static str> {
+    match sg::image_ext(b)? {
+        "png" => Some("image/png"),
+        "jpg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        _ => None,
     }
 }
 
 /// One cached image: (content type, etag, bytes). None for an unknown kind or a missing file.
-pub fn read_art(
-    data_dir: &Path,
-    id: &GameId,
-    kind: &str,
-) -> Option<(&'static str, String, Vec<u8>)> {
+fn read_art(data_dir: &Path, id: &GameId, kind: &str) -> Option<(&'static str, String, Vec<u8>)> {
     let (name, _) = KINDS.iter().find(|(k, _)| *k == kind)?;
     let p = find_img(&dir_of(data_dir, &key_of(id)?), name)?;
     let body = std::fs::read(&p).ok()?;
@@ -257,12 +254,6 @@ struct Tried {
     fails: u32,
 }
 
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// Seconds to wait after `fails` failures in a row: 1 h, doubling, 16 h at most.
 fn backoff(fails: u32) -> u64 {
     3600u64 << fails.saturating_sub(1).min(4) // 1, 2, 4, 8, 16 h, then flat
@@ -276,7 +267,7 @@ fn record_failure(data_dir: &Path, key: &str) {
     let _ = write_json(
         &p,
         &Tried {
-            at: now_secs(),
+            at: crate::steam::now(),
             fails,
         },
     );
@@ -351,7 +342,7 @@ impl Art {
     }
 
     /// True when a SteamGridDB key is set up.
-    pub fn has_key(&self, data_dir: &Path) -> bool {
+    fn has_key(&self, data_dir: &Path) -> bool {
         (self.sgdb)(data_dir).is_some()
     }
 
@@ -361,7 +352,7 @@ impl Art {
         f(&mut p);
         let path = data_dir.join("art").join(PENDING);
         if let Err(e) = write_json(&path, &p) {
-            eprintln!("warning: art: could not save the queue ({e})");
+            tracing::warn!("art: could not save the queue ({e})");
         }
     }
 
@@ -523,18 +514,6 @@ impl Art {
         self.spawn_as(cfg, id, title, system, disc, false)
     }
 
-    /// `spawn` for a refresh (`run_fresh`).
-    pub fn spawn_fresh(
-        self: &Arc<Self>,
-        cfg: Config,
-        id: GameId,
-        title: String,
-        system: Option<String>,
-        disc: Option<String>,
-    ) -> bool {
-        self.spawn_as(cfg, id, title, system, disc, true)
-    }
-
     fn spawn_as(
         self: &Arc<Self>,
         cfg: Config,
@@ -566,11 +545,11 @@ impl Art {
             match r {
                 Ok(Outcome::Halted) => {}
                 Ok(Outcome::Failed(why)) => {
-                    eprintln!("warning: art: {id}: {why}");
+                    tracing::warn!("art: {id}: {why}");
                     record_failure(&data_dir, &key);
                 }
-                Ok(o) => eprintln!("info: art: {id}: {o:?}"),
-                Err(_) => eprintln!("error: art: {id}: task failed"),
+                Ok(o) => tracing::info!("art: {id}: {o:?}"),
+                Err(_) => tracing::error!("art: {id}: task failed"),
             }
             me.inflight
                 .lock()
@@ -602,7 +581,7 @@ impl Art {
             return false;
         }
         read_json::<Tried>(&dir.join("tried.json"))
-            .is_none_or(|t| now_secs() >= t.at.saturating_add(backoff(t.fails)))
+            .is_none_or(|t| crate::steam::now() >= t.at.saturating_add(backoff(t.fails)))
     }
 
     /// New games (a scan, an upload): look each up once, in the background. Quiet without a key.
@@ -723,7 +702,6 @@ fn fetch_all(sgc: &SgdbConfig, key: &str, dir: &Path, cand: &Candidate) -> Resul
 
 // ---- routes ----
 
-#[allow(clippy::result_large_err)]
 fn emu_id(s: &AppState, raw: &str) -> Result<GameId, Response> {
     let id = s
         .parse_id(raw)
@@ -803,7 +781,7 @@ pub async fn answer(
             axum::Json(serde_json::json!({ "state": "none" })).into_response()
         }
         Ok(Ok(())) => {
-            start(&s, &id);
+            start_as(&s, &id, false);
             (
                 StatusCode::ACCEPTED,
                 axum::Json(serde_json::json!({ "state": "fetching" })),
@@ -815,21 +793,24 @@ pub async fn answer(
     }
 }
 
-fn start(s: &Arc<AppState>, id: &GameId) {
-    start_as(s, id, false);
+fn no_key() -> Response {
+    err(
+        StatusCode::CONFLICT,
+        "Art needs a SteamGridDB key on the machine",
+    )
 }
 
+/// Starts the art pipeline for `id`; `fresh` for a refresh (`run_fresh`).
 fn start_as(s: &Arc<AppState>, id: &GameId, fresh: bool) {
     let recs = s.records();
     if let Some(r) = crate::emu::find(&recs, id) {
-        let spawn = if fresh { Art::spawn_fresh } else { Art::spawn };
-        spawn(
-            &s.art,
+        s.art.spawn_as(
             s.cfg.clone(),
             r.id.clone(),
             r.name.clone(),
             r.system.clone(),
             crate::emu::disc_id_of(r),
+            fresh,
         );
     }
 }
@@ -842,10 +823,7 @@ pub async fn refresh(State(s): State<Arc<AppState>>, UrlPath(raw): UrlPath<Strin
         Err(r) => return r,
     };
     if !s.art.has_key(&s.cfg.data_dir) {
-        return err(
-            StatusCode::CONFLICT,
-            "Art needs a SteamGridDB key on the machine",
-        );
+        return no_key();
     }
     if s.art.busy(&id) {
         return err(StatusCode::CONFLICT, "already looking for art");
@@ -903,7 +881,6 @@ fn cands_path(dir: &Path, kind: &str) -> PathBuf {
 
 /// The stored list for a kind: every thumbnail and pick is looked up here by id, so a client
 /// never names a URL. Reused for ten minutes, so opening the picker twice asks SteamGridDB once.
-#[allow(clippy::result_large_err)]
 fn candidates_for(
     sgc: &SgdbConfig,
     key: &str,
@@ -949,7 +926,6 @@ fn cand_query(q: Option<&str>) -> (String, Option<usize>) {
 
 /// GET /api/art/{id}/candidates?kind=cover|hero|logo&limit=24: the images available, best first,
 /// with the one in use. `thumb` is a path on this machine.
-#[allow(clippy::result_large_err)]
 pub async fn candidates(
     State(s): State<Arc<AppState>>,
     UrlPath(raw): UrlPath<String>,
@@ -966,12 +942,7 @@ pub async fn candidates(
     let st = s.clone();
     let limit = qlimit.unwrap_or(24).clamp(1, 48);
     let r = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, Response> {
-        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
-            err(
-                StatusCode::CONFLICT,
-                "Art needs a SteamGridDB key on the machine",
-            )
-        })?;
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(no_key)?;
         if let Some(wait) = st.art.halted() {
             let mut r = err(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -1009,7 +980,6 @@ pub async fn candidates(
 
 /// GET /api/art/{id}/thumb/{kind}/{n}: a preview from the stored list, fetched once from an
 /// allowed SteamGridDB host (same checks as the art itself) and cached on this machine.
-#[allow(clippy::result_large_err)]
 pub async fn thumb(
     State(s): State<Arc<AppState>>,
     UrlPath((raw, kind, n)): UrlPath<(String, String, u64)>,
@@ -1023,12 +993,7 @@ pub async fn thumb(
     let st = s.clone();
     let r = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, Response> {
         let nf = || err(StatusCode::NOT_FOUND, "no such thumbnail");
-        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
-            err(
-                StatusCode::CONFLICT,
-                "Art needs a SteamGridDB key on the machine",
-            )
-        })?;
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(no_key)?;
         let key = key_of(&id).ok_or_else(nf)?;
         let dir = dir_of(&st.cfg.data_dir, &key);
         let url = read_json::<Vec<sg::ArtChoice>>(&cands_path(&dir, kind))
@@ -1070,7 +1035,6 @@ struct PickBody {
 
 /// POST /api/art/{id}/pick `{"kind":"cover","imageId":n}`: downloads that image (from the stored
 /// list) and uses it for the game. Later refreshes keep it.
-#[allow(clippy::result_large_err)]
 pub async fn pick(
     State(s): State<Arc<AppState>>,
     UrlPath(raw): UrlPath<String>,
@@ -1094,12 +1058,7 @@ pub async fn pick(
     }
     let st = s.clone();
     let r = tokio::task::spawn_blocking(move || -> Result<(), Response> {
-        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(|| {
-            err(
-                StatusCode::CONFLICT,
-                "Art needs a SteamGridDB key on the machine",
-            )
-        })?;
+        let sgc = (st.art.sgdb)(&st.cfg.data_dir).ok_or_else(no_key)?;
         let key = key_of(&id).ok_or_else(|| err(StatusCode::BAD_REQUEST, "bad game id"))?;
         let dir = dir_of(&st.cfg.data_dir, &key);
         let url = read_json::<Vec<sg::ArtChoice>>(&cands_path(&dir, kind))
@@ -1249,7 +1208,8 @@ mod tests {
     }
     #[test]
     fn gametdb_uses_the_disc_id_not_a_slug_id() {
-        let d = std::env::temp_dir().join(format!("brisk-art-{}", std::process::id()));
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path().to_path_buf();
         let mut cfg = Config::from_env(d.clone());
         cfg.data_dir = d.clone();
         let art = Art::new(Box::new(|_| None), |_, id| {
@@ -1262,6 +1222,5 @@ mod tests {
         art.run(&cfg, &id, "Mario Kart Wii", Some("wii"), Some("RMCE01"));
         let meta: Meta = read_json(&dir_of(&d, &key_of(&id).unwrap()).join("meta.json")).unwrap();
         assert!(meta.sources.iter().any(|s| s == CREDIT_TDB));
-        let _ = std::fs::remove_dir_all(&d);
     }
 }

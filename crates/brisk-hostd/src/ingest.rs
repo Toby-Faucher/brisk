@@ -17,14 +17,14 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// Extensions a scan or an upload looks at.
-pub const EXTS: &[&str] = &[
+pub(crate) const EXTS: &[&str] = &[
     "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "gen",
 ];
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;
 
 /// True when the file name has a game file extension.
-pub fn known_ext(name: &str) -> bool {
+pub(crate) fn known_ext(name: &str) -> bool {
     Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
@@ -47,7 +47,7 @@ pub fn folder(s: System) -> &'static str {
 }
 
 /// The emulator that runs system `s`.
-pub fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
+fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
     registry::EMULATORS
         .iter()
         .find(|e| e.systems.iter().any(|x| x.id == folder(s)))
@@ -208,12 +208,14 @@ fn real_canon(p: &Path) -> Option<PathBuf> {
     p.canonicalize().ok()
 }
 
-/// Adds what is new. Same path under another id: that record keeps its id and gains the new one
-/// as an alias. Same id (or alias) at another path: a duplicate, not added.
-pub fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
+/// `merge_with` resolving paths on the real filesystem.
+#[cfg(test)]
+fn merge(recs: &mut Vec<Record>, found: &[Found], source: &str) -> Merged {
     merge_with(recs, found, source, &mut Canon::new(&real_canon))
 }
 
+/// Adds what is new. Same path under another id: that record keeps its id and gains the new one
+/// as an alias. Same id (or alias) at another path: a duplicate, not added.
 fn merge_with(recs: &mut Vec<Record>, found: &[Found], source: &str, c: &mut Canon) -> Merged {
     let mut m = Merged::default();
     // Lookups by id and by path (as written and as resolved), built once: the first record wins.
@@ -281,15 +283,9 @@ pub struct Tomb {
     pub id: String,
 }
 
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// The removed list. Missing is empty. Damaged: the file is moved to `removed.json.bad-<time>`
 /// and this is an error (the list is lost, so the caller must not guess). Unreadable: an error.
-pub fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
+fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
     #[derive(serde::Deserialize)]
     struct F {
         removed: Vec<Tomb>,
@@ -303,7 +299,7 @@ pub fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
     match serde_json::from_str::<F>(&text) {
         Ok(f) => Ok(f.removed),
         Err(_) => {
-            let bad = data_dir.join(format!("{TOMBS_FILE}.bad-{}", unix_now()));
+            let bad = data_dir.join(format!("{TOMBS_FILE}.bad-{}", crate::steam::now()));
             let _ = std::fs::rename(&p, &bad);
             Err(format!(
                 "{TOMBS_FILE} was damaged and was moved to {}; look at it, then scan again",
@@ -314,19 +310,19 @@ pub fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
 }
 
 /// `tombs_read` where a problem is a warning and an empty list (explicit adds and forgets).
-pub fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
+pub(crate) fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
     tombs_read(data_dir).unwrap_or_else(|e| {
-        eprintln!("warning: {e}");
+        tracing::warn!("{e}");
         vec![]
     })
 }
 
 /// Atomic 0600 write, the oldest entries dropped past the cap. A failed write is a warning only.
-pub fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
+pub(crate) fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     t.drain(..t.len().saturating_sub(MAX_TOMBS));
     let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
     if let Err(e) = crate::fsutil::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
-        eprintln!("warning: removed list: {e}");
+        tracing::warn!("removed list: {e}");
     }
 }
 
@@ -437,7 +433,7 @@ impl Drop for Lock {
 }
 
 /// The records, but a `library.json` that does not parse is an error: it must never be overwritten.
-pub fn load_strict(data_dir: &Path) -> Result<Vec<Record>, String> {
+pub(crate) fn load_strict(data_dir: &Path) -> Result<Vec<Record>, String> {
     match std::fs::read_to_string(data_dir.join(emu::LIBRARY_FILE)) {
         Ok(t) => emu::parse_library(&t).map_err(|e| format!("library.json is damaged: {e}")),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(emu::load(data_dir)),
@@ -465,14 +461,14 @@ fn keep_bad_copy(data_dir: &Path, skipped: usize) {
     if have {
         return;
     }
-    let bad = data_dir.join(format!("{prefix}{}", unix_now()));
+    let bad = data_dir.join(format!("{prefix}{}", crate::steam::now()));
     match std::fs::copy(data_dir.join(emu::LIBRARY_FILE), &bad) {
-        Ok(_) => eprintln!(
-            "warning: {skipped} record(s) in {} did not parse; the original is kept as {}",
+        Ok(_) => tracing::warn!(
+            "{skipped} record(s) in {} did not parse; the original is kept as {}",
             emu::LIBRARY_FILE,
             bad.display()
         ),
-        Err(e) => eprintln!("warning: could not back up {}: {e}", emu::LIBRARY_FILE),
+        Err(e) => tracing::warn!("could not back up {}: {e}", emu::LIBRARY_FILE),
     }
 }
 
@@ -524,7 +520,7 @@ pub fn scan_library(cfg: &Config) -> Result<ScanReport, String> {
 }
 
 /// `include_removed` ignores the removed list, so those games come back.
-pub fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
+pub(crate) fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
     // Without the removed list a scan would bring removed games back: refuse instead.
     if !include_removed {
         tombs_read(&cfg.data_dir)?;

@@ -26,7 +26,7 @@ pub struct Emulator {
 }
 
 /// Every emulator brisk knows.
-pub static EMULATORS: &[Emulator] = &[Emulator {
+pub(crate) static EMULATORS: &[Emulator] = &[Emulator {
     id: "dolphin",
     name: "Dolphin",
     cmd: "dolphin-emu",

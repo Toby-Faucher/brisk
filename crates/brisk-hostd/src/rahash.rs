@@ -96,7 +96,7 @@ impl Md5 {
     }
 
     /// Lowercase hex digest.
-    pub fn finish_hex(mut self) -> String {
+    fn finish_hex(mut self) -> String {
         let bits = self.len.wrapping_mul(8);
         self.update(&[0x80]);
         while self.fill != 56 {
@@ -255,7 +255,7 @@ pub fn ra_hash_gamecube_iso(path: &Path) -> Result<String, Error> {
 /// RA hash (MD5 hex) of a Wii disc in an ISO or WBFS file, as rcheevos computes it for console
 /// 19. Follows `rc_hash_wii_disc` as written, including that the partition data offset read at
 /// +0x2B8 is used as an absolute disc offset. Not yet compared with a real disc's hash.
-pub fn ra_hash_wii(path: &Path) -> Result<String, Error> {
+pub(crate) fn ra_hash_wii(path: &Path) -> Result<String, Error> {
     use discid::Container::{Iso, Wbfs};
     let id = discid::identify(path)?;
     if id.system != System::Wii || !matches!(id.container, Iso | Wbfs) {
@@ -368,11 +368,15 @@ mod tests {
         img
     }
 
-    fn write(name: &str, img: &[u8]) -> std::path::PathBuf {
-        let p =
-            std::env::temp_dir().join(format!("brisk-rahash-{}-{name}.iso", std::process::id()));
-        std::fs::write(&p, img).unwrap();
-        p
+    /// A temp file holding `img`, removed when dropped.
+    fn write(name: &str, img: &[u8]) -> tempfile::TempPath {
+        let f = tempfile::Builder::new()
+            .prefix(name)
+            .suffix(".iso")
+            .tempfile()
+            .unwrap();
+        std::fs::write(f.path(), img).unwrap();
+        f.into_temp_path()
     }
 
     #[test]
@@ -385,7 +389,6 @@ mod tests {
         want.extend_from_slice(b"CODE!");
         want.extend_from_slice(b"dat");
         assert_eq!(ra_hash_gamecube_iso(&p).unwrap(), md5hex(&want));
-        std::fs::remove_file(p).ok();
     }
 
     #[test]
@@ -400,7 +403,6 @@ mod tests {
         ] {
             let p = write(n, &img[..cut]);
             assert!(ra_hash_gamecube_iso(&p).is_err(), "{n}");
-            std::fs::remove_file(p).ok();
         }
         // DOL offset past the end, segment size huge, apploader sizes huge (header cap, then EOF).
         for (n, at, v) in [
@@ -412,7 +414,6 @@ mod tests {
             put(&mut bad, at, &v.to_be_bytes());
             let p = write(n, &bad);
             assert!(ra_hash_gamecube_iso(&p).is_err(), "{n}");
-            std::fs::remove_file(p).ok();
         }
         // A Wii disc is refused.
         let mut wii = image();
@@ -420,7 +421,6 @@ mod tests {
         put(&mut wii, 0x1C, &[0; 4]);
         let p = write("wii", &wii);
         assert!(ra_hash_gamecube_iso(&p).is_err());
-        std::fs::remove_file(p).ok();
     }
 
     // ---- Wii ----
@@ -494,8 +494,6 @@ mod tests {
         assert_eq!(ra_hash_wii(&p).unwrap(), want);
         let w = write("wii-wbfs", &wbfs_wrap(&img));
         assert_eq!(ra_hash_wii(&w).unwrap(), want);
-        std::fs::remove_file(p).ok();
-        std::fs::remove_file(w).ok();
     }
 
     #[test]
@@ -532,7 +530,6 @@ mod tests {
         for (n, data) in cases {
             let p = write(n, &data);
             assert!(ra_hash_wii(&p).is_err(), "{n}");
-            std::fs::remove_file(p).ok();
         }
     }
 

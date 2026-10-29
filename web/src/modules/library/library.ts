@@ -115,13 +115,13 @@ export function visibleRange(scrollLeft: number, width: number, stride: number, 
 }
 
 export const fmtFortnight = (min: number) => `${min < 60 ? `${min} min` : `${(min / 60).toFixed(1)} h`} this fortnight`;
+const fmtBytes = (b: number) =>
+  b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} KB` : b < 1e9 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e9).toFixed(1)} GB`;
 export const fmtSize = (b: number | null) => (b ? `${(b / 1e9).toFixed(b < 1e10 ? 1 : 0)} GB` : null);
 /** "Cloud saves: 14 files, 2.1 MB, synced 3 d ago"; null when there are no save files. `now` is unix ms. */
 export function savesLine(s: GameLocal['saves'], now = Date.now()): string | null {
   if (!s?.files) return null;
-  const b = s.bytes;
-  const size = b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} KB` : b < 1e9 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e9).toFixed(1)} GB`;
-  return `Cloud saves: ${s.files} ${s.files === 1 ? 'file' : 'files'}, ${size}${s.modified ? `, synced ${fmtAgo(s.modified * 1000, now)}` : ''}`;
+  return `Cloud saves: ${s.files} ${s.files === 1 ? 'file' : 'files'}, ${fmtBytes(s.bytes)}${s.modified ? `, synced ${fmtAgo(s.modified * 1000, now)}` : ''}`;
 }
 export const installLabel = (g: Game) => (g.sizeBytes ? `Install ${fmtSize(g.sizeBytes)}` : 'Install');
 /** A game still running on the host is resumed (streamed as is), not launched again. */
@@ -132,11 +132,6 @@ export const badgeLabel = (g: Game) => (g.running ? 'Running' : g.installed ? 'I
 export const updateLabel = (g: Game): string | null =>
   g.update === 'needed' ? 'Update needed' : g.update === 'running' ? 'Updating…' : null;
 
-/** Every card opens the detail panel; Play and Install live there, so a click never starts or installs anything. */
-export function cardClick(_g: Game): { action: 'open' } {
-  return { action: 'open' };
-}
-
 /** Pixels to scroll a shelf sideways for a vertical wheel, or null to leave the event to the page (shelf at that edge, or nothing to scroll). */
 export function wheelToX(dx: number, dy: number, scrollLeft: number, clientWidth: number, scrollWidth: number): number | null {
   if (Math.abs(dy) <= Math.abs(dx)) return null;
@@ -145,8 +140,6 @@ export function wheelToX(dx: number, dy: number, scrollLeft: number, clientWidth
 }
 
 const SAVE_ICON = { state: 'replay', 'memory-card': 'clip', 'nand-save': 'host' } as const;
-const fmtBytes = (b: number) =>
-  b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} KB` : b < 1e9 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e9).toFixed(1)} GB`;
 /** One row of the Saves list: icon, title, and a detail line ("Save state, 4.1 MB, 3 d ago"). `now` is unix ms. */
 export function saveRow(i: SaveItem, now = Date.now()) {
   const what = i.kind === 'state' ? 'Save state' : i.kind === 'memory-card' ? 'Memory card' : 'Wii save';

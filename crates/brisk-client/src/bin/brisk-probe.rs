@@ -22,7 +22,9 @@
 //! Identity lives in `<config>/identity/` (default `$XDG_CONFIG_HOME/brisk` or `~/.config/brisk`).
 
 use brisk_client::control::{ControlSession, Stats};
-use brisk_client::identity::{ServerCert, load_identity, load_or_create_identity};
+use brisk_client::identity::{
+    ServerCert, default_config_dir, load_identity, load_or_create_identity,
+};
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
@@ -115,8 +117,7 @@ fn parse_args() -> Result<Args, String> {
         return Err("--pin must be 4 digits".into());
     }
     let config = config
-        .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(|d| PathBuf::from(d).join("brisk")))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/brisk")))
+        .or_else(default_config_dir)
         .ok_or("no --config, XDG_CONFIG_HOME or HOME")?;
     Ok(Args {
         cmd: cmd.ok_or("missing command")?,

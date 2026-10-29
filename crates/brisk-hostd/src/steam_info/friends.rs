@@ -65,7 +65,7 @@ pub async fn friends_cached(state: &AppState) -> Friends {
     let entry = match result {
         Ok(f) => (now, now, f),
         Err(Fail::Transient(err)) => {
-            eprintln!("warning: steam friends failed: {err}");
+            tracing::warn!("steam friends failed: {err}");
             match slot.take() {
                 Some((_, good_at, f)) if f.available && good_at.elapsed() < FRIENDS_STALE_MAX => (
                     // looks 60 s old already, so the next try is 60 s away
@@ -78,23 +78,13 @@ pub async fn friends_cached(state: &AppState) -> Friends {
             }
         }
         Err(Fail::Permanent(err)) => {
-            eprintln!("warning: steam friends failed: {err}");
+            tracing::warn!("steam friends failed: {err}");
             (now, now, Friends::default())
         }
     };
     let f = entry.2.clone();
     *slot = Some(entry);
     f
-}
-
-/// Friends who are online or in a game, playing first then by name, at most 30. Any failure
-/// (private list, no key) is `available: false`.
-pub async fn friends(cfg: &Config) -> Friends {
-    fetch_friends(cfg).await.unwrap_or_else(|err| {
-        let (Fail::Transient(err) | Fail::Permanent(err)) = err;
-        eprintln!("warning: steam friends failed: {err}");
-        Friends::default()
-    })
 }
 
 /// Transient: worth waiting out. Permanent: a config error or a refusal (401/403).

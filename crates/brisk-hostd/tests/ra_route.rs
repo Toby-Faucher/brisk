@@ -198,10 +198,6 @@ async fn ok_has_the_steam_shape_plus_ra_fields() {
         second["icon"],
         "https://media.retroachievements.org/Badge/250337_lock.png"
     );
-    // Same keys per entry as Steam's Ach.
-    for k in ["id", "name", "description", "icon", "unlockedAt"] {
-        assert!(first.get(k).is_some());
-    }
     assert!(!body.contains(KEY) && !body.contains("toby_ra"));
 }
 

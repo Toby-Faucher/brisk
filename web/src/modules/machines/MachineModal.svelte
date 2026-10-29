@@ -20,7 +20,7 @@
   import { DASH, fmtAgo, fmtTemp, fmtUptime } from '../../ui/format';
   import { fmtWhen } from '../history/history';
   import { PALETTE, normalizeHex } from '../../ui/color';
-  import { COLOR_NAMES, dotState, powerWhy, restartError, STATE_LABEL } from './machines';
+  import { COLOR_NAMES, dotState, gb, powerWhy, restartError, STATE_LABEL } from './machines';
   import { fmtPlayed, fmtPlaytime, gamesHeader, layoutFor, listGames, loadSort, saveSort, SORTS, stepIndex, type SortKey } from './modal';
 
   let { machineId, onclose, origin }: { machineId: string; onclose: () => void; origin?: DOMRect } = $props();
@@ -145,7 +145,6 @@
   onMount(() => startPings());
   const samples = $derived($pings[machineId] ?? []);
   const cpu = $derived(host?.cpuTempC != null ? fmtTemp(host.cpuTempC) : m?.vm ? `${Math.round(m.vm.cpuPct)} % load` : null);
-  const gb = (b: number) => `${(b / 2 ** 30).toFixed(1)} GB`;
   // ---- card colour: applies at once (the store is optimistic); a failed save puts the old colour back and says so here ----
   const hue = $derived($machineHue[machineId] ?? null);
   let colorErr = $state('');
@@ -332,8 +331,7 @@
 <style>
   :global(.mm.mp) { position: fixed; left: 0; right: 0; top: 6vh; margin-inline: auto; width: min(1180px, calc(100vw - 32px)); max-height: 88vh; padding: 22px 26px; z-index: 41; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
   .mm-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  :global(.mm-t) { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
-  :global(.mm-t) { display: inline-flex; align-items: center; gap: 8px; }
+  :global(.mm-t) { font-size: 18px; font-weight: 700; letter-spacing: -.02em; display: inline-flex; align-items: center; gap: 8px; }
   .tsw { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, #fff 30%, transparent); }
   .pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 4px; }
   .sws { display: flex; gap: 6px; }

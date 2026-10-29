@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { Game } from '../../state/api';
 import {
   badgeLabel,
-  cardClick,
   filterByTag,
   almostDone,
   backlog,
@@ -21,28 +20,10 @@ import {
   visibleRange,
   wheelToX,
 } from './library';
+import { testGame } from '../../test/game';
 
 const DAY = 86_400;
-const g = (appid: number, name: string, o: Partial<Game> = {}): Game => ({
-  appid,
-  name,
-  installed: false,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-  ...o,
-});
+const g = (appid: number, name: string, o: Partial<Game> = {}): Game => testGame({ appid, name, installed: false, ...o });
 
 describe('library', () => {
   it('updateLabel_names_the_state', () => {
@@ -148,11 +129,8 @@ describe('library', () => {
     expect(visibleRange(0, 10_000, stride, 139).end).toBe(20);
   });
 
-  it('card_click_opens_the_panel_installed_or_not', () => {
+  it('install_label_carries_the_size', () => {
     const off = g(1, 'Rust', { sizeBytes: 12.4e9 });
-    const on = g(2, 'Hades II', { installed: true });
-    expect(cardClick(on)).toEqual({ action: 'open' });
-    expect(cardClick(off)).toEqual({ action: 'open' });
     expect(installLabel(off)).toBe('Install 12 GB');
     expect(installLabel(g(4, 'y', { sizeBytes: 3.21e9 }))).toBe('Install 3.2 GB');
     expect(installLabel(g(5, 'z'))).toBe('Install');

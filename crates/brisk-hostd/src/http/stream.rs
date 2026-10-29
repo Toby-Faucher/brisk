@@ -51,7 +51,7 @@ pub(super) async fn sessions(State(s): State<Arc<AppState>>) -> Response {
             let spark = s.stream.sessions.spark(r.started, 24);
             let id = r.started;
             let mut v = serde_json::to_value(r)
-                .inspect_err(|e| eprintln!("warning: sessions: skipping session {id}: {e}"))
+                .inspect_err(|e| tracing::warn!("sessions: skipping session {id}: {e}"))
                 .ok()?;
             v["spark"] = spark.into();
             Some(v)

@@ -21,6 +21,7 @@ targets=""
 for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin \
     x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do targets="$targets --target $t"; done
 for p in ring aws-lc-sys openssl-sys cc; do
+    # shellcheck disable=SC2086 # $targets is a list of --target options (sh has no arrays)
     out=$(cargo tree --workspace -e normal,build $targets -i "$p" 2>"$err")
     rc=$?
     if [ -n "$out" ]; then
@@ -59,13 +60,11 @@ for i in sorted(seen):
         print(pk[i]["name"])
 '
 for tgt in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-    tree=$(cargo tree --workspace -e normal,build --target "$tgt" --prefix none 2>"$err")
-    if [ $? -ne 0 ] || ! printf '%s\n' "$tree" | grep -q '^brisk-hostd v'; then
+    if ! tree=$(cargo tree --workspace -e normal,build --target "$tgt" --prefix none 2>"$err") || ! printf '%s\n' "$tree" | grep -q '^brisk-hostd v'; then
         echo "ERROR: unexpected cargo tree output for $tgt (failed, empty or not the expected format):"; cat "$err"; exit 1
     fi
     meta=$(cargo metadata --format-version 1 --filter-platform "$tgt" 2>"$err")
-    names=$(printf '%s\n' "$meta" | python3 -c "$links_py" 2>>"$err")
-    if [ $? -ne 0 ]; then echo "ERROR reading cargo metadata for $tgt:"; cat "$err"; exit 1; fi
+    if ! names=$(printf '%s\n' "$meta" | python3 -c "$links_py" 2>>"$err"); then echo "ERROR reading cargo metadata for $tgt:"; cat "$err"; exit 1; fi
     # `cargo metadata` unifies features across dev-deps too (it lists ring via rustls, which the
     # normal+build tree does not), so a links crate only counts if the tree has it as well.
     treenames=$(printf '%s\n' "$tree" | awk '{print $1}' | sort -u)

@@ -2,8 +2,8 @@
 
 use super::*;
 
-pub(super) async fn host_status(State(s): State<Arc<AppState>>) -> Response {
-    axum::Json(crate::host::host_info(&s.cfg).await).into_response()
+pub(super) async fn host_status() -> Response {
+    axum::Json(crate::host::host_info().await).into_response()
 }
 
 pub(super) async fn sunshine_restart(State(s): State<Arc<AppState>>) -> Response {

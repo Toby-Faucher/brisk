@@ -1,28 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import type { Game } from '../state/api';
 import QuitHarness from '../test/QuitHarness.svelte';
+import { testGame } from '../test/game';
 
-const game: Game = {
-  appid: 620,
-  name: 'Portal 2',
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: true,
-};
+const game = testGame({ running: true });
 
 describe('Quit confirm dialog', () => {
   it('moves focus in, traps Tab, closes on Esc and gives focus back to the Quit button', async () => {

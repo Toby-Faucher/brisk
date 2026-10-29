@@ -1,7 +1,7 @@
 <script lang="ts">
   import { DASH } from './format';
   import { motionAllowed } from './motion-base';
-  import { areaPath, edgePath, lossXs, niceMax, stats, timeX, type Layer, type PingSample, type Pt } from './latency';
+  import { SPAN_MS, areaPath, edgePath, lossXs, niceMax, stats, timeX, type Layer, type PingSample, type Pt } from './latency';
 
   /**
    * Layered ping chart: "You -> machine" (accent) over "Hub -> machine" (muted), area fills from the baseline on one time
@@ -55,7 +55,7 @@
     const dt = t - prevT;
     prevT = t;
     if (g && dt > 0 && dt < 10_000 && samples.length > 1 && motionAllowed())
-      g.animate({ translate: [`${(dt / 59_000) * plotW}px 0`, '0 0'] }, { duration: 700, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+      g.animate({ translate: [`${(dt / SPAN_MS) * plotW}px 0`, '0 0'] }, { duration: 700, easing: 'cubic-bezier(.2, .8, .2, 1)' });
   });
 </script>
 

@@ -155,7 +155,10 @@ fn secret_of_15_chars_or_non_ascii_is_refused() {
     let t = tempfile::tempdir().unwrap();
     let f = t.path().join("secret");
     assert!(load_secret(Some("a".repeat(15)), &f).is_err());
-    assert!(load_secret(Some("a".repeat(16)), &f).is_ok());
+    assert_eq!(
+        load_secret(Some("a".repeat(16)), &f).unwrap(),
+        "a".repeat(16)
+    );
     assert!(load_secret(Some("é".repeat(16)), &f).is_err());
     std::fs::write(&f, format!("{}\n", "é".repeat(16))).unwrap();
     assert!(load_secret(None, &f).is_err());

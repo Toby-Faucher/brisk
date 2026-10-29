@@ -17,7 +17,7 @@
   import GameDetail from './GameDetail.svelte';
   import Hero from './Hero.svelte';
   import Shelf from './Shelf.svelte';
-  import { almostDone, backlog, cardClick, filterByTag, filterGames, pickRandom, searchGames, shelves, SMART_TAGS, sortGames, type Filter, type Sort } from './library';
+  import { almostDone, backlog, filterByTag, filterGames, pickRandom, searchGames, shelves, SMART_TAGS, sortGames, type Filter, type Sort } from './library';
 
   const FILTERS: [Filter, string][] = [['all', 'All'], ['installed', 'Installed'], ['not-installed', 'Not installed'], ['recent', 'Recent']];
   const SORTS: [Sort, string][] = [['default', 'Default order'], ['az', 'A-Z'], ['most-played', 'Most played'], ['last-played', 'Last played']];
@@ -164,7 +164,7 @@
   }
 
   function pick(g: Game) {
-    if (cardClick(g).action === 'open') open = g;
+    open = g; // a card only opens the panel: Play and Install live there
   }
 
   const play = (g: Game) =>

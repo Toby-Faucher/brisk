@@ -3,26 +3,13 @@ import { render } from 'vitest-browser-svelte';
 import type { Game } from '../../state/api';
 import Hero from './Hero.svelte';
 import { quitting } from '../../shell/QuitDialog.svelte';
+import { testGame } from '../../test/game';
 
-const game: Game = {
-  appid: 620,
-  name: 'Portal 2',
-  installed: true,
-  sizeBytes: null,
+const game = testGame({
   lastPlayed: 1700000000,
   playtimeMin: 600,
-  playtime2wkMin: 0,
-  cover: '',
   hero: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-};
+});
 
 describe('Hero art', () => {
   it('hero falls back to the hue wash when the art fails', async () => {
@@ -41,11 +28,12 @@ describe('Hero art', () => {
     });
     const hero = container.querySelector('.hero')!;
     const logo = hero.querySelector('img.logo')!;
-    expect(logo.classList.contains('on')).toBe(false);
+    const h3 = hero.querySelector('h3')!;
+    expect(getComputedStyle(logo).display).toBe('none');
     logo.dispatchEvent(new Event('load'));
-    await expect.poll(() => logo.classList.contains('on')).toBe(true);
-    expect(hero.querySelector('h3')!.classList.contains('vh')).toBe(true);
-    expect(hero.querySelector('h3')!.textContent).toContain('Portal 2');
+    await expect.poll(() => getComputedStyle(logo).display).toBe('block');
+    expect(h3.getBoundingClientRect().width).toBeLessThanOrEqual(1); // visually hidden, still read out
+    expect(h3.textContent).toContain('Portal 2');
   });
 });
 

@@ -163,11 +163,7 @@ impl AvPing {
                 "X-SS-Ping-Payload must be 16 characters, got {payload:?}"
             ))
         })?;
-        let local: SocketAddr = if host.is_ipv4() {
-            "0.0.0.0:0".parse().unwrap()
-        } else {
-            "[::]:0".parse().unwrap()
-        };
+        let local = any_port(host);
         Ok(AvPing {
             socks: [
                 bind_rcvbuf(local, VIDEO_RCVBUF)?,
@@ -188,7 +184,7 @@ impl AvPing {
     }
 
     /// `SS_PING { payload[16], sequenceNumber u32 BE }`, counted from 1 (Video.h:51-54).
-    pub fn ping_bytes(payload: &[u8; 16], seq: u32) -> [u8; 20] {
+    fn ping_bytes(payload: &[u8; 16], seq: u32) -> [u8; 20] {
         let mut p = [0u8; 20];
         p[..16].copy_from_slice(payload);
         p[16..].copy_from_slice(&seq.to_be_bytes());
@@ -211,6 +207,16 @@ impl AvPing {
 /// Requested SO_RCVBUF for the video and audio sockets (net.core.rmem_max may clamp them).
 const VIDEO_RCVBUF: usize = 2 << 20;
 const AUDIO_RCVBUF: usize = 256 << 10;
+
+/// Any port on the unspecified address of `peer`'s family.
+fn any_port(peer: std::net::IpAddr) -> SocketAddr {
+    let ip: std::net::IpAddr = if peer.is_ipv4() {
+        std::net::Ipv4Addr::UNSPECIFIED.into()
+    } else {
+        std::net::Ipv6Addr::UNSPECIFIED.into()
+    };
+    SocketAddr::new(ip, 0)
+}
 
 /// Bound UDP socket with a bigger receive buffer; a refused size is not an error.
 fn bind_rcvbuf(local: SocketAddr, rcvbuf: usize) -> std::io::Result<UdpSocket> {
@@ -272,17 +278,46 @@ impl ControlSession {
         connect_id: u32,
         av: Option<AvPing>,
     ) -> crate::Result<Self> {
-        let local: SocketAddr = if addr.is_ipv4() {
-            "0.0.0.0:0".parse().unwrap()
-        } else {
-            "[::]:0".parse().unwrap()
-        };
-        let sock = UdpSocket::bind(local).await?;
+        let sock = UdpSocket::bind(any_port(addr.ip())).await?;
         sock.connect(addr).await?;
         let epoch = Instant::now();
         let (peer, hello) = EnetPeer::connect(connect_data, connect_id, 0);
+        let mut s = Self::new(sock, peer, rikey, epoch, av);
+        s.sock.send(&hello).await?;
+        let deadline = epoch + CONNECT_WAIT;
+        while s.peer.state() == PeerState::Connecting {
+            if Instant::now() >= deadline {
+                return Err(crate::Error::Timeout(format!(
+                    "control: no ENet connect from {addr} within {}s",
+                    CONNECT_WAIT.as_secs()
+                )));
+            }
+            s.step(deadline, None).await?;
+        }
+        if s.peer.state() != PeerState::Connected {
+            return Err(crate::Error::Session(format!(
+                "control: {addr} refused the ENet connection"
+            )));
+        }
+        // Gen7Enc's index-0 slot ("Start A" on older hosts) is the IDR request, sent on the
+        // generic channel (ControlStream.c:1869-1875); later IDR requests use URGENT.
+        s.send_on(&ControlMsg::IdrRequest, channel::GENERIC, true)
+            .await?;
+        s.stats.idr_sent += 1;
+        s.last_idr = Some(Instant::now());
+        s.send(&ControlMsg::StartB).await?;
+        Ok(s)
+    }
+
+    fn new(
+        sock: UdpSocket,
+        peer: EnetPeer,
+        rikey: [u8; 16],
+        epoch: Instant,
+        av: Option<AvPing>,
+    ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(CMD_QUEUE);
-        let mut s = ControlSession {
+        ControlSession {
             sock,
             peer,
             ctl: Control::new(rikey),
@@ -301,30 +336,7 @@ impl ControlSession {
             idr_min_interval: IDR_MIN_INTERVAL,
             stats: Stats::default(),
             feedback: None,
-        };
-        s.sock.send(&hello).await?;
-        let deadline = epoch + CONNECT_WAIT;
-        while s.peer.state() == PeerState::Connecting {
-            if Instant::now() >= deadline {
-                return Err(crate::Error::Timeout(format!(
-                    "control: no ENet connect from {addr} within 10s"
-                )));
-            }
-            s.step(deadline, None).await?;
         }
-        if s.peer.state() != PeerState::Connected {
-            return Err(crate::Error::Session(format!(
-                "control: {addr} refused the ENet connection"
-            )));
-        }
-        // Gen7Enc's index-0 slot ("Start A" on older hosts) is the IDR request, sent on the
-        // generic channel (ControlStream.c:1869-1875); later IDR requests use URGENT.
-        s.send_on(&ControlMsg::IdrRequest, channel::GENERIC, true)
-            .await?;
-        s.stats.idr_sent += 1;
-        s.last_idr = Some(Instant::now());
-        s.send(&ControlMsg::StartB).await?;
-        Ok(s)
     }
 
     fn now(&self) -> u32 {
@@ -629,30 +641,11 @@ mod tests {
     async fn early_datagrams_keep_their_arrival_instant() {
         let sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let (peer, _) = EnetPeer::connect(1, 1, 0);
-        let (cmd_tx, cmd_rx) = mpsc::channel(1);
         let t0 = Instant::now();
-        let mut c = ControlSession {
-            sock,
-            peer,
-            ctl: Control::new([0; 16]),
-            epoch: t0,
-            pings: HashSet::new(),
-            next_ping: t0,
-            closing: false,
-            buf: Vec::new(),
-            av: None,
-            early: (0..3)
-                .map(|k| (0, t0 - Duration::from_millis(100 - 17 * k), vec![k as u8]))
-                .collect(),
-            want_idr: false,
-            want_idr_cmd: false,
-            cmd_tx,
-            cmd_rx,
-            last_idr: None,
-            idr_min_interval: IDR_MIN_INTERVAL,
-            stats: Stats::default(),
-            feedback: None,
-        };
+        let mut c = ControlSession::new(sock, peer, [0; 16], t0, None);
+        c.early = (0..3)
+            .map(|k| (0, t0 - Duration::from_millis(100 - 17 * k), vec![k as u8]))
+            .collect();
         let mut got = Vec::new();
         c.run_until_with(t0, &mut |i, d, at| {
             got.push((i, d[0], at));

@@ -15,6 +15,7 @@ import {
   withGame,
 } from './notes';
 import { filterByTag } from '../modules/library/library';
+import { testGame } from '../test/game';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -26,25 +27,7 @@ const map: Notes = {
   tags: { coop: tag('Co-op night'), back: tag('Backlog') },
   games: { '620': { note: '', tags: ['gone', 'coop'] }, '400': { note: 'x', tags: ['back'] } },
 };
-const g = (appid: number): Game => ({
-  appid,
-  name: `G${appid}`,
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-});
+const g = (appid: number): Game => testGame({ appid, name: `G${appid}` });
 
 describe('notes helpers', () => {
   it('gameTags skips ids that are not tags', () => {

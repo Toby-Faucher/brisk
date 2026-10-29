@@ -11,7 +11,7 @@ use brisk_proto::http::{
 use brisk_proto::pair::{PairError, PairingClient, Rng, unhex};
 use brisk_proto::sdp::StreamConfig;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
+use rustls::crypto::WebPkiSupportedAlgorithms;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, SignatureScheme};
 use std::path::Path;
@@ -230,7 +230,7 @@ impl Session {
 
     /// [`Self::launch_probe`] that runs `during` on the stream ports after PLAY and before the
     /// cancel (e.g. the control stream). The cancel rules are the same.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub async fn launch_session<T, F, Fut>(
         &mut self,
         ident: &Identity,
@@ -545,14 +545,10 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
     Ok(buf)
 }
 
-fn provider() -> Arc<CryptoProvider> {
-    Arc::new(rustls_rustcrypto::provider())
-}
-
 type BoxResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn tls_config(id: &Identity, srv: &ServerCert) -> BoxResult<rustls::ClientConfig> {
-    let p = provider();
+    let p = Arc::new(rustls_rustcrypto::provider());
     let pem_der = |pem: &str| -> BoxResult<CertificateDer<'static>> {
         Ok(x509_cert::Certificate::from_pem(pem)?.to_der()?.into())
     };

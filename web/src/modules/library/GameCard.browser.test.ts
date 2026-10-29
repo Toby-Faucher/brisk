@@ -6,26 +6,9 @@ import type { Game } from '../../state/api';
 import GameCard from './GameCard.svelte';
 import { notes } from '../../state/notes';
 import { quitting } from '../../shell/QuitDialog.svelte';
+import { testGame } from '../../test/game';
 
-const game: Game = {
-  appid: 400,
-  name: 'Portal',
-  installed: false,
-  sizeBytes: 5e9,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-};
+const game = testGame({ appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 });
 
 describe('GameCard', () => {
   it('clicking a not-installed card calls onpick and never installs', async () => {
@@ -63,18 +46,12 @@ describe('GameCard', () => {
     expect(document.querySelector('.ach')).toBeNull();
   });
 
-  it('shows an Updated chip and names it in the label', async () => {
+  it('shows an Updated chip and names Updated once: no auto-updated tag in the label or the tag chip', async () => {
     await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
-    await expect.element(page.getByRole('button', { name: /updated since you played/ })).toBeInTheDocument();
-    expect(page.getByRole('button', { name: /updated since you played/ }).element().textContent).toContain('Updated');
-  });
-
-  it('names Updated once: no auto-updated tag in the label or the tag chip', async () => {
-    await render(GameCard, { props: { game: { ...game, installed: true, updated: true }, onpick: vi.fn() } });
-    const label = page
-      .getByRole('button', { name: /updated since you played/ })
-      .element()
-      .getAttribute('aria-label')!;
+    const card = page.getByRole('button', { name: /updated since you played/ });
+    await expect.element(card).toBeInTheDocument();
+    expect(card.element().textContent).toContain('Updated');
+    const label = card.element().getAttribute('aria-label')!;
     expect(label.match(/updated/gi)).toHaveLength(1);
     expect(label).not.toMatch(/tags:.*Updated/);
     expect(document.querySelector('.tchip')?.querySelectorAll('.tc').length ?? 0).toBe(1); // Backlog only

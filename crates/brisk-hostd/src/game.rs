@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Emulator games used ids from here up in the first emulator version (a hash of the name).
-pub const LEGACY_EMU_BASE: u32 = 0xE000_0000;
+pub(crate) const LEGACY_EMU_BASE: u32 = 0xE000_0000;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -85,12 +85,12 @@ impl GameId {
     }
 
     /// The Steam app id; None for an emulator game.
-    pub fn steam_appid(&self) -> Option<u32> {
+    pub(crate) fn steam_appid(&self) -> Option<u32> {
         self.0.strip_prefix("steam:")?.parse().ok()
     }
 
     /// `(emulator, stable id)` of an emulator game.
-    pub fn emu_parts(&self) -> Option<(&str, &str)> {
+    pub(crate) fn emu_parts(&self) -> Option<(&str, &str)> {
         self.0.strip_prefix("emu:")?.split_once(':')
     }
 }
@@ -194,7 +194,7 @@ pub struct Details {
     pub languages: Vec<String>,
 }
 
-pub const STEAM_CAPS: Caps = Caps {
+const STEAM_CAPS: Caps = Caps {
     install: true,
     controls: false,
     achievements: true,

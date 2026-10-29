@@ -47,7 +47,7 @@ export type Vm = { cpuPct: number; memUsedBytes: number; memTotalBytes: number }
 export type StatRow = { label: string; text: string; n: number | null; fmt: (v: number) => string };
 
 const GB = 1024 ** 3;
-const gb = (v: number) => `${(v / GB).toFixed(1)} GB`;
+export const gb = (v: number) => `${(v / GB).toFixed(1)} GB`;
 
 /**
  * The hardware lines of a card. A hub shows only what it has: GPU with a GPU temperature, CPU as its temperature,

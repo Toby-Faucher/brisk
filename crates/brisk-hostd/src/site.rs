@@ -53,7 +53,7 @@ impl Site {
             Some("embed") => true,
             None | Some("" | "disk") => false,
             Some(m) => {
-                eprintln!("warning: BRISK_STATIC={m} is neither embed nor disk; using disk");
+                tracing::warn!("BRISK_STATIC={m} is neither embed nor disk; using disk");
                 false
             }
         };
@@ -64,8 +64,8 @@ impl Site {
         #[cfg(feature = "embed")]
         if matches!(mode, None | Some("")) && !dist.exists() {
             // Sticks for the process lifetime: an `update` swap is not seen until a restart.
-            eprintln!(
-                "warning: {} is missing: serving the build EMBEDDED in this binary until hostd \
+            tracing::warn!(
+                "{} is missing: serving the build EMBEDDED in this binary until hostd \
                  restarts (BRISK_STATIC=disk refuses the fallback)",
                 dist.display()
             );
@@ -73,8 +73,8 @@ impl Site {
         }
         #[cfg(not(feature = "embed"))]
         if embed {
-            eprintln!(
-                "warning: BRISK_STATIC=embed but hostd was built without the embed feature; using disk"
+            tracing::warn!(
+                "BRISK_STATIC=embed but hostd was built without the embed feature; using disk"
             );
         }
         Site::Disk(dist)
@@ -163,7 +163,7 @@ async fn serve_from<B: Backend>(root: PathBuf, b: B, rel: &Path, mut req: Reques
             StatusCode::NOT_FOUND.into_response()
         }
         Err(e) => {
-            eprintln!("error: static file: {e}");
+            tracing::error!("static file: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

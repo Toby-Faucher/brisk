@@ -12,6 +12,7 @@
 use crate::input::{InputError, InputEvent, encode_input};
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce, Tag};
+use std::borrow::Cow;
 
 /// Packet types: Sunshine stream.cpp `packetTypes`, moonlight `packetTypesGen7Enc`.
 pub mod ptype {
@@ -185,24 +186,25 @@ impl ControlMsg {
         self.plain().0
     }
 
-    fn plain(&self) -> (u16, Vec<u8>) {
+    /// Type and payload; borrowed where the message already holds its payload bytes.
+    fn plain(&self) -> (u16, Cow<'_, [u8]>) {
         use ptype::*;
         match self {
-            ControlMsg::StartA => (START_A, vec![0, 0]),
-            ControlMsg::StartB => (START_B, vec![0]),
+            ControlMsg::StartA => (START_A, Cow::Borrowed(&[0, 0])),
+            ControlMsg::StartB => (START_B, Cow::Borrowed(&[0])),
             // BbPut16(4), BbPut32(0) into an 8-byte buffer; moonlight leaves the last 2 unset.
-            ControlMsg::Ping => (PERIODIC_PING, vec![4, 0, 0, 0, 0, 0, 0, 0]),
-            ControlMsg::IdrRequest => (IDR_REQUEST, vec![0, 0]),
+            ControlMsg::Ping => (PERIODIC_PING, Cow::Borrowed(&[4, 0, 0, 0, 0, 0, 0, 0])),
+            ControlMsg::IdrRequest => (IDR_REQUEST, Cow::Borrowed(&[0, 0])),
             ControlMsg::InvalidateRefFrames { first, last } => {
                 // SS_RFI_REQUEST: first, reserved, last, reserved[3] (u32 LE each).
                 let mut p = vec![0u8; 24];
                 p[..4].copy_from_slice(&first.to_le_bytes());
                 p[8..12].copy_from_slice(&last.to_le_bytes());
-                (INVALIDATE_REF_FRAMES, p)
+                (INVALIDATE_REF_FRAMES, p.into())
             }
-            ControlMsg::LossStats(p) => (LOSS_STATS, p.clone()),
-            ControlMsg::FrameStats(p) => (FRAME_STATS, p.clone()),
-            ControlMsg::Input { packet, .. } => (INPUT, packet.clone()),
+            ControlMsg::LossStats(p) => (LOSS_STATS, p.into()),
+            ControlMsg::FrameStats(p) => (FRAME_STATS, p.into()),
+            ControlMsg::Input { packet, .. } => (INPUT, packet.into()),
             ControlMsg::Rumble {
                 controller,
                 low,
@@ -212,7 +214,7 @@ impl ControlMsg {
                 for v in [controller, low, high] {
                     p.extend_from_slice(&v.to_le_bytes());
                 }
-                (RUMBLE, p)
+                (RUMBLE, p.into())
             }
             ControlMsg::RumbleTriggers {
                 controller,
@@ -223,11 +225,11 @@ impl ControlMsg {
                 for v in [controller, left, right] {
                     p.extend_from_slice(&v.to_le_bytes());
                 }
-                (RUMBLE_TRIGGERS, p)
+                (RUMBLE_TRIGGERS, p.into())
             }
-            ControlMsg::HdrMode { enabled } => (HDR_MODE, vec![*enabled as u8]),
-            ControlMsg::Termination(ec) => (TERMINATION, ec.to_be_bytes().to_vec()),
-            ControlMsg::Unknown(t, p) => (*t, p.clone()),
+            ControlMsg::HdrMode { enabled } => (HDR_MODE, vec![*enabled as u8].into()),
+            ControlMsg::Termination(ec) => (TERMINATION, ec.to_be_bytes().to_vec().into()),
+            ControlMsg::Unknown(t, p) => (*t, p.into()),
         }
     }
 

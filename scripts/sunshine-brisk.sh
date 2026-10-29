@@ -41,8 +41,7 @@ JOBS=${SB_JOBS:-3}
 . "$here/scripts/capped.sh"
 
 cmd_build() {
-  case $JOBS in ''|*[!0-9]*) die "SB_JOBS must be 1..6" ;; esac
-  { [ "$JOBS" -ge 1 ] && [ "$JOBS" -le 6 ]; } || die "SB_JOBS must be 1..6"
+  [[ $JOBS =~ ^0*[1-6]$ ]] || die "SB_JOBS must be 1..6"
   brisk_running && die "unit runs the brisk binary; run rollback before rebuilding (text file busy)"
   case $(realpath -m "$SRC")/ in "$(realpath -m "$HOME/recon-pinned")"/*)
     die "$SRC is under ~/recon-pinned (read-only reference); build from a fresh clone" ;; esac
@@ -53,7 +52,6 @@ cmd_build() {
   # A stale checkout at another tag would patch the wrong base.
   local at; at=$(git -C "$SRC" describe --tags --exact-match 2>/dev/null || true)
   [ "$at" = "$TAG" ] || die "$SRC is at '${at:-no exact tag}', not $TAG; remove it or point SB_SRC at a fresh clone"
-  # apply the patch once; skip if already applied
   if git -C "$SRC" apply --reverse --check "$PATCH" 2>/dev/null; then echo "patch already applied"
   else git -C "$SRC" apply "$PATCH"; fi
   capped cmake -S "$SRC" -B "$SRC/build" -DCMAKE_INSTALL_PREFIX="$SUNSHINE_PREFIX" -DSUNSHINE_ASSETS_DIR=share/sunshine \
@@ -70,20 +68,20 @@ cmd_install() {
     *) sudoq run --why "KMS capture caps for patched sunshine" -- setcap cap_sys_admin,cap_sys_nice+p "$BIN" ;; esac
   mkdir -p "$DROPIN_DIR"
   # systemd reads % as a specifier: double it.
-  printf '[Service]\nExecStart=\nExecStart=%s\n' "${BIN//%/%%}" > "$DROPIN_DIR/brisk.conf"
-  echo "wrote $DROPIN_DIR/brisk.conf"
+  printf '[Service]\nExecStart=\nExecStart=%s\n' "${BIN//%/%%}" > "$BRISK_DROPIN"
+  echo "wrote $BRISK_DROPIN"
 }
 
 cmd_enable() {
-  [ -f "$DROPIN_DIR/brisk.conf" ] || die "no brisk.conf; run install first"
+  [ -f "$BRISK_DROPIN" ] || die "no brisk.conf; run install first"
   if brisk_running && systemctl --user is-active -q "$UNIT"; then echo "already running brisk binary; nothing to do"; return; fi
   restart
 }
 cmd_rollback() {
-  if [ ! -f "$DROPIN_DIR/brisk.conf" ] && ! brisk_running; then echo "no brisk.conf and unit not on brisk; nothing to roll back"; return; fi
+  if [ ! -f "$BRISK_DROPIN" ] && ! brisk_running; then echo "no brisk.conf and unit not on brisk; nothing to roll back"; return; fi
   # idle check BEFORE deleting anything, so a refused rollback changes nothing; FORCE=1 overrides busy (rollback only)
   ALLOW_DEAD=1 BUSY_OK=${FORCE:-} require_idle
-  rm -f "$DROPIN_DIR/brisk.conf"
+  rm -f "$BRISK_DROPIN"
   ALLOW_DEAD=1 BUSY_OK=${FORCE:-} restart
 }
 

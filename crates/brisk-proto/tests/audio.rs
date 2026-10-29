@@ -105,6 +105,14 @@ fn check(frames: &[OpusFrame], base: u16, want: &[u16]) {
     }
 }
 
+/// `rikey.hex` next to the recorded datagrams: "<32 hex rikey> <8 hex rikeyid>".
+fn fixture_key(dir: &std::path::Path) -> ([u8; 16], u32) {
+    let meta = std::fs::read_to_string(dir.join("rikey.hex")).expect("rikey.hex next to the .bin");
+    let (k, id) = meta.trim().split_once(' ').unwrap();
+    let key = brisk_proto::pair::unhex(k).unwrap().try_into().unwrap();
+    (key, u32::from_str_radix(id, 16).unwrap())
+}
+
 #[test]
 #[cfg_attr(
     not(audio_fixture),
@@ -123,14 +131,7 @@ fn decrypts_recorded_audio_packet() {
         .filter(|p| p.extension().is_some_and(|e| e == "bin"))
         .collect();
     assert!(!files.is_empty(), "no *.bin in {}", dir.display());
-    let meta = std::fs::read_to_string(dir.join("rikey.hex")).expect("rikey.hex next to the .bin");
-    let (k, id) = meta.trim().split_once(' ').unwrap();
-    let key: [u8; 16] = (0..16)
-        .map(|i| u8::from_str_radix(&k[2 * i..2 * i + 2], 16).unwrap())
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    let id = u32::from_str_radix(id, 16).unwrap();
+    let (key, id) = fixture_key(&dir);
     let mut data = 0;
     for f in files {
         let raw = std::fs::read(&f).unwrap();
@@ -162,6 +163,8 @@ fn parity_matrix_recovers_any_two_losses() {
             let mut fec = AudioFec::new(DUR);
             let frames = run(&mut fec, &b, &keep);
             check(&frames, 0, &[0, 1, 2, 3]);
+            let lost_data = [x, y].iter().filter(|&&i| i < 4).count() as u64;
+            assert_eq!(fec.stats().recovered, lost_data, "lost {x} and {y}");
         }
     }
 }
@@ -182,15 +185,6 @@ fn recovers_one_lost_of_four() {
             }
         );
     }
-}
-
-#[test]
-fn recovers_two_lost() {
-    let b = block(4);
-    let mut fec = AudioFec::new(DUR);
-    let frames = run(&mut fec, &b, &[0, 3, 4, 5]);
-    check(&frames, 4, &[0, 1, 2, 3]);
-    assert_eq!(fec.stats().recovered, 2);
 }
 
 #[test]
@@ -348,15 +342,11 @@ fn parity_matrix_layout_known_answer() {
     }
 }
 
-#[test]
-fn far_jump_resyncs_and_output_resumes() {
-    let mut fec = AudioFec::new(DUR);
-    run(&mut fec, &block(0), &[0, 1, 2, 3]);
-    // Jump 2048 packets ahead (outage or host restart): errors first, then it resumes.
-    let mut errs = 0;
-    let mut got = 0;
-    for k in 0..4u16 {
-        for p in &block(2048 + 4 * k)[..4] {
+/// The data packets of `n` blocks from `base` on; returns (OutOfWindow errors, packets out).
+fn push_data_blocks(fec: &mut AudioFec, base: u16, n: u16) -> (usize, usize) {
+    let (mut errs, mut got) = (0, 0);
+    for k in 0..n {
+        for p in &block(base + 4 * k)[..4] {
             match fec.push(p) {
                 Ok(v) => got += v.len(),
                 Err(e) => {
@@ -366,7 +356,15 @@ fn far_jump_resyncs_and_output_resumes() {
             }
         }
     }
-    assert_eq!((errs, got), (7, 9));
+    (errs, got)
+}
+
+#[test]
+fn far_jump_resyncs_and_output_resumes() {
+    let mut fec = AudioFec::new(DUR);
+    run(&mut fec, &block(0), &[0, 1, 2, 3]);
+    // Jump 2048 packets ahead (outage or host restart): errors first, then it resumes.
+    assert_eq!(push_data_blocks(&mut fec, 2048, 4), (7, 9));
     // And recovery works again in the new position.
     let b = block(2048 + 16);
     let frames = run(&mut fec, &b, &[0, 1, 4, 5]);
@@ -392,19 +390,7 @@ fn restart_behind_floor_resyncs() {
     // Host restarts and its sequence numbers begin again at 0 while the floor sits at 5000.
     let mut fec = AudioFec::new(DUR);
     run(&mut fec, &block(5000), &[0, 1, 2, 3]);
-    let (mut errs, mut got) = (0, 0);
-    for k in 0..6u16 {
-        for p in &block(4 * k)[..4] {
-            match fec.push(p) {
-                Ok(v) => got += v.len(),
-                Err(e) => {
-                    assert_eq!(e, AudioError::OutOfWindow);
-                    errs += 1;
-                }
-            }
-        }
-    }
-    assert_eq!((errs, got), (7, 17));
+    assert_eq!(push_data_blocks(&mut fec, 0, 6), (7, 17));
     let frames = run(&mut fec, &block(24), &[0, 3, 4, 5]);
     check(&frames, 24, &[0, 1, 2, 3]);
 }
@@ -470,14 +456,8 @@ fn resync_to_a_different_packet_size_keeps_fec_working() {
 fn recorded_audio_fec_recovers_erased_packets() {
     use std::collections::BTreeMap;
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio");
-    let meta = std::fs::read_to_string(dir.join("rikey.hex")).unwrap();
-    let (k, id) = meta.trim().split_once(' ').unwrap();
-    let key: [u8; 16] = (0..16)
-        .map(|i| u8::from_str_radix(&k[2 * i..2 * i + 2], 16).unwrap())
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    let cipher = AudioCipher::new(&key, u32::from_str_radix(id, 16).unwrap());
+    let (key, id) = fixture_key(&dir);
+    let cipher = AudioCipher::new(&key, id);
     // block base -> slot (0..4 data, 4..6 FEC) -> datagram
     let mut blocks: BTreeMap<u16, BTreeMap<usize, Vec<u8>>> = BTreeMap::new();
     for e in std::fs::read_dir(&dir).unwrap().flatten() {

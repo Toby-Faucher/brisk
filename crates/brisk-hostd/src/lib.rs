@@ -17,6 +17,7 @@ pub mod idle;
 pub mod ingest;
 pub mod launch;
 pub mod launchstore;
+pub mod log;
 pub mod machines;
 pub mod migrate;
 pub(crate) mod net;

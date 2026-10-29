@@ -3,30 +3,13 @@ import { get } from 'svelte/store';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { homeOrder, prefs } from '../../state/prefs';
-import { api, ApiError, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
+import { api, ApiError, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal, type Caps } from '../../state/api';
 import '../../styles/tokens.css';
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
+import { testGame } from '../../test/game';
 
-const game: Game = {
-  appid: 620,
-  name: 'Portal 2',
-  installed: true,
-  sizeBytes: null,
-  lastPlayed: null,
-  playtimeMin: 0,
-  playtime2wkMin: 0,
-  cover: '',
-  hero: '',
-  logo: '',
-  achUnlocked: null,
-  achTotal: null,
-  updated: false,
-  update: null,
-  controller: null,
-  coop: false,
-  running: false,
-};
+const game = testGame();
 const off: Game = { ...game, appid: 400, name: 'Portal', installed: false, sizeBytes: 5e9 };
 const info: GameInfo = {
   available: true,
@@ -65,12 +48,25 @@ const ach: Achievements = {
 const noAch: Achievements = { available: false, unlocked: 0, total: 0, list: [] };
 
 const props = (g: Game, extra = {}) => ({ game: g, busy: false, onclose: vi.fn(), onplay: vi.fn(), oninstall: vi.fn(), ...extra });
+// what a new hostd sends: id, source and caps decide; each test turns on the caps it needs
+const capsWith = (on: Partial<Caps>): Caps => ({
+  install: false,
+  controls: false,
+  achievements: false,
+  launchOptions: false,
+  saves: false,
+  screenshots: false,
+  ...on,
+});
+const mkw = (o: Partial<Game>): Game => ({ ...game, appid: 0xe0000001, name: 'Mario Kart Wii', source: 'emu', emulator: 'dolphin', ...o });
+const loaded = () => expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
 
 afterEach(() => {
   vi.restoreAllMocks();
   prefs.set({});
 });
 beforeEach(() => {
+  vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
   vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
   vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
   vi.spyOn(api, 'gameLocal').mockResolvedValue({ screenshots: [], saves: null });
@@ -93,9 +89,9 @@ describe('GameDetail refresh guards', () => {
   afterEach(() => vi.useRealTimers());
 
   it('ignores a second click while the first is in flight, even after 10 s; re-enables once done', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const i = vi.mocked(api.gameInfo);
     await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     const b = page.getByRole('button', { name: 'Refresh Steam data' });
     const el = b.element() as HTMLElement;
     let done!: (v: GameInfo) => void;
@@ -120,9 +116,9 @@ describe('GameDetail refresh guards', () => {
   });
 
   it('is disabled for 10 s after a click and then works again', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const i = vi.mocked(api.gameInfo);
     await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     const el = page.getByRole('button', { name: 'Refresh Steam data' }).element() as HTMLElement;
     vi.useFakeTimers();
     el.click();
@@ -138,14 +134,14 @@ describe('GameDetail refresh guards', () => {
   });
 
   it('toasts when a refresh request fails and keeps what is shown', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const i = vi.mocked(api.gameInfo);
     await render(GameDetail, { props: props(game) });
     await render(Toasts);
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     i.mockRejectedValue(new Error('down'));
     await userEvent.click(page.getByRole('button', { name: 'Refresh Steam data' }));
     await expect.element(page.getByText('Could not refresh Steam data')).toBeInTheDocument();
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
   });
 
   it('is disabled until the first load has finished', async () => {
@@ -156,9 +152,9 @@ describe('GameDetail refresh guards', () => {
   });
 
   it('drops late refresh answers after the panel switched to another game', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const i = vi.mocked(api.gameInfo);
     const r = await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     let late!: (v: GameInfo) => void;
     i.mockImplementationOnce(() => new Promise((res) => (late = res)));
     await userEvent.click(page.getByRole('button', { name: 'Refresh Steam data' }));
@@ -176,17 +172,17 @@ describe('GameDetail refresh across games', () => {
   afterEach(() => vi.useRealTimers());
 
   it('the cooldown of game A does not carry over to game B', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const i = vi.mocked(api.gameInfo);
     const r = await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     const b = page.getByRole('button', { name: 'Refresh Steam data' });
     await userEvent.click(b);
     await expect.element(b).toHaveAttribute('aria-disabled', 'true'); // cooling down (or still reloading)
-    await expect.poll(() => (b.element() as HTMLElement).getAttribute('aria-busy')).not.toBe('true');
+    await expect.poll(() => b.element().getAttribute('aria-busy')).not.toBe('true');
     vi.useFakeTimers();
     await r.rerender({ game: off });
     await vi.advanceTimersByTimeAsync(50); // B's plain load, far less than 10 s
-    expect((b.element() as HTMLElement).getAttribute('aria-disabled')).not.toBe('true'); // no waiting: the 10 s must not carry over
+    expect(b.element().getAttribute('aria-disabled')).not.toBe('true'); // no waiting: the 10 s must not carry over
     vi.useRealTimers();
     i.mockClear();
     await userEvent.click(b);
@@ -194,15 +190,15 @@ describe('GameDetail refresh across games', () => {
   });
 
   it('an in-flight refresh of game A does not block game B', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const i = vi.mocked(api.gameInfo);
     const r = await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     i.mockImplementationOnce(() => new Promise(() => {}));
     const b = page.getByRole('button', { name: 'Refresh Steam data' });
     await userEvent.click(b);
     await r.rerender({ game: off });
     await new Promise((res) => setTimeout(res, 50));
-    expect((b.element() as HTMLElement).getAttribute('aria-disabled')).not.toBe('true');
+    expect(b.element().getAttribute('aria-disabled')).not.toBe('true');
     i.mockClear();
     await userEvent.click(b);
     expect(i).toHaveBeenCalledWith('400', true);
@@ -211,11 +207,11 @@ describe('GameDetail refresh across games', () => {
 
 describe('GameDetail', () => {
   it('Refresh re-fetches info, achievements and news with refresh, updates sections, then waits', async () => {
-    const i = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    const a = vi.spyOn(api, 'gameAchievements').mockResolvedValue(noAch);
-    const n = vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [] });
+    const i = vi.mocked(api.gameInfo);
+    const a = vi.mocked(api.gameAchievements);
+    const n = vi.mocked(api.gameNews);
     await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     a.mockResolvedValue(ach);
     n.mockResolvedValue({ items: [{ title: 'Fresh patch', url: 'https://n.example.test/f', date: 1, patch: true }] });
     const b = page.getByRole('button', { name: 'Refresh Steam data' });
@@ -239,7 +235,6 @@ describe('GameDetail', () => {
   });
 
   it('renders news items that share date and title', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const it = { title: 'Same', url: 'https://n.example.test/a', date: 5, patch: true };
     vi.spyOn(api, 'gameNews').mockResolvedValue({ items: [it, { ...it }] });
     await render(GameDetail, { props: props(game) });
@@ -248,7 +243,6 @@ describe('GameDetail', () => {
   });
 
   it('links only https news URLs', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'gameNews').mockResolvedValue({
       items: [
         { title: 'Safe patch', url: 'https://n.example.test/a', date: 2, patch: true },
@@ -270,7 +264,6 @@ describe('GameDetail', () => {
   });
 
   it('shows 3 of 5 unlocked with a progress bar and the list', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue(ach);
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByText('3 of 5 unlocked')).toBeInTheDocument();
@@ -281,23 +274,28 @@ describe('GameDetail', () => {
     expect(spy).toHaveBeenCalledExactlyOnceWith('620');
   });
 
-  it('hides the section when total is 0', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+  it('a Steam game with no achievements, local files or streams hides those sections and never asks for emulator ones', async () => {
+    const controls = vi.spyOn(api, 'emulatorControls');
+    const launch = vi.spyOn(api, 'gameLaunch');
     await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-    expect(page.getByText(/unlocked/).elements()).toHaveLength(0);
-    expect(page.getByRole('heading', { name: 'Achievements' }).elements()).toHaveLength(0);
+    await loaded();
+    for (const name of ['Achievements', 'Your screenshots', 'Controls', 'Launch options'])
+      expect(page.getByRole('heading', { name }).elements(), name).toHaveLength(0);
+    expect(page.getByText(/unlocked|Cloud saves|Streamed/).elements()).toHaveLength(0);
+    expect(page.getByRole('button', { name: /Use / }).elements()).toHaveLength(0);
+    expect(controls).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled(); // no launchOptions cap: an older hostd
   });
 
   it('shows genres and controller line', async () => {
-    const spy = vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const spy = vi.mocked(api.gameInfo);
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
     await expect.element(page.getByText('Full controller support')).toBeInTheDocument();
     await expect.element(page.getByText('Action', { exact: true })).toBeInTheDocument();
     await expect.element(page.getByText('Puzzle', { exact: true })).toBeInTheDocument();
     await expect.element(page.getByText('Remote Play Together')).toBeInTheDocument();
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
+    await loaded();
     expect(spy).toHaveBeenCalledExactlyOnceWith('620');
   });
 
@@ -308,7 +306,6 @@ describe('GameDetail', () => {
   });
 
   it('Escape closes and returns focus to the card that opened it', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const card = document.body.appendChild(document.createElement('button'));
     card.textContent = 'card';
     card.focus();
@@ -327,7 +324,6 @@ describe('GameDetail', () => {
   });
 
   it('the close X sits in the top-right corner, clear of Refresh, and closes the panel', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const p = props(game);
     await render(GameDetail, { props: p });
     const x = page.getByRole('button', { name: 'Close', exact: true });
@@ -347,16 +343,7 @@ describe('GameDetail', () => {
   });
 
   it('with a confirm in front, Escape closes only the confirm; the X is red-tinted on hover', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    const emu: Game = {
-      ...game,
-      id: 'emu:dolphin:RMCE01',
-      source: 'emu',
-      emulator: 'dolphin',
-      name: 'Mario Kart Wii',
-      caps: { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false, art: true },
-    };
-    const p = props(emu);
+    const p = props(mkw({ id: 'emu:dolphin:RMCE01', caps: capsWith({ controls: true, art: true }) }));
     await render(GameDetail, { props: p });
     await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
     await expect.element(page.getByRole('dialog', { name: /Remove Mario Kart Wii/ })).toBeInTheDocument();
@@ -371,7 +358,6 @@ describe('GameDetail', () => {
   });
 
   it('Play calls onplay for an installed game', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const p = props(game);
     await render(GameDetail, { props: p });
     await userEvent.click(page.getByRole('button', { name: 'Play', exact: true }));
@@ -389,7 +375,6 @@ describe('GameDetail', () => {
   });
 
   it('Quit shows only when running', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     const r = await render(GameDetail, { props: props(game) });
     await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
     expect(page.getByRole('button', { name: /^Quit/ }).elements()).toHaveLength(0);
@@ -458,26 +443,20 @@ describe('GameDetail', () => {
     for (const u of made) expect(revoke).toHaveBeenCalledWith(u);
   });
 
-  it('no screenshots section or saves line when the host has none', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-    expect(page.getByRole('heading', { name: 'Your screenshots' }).elements()).toHaveLength(0);
-    expect(page.getByText(/Cloud saves/).elements()).toHaveLength(0);
+  // a rough Crisp session of an hour, n days ago
+  const rec = (n: number): SessionRec => ({
+    appid: 620,
+    name: 'Portal 2',
+    started: Date.now() - n * 86_400_000,
+    ended: Date.now() - n * 86_400_000 + 3_600_000,
+    host: 'h',
+    preset: 'crisp',
+    stats: { sent: 1000, dropped: 50 } as SessionRec['stats'],
   });
+  const three = [rec(1), rec(2), rec(3)];
+  const sugg = () => page.getByRole('button', { name: 'Use Balanced' });
 
   it('shows the line and Use Balanced calls putPrefs with the saved codec', async () => {
-    const now = Date.now();
-    const rec = (n: number): SessionRec => ({
-      appid: 620,
-      name: 'Portal 2',
-      started: now - n * 86_400_000,
-      ended: now - n * 86_400_000 + 3_600_000,
-      host: 'h',
-      preset: 'crisp',
-      stats: { sent: 1000, dropped: 50 } as SessionRec['stats'],
-    });
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [rec(3), rec(4), rec(5), { ...rec(6), stats: null }] });
     const saved = { preset: 'balanced', codec: 'hevc', updated: 1 } as const;
     const put = vi.spyOn(api, 'putPrefs').mockResolvedValue(saved);
@@ -494,29 +473,7 @@ describe('GameDetail', () => {
     await expect.element(page.getByRole('button', { name: 'Use Balanced' })).not.toBeInTheDocument();
   });
 
-  it('hides both when the game was never streamed', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    await render(GameDetail, { props: props(game) });
-    await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-    expect(page.getByText(/Streamed/).elements()).toHaveLength(0);
-    expect(page.getByRole('button', { name: /Use / }).elements()).toHaveLength(0);
-  });
-
-  const mk = (n: number, o: Partial<SessionRec> = {}): SessionRec => ({
-    appid: 620,
-    name: 'Portal 2',
-    started: 1_000_000 - n,
-    ended: 1_000_000 - n + 60_000,
-    host: 'h',
-    preset: 'crisp',
-    stats: { sent: 1000, dropped: 50 } as SessionRec['stats'],
-    ...o,
-  });
-  const three = [mk(1), mk(2), mk(3)];
-  const sugg = () => page.getByRole('button', { name: 'Use Balanced' });
-
   it('falls back to h264 when no codec is saved', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
     const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
     await render(GameDetail, { props: props(game) });
@@ -525,7 +482,6 @@ describe('GameDetail', () => {
   });
 
   it('toasts and keeps the button on a failed save', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
     const put = vi.spyOn(api, 'putPrefs').mockRejectedValue(new Error('x'));
     await render(Toasts);
@@ -538,7 +494,6 @@ describe('GameDetail', () => {
   });
 
   it('hides the suggestion when Balanced is already saved', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
     prefs.set({ 620: { preset: 'balanced', codec: 'h264', updated: 0 } });
     await render(GameDetail, { props: props(game) });
@@ -547,7 +502,6 @@ describe('GameDetail', () => {
   });
 
   it('does not save while the prefs could not be loaded', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: three });
     vi.spyOn(api, 'prefs').mockRejectedValue(new Error('down'));
     const put = vi.spyOn(api, 'putPrefs').mockResolvedValue({ preset: 'balanced', codec: 'h264', updated: 1 });
@@ -633,16 +587,17 @@ describe('GameDetail', () => {
   };
   const achDialog = () => page.getByRole('dialog', { name: 'Portal 2 achievements' });
 
-  it('View all opens every achievement in a modal with a small search', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+  it('View all opens every achievement in a modal with a small search; Escape clears it, then closes', async () => {
     vi.spyOn(api, 'gameAchievements').mockResolvedValue(many);
     await render(GameDetail, { props: props(game) });
     const open = page.getByRole('button', { name: 'View all 9 achievements' });
     await userEvent.click(open);
     await expect.element(achDialog()).toBeInTheDocument();
+    // the list can take focus to scroll, and is named
+    await expect.element(achDialog().getByRole('list', { name: 'Achievements' })).toHaveAttribute('tabindex', '0');
     const items = () => achDialog().getByRole('listitem').elements();
     expect(items()).toHaveLength(9);
-    expect(items().filter((li) => li.classList.contains('locked'))).toHaveLength(7);
+    expect(items().filter((li) => li.textContent?.trim().endsWith('Locked'))).toHaveLength(7);
     await expect
       .element(
         achDialog()
@@ -658,15 +613,16 @@ describe('GameDetail', () => {
     await userEvent.fill(search, 'zzz');
     await expect.element(achDialog().getByText('No matches')).toBeInTheDocument();
     expect(items()).toHaveLength(0);
-    await userEvent.keyboard('{Escape}'); // clears the search
-    await userEvent.keyboard('{Escape}'); // closes
+    await userEvent.keyboard('{Escape}');
+    await expect.element(search).toHaveValue('');
+    await expect.element(achDialog()).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
     await expect.element(achDialog()).not.toBeInTheDocument();
     await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
     await expect.poll(() => document.activeElement).toBe(open.element());
   });
 
   it('a patch news item has a separate badge with space before it', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'gameNews').mockResolvedValue({
       items: [{ title: 'Big update', url: 'https://n.example.test/a', date: 2, patch: true }],
     });
@@ -678,7 +634,6 @@ describe('GameDetail', () => {
   });
 
   it('wide screens: two panes, the left one static and the right one scrolling', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'gameAchievements').mockResolvedValue(ach);
     await render(GameDetail, { props: props(game) });
     const d = page.getByRole('dialog', { name: 'Portal 2' });
@@ -698,7 +653,6 @@ describe('GameDetail', () => {
   it('narrow screens: one scrolling column', async () => {
     await page.viewport(700, 800);
     try {
-      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
       await render(GameDetail, { props: props(game) });
       const d = page.getByRole('dialog', { name: 'Portal 2' });
       await expect.element(d.getByText('Think with portals & friends.')).toBeInTheDocument();
@@ -764,32 +718,7 @@ describe('GameDetail', () => {
     }
   });
 
-  it('Escape in the achievement search clears the text first, then closes the modal', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    vi.spyOn(api, 'gameAchievements').mockResolvedValue(many);
-    await render(GameDetail, { props: props(game) });
-    await userEvent.click(page.getByRole('button', { name: 'View all 9 achievements' }));
-    const search = achDialog().getByRole('searchbox', { name: 'Search achievements' });
-    await userEvent.fill(search, 'zzz');
-    await userEvent.keyboard('{Escape}');
-    await expect.element(search).toHaveValue('');
-    await expect.element(achDialog()).toBeInTheDocument();
-    await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
-    await userEvent.keyboard('{Escape}');
-    await expect.element(achDialog()).not.toBeInTheDocument();
-    await expect.element(page.getByRole('dialog', { name: 'Portal 2' })).toBeInTheDocument();
-  });
-
-  it('the achievement list in the modal can take focus to scroll, and is named', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-    vi.spyOn(api, 'gameAchievements').mockResolvedValue(many);
-    await render(GameDetail, { props: props(game) });
-    await userEvent.click(page.getByRole('button', { name: 'View all 9 achievements' }));
-    await expect.element(achDialog().getByRole('list', { name: 'Achievements' })).toHaveAttribute('tabindex', '0');
-  });
-
   it('View all shows only when there are more achievements than the preview', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
     vi.spyOn(api, 'gameAchievements').mockResolvedValue(ach); // 2 in the list
     await render(GameDetail, { props: props(game) });
     await expect.element(page.getByText('First Steps')).toBeInTheDocument();
@@ -805,7 +734,7 @@ describe('GameDetail', () => {
   });
 
   describe('Controls section', () => {
-    const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii' };
+    const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii' }; // an old hostd: no id, source or caps
     const fx = async () => (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-get.json')).default;
 
     it('an emulator id shows the summary and the Edit mappings link into Settings', async () => {
@@ -829,8 +758,8 @@ describe('GameDetail', () => {
     });
 
     // what a new hostd sends for the same game: id, source and caps decide, not the number
-    const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false };
-    const newEmu: Game = { ...emu, id: 'emu:dolphin:mario-kart-wii', source: 'emu', legacyId: '3758096385', emulator: 'dolphin', caps };
+    const caps = capsWith({ controls: true });
+    const newEmu = mkw({ id: 'emu:dolphin:mario-kart-wii', legacyId: '3758096385', caps });
 
     it('a new hostd emulator game shows the link, asks hostd by id, and has Play and Quit but no Install', async () => {
       vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
@@ -856,27 +785,17 @@ describe('GameDetail', () => {
     });
 
     it('a new hostd Steam game in a high number range is still Steam', async () => {
-      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
       const c = vi.spyOn(api, 'emulatorControls');
       const steamCaps = { ...caps, install: true, controls: false, achievements: true, screenshots: true };
       await render(GameDetail, { props: props({ ...game, appid: 0xe0000005, id: 'steam:3758096389', source: 'steam', caps: steamCaps }) });
-      await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-      expect(c).not.toHaveBeenCalled();
-    });
-
-    it('is absent for a Steam game and never asks hostd', async () => {
-      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
-      const c = vi.spyOn(api, 'emulatorControls');
-      await render(GameDetail, { props: props(game) });
-      await expect.element(page.getByText('Think with portals & friends.')).toBeInTheDocument();
-      expect(page.getByRole('heading', { name: 'Controls' }).elements()).toHaveLength(0);
+      await loaded();
       expect(c).not.toHaveBeenCalled();
     });
   });
 });
 
 describe('Remove from library', () => {
-  const emu: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', id: 'emu:dolphin:RMCE01', source: 'emu', emulator: 'dolphin' };
+  const emu = mkw({ id: 'emu:dolphin:RMCE01' });
   beforeEach(() => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
     vi.spyOn(api, 'emulatorControls').mockRejectedValue(new ApiError('no', 404));
@@ -951,17 +870,7 @@ describe('GameDetail with the Quit confirm', () => {
   });
 
   describe('Saves section', () => {
-    const caps = { install: false, controls: false, achievements: false, launchOptions: false, saves: true, screenshots: false };
-    const wii: Game = {
-      ...game,
-      appid: 0xe0000002,
-      id: 'emu:dolphin:rmce01',
-      source: 'emu',
-      legacyId: '3758096386',
-      emulator: 'dolphin',
-      name: 'Mario Kart Wii',
-      caps,
-    };
+    const wii = mkw({ appid: 0xe0000002, id: 'emu:dolphin:rmce01', legacyId: '3758096386', caps: capsWith({ saves: true }) });
     const items = [
       {
         kind: 'state' as const,
@@ -993,7 +902,6 @@ describe('GameDetail with the Quit confirm', () => {
     });
 
     it('an old hostd (no caps) and a Steam game never call the route', async () => {
-      vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
       const s = vi.spyOn(api, 'gameSaves');
       await render(GameDetail, { props: props({ ...wii, caps: undefined, id: undefined }) });
       await expect.element(page.getByRole('button', { name: 'Play' })).toBeInTheDocument();
@@ -1028,28 +936,10 @@ describe('GameDetail launch options', () => {
     await expect.element(page.getByRole('heading', { name: 'Launch options' })).toBeInTheDocument();
     expect(g).toHaveBeenCalledWith('steam:620');
   });
-
-  it('is left out for a game without the cap (an older hostd)', async () => {
-    vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
-    const g = vi.spyOn(api, 'gameLaunch');
-    render(GameDetail, props(game));
-    await expect.element(page.getByText('No store details')).toBeInTheDocument();
-    expect(page.getByRole('heading', { name: 'Launch options' }).elements()).toHaveLength(0);
-    expect(g).not.toHaveBeenCalled();
-  });
 });
 
 describe('GameDetail RetroAchievements', () => {
-  const wii: Game = {
-    ...game,
-    appid: 3_800_000_000,
-    id: 'emu:dolphin:mkwii',
-    name: 'Mario Kart Wii',
-    source: 'emu',
-    emulator: 'dolphin',
-    installed: true,
-    caps: { install: false, controls: true, achievements: true, launchOptions: false, saves: false, screenshots: false },
-  };
+  const wii = mkw({ appid: 3_800_000_000, id: 'emu:dolphin:mkwii', caps: capsWith({ controls: true, achievements: true }) });
   const raOk: Achievements = {
     available: true,
     unlocked: 1,
@@ -1067,28 +957,29 @@ describe('GameDetail RetroAchievements', () => {
     title: 'Mario Kart Wii',
     url: 'https://retroachievements.org/game/9',
   };
-  beforeEach(() => vi.spyOn(api, 'gameInfo').mockResolvedValue({ available: false } as GameInfo));
+  beforeEach(() => vi.spyOn(api, 'gameInfo').mockResolvedValue(none));
   afterEach(() => vi.useRealTimers());
 
-  const notes: [Record<string, unknown>, string][] = [
+  it.each([
     [{ state: 'unsupported', reason: 'RVZ files cannot be hashed.' }, 'RVZ files cannot be hashed.'],
     [{ state: 'not-found' }, 'No RetroAchievements set for this game.'],
     [{ state: 'rate-limited' }, 'RetroAchievements is busy. Try again shortly.'],
     [{ state: 'bad-credentials' }, 'RetroAchievements refused the login. Check the key file on the machine.'],
     [{ state: 'error' }, 'Could not reach RetroAchievements.'],
-  ];
-  for (const [answer, text] of notes)
-    it(`says "${text}" for ${answer.state}`, async () => {
-      vi.spyOn(api, 'gameAchievements').mockResolvedValue(answer as never);
-      await render(GameDetail, { props: props(wii) });
-      await expect.element(page.getByText(text)).toBeInTheDocument();
-    });
-
-  it('title-matched answer shows the plain note; hash-matched does not', async () => {
-    const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue({ ...raOk, matched: 'title' });
+  ] as const)('%o says "%s"', async (answer, text) => {
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue(answer);
     await render(GameDetail, { props: props(wii) });
-    await expect.element(page.getByText(/^Matched by title; your file's hash isn't/)).toBeInTheDocument();
-    spy.mockResolvedValue({ ...raOk, matched: 'hash' });
+    await expect.element(page.getByText(text)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['title', 1],
+    ['hash', 0],
+  ] as const)('a %s-matched answer shows the plain title note %i times', async (matched, n) => {
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue({ ...raOk, matched });
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/3 of 8 points/)).toBeInTheDocument();
+    expect(page.getByText(/^Matched by title; your file's hash isn't/).elements()).toHaveLength(n);
   });
 
   it('hides the panel for off', async () => {
@@ -1165,8 +1056,7 @@ describe('GameDetail RetroAchievements', () => {
 });
 
 describe('stored stream screenshots (emulator games)', () => {
-  const caps = { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: true, art: true };
-  const wii: Game = { ...game, appid: 0xe0000001, name: 'Mario Kart Wii', id: 'emu:dolphin:mkw', source: 'emu', emulator: 'dolphin', caps };
+  const wii = mkw({ id: 'emu:dolphin:mkw', caps: capsWith({ controls: true, screenshots: true, art: true }) });
   const open = async (g: Game = wii) => {
     vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
     vi.spyOn(api, 'screenshot').mockImplementation(async () => blobUrl());
