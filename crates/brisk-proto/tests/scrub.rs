@@ -1,60 +1,42 @@
 use brisk_proto::scrub::{scrub, scrub_with_encodings};
 
-fn s(b: &[u8]) -> Vec<Vec<u8>> {
-    vec![b.to_vec()]
-}
+/// (buffer, secrets, scrubbed buffer)
+type Case<'a> = (&'a [u8], &'a [&'a [u8]], &'a [u8]);
 
 #[test]
-fn scrub_replaces_all_occurrences() {
-    let out = scrub(b"..KEY..KEY..", &s(b"KEY"));
-    assert_eq!(out, b"..\0\0\0..\0\0\0..");
-}
-
-#[test]
-fn scrub_keeps_length() {
-    let buf = b"abcSECRETdef".to_vec();
-    assert_eq!(scrub(&buf, &s(b"SECRET")).len(), buf.len());
-    assert_eq!(scrub(&buf, &[]), buf);
-}
-
-#[test]
-fn empty_secret_is_ignored() {
-    let buf = b"hello".to_vec();
-    assert_eq!(scrub(&buf, &[vec![]]), buf);
-}
-
-#[test]
-fn secret_longer_than_buffer_is_noop() {
-    assert_eq!(scrub(b"ab", &s(b"abc")), b"ab");
-}
-
-#[test]
-fn start_end_and_whole_buffer() {
-    assert_eq!(scrub(b"KEYxxKEY", &s(b"KEY")), b"\0\0\0xx\0\0\0");
-    assert_eq!(scrub(b"KEY", &s(b"KEY")), b"\0\0\0");
-}
-
-#[test]
-fn partial_occurrence_is_left_alone() {
-    assert_eq!(scrub(b"KEKEY", &s(b"KEY")), b"KE\0\0\0");
-    assert_eq!(scrub(b"KE", &s(b"KEY")), b"KE");
-}
-
-#[test]
-fn overlapping_secrets_fully_replaced() {
-    let secrets = vec![b"abcd".to_vec(), b"cdef".to_vec(), b"cd".to_vec()];
-    assert_eq!(scrub(b"xabcdefx", &secrets), b"x\0\0\0\0\0\0x");
-    // self-overlap
-    assert_eq!(scrub(b"aaaa", &s(b"aaa")), b"\0\0\0\0");
-}
-
-#[test]
-fn multiple_secrets() {
-    let secrets = vec![b"PIN1".to_vec(), b"rikey".to_vec()];
-    assert_eq!(
-        scrub(b"PIN1-rikey-PIN1", &secrets),
-        b"\0\0\0\0-\0\0\0\0\0-\0\0\0\0"
-    );
+fn scrub_cases() {
+    let cases: &[Case] = &[
+        (b"..KEY..KEY..", &[b"KEY"], b"..\0\0\0..\0\0\0.."), // every occurrence
+        (b"KEYxxKEY", &[b"KEY"], b"\0\0\0xx\0\0\0"),         // at the start and the end
+        (b"KEY", &[b"KEY"], b"\0\0\0"),                      // the whole buffer
+        (b"KEKEY", &[b"KEY"], b"KE\0\0\0"),                  // a partial match is left alone
+        (b"KE", &[b"KEY"], b"KE"),
+        (b"ab", &[b"abc"], b"ab"),    // secret longer than the buffer
+        (b"hello", &[b""], b"hello"), // empty secret ignored
+        (b"abcSECRETdef", &[], b"abcSECRETdef"), // no secrets
+        (b"aaaa", &[b"aaa"], b"\0\0\0\0"), // self-overlap
+        (b"xabcdefx", &[b"abcd", b"cdef", b"cd"], b"x\0\0\0\0\0\0x"), // overlapping secrets
+        (
+            b"PIN1-rikey-PIN1",
+            &[b"PIN1", b"rikey"],
+            b"\0\0\0\0-\0\0\0\0\0-\0\0\0\0",
+        ),
+        // One secret's suffix is the next one's prefix: both are blanked in full.
+        (
+            b"..AAAABBBBCCCC..",
+            &[b"AAAABBBB", b"BBBBCCCC"],
+            b"..\0\0\0\0\0\0\0\0\0\0\0\0..",
+        ),
+    ];
+    for &(buf, secrets, want) in cases {
+        let secrets: Vec<Vec<u8>> = secrets.iter().map(|s| s.to_vec()).collect();
+        assert_eq!(
+            scrub(buf, &secrets),
+            want,
+            "{:?}",
+            String::from_utf8_lossy(buf)
+        );
+    }
 }
 
 #[test]
@@ -98,13 +80,4 @@ fn no_secret_substring_survives() {
             assert!(!contains(&out, sec));
         }
     }
-}
-
-#[test]
-fn suffix_prefix_overlap_fully_scrubbed() {
-    let secrets = vec![b"AAAABBBB".to_vec(), b"BBBBCCCC".to_vec()];
-    let buf = b"..AAAABBBBCCCC..".to_vec();
-    assert!(contains(&buf, &secrets[0]) && contains(&buf, &secrets[1]));
-    let out = scrub(&buf, &secrets);
-    assert_eq!(out, b"..\0\0\0\0\0\0\0\0\0\0\0\0..");
 }

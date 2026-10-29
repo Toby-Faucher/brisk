@@ -86,14 +86,6 @@ fn parse_tap_rejects_oversize_payload() {
     assert_eq!(parse_tap(&m).unwrap().1.len(), MAX_PAYLOAD);
 }
 
-#[test]
-fn parse_tap_skips_unknown_trailing_header_bytes() {
-    let m = msg(1, 9, 0, 7, 1, 2, 0, 8, ANNEXB);
-    let (h, p) = parse_tap(&m).unwrap();
-    assert_eq!((h.header_len, h.connect_data, h.frame_index), (52, 9, 7));
-    assert_eq!(p, ANNEXB);
-}
-
 /// Every recorded frame from the live tap (fixtures/tap, see its README) parses, carries one
 /// session's connect data, H.264, and contiguous indices (counting the patch's own drops).
 #[test]

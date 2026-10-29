@@ -72,49 +72,8 @@ fn rs_matches_nanors_for_random_schemes() {
     }
 }
 
-fn rng(seed: &mut u64) -> u64 {
-    *seed ^= *seed << 13;
-    *seed ^= *seed >> 7;
-    *seed ^= *seed << 17;
-    *seed
-}
-
-#[test]
-fn recovers_up_to_m_losses() {
-    let mut seed = 0x1234_5678_9abc_def1;
-    for _ in 0..100 {
-        let ds = 1 + (rng(&mut seed) % 100) as usize;
-        let ps = 1 + (rng(&mut seed) % 30) as usize;
-        let bs = 1 + (rng(&mut seed) % 64) as usize;
-        let mut shards: Vec<Vec<u8>> = (0..ds + ps)
-            .map(|_| (0..bs).map(|_| rng(&mut seed) as u8).collect())
-            .collect();
-        rs_encode(ds, ps, &mut shards).unwrap();
-        let mut got: Vec<Option<Vec<u8>>> = shards.iter().cloned().map(Some).collect();
-        // Lose exactly ps shards at random positions.
-        let mut lost = 0;
-        while lost < ps {
-            let i = (rng(&mut seed) as usize) % (ds + ps);
-            if got[i].take().is_some() {
-                lost += 1;
-            }
-        }
-        rs_decode(ds, ps, &mut got).unwrap();
-        for i in 0..ds {
-            assert_eq!(got[i].as_ref(), Some(&shards[i]));
-        }
-    }
-}
-
-#[test]
-fn more_than_m_losses_is_an_error_and_leaves_shards_untouched() {
-    let mut shards = vec![vec![1u8, 2, 3], vec![4, 5, 6], vec![0; 3], vec![0; 3]];
-    rs_encode(2, 2, &mut shards).unwrap();
-    let mut got = vec![None, None, Some(shards[2].clone()), None];
-    let before = got.clone();
-    assert_eq!(rs_decode(2, 2, &mut got), Err(FecError::TooManyLosses));
-    assert_eq!(got, before);
-}
+// Recovery up to the parity count and the too-many-losses error are property tests in
+// prop_roundtrip.rs; the nanors vectors above cover large schemes.
 
 #[test]
 fn rejects_schemes_nanors_rejects() {
