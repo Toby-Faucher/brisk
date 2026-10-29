@@ -370,9 +370,12 @@ impl ArtKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtChoice {
+    pub id: u64,
     pub url: String,
+    /// SteamGridDB's small preview of the image, on the same host as `url`.
+    pub thumb: Option<String>,
     pub width: u32,
     pub height: u32,
     pub style: String,
@@ -423,6 +426,8 @@ fn parse_art(data: &Value) -> Result<Vec<ArtChoice>, Error> {
                 _ => String::new(),
             };
             Some(ArtChoice {
+                id: a.get("id")?.as_u64()?,
+                thumb: a.get("thumb").and_then(Value::as_str).map(String::from),
                 url: a.get("url")?.as_str()?.to_string(),
                 width: n("width")?,
                 height: n("height")?,

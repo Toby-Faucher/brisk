@@ -4,6 +4,7 @@ import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { homeOrder, prefs } from '../../state/prefs';
 import { api, ApiError, type SessionRec, type Game, type GameInfo, type Achievements, type GameLocal } from '../../state/api';
+import '../../styles/tokens.css';
 import GameDetail from './GameDetail.svelte';
 import Toasts from '../../shell/Toasts.svelte';
 
@@ -323,6 +324,47 @@ describe('GameDetail', () => {
     } finally {
       card.remove();
     }
+  });
+
+  it('the close X sits in the top-right corner, clear of Refresh, and closes the panel', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const p = props(game);
+    await render(GameDetail, { props: p });
+    const x = page.getByRole('button', { name: 'Close', exact: true });
+    await expect.element(x).toBeInTheDocument();
+    const box = x.element().getBoundingClientRect();
+    const panel = document.querySelector('.gd')?.getBoundingClientRect() as DOMRect;
+    expect(panel.right - box.right).toBeLessThan(16);
+    expect(box.top - panel.top).toBeLessThan(16);
+    const rf = page.getByRole('button', { name: 'Refresh Steam data' }).element().getBoundingClientRect();
+    expect(rf.right).toBeLessThanOrEqual(box.left);
+    expect(document.body.textContent).not.toContain('Close');
+    await userEvent.click(x);
+    await expect.poll(() => p.onclose.mock.calls.length).toBe(1);
+  });
+
+  it('with a confirm in front, Escape closes only the confirm; the X is red-tinted on hover', async () => {
+    vi.spyOn(api, 'gameInfo').mockResolvedValue(info);
+    const emu: Game = {
+      ...game,
+      id: 'emu:dolphin:RMCE01',
+      source: 'emu',
+      emulator: 'dolphin',
+      name: 'Mario Kart Wii',
+      caps: { install: false, controls: true, achievements: false, launchOptions: false, saves: false, screenshots: false, art: true },
+    };
+    const p = props(emu);
+    await render(GameDetail, { props: p });
+    await userEvent.click(page.getByRole('button', { name: 'Remove from library' }));
+    await expect.element(page.getByRole('dialog', { name: /Remove Mario Kart Wii/ })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await expect.element(page.getByRole('dialog', { name: /Remove Mario Kart Wii/ })).not.toBeInTheDocument();
+    expect(p.onclose).not.toHaveBeenCalled();
+    await expect.element(page.getByRole('dialog', { name: 'Mario Kart Wii' })).toBeInTheDocument();
+    await userEvent.hover(page.getByRole('button', { name: 'Close', exact: true }));
+    await expect
+      .poll(() => getComputedStyle(page.getByRole('button', { name: 'Close', exact: true }).element()).color)
+      .toBe('rgb(251, 113, 133)');
   });
 
   it('Play calls onplay for an installed game', async () => {

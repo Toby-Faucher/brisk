@@ -4,9 +4,11 @@
   import { gameCaps, gameKey } from '../../state/gameId';
   import { refreshGames } from '../../state/games';
   import { toast } from '../../shell/Toasts.svelte';
+  import ArtPicker from './ArtPicker.svelte';
 
   let { game }: { game: Game } = $props();
   let busy = $state(false);
+  let picking = $state(false);
   const SAY: Record<number, string> = {
     409: 'Art needs a SteamGridDB key on the machine, or it is already looking.',
     429: 'It looked a moment ago. Try again in a little while.',
@@ -32,7 +34,7 @@
   <section class="sec art" aria-label="Art and details">
     {#if line}<p class="lab">{line}</p>{/if}
     {#if game.needsMatch}<p class="lab">Brisk found several possible games. <a class="link" href="/settings#emulators/dolphin/art">Pick one in Settings</a>.</p>{/if}
-    <button class="btn ghost" aria-disabled={busy} aria-busy={busy} onclick={find}>{game.cover ? 'Choose different art' : 'Find art'}</button>
+    <button class="btn ghost" aria-disabled={busy} aria-busy={busy} onclick={game.cover ? () => (picking = true) : find}>{game.cover ? 'Choose different art' : 'Find art'}</button>
     {#if game.credits?.length}
       <p class="credit">
         {#if game.credits.includes('SteamGridDB')}Art from <a class="link" href="https://www.steamgriddb.com" target="_blank" rel="noopener noreferrer">SteamGridDB</a>.{/if}
@@ -40,6 +42,7 @@
       </p>
     {/if}
   </section>
+  {#if picking}<ArtPicker {game} onclose={() => (picking = false)} onsearch={find} />{/if}
 {/if}
 
 <style>

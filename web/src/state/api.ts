@@ -54,6 +54,11 @@ export type Game = {
 };
 export type ArtCandidate = { id: number; name: string; year?: number | null; verified?: boolean };
 export type ArtPending = { id: string; title: string; system?: string; candidates: ArtCandidate[] };
+/** One image SteamGridDB offers. `thumb` is a path on the machine (null when SteamGridDB sent no preview). */
+export type ArtImage = { id: number; width: number; height: number; style: string; thumb: string | null };
+export type ArtKindName = 'cover' | 'hero' | 'logo';
+/** GET /api/art/{id}/candidates. `current` is the id in use; `chosen` is true when a person picked it. */
+export type ArtList = { kind: ArtKindName; total: number; items: ArtImage[]; current: number | null; chosen: boolean };
 /** GET /api/art/pending. `hasKey` false: the machine has no SteamGridDB key file. */
 export type ArtQueue = { hasKey: boolean; items: ArtPending[]; credits: string[] };
 /** One achievement; `description` is empty for hidden ones, `icon` is an https URL or empty. Text only: never HTML. */
@@ -539,6 +544,12 @@ export const api = {
     call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/match`, pick),
   /** Forget the match and cached art, search again. 409 without a key on the machine, 429 when repeated quickly. */
   artRefresh: (key: string) => call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/refresh`),
+  /** What SteamGridDB has for one kind of art (up to `limit`, best first). 409 without a key, 404 before the game is matched. */
+  artCandidates: (key: string, kind: ArtKindName, limit = 24) =>
+    call<ArtList>('GET', `/api/art/${gameSegment(machineForm(key))}/candidates?kind=${kind}&limit=${limit}`),
+  /** Use that image for the game; hostd downloads it before it answers. */
+  artPick: (key: string, kind: ArtKindName, imageId: number) =>
+    call<{ state: string }>('POST', `/api/art/${gameSegment(machineForm(key))}/pick`, { kind, imageId }),
   friends: () => call<Friends>('GET', '/api/friends'),
   stream: () => call<StreamInfo>('GET', '/api/stream'),
   startStream: (req: StreamReq) => {

@@ -83,7 +83,7 @@ fn sgdb(search_body: Value) -> impl FnOnce(&str) -> Routes {
     move |base| {
         let (c, b) = ok(search_body);
         let (gc, gb) = ok(
-            json!({"success": true, "data": [{"url": format!("{base}/img/cover"), "width": 600, "height": 900, "style": "alternate", "mime": "image/png", "score": 3}]}),
+            json!({"success": true, "data": [{"id": 11, "url": format!("{base}/img/cover"), "thumb": format!("{base}/thumb/11"), "width": 600, "height": 900, "style": "alternate", "mime": "image/png", "score": 3, "author": {"name": "x"}, "notes": null, "nsfw": false}]}),
         );
         let (ec, eb) = empty();
         vec![
@@ -228,6 +228,10 @@ impl Rig {
             .call("POST", &format!("/api/uploads/{up}/finish"), Value::Null)
             .await;
         assert_eq!(s, StatusCode::OK, "{v}");
+    }
+    async fn cover(&self) -> Vec<u8> {
+        let uri = "/api/games/emu%3Adolphin%3ARMCE01/art/cover";
+        self.raw("GET", uri, &[], vec![], true).await.2
     }
     async fn game(&self) -> Value {
         let (_, g) = self.call("GET", "/api/games", Value::Null).await;
@@ -718,4 +722,179 @@ async fn a_failed_lookup_is_not_retried_by_the_sweep_until_its_backoff_ends() {
     r.state.art.sweep(&r.state.cfg);
     r.idle().await;
     assert_eq!(m.count("search/autocomplete/"), 2);
+}
+
+fn png2() -> Vec<u8> {
+    let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+    v.extend_from_slice(&[9u8; 80]);
+    v
+}
+
+/// The grids a real answer has: ids, thumbs, extra fields; item 13's thumb is off the allow-list.
+fn picker_mock(base: &str) -> Routes {
+    let mut v = sgdb(json!({"success": true, "data": [hit(5, "Mario Kart Wii")]}))(base);
+    let item = |id: u64, img: &str, thumb: String, score: i64| json!({"id": id, "url": format!("{base}/img/{img}"), "thumb": thumb, "width": 600, "height": 900, "style": "alternate", "mime": "image/png", "score": score});
+    let (c, b) = ok(json!({"success": true, "data": [
+        item(11, "cover", format!("{base}/thumb/11"), 3),
+        item(12, "second", format!("{base}/thumb/12"), 2),
+        item(13, "third", "https://evil.example/t.png".into(), 1)]}));
+    v[1] = ("grids/game/", c, b);
+    v.push(("/img/second", 200, png2()));
+    v.push(("/thumb/", 200, png()));
+    v
+}
+
+#[tokio::test]
+async fn picker_lists_thumbs_serves_them_picks_and_keeps_the_pick_on_refresh() {
+    let m = mock(picker_mock).await;
+    let r = rig(Some(&m.base));
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.idle().await;
+    let base = "/api/art/emu%3Adolphin%3ARMCE01";
+    // the list: ids, a path on this machine for each thumbnail, the one in use
+    let (s, v) = r
+        .call(
+            "GET",
+            &format!("{base}/candidates?kind=cover&limit=2"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["total"], 3);
+    assert_eq!(v["items"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        v["items"][0]["thumb"],
+        format!("{base}/thumb/cover/11").replace(
+            "/api/art/emu%3Adolphin%3ARMCE01",
+            "/api/art/emu%3Adolphin%3ARMCE01"
+        )
+    );
+    assert_eq!(
+        (v["current"].clone(), v["chosen"].clone()),
+        (json!(11), json!(false))
+    );
+    assert!(
+        !v.to_string().contains("sgdb") && !v.to_string().contains("steamgriddb"),
+        "{v}"
+    );
+    for (q, want) in [
+        ("kind=icon", 400),
+        ("kind=../x", 400),
+        ("kind=cover&limit=0", 200),
+    ] {
+        let (s, _) = r
+            .call("GET", &format!("{base}/candidates?{q}"), Value::Null)
+            .await;
+        assert_eq!(s.as_u16(), want, "{q}");
+    }
+    let (s, _, _) = r
+        .raw(
+            "GET",
+            &format!("{base}/candidates?kind=cover"),
+            &[],
+            vec![],
+            false,
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    // thumbnails: fetched once, then from the cache; unknown ids and off-list hosts reach nobody
+    for _ in 0..2 {
+        let (s, h, b) = r
+            .raw("GET", &format!("{base}/thumb/cover/11"), &[], vec![], true)
+            .await;
+        assert_eq!(
+            (s, h["content-type"].to_str().unwrap(), b),
+            (StatusCode::OK, "image/png", png())
+        );
+    }
+    assert_eq!(m.count("/thumb/11"), 1);
+    let (s, ..) = r
+        .raw("GET", &format!("{base}/thumb/cover/999"), &[], vec![], true)
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, ..) = r
+        .raw("GET", &format!("{base}/thumb/cover/13"), &[], vec![], true)
+        .await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY);
+    let (s, ..) = r
+        .raw("GET", &format!("{base}/thumb/icon/11"), &[], vec![], true)
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert_eq!(m.count("evil"), 0);
+    // choose the second image
+    let (s, _) = r
+        .call(
+            "POST",
+            &format!("{base}/pick"),
+            json!({"kind": "cover", "imageId": 999}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = r
+        .call(
+            "POST",
+            &format!("{base}/pick"),
+            json!({"kind": "cover", "imageId": 12, "url": "http://x"}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let (s, v) = r
+        .call(
+            "POST",
+            &format!("{base}/pick"),
+            json!({"kind": "cover", "imageId": 12}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(r.cover().await, png2());
+    let (_, v) = r
+        .call("GET", &format!("{base}/candidates?kind=cover"), Value::Null)
+        .await;
+    assert_eq!(
+        (v["current"].clone(), v["chosen"].clone()),
+        (json!(12), json!(true))
+    );
+    // a refresh searches again but keeps the chosen cover
+    let id = brisk_hostd::game::GameId::parse(ID).unwrap();
+    let st = r.state.clone();
+    tokio::task::spawn_blocking(move || {
+        st.art
+            .run_fresh(&st.cfg, &id, "Mario Kart Wii", Some("wii"), None)
+    })
+    .await
+    .unwrap();
+    assert_eq!(r.cover().await, png2());
+    // files stay private to the owner
+    use std::os::unix::fs::PermissionsExt;
+    let f = r.data.join("art/emu_dolphin_RMCE01/selected.json");
+    assert_eq!(
+        std::fs::metadata(f).unwrap().permissions().mode() & 0o077,
+        0
+    );
+}
+
+#[tokio::test]
+async fn picker_needs_a_key_and_a_match() {
+    let r = rig(None);
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    let (s, _) = r
+        .call(
+            "GET",
+            "/api/art/emu%3Adolphin%3ARMCE01/candidates?kind=cover",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    let m = mock(sgdb(json!({"success": true, "data": []}))).await;
+    let r = rig(Some(&m.base));
+    r.add(b"RMCE01", "Mario Kart Wii").await;
+    r.idle().await;
+    let (s, _) = r
+        .call(
+            "GET",
+            "/api/art/emu%3Adolphin%3ARMCE01/candidates?kind=cover",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
 }

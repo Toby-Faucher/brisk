@@ -245,6 +245,7 @@
         }
       }}
     >
+      <Dialog.Close class="gd-x" aria-label="Close"><Icon name="x" size={16} /></Dialog.Close>
       <div class="gd-side"><GameSide {game} {busy} {info} {ach} {onplay} {oninstall} onremoved={() => (open = false)} /></div>
 
       <div class="gd-main">
@@ -377,9 +378,15 @@
     :global(.rs.gd) { display: block; height: auto; max-height: 88vh; overflow: auto; }
     .gd-side, .gd-main { overflow: visible; padding-bottom: 0; border: 0; }
     .gd-main { padding-bottom: 22px; }
+    /* one scrolling column: the X stays in view at the top while the panel scrolls */
+    :global(.gd-x) { position: sticky; top: 8px; margin: 8px 8px -44px auto; }
   }
   .sec { padding: 14px 22px 0; display: grid; gap: 10px; }
-  .rbar { display: flex; justify-content: flex-end; padding: 14px 22px 0; }
+  .rbar { display: flex; justify-content: flex-end; padding: 14px 62px 0 22px; }
+  /* the close X sits in the panel's top-right corner; .rbar leaves room for it. Red on hover and focus. */
+  :global(.gd-x) { position: absolute; top: 10px; right: 10px; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 999px; cursor: pointer; color: var(--muted); background: color-mix(in srgb, var(--panel2) 70%, transparent); transition: color .15s, background .15s; }
+  :global(.gd-x:hover), :global(.gd-x:focus-visible) { color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, var(--panel2)); }
+  @media (pointer: coarse) { :global(.gd-x) { width: 44px; height: 44px; top: 6px; right: 6px; } }
   .rf { padding: 4px 10px; font-size: 12.5px; min-height: 24px; display: inline-flex; align-items: center; gap: 6px; }
   .rf[aria-busy='true'] :global(svg) { animation: rf-spin 1s linear infinite; }
   @keyframes rf-spin { to { transform: rotate(360deg); } }
