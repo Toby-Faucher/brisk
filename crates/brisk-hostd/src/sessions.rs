@@ -312,7 +312,7 @@ impl Sessions {
             crate::fsutil::write_atomic(&path, &serde_json::to_vec(&all)?)
         };
         if let Err(e) = write() {
-            eprintln!("warning: {}: {e}", path.display());
+            tracing::warn!("{}: {e}", path.display());
         }
         self.evict_series();
         Ok(())
@@ -356,7 +356,7 @@ impl Sessions {
             writeln!(f, "{}", serde_json::to_string(r)?)
         };
         if let Err(e) = write() {
-            eprintln!("warning: {}: {e}", self.path.display());
+            tracing::warn!("{}: {e}", self.path.display());
         }
     }
 

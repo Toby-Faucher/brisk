@@ -49,7 +49,7 @@ impl Store {
             .unwrap_or_default();
         let path = data_dir.join(FILE);
         if let Err(e) = crate::fsutil::write_atomic(&path, &bytes) {
-            eprintln!("warning: {}: {e}", path.display());
+            tracing::warn!("{}: {e}", path.display());
         }
     }
 

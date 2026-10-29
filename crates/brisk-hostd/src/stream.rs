@@ -499,9 +499,10 @@ impl Supervisor {
                 .await
                 .is_err()
             {
-                eprintln!(
-                    "warning: bridge {} ignored SIGTERM for {:?}, killing",
-                    r.pid, self.stop_wait
+                tracing::warn!(
+                    "bridge {} ignored SIGTERM for {:?}, killing",
+                    r.pid,
+                    self.stop_wait
                 );
                 signal(r.pid, rustix::process::Signal::KILL);
                 let _ = r.done.wait_for(|d| *d).await;
@@ -651,13 +652,13 @@ pub fn ensure_cert(
             .and_then(|f| f.set_modified(c))
     {
         // Harmless but noisy: the next start sees a mismatched pair and renews once more.
-        eprintln!(
-            "warning: couldn't align {}'s mtime with the cert: {e}",
+        tracing::warn!(
+            "couldn't align {}'s mtime with the cert: {e}",
             key.display()
         );
     }
-    eprintln!(
-        "info: new bridge certificate {} ({CERT_DAYS} days)",
+    tracing::info!(
+        "new bridge certificate {} ({CERT_DAYS} days)",
         cert.display()
     );
     Ok((cert, key))
@@ -714,7 +715,7 @@ async fn launch_and_focus(
         let running = src.scope(&crate::running::procs(&p), &d, &i).is_some();
         // The emulator source skips a spawn for a running game itself; Steam is told here.
         let ok = if running && i.source() == Source::Steam {
-            eprintln!("info: game {i} is already running; streaming it without relaunch");
+            tracing::info!("game {i} is already running; streaming it without relaunch");
             true
         } else {
             src.launch(&*r, &p, &d, &i, &env)

@@ -34,7 +34,7 @@ pub(super) async fn games(State(s): State<Arc<AppState>>, req: Request) -> Respo
     match serde_json::to_vec(&g) {
         Ok(b) => ([(header::CONTENT_TYPE, "application/json")], b).into_response(),
         Err(e) => {
-            eprintln!("error: games: serializing the cache failed: {e}");
+            tracing::error!("games: serializing the cache failed: {e}");
             err(StatusCode::INTERNAL_SERVER_ERROR, "games unavailable")
         }
     }

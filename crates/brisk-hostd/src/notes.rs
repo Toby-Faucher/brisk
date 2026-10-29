@@ -235,7 +235,7 @@ impl NotesStore {
         if next != *m {
             self.save(&next).map_err(|e| {
                 // the path and the error only, never the text
-                eprintln!("warning: {}: {e}", self.path.display());
+                tracing::warn!("{}: {e}", self.path.display());
                 NotesError::Io
             })?;
             *m = next;

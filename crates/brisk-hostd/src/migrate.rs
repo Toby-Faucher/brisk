@@ -73,8 +73,8 @@ pub(crate) fn library_from_emulators(old: &str) -> Result<Vec<Record>, String> {
                 .find(|id| !used.contains(id))
         });
         let Some(id) = id else {
-            eprintln!(
-                "warning: {}: skipping {:?}, bad emulator name",
+            tracing::warn!(
+                "{}: skipping {:?}, bad emulator name",
                 emu::OLD_FILE,
                 e.name
             );
@@ -254,13 +254,13 @@ fn apply(data_dir: &Path, name: &str, convert: impl Fn(&str) -> Result<Out, Stri
     let out = match convert(&old) {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("warning: {name}: left alone, not migrated: {e}");
+            tracing::warn!("{name}: left alone, not migrated: {e}");
             return;
         }
     };
     if !out.unmapped.is_empty() {
-        eprintln!(
-            "warning: {name}: {} keys kept as they are (no game has that id): {}",
+        tracing::warn!(
+            "{name}: {} keys kept as they are (no game has that id): {}",
             out.unmapped.len(),
             out.unmapped.join(", ")
         );
@@ -273,10 +273,10 @@ fn apply(data_dir: &Path, name: &str, convert: impl Fn(&str) -> Result<Out, Stri
         write_atomic(&path, new.as_bytes())
     };
     match go() {
-        Ok(()) => eprintln!(
-            "info: {name}: keys moved to the new game ids (backup: {name}{BACKUP_SUFFIX})"
-        ),
-        Err(e) => eprintln!("warning: {name}: not migrated: {e}"),
+        Ok(()) => {
+            tracing::info!("{name}: keys moved to the new game ids (backup: {name}{BACKUP_SUFFIX})")
+        }
+        Err(e) => tracing::warn!("{name}: not migrated: {e}"),
     }
 }
 
@@ -288,15 +288,15 @@ pub fn run(data_dir: &Path) {
     {
         match library_from_emulators(&text) {
             Ok(recs) => match write_atomic(&lib, &emu::library_json(&recs)) {
-                Ok(()) => eprintln!(
-                    "info: {} -> {} ({} games)",
+                Ok(()) => tracing::info!(
+                    "{} -> {} ({} games)",
                     emu::OLD_FILE,
                     emu::LIBRARY_FILE,
                     recs.len()
                 ),
-                Err(e) => eprintln!("warning: {}: {e}", lib.display()),
+                Err(e) => tracing::warn!("{}: {e}", lib.display()),
             },
-            Err(e) => eprintln!("warning: {} left alone, not migrated: {e}", emu::OLD_FILE),
+            Err(e) => tracing::warn!("{} left alone, not migrated: {e}", emu::OLD_FILE),
         }
     }
     let legacy = legacy_map(&emu::load(data_dir));

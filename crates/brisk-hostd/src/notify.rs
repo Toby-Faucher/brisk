@@ -26,7 +26,7 @@ fn send(states: &[NotifyState]) {
     if enabled()
         && let Err(e) = sd_notify::notify(states)
     {
-        eprintln!("warning: sd_notify: {e}");
+        tracing::warn!("sd_notify: {e}");
     }
 }
 
@@ -122,7 +122,7 @@ pub async fn watchdog(state: std::sync::Arc<AppState>, every: Duration) {
         t.tick().await;
         match alive(&state).await {
             Some(s) => send(&[NotifyState::Watchdog, NotifyState::Status(&s)]),
-            None => eprintln!("warning: hostd not responsive; watchdog ping skipped"),
+            None => tracing::warn!("hostd not responsive; watchdog ping skipped"),
         }
     }
 }

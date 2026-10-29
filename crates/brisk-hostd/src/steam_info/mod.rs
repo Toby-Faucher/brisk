@@ -63,7 +63,7 @@ pub(crate) async fn cached<T: Serialize + DeserializeOwned + Clone>(
             Some(e.value)
         }
         Err(err) => {
-            eprintln!("warning: steam {name} failed: {err}");
+            tracing::warn!("steam {name} failed: {err}");
             old.map(|e| e.value)
         }
     }

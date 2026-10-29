@@ -239,10 +239,7 @@ impl Prefs {
             return 0;
         }
         if let Err(e) = crate::migrate::backup_once(&self.path) {
-            eprintln!(
-                "warning: {}: no backup, not rekeyed: {e}",
-                self.path.display()
-            );
+            tracing::warn!("{}: no backup, not rekeyed: {e}", self.path.display());
             return 0;
         }
         let mut moved = 0;
@@ -286,7 +283,7 @@ impl Prefs {
             crate::fsutil::write_atomic(&self.path, &serde_json::to_vec(&doc)?)
         };
         if let Err(e) = write() {
-            eprintln!("warning: {}: {e}", self.path.display());
+            tracing::warn!("{}: {e}", self.path.display());
         }
     }
 }

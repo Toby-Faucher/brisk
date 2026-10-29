@@ -312,7 +312,7 @@ fn tombs_read(data_dir: &Path) -> Result<Vec<Tomb>, String> {
 /// `tombs_read` where a problem is a warning and an empty list (explicit adds and forgets).
 pub(crate) fn tombs_load(data_dir: &Path) -> Vec<Tomb> {
     tombs_read(data_dir).unwrap_or_else(|e| {
-        eprintln!("warning: {e}");
+        tracing::warn!("{e}");
         vec![]
     })
 }
@@ -322,7 +322,7 @@ pub(crate) fn tombs_save(data_dir: &Path, mut t: Vec<Tomb>) {
     t.drain(..t.len().saturating_sub(MAX_TOMBS));
     let b = serde_json::to_vec(&serde_json::json!({ "removed": t })).unwrap_or_default();
     if let Err(e) = crate::fsutil::write_atomic(&data_dir.join(TOMBS_FILE), &b) {
-        eprintln!("warning: removed list: {e}");
+        tracing::warn!("removed list: {e}");
     }
 }
 
@@ -463,12 +463,12 @@ fn keep_bad_copy(data_dir: &Path, skipped: usize) {
     }
     let bad = data_dir.join(format!("{prefix}{}", crate::steam::now()));
     match std::fs::copy(data_dir.join(emu::LIBRARY_FILE), &bad) {
-        Ok(_) => eprintln!(
-            "warning: {skipped} record(s) in {} did not parse; the original is kept as {}",
+        Ok(_) => tracing::warn!(
+            "{skipped} record(s) in {} did not parse; the original is kept as {}",
             emu::LIBRARY_FILE,
             bad.display()
         ),
-        Err(e) => eprintln!("warning: could not back up {}: {e}", emu::LIBRARY_FILE),
+        Err(e) => tracing::warn!("could not back up {}: {e}", emu::LIBRARY_FILE),
     }
 }
 

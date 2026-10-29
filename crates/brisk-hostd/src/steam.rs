@@ -427,7 +427,7 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
         }
         // Stale cache is better than nothing, but the UI still says Steam was unreachable.
         Err(e) => {
-            eprintln!("warning: GetOwnedGames failed: {e}");
+            tracing::warn!("GetOwnedGames failed: {e}");
             (cache.map(|c| c.games).unwrap_or_default(), false)
         }
     }

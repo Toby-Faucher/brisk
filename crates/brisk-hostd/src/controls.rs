@@ -688,7 +688,7 @@ impl Controls {
     fn write_file(&self, file: &str, orig: Option<Vec<u8>>, new: &str) -> Result<(), CtlError> {
         let path = self.path(file);
         let io = |e: std::io::Error| {
-            eprintln!("warning: {}: {e}", path.display());
+            tracing::warn!("{}: {e}", path.display());
             CtlError::Io
         };
         let dir = path.parent().unwrap_or(Path::new("."));

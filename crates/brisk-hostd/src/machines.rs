@@ -663,8 +663,8 @@ pub fn spawn_idle(h: &Arc<Hub>) {
                 })
                 .await;
                 match done {
-                    Ok(Ok(())) => eprintln!("info: idle: shutting down {}", e.cfg.id),
-                    _ => eprintln!("warning: idle: shutdown of {} failed", e.cfg.id),
+                    Ok(Ok(())) => tracing::info!("idle: shutting down {}", e.cfg.id),
+                    _ => tracing::warn!("idle: shutdown of {} failed", e.cfg.id),
                 }
             }
         });

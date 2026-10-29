@@ -325,7 +325,7 @@ impl Restarter {
             Ok(Ok(None)) => "systemctl failed (not found, non-zero exit or over 30 s)",
             Ok(Ok(Some(_))) => return Ok(()),
         };
-        eprintln!("warning: sunshine restart failed: {why}");
+        tracing::warn!("sunshine restart failed: {why}");
         *self.last.lock().unwrap() = prev;
         Err(RestartError::Failed)
     }

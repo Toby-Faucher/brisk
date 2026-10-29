@@ -11,6 +11,7 @@ Fixed, not configurable: hostd listens on `127.0.0.1:8443` and checks the `Host`
 | Variable | Meaning | Default | Read in |
 |---|---|---|---|
 | `BRISK_DIST` | Directory hostd serves (the built web UI). A command-line argument wins. | `web/dist` | `hostd/src/main.rs` |
+| `BRISK_LOG` | Lowest log level hostd prints: `error`, `warn`, `info`, `debug` or `trace`. Anything else means `info`. | `info` | `hostd/src/log.rs` |
 | `BRISK_STATIC` | `disk` or `embed`. `embed` needs a build with `--features embed`; anything else warns and uses disk. | `disk` | `hostd/src/site.rs` |
 | `BRISK_DATA_DIR` | hostd's data: `prefs.json`, `sessions.jsonl`, `owned.json`, `library.json` (emulator games; the old `emulators.json` is read once and migrated). | `~/.local/share/brisk` | `hostd/src/config.rs` |
 | `BRISK_STEAM_DIR` | Steam install, for the `appmanifest_*.acf` library. | `~/.local/share/Steam` | `hostd/src/config.rs` |

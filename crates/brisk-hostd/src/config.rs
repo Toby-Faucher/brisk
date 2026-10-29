@@ -174,10 +174,7 @@ pub fn load_secret(env: Option<String>, file: &Path) -> std::io::Result<String> 
         Ok(s) => {
             if std::fs::metadata(file)?.permissions().mode() & 0o077 != 0 {
                 std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600))?;
-                eprintln!(
-                    "warning: {} was readable by others; now 0600",
-                    file.display()
-                );
+                tracing::warn!("{} was readable by others; now 0600", file.display());
             }
             check(s.trim().to_string())
         }
@@ -226,8 +223,8 @@ pub fn load_users_as(file: &Path, uid: u32) -> Vec<String> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK) // NONBLOCK: a FIFO must not hang startup
         .open(file);
     let warn = || {
-        eprintln!(
-            "warning: ignoring {} (must be a regular file, not a symlink, owned by uid {uid} and writable only by it: 0600 or 0644)",
+        tracing::warn!(
+            "ignoring {} (must be a regular file, not a symlink, owned by uid {uid} and writable only by it: 0600 or 0644)",
             file.display()
         );
         vec![]

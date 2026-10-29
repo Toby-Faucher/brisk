@@ -207,6 +207,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "tracing",
  "ureq",
 ]
 

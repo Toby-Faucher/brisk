@@ -300,7 +300,7 @@ async fn focus_window(
             return;
         }
         if tokio::time::Instant::now() >= end {
-            eprintln!("warning: no sway window for {what} after {wait:?}; left as is");
+            tracing::warn!("no sway window for {what} after {wait:?}; left as is");
             return;
         }
         tokio::time::sleep(poll).await;
@@ -395,8 +395,8 @@ impl Quitter {
     pub fn new(runner: Arc<dyn Runner>, proc: PathBuf, data_dir: PathBuf) -> Self {
         let as_root = rustix::process::geteuid().is_root();
         if as_root {
-            eprintln!(
-                "warning: hostd runs as root; POST /api/quit is off (run it as the desktop user)"
+            tracing::warn!(
+                "hostd runs as root; POST /api/quit is off (run it as the desktop user)"
             );
         }
         Quitter {
@@ -467,20 +467,20 @@ impl Quitter {
                     Sent::Recycled => recycled += 1,
                     Sent::Denied => denied += 1,
                     Sent::Failed(e) => {
-                        eprintln!("warning: {sig:?} to pid {} of game {id}: {e}", x.pid);
+                        tracing::warn!("{sig:?} to pid {} of game {id}: {e}", x.pid);
                         failed += 1;
                     }
                     Sent::Unsupported => {
-                        eprintln!(
-                            "error: cannot quit game {id}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
+                        tracing::error!(
+                            "cannot quit game {id}: this kernel has no pidfd (Linux 5.3+); no fallback to kill by pid"
                         );
                         return;
                     }
                 }
             }
             if denied + recycled + failed > 0 {
-                eprintln!(
-                    "warning: {sig:?} for game {id}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
+                tracing::warn!(
+                    "{sig:?} for game {id}: {denied} pids refused (EPERM), {recycled} skipped (pid reused), {failed} failed"
                 );
             }
         })
@@ -529,7 +529,7 @@ impl Quitter {
             {
                 return Ok(Quit::Closed);
             }
-            eprintln!("info: game {id} still running after closing its windows; SIGTERM");
+            tracing::info!("game {id} still running after closing its windows; SIGTERM");
         }
         self.signal(id, Sig::Term).await;
         let wait = if force || (lone && !emu) {
@@ -541,7 +541,7 @@ impl Quitter {
             return Ok(Quit::Closed);
         }
         if force {
-            eprintln!("info: game {id} still running after SIGTERM; SIGKILL (forced)");
+            tracing::info!("game {id} still running after SIGTERM; SIGKILL (forced)");
             self.signal(id, Sig::Kill).await;
             if self.gone_within(id, BRIEF).await {
                 return Ok(Quit::Closed);

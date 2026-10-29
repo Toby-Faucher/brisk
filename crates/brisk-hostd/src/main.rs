@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::process::ExitCode {
+    brisk_hostd::log::StderrLog::init(std::env::var("BRISK_LOG").ok().as_deref());
     // `brisk-hostd add <file> [--move|--copy|--link]` registers a local file and exits.
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "add") {
@@ -45,7 +46,7 @@ async fn main() -> std::process::ExitCode {
         cfg.dist.clone(),
         std::env::var("BRISK_STATIC").ok().as_deref(),
     );
-    eprintln!("{}", site.describe());
+    tracing::info!("{}", site.describe());
     let conf = std::env::var_os("HOME")
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".config/brisk");
@@ -54,15 +55,15 @@ async fn main() -> std::process::ExitCode {
     cfg.secret = match load_secret(std::env::var("BRISK_SECRET").ok(), &secret_file) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("error: secret {}: {e}", secret_file.display());
+            tracing::error!("secret {}: {e}", secret_file.display());
             return std::process::ExitCode::FAILURE;
         }
     };
     cfg.allowed_users
         .extend(load_users(&conf.join("allowed-users")));
     if !cfg.allowed_users.is_empty() {
-        eprintln!(
-            "info: tailnet logins allowed without the secret: {}",
+        tracing::info!(
+            "tailnet logins allowed without the secret: {}",
             cfg.allowed_users.join(", ")
         );
     }
@@ -71,7 +72,7 @@ async fn main() -> std::process::ExitCode {
     let l = match tokio::net::TcpListener::bind(cfg.listen).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("error: bind {}: {e}", cfg.listen);
+            tracing::error!("bind {}: {e}", cfg.listen);
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -79,7 +80,7 @@ async fn main() -> std::process::ExitCode {
     let hub = match machines::load(&cfg.machines_file, cfg.machines_explicit) {
         Ok(h) => h.map(Arc::new),
         Err(e) => {
-            eprintln!("error: machines file {e}");
+            tracing::error!("machines file {e}");
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -111,10 +112,10 @@ async fn main() -> std::process::ExitCode {
         let art = state.art.clone();
         tokio::task::spawn_blocking(move || match brisk_hostd::ingest::scan_library(&cfg) {
             Ok(r) => {
-                eprintln!("info: scan: {} new games", r.merged.added.len());
+                tracing::info!("scan: {} new games", r.merged.added.len());
                 art.trigger_new(&cfg, &r.merged.added);
             }
-            Err(e) => eprintln!("warning: startup scan: {e}"),
+            Err(e) => tracing::warn!("startup scan: {e}"),
         });
     }
     let app = router(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
@@ -124,10 +125,7 @@ async fn main() -> std::process::ExitCode {
     if notify::enabled() {
         tokio::spawn(async move {
             if !notify::serving(st.cfg.listen).await {
-                eprintln!(
-                    "error: {} bound but not answering; READY not sent",
-                    st.cfg.listen
-                );
+                tracing::error!("{} bound but not answering; READY not sent", st.cfg.listen);
                 return;
             }
             notify::ready(&notify::status_text(
@@ -154,7 +152,7 @@ async fn main() -> std::process::ExitCode {
     match axum::serve(l, app).with_graceful_shutdown(stop).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("error: {e}");
+            tracing::error!("{e}");
             std::process::ExitCode::FAILURE
         }
     }
