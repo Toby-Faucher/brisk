@@ -1,13 +1,12 @@
 #!/bin/bash
+# shellcheck disable=SC2016,SC2015 # stub bodies expand when the stubs run; A && B || fail asserts both
 # Stubbed test of brisk-service.sh; touches nothing real (systemctl, tailscale, loginctl, ss, curl,
 # journalctl, cargo, npm, systemd-run and sunshine-brisk.sh are stubs; HOME, XDG_RUNTIME_DIR and
 # the checkout are temp dirs).
-set -eu # setup: any failure stops the test (set +e below, before the cases)
 s=$(cd "$(dirname "$0")" && pwd)
-t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-mkdir -p "$t/bin" "$t/home/.config/brisk/tls" "$t/run" "$t/d" "$t/root/target/release" "$t/root/web/src" "$t/root/web/dist" "$t/root/web/node_modules"
-L=$t/log
-stub() { printf '#!/bin/bash\necho "%s $*" >> "%s"\n%s\n' "$1" "$L" "$2" > "$t/bin/$1"; chmod +x "$t/bin/$1"; }
+# shellcheck source=scripts/lib-test.sh
+. "$s/lib-test.sh"
+mkdir -p "$t/home/.config/brisk/tls" "$t/run" "$t/d" "$t/root/target/release" "$t/root/web/src" "$t/root/web/dist" "$t/root/web/node_modules"
 # is-active: SVC_ACTIVE until a start/restart in this run sets $T/state (the B wrapper clears it).
 # ACT_FAIL: a unit without the "# old" mark (the new one) fails to start; the old one starts.
 stub systemctl 'case $2 in
@@ -77,27 +76,20 @@ stub rustup 'case ${RUSTUP:-ok} in fail) exit 1;; hang) exec sleep 30;; esac; ex
 # NPM_FAIL: leaves a partial dir and fails; NPM_EMPTY: "succeeds" without an index.html
 stub npm 'o=""; while [ $# -gt 0 ]; do [ "$1" = --outDir ] && o=$2; shift; done; [ -n "$o" ] || exit 0
 mkdir -p "$o/_astro"; [ -n "${NPM_FAIL:-}" ] && exit 1; [ -n "${NPM_EMPTY:-}" ] && exit 0; echo built > "$o/index.html"'
-# date +%Y%m%d-%H%M%S returns DATE_STAMP when set (a clock stepped back)
+# date +%Y%m%d-%H%M%S returns DATE_STAMP when set (the web build dir stamp)
 printf '#!/bin/sh\n[ -n "${DATE_STAMP:-}" ] && [ "$1" = +%%Y%%m%%d-%%H%%M%%S ] && { echo "$DATE_STAMP"; exit 0; }\nexec /usr/bin/date "$@"\n' > "$t/bin/date"
-printf '#!/bin/sh\nshift 2; exec "$@"\n' > "$t/bin/nice"; cp "$t/bin/nice" "$t/bin/ionice"
-printf '#!/bin/sh\necho "systemd-run $*" >> "%s"\nwhile [ "$1" != -c3 ]; do shift; done; shift\n[ "$1" = sh ] && { echo 9663676416; exit 0; }\nexec "$@"\n' "$L" > "$t/bin/systemd-run"
-printf '#!/bin/sh\necho "sb $*" >> "%s"\n' "$L" > "$t/sb"
-chmod +x "$t"/bin/* "$t/sb"
-export T=$t PATH=$t/bin:$PATH HOME=$t/home XDG_RUNTIME_DIR=$t/run BRISK_SB=$t/sb SB_DROPIN_DIR=$t/d BRISK_ROOT=$t/root
-export U=$t/home/.config/systemd/user/brisk-hostd.service BRISK_UP_WAIT=2 BRISK_RESTART_GAP=1
+chmod +x "$t/bin/date"
+stub_cap; stub sb
+export T=$t HOME=$t/home XDG_RUNTIME_DIR=$t/run BRISK_SB=$t/bin/sb SB_DROPIN_DIR=$t/d BRISK_ROOT=$t/root
+# BRISK_UP_WAIT=1: a hostd that never comes up costs 1 s, not 45.
+export U=$t/home/.config/systemd/user/brisk-hostd.service BRISK_UP_WAIT=1 BRISK_RESTART_GAP=1
 SB_BIN=$t/home/.local/opt/sunshine-brisk/bin/sunshine # the patched Sunshine binary brisk_running looks for
 SV=$t/root/target/service/bin
 # Each run starts with no started/failed state (see the systemctl stub).
 printf '#!/bin/sh\nrm -f "%s/state"\nexec "%s" "$@"\n' "$t" "$s/brisk-service.sh" > "$t/bsvc"; chmod +x "$t/bsvc"
 B=$t/bsvc
 echo 0123456789abcdef0123456789abcdef > "$t/home/.config/brisk/secret"
-# A fake brisk-up hostd: a sleep whose process name is brisk-hostd.
-ln -s "$(command -v sleep)" "$t/brisk-hostd"
 set +e
-# Waits until the fake hostd has exec'd (its name is the parent's until then).
-execed() { for _ in $(seq 100); do [ "$(cat "/proc/$1/comm" 2>/dev/null)" = brisk-hostd ] && return; sleep 0.05; done; echo "fake hostd $1 did not start"; }
-bad=0
-fail() { echo "FAIL: $*"; sed 's/^/    log: /' "$L" 2>/dev/null; bad=1; }
 
 # install: refuses without the release binaries, then installs once and is idempotent.
 : > "$L"; "$B" install >/dev/null 2>&1 && fail "install without binaries"
@@ -112,7 +104,7 @@ grep -q '@ROOT@' "$U" && fail "unit kept an @ROOT@ token"
 grep -q '^systemctl --user daemon-reload' "$L" && grep -q '^systemctl --user enable --now brisk-hostd.service' "$L" || fail "no daemon-reload + enable --now"
 grep -q sudo "$L" && fail "install used sudo"
 out=$("$B" install 2>&1) || fail "second install failed"; grep -q 'unit unchanged' <<<"$out" || fail "second install rewrote the unit"
-mkdir -p "$t/run/brisk"; "$t/brisk-hostd" 30 & p=$!; execed $p; echo $p > "$t/run/brisk/hostd.pid"
+mkdir -p "$t/run/brisk"; fake_hostd 30; p=$!; echo $p > "$t/run/brisk/hostd.pid"
 "$B" install >/dev/null 2>&1 && fail "install beside a brisk-up hostd"; kill $p
 # a stale hostd.pid (the pid now belongs to another process) does not block install
 sleep 30 & p=$!; echo $p > "$t/run/brisk/hostd.pid"
@@ -189,7 +181,7 @@ grep -qx "$want" "$L" || fail "serve-on did not map :8443"
 grep -h '^tailscale serve' "$L" | grep -v -e 'status --json' -e '--https=8443' && fail "a serve call outside :8443"
 
 # sunshine-permanent: refuses on a busy host, else install + enable through sunshine-brisk.sh.
-: > "$L"; STATE=SUNSHINE_SERVER_BUSY GAME=1 "$B" sunshine-permanent >/dev/null 2>&1 && fail "permanent on a busy host"
+: > "$L"; STATE=SUNSHINE_SERVER_BUSY "$B" sunshine-permanent >/dev/null 2>&1 && fail "permanent on a busy host"
 grep -q '^sb ' "$L" && fail "sunshine-brisk ran on a busy host"
 # FREE but an app still running: enable would refuse, so install must not write the drop-in
 : > "$L"; GAME=1 "$B" sunshine-permanent >/dev/null 2>&1 && fail "permanent with an app running"
@@ -213,7 +205,7 @@ grep -q '^npm' "$L" && fail "npm ran with web/dist up to date"
 grep -q 'restart' "$L" && fail "restart over a live stream"
 # a failed or hung toolchain install stops update before the build, the web swap and any restart
 for m in fail hang; do
-  : > "$L"; RUSTUP=$m BRISK_RUSTUP_TIMEOUT=1 SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 && fail "update went on after rustup $m"
+  : > "$L"; RUSTUP=$m BRISK_RUSTUP_TIMEOUT=0.2 SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 && fail "update went on after rustup $m"
   grep -qE 'cargo build|^npm|restart' "$L" && fail "update built or restarted after rustup $m"
 done
 : > "$L"; SVC_ACTIVE=0 "$B" update >/dev/null 2>&1 || fail "update failed"
@@ -226,9 +218,11 @@ grep -q '^npm ci' "$L" && fail "npm ci with node_modules up to date"
 # the build dir is swapped in by renaming a symlink; the old plain dist is kept aside
 w=$t/root/web
 [ -L "$w/dist" ] && [ "$(cat "$w/dist/index.html")" = built ] || fail "web/dist is not a symlink to the new build"
-ls -d "$w"/dist.plain-* >/dev/null 2>&1 && [ -f "$(ls -d "$w"/dist.plain-* | head -1)/index.html" ] || fail "old plain dist not kept for rollback: $(ls "$w")"
+compgen -G "$w/dist.plain-*/index.html" >/dev/null || fail "old plain dist not kept for rollback: $(ls "$w")"
 builds() { find "$w" -maxdepth 1 -name 'dist.*' -type d | sort; }
-src_changed() { sleep 1.1; touch "$w/src/a.ts"; touch -d '1 day ago' "$w/dist/index.html"; }
+# Each source change gets its own build stamp (date stub), so no update has to wait for the clock.
+n_src=0
+src_changed() { n_src=$((n_src + 1)); printf -v DATE_STAMP 20990101-%06d "$n_src"; export DATE_STAMP; touch "$w/src/a.ts"; touch -d '1 day ago' "$w/dist/index.html"; }
 for i in 1 2; do src_changed; "$B" update >/dev/null 2>&1 || fail "update $i"; done
 [ "$(builds | wc -l)" = 2 ] || fail "want the live + one previous build, have: $(builds)"
 [ -e "$w/dist.link" ] && fail "temp link left"
@@ -293,7 +287,7 @@ for _ in $(seq 50); do hdrs && break; sleep 0.1; done
 hdrs || fail "no header file seen during the hanging request"
 # TERM to the script and to the $(restart_ok) subshell that holds the file
 pkill -TERM -P "$k"; kill -TERM "$k"; wait "$k"
-sleep 0.5; hdrs && fail "header file left after TERM: $(ls "$t/run/brisk")"
+for _ in $(seq 20); do hdrs || break; sleep 0.05; done; hdrs && fail "header file left after TERM: $(ls "$t/run/brisk")"
 rm -f "$SV"/*.new # the killed update had staged binaries
 # usage
 "$B" --help | grep -q '^usage: ' || fail "--help"
