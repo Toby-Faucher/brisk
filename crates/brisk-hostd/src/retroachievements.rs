@@ -6,13 +6,12 @@
 //! Credentials: `~/.config/brisk/retroachievements`, line 1 username, line 2 Web API key. No file = off.
 //! The key goes into the URL only inside `get_json`; errors and Debug output never carry it.
 
-use crate::steam::{base_ok, https_get};
+use crate::steam::{base_ok, https_get, now};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 pub(crate) const DEFAULT_BASE: &str = "https://retroachievements.org/API";
 /// shortcut: console ids from memory of the RA site, not confirmed by the official docs (the docs page
@@ -266,12 +265,6 @@ async fn get_json<T: serde::de::DeserializeOwned + Send + 'static>(
 
 // ---- disk cache ----
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 #[derive(Serialize, Deserialize)]
 struct Cached<T> {
     fetched: u64,
@@ -280,33 +273,16 @@ struct Cached<T> {
 
 pub(crate) fn read_cache<T: serde::de::DeserializeOwned>(path: &Path, ttl: Duration) -> Option<T> {
     let c: Cached<T> = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
-    (now_secs().saturating_sub(c.fetched) < ttl.as_secs()).then_some(c.data)
+    (now().saturating_sub(c.fetched) < ttl.as_secs()).then_some(c.data)
 }
 
-/// 0600 temp file, fsync, rename. A failure leaves no temp file behind.
+/// Atomic 0600 write of `data` stamped with the current time.
 pub(crate) fn write_cache<T: Serialize>(path: &Path, data: &T) -> std::io::Result<()> {
-    use std::io::Write;
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
-    let go = || -> std::io::Result<()> {
-        if let Some(d) = path.parent() {
-            std::fs::create_dir_all(d)?;
-        }
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(&serde_json::to_vec(&Cached {
-            fetched: now_secs(),
-            data,
-        })?)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, path)
-    };
-    go().inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    let body = serde_json::to_vec(&Cached {
+        fetched: now(),
+        data,
+    })?;
+    crate::fsutil::write_atomic(path, &body)
 }
 
 // ---- public entry points ----

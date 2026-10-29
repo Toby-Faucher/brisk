@@ -117,9 +117,7 @@ fn played(data_dir: &Path) -> BTreeMap<String, u64> {
 /// Records now as the game's last-played time: atomic 0600 write, the oldest entries dropped
 /// past a cap. A failed write is a warning only.
 pub(crate) fn mark_played(data_dir: &Path, id: &GameId) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+    let now = crate::steam::now();
     let mut m = played(data_dir);
     m.insert(id.to_string(), now);
     crate::fsutil::evict_oldest(&mut m, PLAYED_MAX, |_, t| *t);
@@ -200,9 +198,7 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
     let ps = procs(proc);
     let played = played(data_dir);
     let pt = crate::playtime::Store::load(data_dir);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+    let now = crate::steam::now();
     let pending = crate::art::load_pending(data_dir);
     recs.iter()
         .map(|r| {

@@ -5,6 +5,7 @@
 //! link back to it: show "Data and art from GameTDB (gametdb.com)" wherever this is shown.
 
 use crate::config::Config;
+use crate::fsutil::write_atomic;
 use crate::steam::{base_ok, get_limited, get_limited_for, now};
 
 fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
@@ -13,8 +14,6 @@ fn https_get_limit(url: &str, limit: u64) -> Result<Vec<u8>, String> {
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -344,30 +343,6 @@ struct Cache {
     games: Vec<Entry>,
 }
 
-fn write_atomic(path: &Path, data: &[u8]) -> Result<(), Error> {
-    let io = |e: std::io::Error| Error::Io(e.kind());
-    let dir = path
-        .parent()
-        .ok_or(Error::Io(std::io::ErrorKind::InvalidInput))?;
-    std::fs::create_dir_all(dir).map_err(io)?;
-    let tmp = dir.join(format!(".tmp.{}.{}", std::process::id(), now()));
-    let r = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, path)
-    })();
-    if let Err(e) = r {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(io(e));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 thread_local! { static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
@@ -509,7 +484,7 @@ fn fetch_art_at(data_dir: &Path, base: &str, id: &str, kind: ArtKind) -> Result<
                 // The server's content-type is not exposed by the shared helper; magic bytes decide.
                 let ext = image_ext(&b).ok_or(Error::BadContent)?;
                 let p = dir.join(format!("{}.{ext}", kind.dir()));
-                write_atomic(&p, &b)?;
+                write_atomic(&p, &b).map_err(|e| Error::Io(e.kind()))?;
                 return Ok(p);
             }
         }
@@ -527,7 +502,7 @@ pub fn fetch_art(cfg: &Config, id: &str, kind: ArtKind) -> Result<PathBuf, Error
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
 
     /// First-choice art URL on the default host.
@@ -888,7 +863,7 @@ mod tests {
         let leftovers: Vec<_> = std::fs::read_dir(t.path().join("art/RMCE01"))
             .unwrap()
             .flatten()
-            .filter(|e| e.file_name().to_string_lossy().starts_with(".tmp"))
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
         assert!(leftovers.is_empty());
     }

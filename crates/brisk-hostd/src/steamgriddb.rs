@@ -8,7 +8,6 @@
 use crate::steam::{base_ok, get_limited};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -389,7 +388,11 @@ pub struct ArtChoice {
 /// logos and icons, WEBP/JPEG before PNG for big art), then the community score. Content filters
 /// are all `false` (no NSFW, humor or flashing art). First page only; when the sized query is
 /// empty, one unsized retry. shortcut: no paging, 50 results are plenty for picking one.
-pub(crate) fn art_for(cfg: &SgdbConfig, game_id: u64, kind: ArtKind) -> Result<Vec<ArtChoice>, Error> {
+pub(crate) fn art_for(
+    cfg: &SgdbConfig,
+    game_id: u64,
+    kind: ArtKind,
+) -> Result<Vec<ArtChoice>, Error> {
     let base = format!(
         "{}/game/{game_id}?types=static&nsfw=false&humor=false&epilepsy=false&mimes={}",
         kind.path(),
@@ -461,28 +464,16 @@ pub(crate) fn art_dir(cfg: &SgdbConfig, key: &str) -> Result<PathBuf, Error> {
     Ok(cfg.data_dir.join("art").join(key))
 }
 
-/// Atomic private write: temp file (0600, created fresh) then rename.
+/// Atomic 0600 write into a 0700 directory.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::os::unix::fs::DirBuilderExt;
     let dir = path.parent().ok_or(Error::BadInput("path"))?;
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(dir)
         .map_err(io)?;
-    let tmp = dir.join(format!(
-        ".{}.tmp",
-        path.file_name().and_then(|n| n.to_str()).unwrap_or("x")
-    ));
-    let _ = std::fs::remove_file(&tmp);
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)
-        .map_err(io)?;
-    f.write_all(bytes).and_then(|()| f.sync_all()).map_err(io)?;
-    std::fs::rename(&tmp, path).map_err(io)
+    crate::fsutil::write_atomic(path, bytes).map_err(io)
 }
 
 /// The confirmed match for a game, so it is never asked twice.

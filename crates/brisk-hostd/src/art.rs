@@ -253,12 +253,6 @@ struct Tried {
     fails: u32,
 }
 
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// Seconds to wait after `fails` failures in a row: 1 h, doubling, 16 h at most.
 fn backoff(fails: u32) -> u64 {
     3600u64 << fails.saturating_sub(1).min(4) // 1, 2, 4, 8, 16 h, then flat
@@ -272,7 +266,7 @@ fn record_failure(data_dir: &Path, key: &str) {
     let _ = write_json(
         &p,
         &Tried {
-            at: now_secs(),
+            at: crate::steam::now(),
             fails,
         },
     );
@@ -598,7 +592,7 @@ impl Art {
             return false;
         }
         read_json::<Tried>(&dir.join("tried.json"))
-            .is_none_or(|t| now_secs() >= t.at.saturating_add(backoff(t.fails)))
+            .is_none_or(|t| crate::steam::now() >= t.at.saturating_add(backoff(t.fails)))
     }
 
     /// New games (a scan, an upload): look each up once, in the background. Quiet without a key.
