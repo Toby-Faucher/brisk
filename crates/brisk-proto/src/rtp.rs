@@ -110,7 +110,7 @@ pub struct VideoPacket<'a> {
 }
 
 fn le32(d: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(d[at..at + 4].try_into().unwrap())
+    u32::from_le_bytes(d[at..at + 4].try_into().expect("slice is 4 bytes"))
 }
 
 fn is_before32(a: u32, b: u32) -> bool {
@@ -351,7 +351,7 @@ impl FrameAssembler {
                     // shortcut: evicts the oldest open frame even if the new packet is older still; fine for in-order hosts.
                     let oldest = (0..self.pending.len())
                         .max_by_key(|&i| p.frame_idx.wrapping_sub(self.pending[i].idx))
-                        .unwrap();
+                        .expect("pending is full, so not empty");
                     self.pending.remove(oldest);
                 }
                 self.pending.push(Frame {

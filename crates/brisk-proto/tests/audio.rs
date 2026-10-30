@@ -1,3 +1,5 @@
+//! Audio packet decryption and audio FEC against known vectors.
+
 use aes::Aes128;
 use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use brisk_proto::audio::*;

@@ -2,7 +2,7 @@
 //! SETUP audio/video/control, ANNOUNCE (SDP), PLAY. One TCP connection per request, reply read to
 //! EOF; sealed with [`RtspCipher`] when the launch URL is `rtspenc://`.
 
-use crate::recorder::Recorder;
+use crate::recorder::{Recorder, Wire};
 use brisk_proto::rtsp::{
     MAX_MESSAGE, RtspCipher, RtspReply, SUNSHINE_MAX_REQUEST, parse_response, request,
 };
@@ -20,6 +20,7 @@ const CONTROL: &str = "streamid=control/13/0";
 /// audio IV base. Fresh per launch (the GCM IVs are counters that restart every session).
 #[derive(Clone, PartialEq, Eq)]
 pub struct LaunchKey {
+    /// AES key for the whole stream.
     pub rikey: [u8; 16],
     /// Positive: Sunshine parses it as a signed int.
     pub rikeyid: u32,
@@ -35,11 +36,16 @@ impl std::fmt::Debug for LaunchKey {
     }
 }
 
+/// Ports and session id the host gave in its RTSP SETUP replies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamPorts {
+    /// UDP port for audio.
     pub audio: u16,
+    /// UDP port for video.
     pub video: u16,
+    /// UDP port for the ENet control channel.
     pub control: u16,
+    /// RTSP session id to send on later requests.
     pub session_id: String,
     /// `X-SS-Ping-Payload` from the audio and video SETUP replies (Sunshine sends one value for both).
     pub ping_payload: Option<String>,
@@ -61,8 +67,20 @@ struct Conn<'a> {
     recorder: Option<&'a mut Recorder>,
 }
 
-/// Splits `rtsp[enc]://ADDR:PORT` into (encrypted, ADDR, PORT).
-pub fn parse_session_url(url: &str) -> crate::Result<(bool, String, u16)> {
+/// The parts of a `rtsp[enc]://ADDR:PORT` session URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionUrl {
+    /// True for `rtspenc://`: the RTSP messages are encrypted.
+    pub encrypted: bool,
+    /// The address part, sent as the `Host` header.
+    pub addr: String,
+    /// The RTSP port.
+    pub port: u16,
+}
+
+/// Splits a `rtsp[enc]://ADDR:PORT` URL. Fails if the scheme is not `rtsp` or `rtspenc`, or the
+/// port is missing or not a number.
+pub fn parse_session_url(url: &str) -> crate::Result<SessionUrl> {
     let (enc, rest) = if let Some(r) = url.strip_prefix("rtspenc://") {
         (true, r)
     } else if let Some(r) = url.strip_prefix("rtsp://") {
@@ -79,7 +97,11 @@ pub fn parse_session_url(url: &str) -> crate::Result<(bool, String, u16)> {
     let port = port
         .parse()
         .map_err(|_| crate::Error::Protocol(format!("bad port in rtsp session url {url:?}")))?;
-    Ok((enc, addr.to_string(), port))
+    Ok(SessionUrl {
+        encrypted: enc,
+        addr: addr.to_string(),
+        port,
+    })
 }
 
 /// Runs the handshake against `host` (the address already in use; only the port is taken from
@@ -93,7 +115,11 @@ pub async fn handshake(
     key: &LaunchKey,
     recorder: Option<&mut Recorder>,
 ) -> crate::Result<StreamPorts> {
-    let (enc, url_host, port) = parse_session_url(session_url)?;
+    let SessionUrl {
+        encrypted: enc,
+        addr: url_host,
+        port,
+    } = parse_session_url(session_url)?;
     let mut c = Conn {
         host: host.to_string(),
         port,
@@ -240,7 +266,11 @@ impl Conn<'_> {
         }
         .map_err(|e| crate::Error::from(e).context(format!("rtsp {method}")))?;
         if let Some(rec) = &mut self.recorder {
-            let enc = self.cipher.is_some();
+            let enc = if self.cipher.is_some() {
+                Wire::Encrypted
+            } else {
+                Wire::Plain
+            };
             rec.push(&format!("rtsp-{label}-req"), enc, &plain);
             rec.push(&format!("rtsp-{label}-resp"), enc, &reply);
         }
@@ -271,10 +301,10 @@ mod tests {
             host in "[a-z0-9.:\\[\\]]{0,30}",
         ) {
             let _ = parse_session_url(&s);
-            let (enc, h, p) = parse_session_url(&format!("rtspenc://{host}:{port}/")).unwrap();
-            prop_assert!(enc);
-            prop_assert_eq!(h, host);
-            prop_assert_eq!(p, port);
+            let u = parse_session_url(&format!("rtspenc://{host}:{port}/")).unwrap();
+            prop_assert!(u.encrypted);
+            prop_assert_eq!(u.addr, host);
+            prop_assert_eq!(u.port, port);
         }
     }
 }

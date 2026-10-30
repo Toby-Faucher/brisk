@@ -59,9 +59,11 @@ pub enum Error {
 }
 
 impl Error {
+    /// Wraps this error with what the caller was doing.
     pub fn context(self, c: impl Into<String>) -> Self {
         Error::Context(c.into(), Box::new(self))
     }
+    /// Pairs this error with a second one that came from the cleanup after it.
     pub fn then(self, after: Error) -> Self {
         Error::Then(Box::new(self), Box::new(after))
     }
@@ -164,6 +166,7 @@ impl From<ControlError> for Error {
     }
 }
 
+/// Result with this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// CSPRNG (OS `getrandom`) for pairing salt, challenge and secret.

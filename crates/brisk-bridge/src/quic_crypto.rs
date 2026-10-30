@@ -204,6 +204,8 @@ pub struct ServerCrypto {
 }
 
 impl ServerCrypto {
+    /// Builds the crypto from a certificate chain, its key and the ALPN list to offer.
+    /// Fails if the key does not match the certificate.
     pub fn new(
         certs: Vec<CertificateDer<'static>>,
         key: PrivateKeyDer<'static>,
@@ -347,7 +349,9 @@ impl crypto::ClientConfig for ClientCrypto {
 
 /// What `quinn::Connection::handshake_data` returns for our connections.
 pub struct HandshakeData {
+    /// The ALPN protocol the client picked.
     pub protocol: Option<Vec<u8>>,
+    /// The SNI name the client asked for.
     pub server_name: Option<String>,
 }
 
@@ -572,6 +576,7 @@ fn random<const N: usize>() -> [u8; N] {
 pub struct ResetKey(Hmac<Sha256>);
 
 impl ResetKey {
+    /// A fresh random key.
     pub fn random() -> Self {
         Self(
             <Hmac<Sha256> as Mac>::new_from_slice(&random::<64>())
@@ -603,6 +608,7 @@ impl crypto::HmacKey for ResetKey {
 pub struct TokenKey(hkdf::Hkdf<Sha256>);
 
 impl TokenKey {
+    /// A fresh random key.
     pub fn random() -> Self {
         Self(hkdf::Hkdf::new(None, &random::<64>()))
     }

@@ -1,3 +1,5 @@
+//! Reed-Solomon encode and recovery against known vectors.
+
 use brisk_proto::fec::{FecError, rs_decode, rs_encode};
 
 /// tools/nanors-vectors/vectors.bin, produced by nanors itself (see that README).

@@ -7,6 +7,15 @@ use std::path::{Path, PathBuf};
 /// Secrets shorter than this are not scrubbed byte-wise: they would blank coincidental matches.
 pub const MIN_SECRET: usize = 8;
 
+/// Whether recorded bytes travelled encrypted on the wire (they are stored as plaintext).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wire {
+    /// Sent as is.
+    Plain,
+    /// Sent inside TLS or the encrypted RTSP framing.
+    Encrypted,
+}
+
 /// Collects raw exchanges in memory and writes them out scrubbed.
 ///
 /// Lifecycle: [`Recorder::new`], register secrets ([`Recorder::add_secret`], [`Recorder::set_pin`]),
@@ -45,9 +54,10 @@ impl Recorder {
         self.pin = Some(pin.to_owned());
     }
 
-    /// `label` such as "pair-req"; `tls` marks bytes that travelled inside TLS (recorded as plaintext).
-    pub fn push(&mut self, label: &str, tls: bool, bytes: &[u8]) {
-        self.entries.push((label.to_owned(), tls, bytes.to_vec()));
+    /// `label` such as "pair-req"; `wire` says whether the bytes travelled encrypted (recorded as plaintext).
+    pub fn push(&mut self, label: &str, wire: Wire, bytes: &[u8]) {
+        self.entries
+            .push((label.to_owned(), wire == Wire::Encrypted, bytes.to_vec()));
     }
 
     fn clean(&self, b: &[u8]) -> Vec<u8> {

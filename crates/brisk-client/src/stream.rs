@@ -106,20 +106,30 @@ impl Samples {
     }
 }
 
+/// What a probe run measured, with the gate result in `failures`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Summary {
+    /// Length of the run.
     pub secs: f64,
+    /// Video frames assembled.
     pub frames: u64,
+    /// Of those, key frames.
     pub idr_frames: u64,
+    /// Frames given up on.
     pub frames_dropped: u64,
+    /// Video packets rebuilt from parity.
     pub fec_recovered: u64,
     /// Video: undecryptable, unparseable or inconsistent packets and insane frames.
     pub video_parse_errors: u64,
     /// Audio: datagrams AudioFec rejects or payloads that fail decryption.
     pub audio_parse_errors: u64,
+    /// Audio packets that arrived intact.
     pub audio_ok: u64,
+    /// Audio packets rebuilt from parity.
     pub audio_recovered: u64,
+    /// Audio packets never recovered.
     pub audio_lost: u64,
+    /// Host control messages that failed to open.
     pub bad_host_msgs: u32,
     /// `frame_processing_latency` in ms: min, median, p99.
     pub host_latency_ms: Option<Vec<f64>>,
@@ -129,17 +139,20 @@ pub struct Summary {
     pub video_mbps: (f64, f64),
     /// (missing, received) from sequence gaps.
     pub video_loss: (u64, u64),
+    /// (missing, received) audio packets from sequence gaps.
     pub audio_loss: (u64, u64),
     /// Per IDR request: ms to the next assembled IDR frame, `None` if none came.
     pub idr_response_ms: Vec<Option<f64>>,
     /// Empty when the gate passes.
     pub failures: Vec<String>,
+    /// Control channel counters for the run.
     pub control: Stats,
     /// Effective SO_RCVBUF (video, audio) in bytes; 0 if unknown.
     pub rcvbuf: (usize, usize),
 }
 
 impl Summary {
+    /// True when no gate failed.
     pub fn passed(&self) -> bool {
         self.failures.is_empty()
     }
@@ -320,6 +333,7 @@ impl StreamRx {
         })
     }
 
+    /// Notes an IDR request so the next key frame can be timed against it.
     pub fn idr_requested(&mut self, at: Instant) {
         self.idr_reqs.push((at, None));
     }
@@ -534,7 +548,9 @@ pub async fn stream(
 /// How a [`stream_tap`] session delivered its video.
 #[derive(Debug)]
 pub enum Outcome {
+    /// Video came as RTP datagrams.
     Rtp(Summary),
+    /// Video came over the tap socket.
     Tap(TapSummary),
 }
 

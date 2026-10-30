@@ -254,7 +254,11 @@ impl RtspCipher {
         if f.len() <= HEADER {
             return Err(RtspError::Truncated);
         }
-        let tl = u32::from_be_bytes(f[..4].try_into().unwrap());
+        let tl = u32::from_be_bytes(
+            f[..4]
+                .try_into()
+                .expect("length checked: header is present"),
+        );
         if tl & ENCRYPTED_BIT == 0 {
             return Err(RtspError::Unencrypted);
         }
@@ -267,7 +271,11 @@ impl RtspCipher {
             std::cmp::Ordering::Less => return Err(RtspError::Malformed),
             _ => {}
         }
-        let seq = u32::from_be_bytes(f[4..8].try_into().unwrap());
+        let seq = u32::from_be_bytes(
+            f[4..8]
+                .try_into()
+                .expect("length checked: header is present"),
+        );
         if seq <= self.rx {
             return Err(RtspError::Replay);
         }

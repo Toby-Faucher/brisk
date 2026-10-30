@@ -60,6 +60,7 @@ pub const HOLD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 /// Queued events that may be dropped (motion, scroll, presses); releases come on top.
 pub const MAX_PENDING: usize = 32;
 
+/// Counters for the input frames from the browser.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct InputStats {
     /// Frames from the browser.
@@ -187,6 +188,7 @@ pub type StreamId = u64;
 /// Mouse buttons are 1..=5; slot 0 is unused so a button indexes its own slot.
 const BUTTON_SLOTS: usize = 6;
 
+/// Input events waiting for the host, with the bookkeeping that keeps held keys, buttons and pads releasable.
 #[derive(Default)]
 pub struct InputQueue {
     q: VecDeque<InputEvent>,
@@ -205,6 +207,7 @@ pub struct InputQueue {
     from: StreamId,
     /// Bit per pad attached this session, for [`Self::shutdown`].
     ever_pads: u16,
+    /// What the queue has counted so far.
     pub stats: InputStats,
 }
 
@@ -228,6 +231,7 @@ impl InputQueue {
         }
     }
 
+    /// Queues one event, merging motion and scroll into the one before it where it can.
     pub fn push(&mut self, e: InputEvent) {
         match e {
             InputEvent::Key { vk, down, .. } => {
@@ -433,14 +437,17 @@ impl InputQueue {
         old.map(|i| self.q.remove(i)).is_some()
     }
 
+    /// Takes the oldest queued event.
     pub fn pop(&mut self) -> Option<InputEvent> {
         self.q.pop_front()
     }
 
+    /// Number of queued events.
     pub fn len(&self) -> usize {
         self.q.len()
     }
 
+    /// True when nothing is queued.
     pub fn is_empty(&self) -> bool {
         self.q.is_empty()
     }
@@ -592,14 +599,17 @@ impl Shared {
         });
     }
 
+    /// The latest rumble state from the host. Do not hold the guard across an `.await`.
     pub fn rumble_state(&self) -> watch::Ref<'_, Rumble> {
         self.rumble.borrow()
     }
 
+    /// A receiver that wakes when the rumble state changes.
     pub fn rumble_rx(&self) -> watch::Receiver<Rumble> {
         self.rumble.subscribe()
     }
 
+    /// Runs `f` on the queue under its lock.
     pub fn with<R>(&self, f: impl FnOnce(&mut InputQueue) -> R) -> R {
         f(&mut self.q.lock().unwrap_or_else(|e| e.into_inner()))
     }

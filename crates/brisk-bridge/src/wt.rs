@@ -20,6 +20,7 @@ use web_transport_proto::{ConnectRequest, ConnectResponse, Settings, StreamUni, 
 
 use crate::quic_crypto::{ServerCrypto, endpoint_config, server_config};
 
+/// The ALPN protocol WebTransport runs on.
 pub const ALPN: &[u8] = b"h3";
 /// Largest browser-to-bridge message (a uni stream); longer ones are dropped.
 pub const MAX_MSG: usize = 64;
@@ -30,9 +31,12 @@ const INBOX: usize = 16;
 /// a full buffer evicts the oldest queued datagrams (quinn's `send_datagram`).
 pub const AUDIO_SEND_BUFFER: usize = 4096;
 
+/// Why a WebTransport session failed or was refused.
 #[derive(Debug)]
 pub enum Error {
+    /// The QUIC connection failed or closed.
     Connection(quinn::ConnectionError),
+    /// A write to a stream failed.
     Write(quinn::WriteError),
     /// The CONNECT request was missing, malformed or not for our token.
     Refused(String),
@@ -117,6 +121,7 @@ pub struct Acceptor {
 }
 
 impl Acceptor {
+    /// An acceptor that admits clients presenting `token`, waiting up to `wait` for each CONNECT.
     pub fn new(token: &str, wait: Duration) -> Self {
         Self {
             token: token.into(),
@@ -319,10 +324,12 @@ impl Session {
         self.conn.closed().await
     }
 
+    /// The client's address.
     pub fn remote(&self) -> SocketAddr {
         self.conn.remote_address()
     }
 
+    /// Closes the connection with a "replaced" reason.
     pub fn close(&self) {
         self.conn.close(0u32.into(), b"replaced");
     }

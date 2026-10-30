@@ -2,12 +2,12 @@
 //! rustls (pure-Rust RustCrypto provider) with the client cert and a pinned server cert.
 
 use crate::identity::{Identity, ServerCert};
-use crate::recorder::Recorder;
+use crate::recorder::{Recorder, Wire};
 use crate::rtsp::{LaunchKey, StreamPorts, handshake};
 use crate::stop::Stop;
 use brisk_proto::http::{
-    App, LaunchOpts, LaunchReply, MAX_BODY, ServerInfo, cancel_query, check_status, launch_query,
-    parse_applist, parse_field, parse_launch, parse_serverinfo,
+    App, LaunchOpts, LaunchReply, LengthHeader, MAX_BODY, ServerInfo, cancel_query, check_status,
+    launch_query, parse_applist, parse_field, parse_launch, parse_serverinfo,
 };
 use brisk_proto::pair::{PairError, PairingClient, Rng, unhex};
 use brisk_proto::sdp::StreamConfig;
@@ -22,7 +22,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use x509_cert::der::{DecodePem, Encode};
 
+/// Default plain-HTTP port of the host.
 pub const HTTP_PORT: u16 = 47989;
+/// Default HTTPS port of the host.
 pub const HTTPS_PORT: u16 = 47984;
 /// Sunshine holds `getservercert` open until the PIN is entered, and expires the session after 5 min.
 const PIN_WAIT: Duration = Duration::from_secs(320);
@@ -30,15 +32,29 @@ const WAIT: Duration = Duration::from_secs(10);
 /// `/launch` returns only after Sunshine has started the app.
 const LAUNCH_WAIT: Duration = Duration::from_secs(120);
 
+/// What to do when the host already runs a session at launch time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TakeOver {
+    /// Fail with [`crate::Error::Busy`] and leave the running session alone.
+    Refuse,
+    /// Cancel the running session, then launch.
+    Replace,
+}
+
+/// One client's conversation with a host over HTTP(S): pairing, app list, launch and cancel.
 pub struct Session {
+    /// Host name or address.
     pub host: String,
+    /// Plain-HTTP port.
     pub http_port: u16,
     /// Updated from every plain-HTTP `serverinfo`.
     pub https_port: u16,
+    /// Where to log the traffic for fixtures, if anywhere.
     pub recorder: Option<Recorder>,
     /// Per-attempt timeout and base backoff for `cancel_retry` (fields so tests can shrink them).
     #[doc(hidden)]
     pub cancel_wait: Duration,
+    /// Base backoff between cancel attempts.
     #[doc(hidden)]
     pub cancel_backoff: Duration,
     launch_sent: bool,
@@ -52,6 +68,7 @@ const CANCEL_ATTEMPTS: u32 = 3;
 type Tls<'a> = Option<(&'a Identity, &'a ServerCert)>;
 
 impl Session {
+    /// A session for `host` on the default ports, with no recorder.
     pub fn new(host: &str) -> Self {
         Session {
             host: host.to_owned(),
@@ -96,6 +113,7 @@ impl Session {
         Ok(info)
     }
 
+    /// Fetches the host's app list over HTTPS. Fails if the host cannot be reached or the reply does not parse.
     pub async fn applist(
         &mut self,
         ident: &Identity,
@@ -121,7 +139,7 @@ impl Session {
     ) -> crate::Result<(LaunchReply, LaunchKey)> {
         let (mut rikey, mut id) = ([0u8; 16], [0u8; 4]);
         {
-            let mut rng = self.rng.lock().unwrap();
+            let mut rng = self.rng.lock().expect("rng lock is never poisoned");
             rng.fill(&mut rikey);
             rng.fill(&mut id);
         }
@@ -215,7 +233,7 @@ impl Session {
         app_id: u32,
         app_version: &str,
         cfg: &StreamConfig,
-        take_over: bool,
+        take_over: TakeOver,
     ) -> crate::Result<StreamPorts> {
         self.launch_session(
             ident,
@@ -239,7 +257,7 @@ impl Session {
         app_id: u32,
         app_version: &str,
         cfg: &StreamConfig,
-        take_over: bool,
+        take_over: TakeOver,
         during: F,
     ) -> crate::Result<T>
     where
@@ -252,7 +270,7 @@ impl Session {
                 "server busy: an app/session is already running (currentgame={}, state={})",
                 info.current_game, info.server_state
             );
-            if !take_over {
+            if take_over == TakeOver::Refuse {
                 return Err(crate::Error::Busy(format!(
                     "{busy}; not cancelling it (pass --take-over to replace it)"
                 )));
@@ -335,7 +353,7 @@ impl Session {
         app_id: u32,
         app_version: &str,
         cfg: &StreamConfig,
-        take_over: bool,
+        take_over: TakeOver,
         during: F,
     ) -> crate::Result<T>
     where
@@ -371,7 +389,7 @@ impl Session {
         };
         tracing::warn!("{sig}: stopping");
         if !self.launch_sent() {
-            return Err(crate::Error::Session(if take_over {
+            return Err(crate::Error::Session(if take_over == TakeOver::Replace {
                 "interrupted before launch; take-over cancel may have been processed".into()
             } else {
                 "interrupted before launch; nothing cancelled".into()
@@ -412,7 +430,11 @@ impl Session {
             .pair_inner(ident, pin, Box::new(Tap(self.rng.clone(), drawn.clone())))
             .await;
         if let Some(rec) = &mut self.recorder {
-            drawn.lock().unwrap().iter().for_each(|s| rec.add_secret(s));
+            drawn
+                .lock()
+                .expect("draw log lock is never poisoned")
+                .iter()
+                .for_each(|s| rec.add_secret(s));
         }
         let server = r?;
         server.save(dir)?;
@@ -528,11 +550,24 @@ impl Session {
                     rec.add_secret(&s);
                 }
             }
-            rec.push(&format!("{label}-req"), tls.is_some(), req.as_bytes());
-            rec.push(&format!("{label}-resp"), tls.is_some(), &raw);
+            let wire = if tls.is_some() {
+                Wire::Encrypted
+            } else {
+                Wire::Plain
+            };
+            rec.push(&format!("{label}-req"), wire, req.as_bytes());
+            rec.push(&format!("{label}-resp"), wire, &raw);
         }
         // Keep a refusal (`HttpError::Status`) intact: callers decide on it, e.g. never cancel.
-        brisk_proto::http::response_body(&raw, tls.is_some()).map_err(|e| match e {
+        brisk_proto::http::response_body(
+            &raw,
+            if tls.is_some() {
+                LengthHeader::Required
+            } else {
+                LengthHeader::Optional
+            },
+        )
+        .map_err(|e| match e {
             e @ brisk_proto::http::HttpError::Status { .. } => e.into(),
             e => crate::Error::from(e).context(path),
         })
@@ -583,8 +618,11 @@ impl<F: std::future::Future> std::future::Future for CatchUnwind<F> {
 struct Tap(Arc<Mutex<dyn Rng + Send>>, Arc<Mutex<Vec<Vec<u8>>>>);
 impl Rng for Tap {
     fn fill(&mut self, buf: &mut [u8]) {
-        self.0.lock().unwrap().fill(buf);
-        self.1.lock().unwrap().push(buf.to_vec());
+        self.0.lock().expect("rng lock is never poisoned").fill(buf);
+        self.1
+            .lock()
+            .expect("draw log lock is never poisoned")
+            .push(buf.to_vec());
     }
 }
 

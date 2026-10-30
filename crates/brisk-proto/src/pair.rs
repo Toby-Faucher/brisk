@@ -59,7 +59,7 @@ pub fn derive_aes_key(salt: [u8; 16], pin: &str) -> PairKeys {
         .chain_update(pin.as_bytes())
         .finalize();
     PairKeys {
-        aes_key: h[..16].try_into().unwrap(),
+        aes_key: h[..16].try_into().expect("SHA-256 output is 32 bytes"),
     }
 }
 

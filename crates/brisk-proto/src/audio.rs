@@ -105,7 +105,7 @@ fn be16(d: &[u8], at: usize) -> u16 {
 }
 
 fn be32(d: &[u8], at: usize) -> u32 {
-    u32::from_be_bytes(d[at..at + 4].try_into().unwrap())
+    u32::from_be_bytes(d[at..at + 4].try_into().expect("slice is 4 bytes"))
 }
 
 fn check_rtp(d: &[u8], min: usize) -> Result<(), AudioError> {
@@ -165,7 +165,7 @@ impl AudioCipher {
             out.extend(b.iter().zip(prev).map(|(x, y)| x ^ y));
             prev.copy_from_slice(c);
         }
-        let pad = *out.last().unwrap() as usize;
+        let pad = *out.last().expect("ciphertext is never empty here") as usize;
         if pad == 0 || pad > 16 || out[out.len() - pad..].iter().any(|&b| b as usize != pad) {
             return Err(AudioError::BadPadding);
         }
@@ -377,7 +377,9 @@ impl AudioFec {
                     out.push(AudioPayload {
                         seq: b.base.wrapping_add(i as u16),
                         ts: b.base_ts.wrapping_add(i as u32 * self.duration),
-                        payload: b.shards[i].clone().unwrap(),
+                        payload: b.shards[i]
+                            .clone()
+                            .expect("a successful decode fills every data shard"),
                     });
                 }
             }

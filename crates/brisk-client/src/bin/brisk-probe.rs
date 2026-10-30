@@ -27,7 +27,7 @@ use brisk_client::identity::{
 };
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
-use brisk_client::session::Session;
+use brisk_client::session::{Session, TakeOver};
 use brisk_client::stop::Stop;
 use brisk_client::stream::{Outcome, media_setup, stream, stream_tap};
 use brisk_client::tap::{TapListener, tap_path};
@@ -245,7 +245,11 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                         app,
                         &info.app_version,
                         &cfg,
-                        a.take_over,
+                        if a.take_over {
+                            TakeOver::Replace
+                        } else {
+                            TakeOver::Refuse
+                        },
                         during,
                     )
                     .await;

@@ -105,7 +105,7 @@ impl std::fmt::Display for TapError {
 impl std::error::Error for TapError {}
 
 fn le<const N: usize>(b: &[u8], off: usize) -> [u8; N] {
-    b[off..off + N].try_into().unwrap()
+    b[off..off + N].try_into().expect("slice length is N")
 }
 
 /// Header and Annex B payload of one tap message.
