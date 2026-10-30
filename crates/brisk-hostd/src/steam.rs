@@ -4,6 +4,7 @@
 use crate::config::Config;
 pub use crate::game::Game;
 use crate::game::GameId;
+use crate::net::HttpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -266,13 +267,13 @@ pub(crate) fn base_ok(base: &str) -> bool {
 /// Key safety: ureq logs every request through the `log` crate, and at trace level (and in some
 /// debug lines) with the full path and query, i.e. `key=`. hostd installs no `log` logger, so
 /// nothing is printed; never add one (env_logger, tracing-log, ...) without filtering ureq out.
-pub(crate) fn https_get(url: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn https_get(url: &str) -> Result<Vec<u8>, HttpError> {
     get_limited(url, None, MAX_BODY)
 }
 
 /// `https_get` with an optional bearer token (sent only as the Authorization header, never in the
 /// URL) and a caller-chosen body cap. Errors still carry only the kind of failure.
-pub(crate) fn get_limited(url: &str, bearer: Option<&str>, max: u64) -> Result<Vec<u8>, String> {
+pub(crate) fn get_limited(url: &str, bearer: Option<&str>, max: u64) -> Result<Vec<u8>, HttpError> {
     get_limited_for(url, bearer, max, Duration::from_secs(15))
 }
 
@@ -282,7 +283,7 @@ pub(crate) fn get_limited_for(
     bearer: Option<&str>,
     max: u64,
     total: Duration,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, HttpError> {
     let agent = crate::net::agent(
         ureq::tls::RootCerts::PlatformVerifier,
         Some(Duration::from_secs(5)),
@@ -293,15 +294,15 @@ pub(crate) fn get_limited_for(
     if let Some(t) = bearer {
         req = req.header("Authorization", format!("Bearer {t}"));
     }
-    let mut r = req.call().map_err(|e| crate::net::safe_err(&e))?;
+    let mut r = req.call().map_err(|e| HttpError::from(&e))?;
     if r.status() != 200 {
-        return Err(format!("HTTP {}", r.status().as_u16()));
+        return Err(HttpError::Status(r.status().as_u16()));
     }
     r.body_mut()
         .with_config()
         .limit(max)
         .read_to_vec()
-        .map_err(|e| crate::net::safe_err(&e))
+        .map_err(|e| HttpError::from(&e))
 }
 
 /// The key from its file; only plain key characters, so it cannot change the shape of the URL.
@@ -775,7 +776,7 @@ mod fetch_tests {
         // Verification is on: an untrusted certificate is refused.
         assert_eq!(
             https_get("https://self-signed.badssl.com/").unwrap_err(),
-            "TLS error"
+            HttpError::Other("TLS error".into())
         );
     }
 }

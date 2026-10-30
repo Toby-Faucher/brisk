@@ -6,6 +6,7 @@
 //! Credentials: `~/.config/brisk/retroachievements`, line 1 username, line 2 Web API key. No file = off.
 //! The key goes into the URL only inside `get_json`; errors and Debug output never carry it.
 
+use crate::net::HttpError;
 use crate::steam::{base_ok, https_get, now};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -237,11 +238,11 @@ async fn get_json<T: serde::de::DeserializeOwned + Send + 'static>(
     // The parse is in the blocking task too: a game list is up to 8 MiB.
     off_thread(move || https_get(&url).map(|b| serde_json::from_slice(&b)))
         .await?
-        .map_err(|e| match e.as_str() {
-            "HTTP 401" | "HTTP 403" => RaError::Unauthorized,
-            "HTTP 429" => RaError::RateLimited,
-            "response too large" => RaError::TooLarge,
-            _ => RaError::Network(e),
+        .map_err(|e| match e {
+            HttpError::Status(401 | 403) => RaError::Unauthorized,
+            HttpError::Status(429) => RaError::RateLimited,
+            HttpError::TooLarge => RaError::TooLarge,
+            e => RaError::Network(e.to_string()),
         })?
         .map_err(|_| RaError::BadResponse)
 }
