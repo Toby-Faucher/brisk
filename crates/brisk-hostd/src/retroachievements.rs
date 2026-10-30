@@ -1,6 +1,6 @@
 //! Read-only RetroAchievements client: the user's achievement progress for one game.
 //!
-//! Shapes confirmed from https://api-docs.retroachievements.org/ (see docs/research/ra-client-notes.md).
+//! Shapes confirmed from <https://api-docs.retroachievements.org/> (see docs/research/ra-client-notes.md).
 //! The Web API cannot look a game up by hash, so the console's hash list is downloaded once
 //! (`API_GetGameList.php?i=<console>&h=1`), cached on disk for days and matched locally.
 //! Credentials: `~/.config/brisk/retroachievements`, line 1 username, line 2 Web API key. No file = off.

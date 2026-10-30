@@ -113,7 +113,7 @@ fn locks_free(state: &AppState) -> Option<String> {
     ))
 }
 
-/// Pings the watchdog every `every`, with the current status, but only while [`alive`] passes:
+/// Pings the watchdog every `every`, with the current status, but only while `alive` passes:
 /// a wedged runtime or a stuck state lock stops the pings and systemd restarts hostd.
 pub async fn watchdog(state: std::sync::Arc<AppState>, every: Duration) {
     let mut t = tokio::time::interval(every);
