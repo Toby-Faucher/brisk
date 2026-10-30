@@ -1,1 +1,444 @@
-/* jrpg */
+/* UI style jrpg ("Menu screen"). Every rule starts with :root[data-ui='jrpg']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/dotgothic16/latin-400.css';
+
+:root[data-ui='jrpg'] {
+  --bg: #050b2e;
+  --panel: #0e1a6b;
+  --panel2: #1a2e9e;
+  --line: #ffffff;
+  --line-hover: #ffd24a;
+  --fg: #ffffff;
+  --muted: #d3deff;
+  --dim: #b9c8f7;
+  --accent: #ffd24a;
+  --accent-fg: #2a1b00;
+  --ok: #7dff9a;
+  --warn: #ffd24a;
+  --bad: #ff8a8a;
+  --font: 'DotGothic16', ui-monospace, monospace;
+  --mono: 'DotGothic16', ui-monospace, monospace;
+  --r-card: 12px;
+  --r-ctl: 8px;
+  --ease: steps(6, end);
+  --jr-hi: #ffd24a;
+  --jr-win: linear-gradient(180deg, #2a47c4 0%, #14247f 55%, #0a1352 100%);
+  --jr-win2: linear-gradient(180deg, #3558d8 0%, #1c33a0 100%);
+  --jr-edge: 0 0 0 2px #02061c, 0 5px 0 2px #02061c, 0 10px 22px #000a;
+  --jr-text: 2px 2px 0 #02061c;
+  scroll-padding-top: 20px;
+}
+/* accent choices other than the default mint recolour the gold highlight */
+:root[data-ui='jrpg']:not([data-accent='mint']) {
+  --jr-hi: var(--accent);
+}
+
+/* ---------- backdrop: deep night with a slow star field ---------- */
+:root[data-ui='jrpg'] body {
+  font-size: 15px;
+  line-height: 1.45;
+  text-shadow: var(--jr-text);
+  background:
+    radial-gradient(1.5px 1.5px at 20px 30px, #fff9, transparent), radial-gradient(1.5px 1.5px at 90px 80px, #ffd24acc, transparent),
+    radial-gradient(1px 1px at 150px 20px, #fff8, transparent), linear-gradient(180deg, #0a1550 0%, #050b2e 55%, #02051a 100%);
+  background-size:
+    180px 120px,
+    180px 120px,
+    180px 120px,
+    100% 100%;
+  background-attachment: fixed;
+  background-color: #050b2e;
+  min-height: 100vh;
+}
+:root[data-ui='jrpg'] .bg {
+  display: none;
+}
+:root[data-ui='jrpg'] h1,
+:root[data-ui='jrpg'] h2,
+:root[data-ui='jrpg'] h3,
+:root[data-ui='jrpg'] h4 {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .muted,
+:root[data-ui='jrpg'] .lab {
+  color: var(--muted);
+}
+:root[data-ui='jrpg'] :focus-visible {
+  outline: 3px solid var(--jr-hi);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- the window: gradient blue, white double border, hard shadow ---------- */
+:root[data-ui='jrpg'] .card,
+:root[data-ui='jrpg'] .glass,
+:root[data-ui='jrpg'] .hero,
+:root[data-ui='jrpg'] .cm,
+:root[data-ui='jrpg'] .rs,
+:root[data-ui='jrpg'] .mp,
+:root[data-ui='jrpg'] .menu,
+:root[data-ui='jrpg'] .toast {
+  background: var(--jr-win);
+  border: 5px double #fff;
+  border-radius: 12px;
+  box-shadow: var(--jr-edge);
+  backdrop-filter: none;
+  color: var(--fg);
+}
+:root[data-ui='jrpg'] .card {
+  padding: 18px;
+}
+:root[data-ui='jrpg'] .card:hover {
+  transform: none;
+  border-color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .card h4 {
+  color: var(--jr-hi);
+  font-size: 15px;
+}
+/* window open: it grows from a line, like a menu being pulled up */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes jr-open {
+    0% {
+      clip-path: inset(48% 0 48% 0);
+      opacity: 0.4;
+    }
+    100% {
+      clip-path: inset(0 0 0 0);
+      opacity: 1;
+    }
+  }
+  :root[data-ui='jrpg'] :is(.card, .hero, .shelf) {
+    animation: jr-open 0.3s steps(6, end) backwards;
+  }
+  :root[data-ui='jrpg'] :is(.cm, .rs)[data-state='open'] {
+    animation: jr-open 0.25s steps(5, end) backwards;
+  }
+}
+
+/* ---------- the left menu: one window, a hand points at the choice ---------- */
+:root[data-ui='jrpg'] .side {
+  margin: 14px 0 14px 14px;
+  height: calc(100vh - 28px);
+  width: 230px;
+  padding: 18px 14px 14px 14px;
+  gap: 4px;
+  background: var(--jr-win);
+  border: 5px double #fff;
+  border-radius: 12px;
+  box-shadow: var(--jr-edge);
+  backdrop-filter: none;
+}
+:root[data-ui='jrpg'] .brand {
+  padding: 0 4px 12px;
+  border-bottom: 2px dotted #ffffff80;
+  margin-bottom: 8px;
+}
+:root[data-ui='jrpg'] .brand img {
+  filter: drop-shadow(2px 2px 0 #02061c);
+}
+:root[data-ui='jrpg'] a.nav,
+:root[data-ui='jrpg'] .nav.soon {
+  position: relative;
+  padding: 8px 8px 8px 34px;
+  border-radius: 0;
+  color: var(--fg);
+  font-size: 17px;
+  letter-spacing: 0.05em;
+  transform: none;
+}
+:root[data-ui='jrpg'] .nav svg {
+  filter: drop-shadow(2px 2px 0 #02061c);
+}
+:root[data-ui='jrpg'] .nav.soon {
+  opacity: 1;
+  color: var(--dim);
+}
+:root[data-ui='jrpg'] a.nav:hover {
+  background: none;
+  transform: none;
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] a.nav[aria-current='page'] {
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] a.nav[aria-current='page']::before {
+  inset: 0;
+  background: linear-gradient(90deg, #ffffff30, transparent);
+  box-shadow: none;
+  border-radius: 0;
+}
+/* the hand */
+:root[data-ui='jrpg'] a.nav::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 24px;
+  height: 18px;
+  margin-top: -9px;
+  background:
+    no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18'%3E%3Cpath d='M1 6h13V1l9 8-9 8v-5H1z' fill='%23fff' stroke='%2302061c' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E");
+  opacity: 0;
+}
+:root[data-ui='jrpg'] a.nav:is(:hover, :focus-visible, [aria-current='page'])::after {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes jr-point {
+    50% {
+      translate: 4px 0;
+    }
+  }
+  :root[data-ui='jrpg'] a.nav:is(:hover, :focus-visible, [aria-current='page'])::after {
+    animation: jr-point 0.7s steps(2, end) infinite;
+  }
+}
+:root[data-ui='jrpg'] a.nav:focus-visible {
+  outline-offset: -3px;
+}
+:root[data-ui='jrpg'] .side .sec {
+  color: var(--jr-hi);
+  font-size: 13px;
+  padding: 16px 8px 4px;
+}
+
+/* host pill: the party-leader plate at the foot of the menu */
+:root[data-ui='jrpg'] .pill {
+  background: #02061c99;
+  border: 3px double #fff;
+  border-radius: 8px;
+  color: var(--fg);
+}
+:root[data-ui='jrpg'] .pill:hover {
+  border-color: var(--jr-hi);
+}
+
+/* ---------- main ---------- */
+:root[data-ui='jrpg'] main {
+  padding: 22px 26px 120px;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='jrpg'] .btn {
+  background: linear-gradient(180deg, #ffe58a, var(--jr-hi) 60%, #e0a800);
+  color: var(--accent-fg);
+  text-shadow: none;
+  font-size: 15px;
+  border: 3px solid #fff;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 2px #02061c,
+    0 4px 0 2px #02061c;
+  transform: none;
+  filter: none;
+}
+:root[data-ui='jrpg'] .btn:hover {
+  filter: brightness(1.12);
+  transform: translateY(-2px);
+}
+:root[data-ui='jrpg'] .btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 0 0 2px #02061c,
+    0 1px 0 2px #02061c;
+}
+:root[data-ui='jrpg'] .btn.ghost {
+  background: var(--jr-win2);
+  color: var(--fg);
+  text-shadow: var(--jr-text);
+  box-shadow:
+    0 0 0 2px #02061c,
+    0 4px 0 2px #02061c;
+}
+:root[data-ui='jrpg'] .btn.ghost:hover {
+  border-color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .search,
+:root[data-ui='jrpg'] input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+:root[data-ui='jrpg'] textarea,
+:root[data-ui='jrpg'] select {
+  background: #02061ccc;
+  border: 3px double #fff;
+  border-radius: 6px;
+  color: var(--fg);
+}
+:root[data-ui='jrpg'] .search input {
+  border: 0;
+}
+:root[data-ui='jrpg'] .search:focus-within {
+  border-color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .tag,
+:root[data-ui='jrpg'] .fchip,
+:root[data-ui='jrpg'] kbd {
+  border: 2px solid #fff;
+  border-radius: 4px;
+  background: #02061c99;
+  color: var(--fg);
+}
+:root[data-ui='jrpg'] .fchip[aria-pressed='true'] {
+  background: var(--jr-hi);
+  color: var(--accent-fg);
+  text-shadow: none;
+}
+
+/* ---------- Command menu and dialogs ---------- */
+:root[data-ui='jrpg'] .cm-dim {
+  background: #02061ccc;
+  backdrop-filter: none;
+}
+:root[data-ui='jrpg'] .cm-it {
+  position: relative;
+  padding-left: 34px;
+  border-radius: 0;
+}
+:root[data-ui='jrpg'] .cm-it[data-selected] {
+  background: linear-gradient(90deg, #ffffff30, transparent);
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .cm-it[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 24px;
+  height: 18px;
+  margin-top: -9px;
+  background:
+    no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18'%3E%3Cpath d='M1 6h13V1l9 8-9 8v-5H1z' fill='%23fff' stroke='%2302061c' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-ui='jrpg'] .cm-in {
+  background: transparent;
+  border: 0;
+}
+:root[data-ui='jrpg'] .rs-t {
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .toast {
+  border-width: 4px;
+}
+
+/* ---------- Home: the host card's gauges become HP bars ---------- */
+:root[data-ui='jrpg'] div.ring {
+  width: 96px;
+  height: 18px;
+  border-radius: 3px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #02061c;
+  background: linear-gradient(90deg, #35e06b calc(var(--p, 0) * 1%), #02061c 0);
+  position: relative;
+  display: block;
+}
+:root[data-ui='jrpg'] div.ring b {
+  width: auto;
+  height: auto;
+  background: none;
+  display: block;
+  text-align: right;
+  padding-right: 6px;
+  font-size: 13px;
+  line-height: 14px;
+  color: #fff;
+}
+:root[data-ui='jrpg'] .stats {
+  gap: 10px 14px;
+}
+
+/* ---------- Library ---------- */
+:root[data-ui='jrpg'] .cover {
+  border-radius: 6px;
+  border: 3px solid #fff;
+  box-shadow:
+    0 0 0 2px #02061c,
+    0 4px 0 2px #02061c;
+}
+:root[data-ui='jrpg'] .wrap:hover,
+:root[data-ui='jrpg'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='jrpg'] .wrap[data-gid] .name {
+  color: #fff;
+}
+:root[data-ui='jrpg'] .wrap[data-gid]:is(:hover, :has(:focus-visible)) .name {
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .wrap[data-gid]:is(:hover, :has(:focus-visible)) .name::before {
+  content: '\25B6\00a0';
+  color: #fff;
+}
+:root[data-ui='jrpg'] .wrap[data-gid] .g {
+  border-radius: 6px;
+}
+:root[data-ui='jrpg'] .wrap[data-gid] .sub {
+  color: var(--muted);
+}
+
+/* ---------- Settings tabs ---------- */
+:root[data-ui='jrpg'] .st .strip {
+  background: transparent;
+  border-bottom: 3px double #fff;
+  gap: 8px;
+}
+:root[data-ui='jrpg'] .st .tab {
+  border-radius: 0;
+  color: var(--fg);
+  font-size: 16px;
+}
+:root[data-ui='jrpg'] .st .tab[aria-selected='true'] {
+  color: var(--jr-hi);
+}
+:root[data-ui='jrpg'] .st .tab[aria-selected='true']::before {
+  content: '\25B6\00a0';
+}
+
+/* ---------- small delights ---------- */
+:root[data-ui='jrpg'] .hero::after {
+  content: 'A game appears!';
+  position: absolute;
+  right: 18px;
+  top: 14px;
+  padding: 2px 10px;
+  background: #02061ccc;
+  border: 3px double #fff;
+  border-radius: 6px;
+  color: var(--jr-hi);
+  font-size: 14px;
+  pointer-events: none;
+}
+/* the pad table has 17 columns: the wide pixel font needs a smaller size to fit without a scroll bar */
+:root[data-ui='jrpg'] .tbl {
+  font-size: 11px;
+}
+
+/* narrow screens: the menu becomes a strip across the top */
+@media (max-width: 800px) {
+  :root[data-ui='jrpg'] .app {
+    flex-direction: column;
+  }
+  :root[data-ui='jrpg'] .side {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 10px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px;
+  }
+  :root[data-ui='jrpg'] .brand,
+  :root[data-ui='jrpg'] .side .sec,
+  :root[data-ui='jrpg'] .nav.soon {
+    display: none;
+  }
+  :root[data-ui='jrpg'] a.nav {
+    padding: 6px 6px 6px 30px;
+    font-size: 15px;
+  }
+  :root[data-ui='jrpg'] main {
+    padding: 12px 12px 120px;
+  }
+}
