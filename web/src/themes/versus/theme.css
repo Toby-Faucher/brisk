@@ -1,1 +1,1214 @@
-/* versus */
+/* UI style versus (fighter select screen): every rule starts with :root[data-ui='versus']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/black-ops-one/latin-400.css';
+@import '@fontsource/bangers/latin-400.css';
+
+:root[data-ui='versus'] {
+  --bg: #0b0716;
+  --panel: #150e2c;
+  --panel2: #21173f;
+  --line: #4b3c8c;
+  --line-hover: #ffd23f;
+  --fg: #fff;
+  --muted: #d9d2f2;
+  --dim: #c4bbe6;
+  --accent-fg: #0b0716;
+  --ok: #5dff8a;
+  --warn: #ffd23f;
+  --bad: #ff7a7a;
+  --vs-hot: #ff5a14;
+  --vs-cool: #2f6bff;
+  --vs-gold: #ffd23f;
+  --vs-bar: 66px;
+  --vs-half: calc(50vw - 84px);
+  --disp: 'Black Ops One', 'Impact', sans-serif;
+  --hit: 'Bangers', 'Impact', sans-serif;
+  --r-card: 0px;
+  --r-ctl: 2px;
+  --skew: -9deg;
+  color-scheme: dark;
+}
+
+/* ---------- the arena: hot orange against blue, a lightning seam down the middle, speed streaks ---------- */
+:root[data-ui='versus'] {
+  scroll-padding-top: 90px;
+}
+:root[data-ui='versus'] body {
+  background:
+    linear-gradient(90deg, transparent calc(50% - 60px), #0b0716cc calc(50% - 4px), #0b0716cc calc(50% + 4px), transparent calc(50% + 60px))
+    fixed,
+    repeating-linear-gradient(112deg, #ffffff0d 0 2px, transparent 2px 38px, #ffffff08 38px 40px, transparent 40px 110px) fixed,
+    linear-gradient(112deg, #b8400c 0%, #4a1706 46%, #0b0716 50%, #0b2158 54%, #123a9c 100%) fixed;
+  background-color: #0b0716;
+  padding-top: 78px;
+  font-size: 15px;
+}
+:root[data-ui='versus'] .bg:has(> canvas) {
+  display: none;
+}
+:root[data-ui='versus'] h1,
+:root[data-ui='versus'] h2,
+:root[data-ui='versus'] h3,
+:root[data-ui='versus'] h4 {
+  font-family: var(--disp);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+:root[data-ui='versus'] .page-in h2 {
+  font-family: var(--hit);
+  font-size: 40px;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--vs-gold);
+  -webkit-text-stroke: 3px #000;
+  paint-order: stroke fill;
+  text-shadow: 3px 3px 0 var(--vs-hot);
+  transform: skewX(-8deg);
+  transform-origin: left bottom;
+  padding-right: 6px;
+}
+:root[data-ui='versus'] ::selection {
+  background: var(--vs-gold);
+  color: #000;
+}
+:root[data-ui='versus'] :focus-visible {
+  outline: 3px solid var(--vs-gold);
+  outline-offset: 2px;
+}
+:root[data-ui='versus'] main {
+  padding: 18px 22px 30px;
+}
+:root[data-ui='versus'] .lab,
+:root[data-ui='versus'] .muted {
+  color: var(--muted);
+}
+:root[data-ui='versus'] .page-in > .lab,
+:root[data-ui='versus'] .page > .lab {
+  text-shadow: 1px 1px 0 #000;
+}
+:root[data-ui='versus'] .tag,
+:root[data-ui='versus'] .cnt {
+  font-family: var(--disp);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  background: #000a;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 0;
+}
+
+/* ---------- the top bar: the sidebar becomes the two health bars (Layer draws the frames behind it) ---------- */
+:root[data-ui='versus'] .side {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 30;
+  width: auto;
+  height: var(--vs-bar);
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  background: none;
+  backdrop-filter: none;
+  border: 0;
+  white-space: nowrap;
+}
+:root[data-ui='versus'] .brand {
+  padding: 0 8px 0 20px;
+  flex: 0 0 auto;
+}
+:root[data-ui='versus'] .brand img {
+  width: 60px;
+  height: auto;
+}
+:root[data-ui='versus'] .side .sec,
+:root[data-ui='versus'] .side .nav.soon {
+  display: none;
+}
+:root[data-ui='versus'] .side a.nav {
+  position: relative;
+  padding: 0 9px;
+  height: 30px;
+  border-radius: 0;
+  color: var(--fg);
+  font-family: var(--disp);
+  font-size: 12.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transform: skewX(var(--skew));
+  transition:
+    background 0.1s,
+    color 0.1s,
+    transform 0.1s;
+}
+:root[data-ui='versus'] .side a.nav svg {
+  display: none;
+}
+:root[data-ui='versus'] .side a.nav:hover {
+  background: #ffffff26;
+  transform: skewX(var(--skew)) translateY(-2px);
+}
+:root[data-ui='versus'] .side .nav[aria-current='page'] {
+  color: #1a1100;
+  background: var(--vs-gold);
+  box-shadow: 3px 3px 0 #000;
+}
+:root[data-ui='versus'] .side .nav[aria-current='page']::before {
+  display: none;
+}
+:root[data-ui='versus'] .side .nav[aria-current='page']:hover {
+  background: #fff0a8;
+}
+/* the host pill sits inside the right-hand bar */
+:root[data-ui='versus'] .side > .wrap,
+:root[data-ui='versus'] .side > a.pill {
+  position: absolute;
+  right: 14px;
+  top: 10px;
+  width: var(--vs-half);
+  height: 46px;
+  margin: 0;
+  display: block;
+}
+:root[data-ui='versus'] .side .wrap > button.pill,
+:root[data-ui='versus'] .side > a.pill {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  height: 46px;
+  width: 100%;
+  padding: 0 38px 0 22px;
+  border-radius: 0;
+  color: var(--fg);
+  font-family: var(--disp);
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+:root[data-ui='versus'] .side .pill .name {
+  flex: 0 1 auto;
+}
+:root[data-ui='versus'] .side .pill .st {
+  color: #bfe0ff;
+  font-size: 12px;
+}
+:root[data-ui='versus'] .side .pill:hover {
+  background: #ffffff14;
+}
+:root[data-ui='versus'] .side .menu {
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  min-width: 260px;
+  text-transform: none;
+}
+:root[data-ui='versus'] .side .menu .it {
+  border-radius: 0;
+  font-family: var(--font);
+  font-size: 14px;
+}
+:root[data-ui='versus'] .side .menu .it:hover,
+:root[data-ui='versus'] .side .menu .it:focus-visible {
+  background: var(--vs-gold);
+  color: #1a1100;
+}
+:root[data-ui='versus'] .side .menu .it:hover .st,
+:root[data-ui='versus'] .side .menu .it:focus-visible .st,
+:root[data-ui='versus'] .side .menu .it:hover.all {
+  color: #1a1100;
+}
+:root[data-ui='versus'] .side .menu .all {
+  color: var(--muted);
+}
+
+/* ---------- panels: hard edges, a gold cap line, a block shadow ---------- */
+:root[data-ui='versus'] .card,
+:root[data-ui='versus'] .glass:not(.toast, .bar, .center) {
+  background: linear-gradient(165deg, #1d1342f2, #0f0a26f2);
+  border: 2px solid var(--line);
+  border-radius: 0;
+  box-shadow:
+    inset 0 3px 0 var(--vs-gold),
+    5px 5px 0 #000b;
+  backdrop-filter: none;
+}
+:root[data-ui='versus'] .card:hover {
+  border-color: var(--line-hover);
+}
+:root[data-ui='versus'] .card h4,
+:root[data-ui='versus'] .card .head h4 {
+  font-size: 14px;
+  text-transform: uppercase;
+  color: var(--vs-gold);
+}
+:root[data-ui='versus'] .card.soon {
+  border-style: dashed;
+  box-shadow: 5px 5px 0 #0008;
+}
+:root[data-ui='versus'] .btn {
+  font-family: var(--disp);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 0;
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 #000;
+  transform: skewX(var(--skew));
+  transition:
+    transform 0.08s,
+    box-shadow 0.08s,
+    background 0.1s;
+}
+:root[data-ui='versus'] .btn.ghost {
+  background: #21173f;
+  color: var(--fg);
+  box-shadow:
+    3px 3px 0 #000,
+    inset 0 0 0 1px var(--line);
+}
+:root[data-ui='versus'] .btn:hover {
+  filter: none;
+  transform: skewX(var(--skew)) translate(-1px, -2px);
+  box-shadow: 5px 5px 0 #000;
+  background: #fff0a8;
+  color: #1a1100;
+}
+:root[data-ui='versus'] .btn:active {
+  transform: skewX(var(--skew)) translate(2px, 2px);
+  box-shadow: 1px 1px 0 #000;
+}
+:root[data-ui='versus'] .btn > * {
+  transform: skewX(calc(var(--skew) * -1));
+}
+:root[data-ui='versus'] .btn:not(.ghost) {
+  background: var(--accent);
+}
+:root[data-ui='versus'] .btn:disabled,
+:root[data-ui='versus'] .btn[aria-disabled='true'] {
+  opacity: 0.55;
+  transform: skewX(var(--skew));
+  box-shadow: 2px 2px 0 #000;
+}
+:root[data-ui='versus'] .search {
+  border-radius: 0;
+  border: 2px solid var(--line);
+  background: #0b0716cc;
+  color: var(--fg);
+  transform: skewX(var(--skew));
+}
+:root[data-ui='versus'] .search > * {
+  transform: skewX(calc(var(--skew) * -1));
+}
+:root[data-ui='versus'] .search:focus-within {
+  border-color: var(--vs-gold);
+  outline-color: var(--vs-gold);
+}
+:root[data-ui='versus'] input,
+:root[data-ui='versus'] textarea,
+:root[data-ui='versus'] select {
+  border-radius: 0;
+}
+:root[data-ui='versus'] input[type='text'],
+:root[data-ui='versus'] input[type='number'],
+:root[data-ui='versus'] input[type='password'],
+:root[data-ui='versus'] textarea {
+  background: #0b0716cc;
+  border: 2px solid var(--line);
+  color: var(--fg);
+}
+
+/* ---------- library: a character select ---------- */
+:root[data-ui='versus'] .top {
+  border-bottom: 3px solid #000;
+  box-shadow: 0 3px 0 var(--vs-hot);
+  padding-bottom: 16px;
+  gap: 16px;
+}
+:root[data-ui='versus'] .fchip {
+  border-radius: 0;
+  border: 2px solid var(--line);
+  background: #0b0716b3;
+  color: var(--fg);
+  font-family: var(--disp);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transform: skewX(var(--skew));
+}
+:root[data-ui='versus'] .fchip:hover {
+  border-color: var(--vs-gold);
+}
+:root[data-ui='versus'] .fchip[aria-pressed='true'] {
+  color: #1a1100;
+  border-color: #000;
+}
+:root[data-ui='versus'] .fchip[aria-pressed='true']::before {
+  background: var(--vs-gold);
+  border: 0;
+}
+:root[data-ui='versus'] .fchip[aria-pressed='true'] .cnt {
+  color: #1a1100;
+  background: transparent;
+  border-color: #1a110055;
+}
+:root[data-ui='versus'] .shelf h4 {
+  font-family: var(--hit);
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
+  text-transform: uppercase;
+}
+:root[data-ui='versus'] .shelf h4 .n {
+  font-family: var(--disp);
+  font-size: 13px;
+  color: #1a1100;
+  background: var(--vs-gold);
+  padding: 1px 8px;
+  vertical-align: middle;
+  transform: skewX(var(--skew));
+  display: inline-block;
+}
+:root[data-ui='versus'] .shelf .chev {
+  border-radius: 0;
+  border: 2px solid #000;
+  background: var(--vs-gold);
+  color: #1a1100;
+  transform: skewX(var(--skew));
+}
+:root[data-ui='versus'] .shelf .chev[aria-disabled='true'] {
+  opacity: 0.4;
+}
+:root[data-ui='versus'] .shelf .more {
+  font-family: var(--disp);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg);
+  border-radius: 0;
+  border: 2px solid var(--line);
+  background: #0b0716b3;
+  padding: 3px 10px;
+}
+:root[data-ui='versus'] .shelf .more:hover {
+  background: var(--vs-gold);
+  color: #1a1100;
+}
+:root[data-ui='versus'] .shelf .grid {
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 14px 12px;
+}
+:root[data-ui='versus'] .shelf .row {
+  padding: 14px 10px;
+}
+/* the portrait pane lives at the right on the Library page (Layer fills it) */
+:root[data-ui='versus'] main.page-in:has(input[aria-label='Search games']) {
+  padding-right: 346px;
+}
+
+:root[data-ui='versus'] .wrap[data-gid] {
+  transition: transform 0.12s;
+}
+:root[data-ui='versus'] .wrap[data-gid]:hover,
+:root[data-ui='versus'] .wrap[data-gid]:has(:focus-visible) {
+  transform: translateY(-4px) scale(1.04);
+  z-index: 3;
+}
+:root[data-ui='versus'] .g {
+  border-radius: 0;
+}
+:root[data-ui='versus'] .g:focus-visible {
+  outline: 0;
+}
+:root[data-ui='versus'] .g .cover {
+  border-radius: 0;
+  box-shadow:
+    0 0 0 3px #000,
+    0 0 0 5px #ffffff40,
+    5px 6px 0 5px #000a;
+  filter: saturate(1.15) contrast(1.05);
+}
+:root[data-ui='versus'] .g.off .cover {
+  filter: grayscale(1) brightness(0.55);
+}
+:root[data-ui='versus'] .g.off:hover .cover,
+:root[data-ui='versus'] .g.off:focus-visible .cover {
+  filter: grayscale(0.4) brightness(0.8);
+}
+/* the cursor: a flashing frame with four corner brackets */
+:root[data-ui='versus'] .g .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  border: 4px solid var(--accent);
+  background:
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 0 0 / 22px 6px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 0 0 / 6px 22px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 100% 0 / 22px 6px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 100% 0 / 6px 22px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 0 100% / 22px 6px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 0 100% / 6px 22px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 100% 100% / 22px 6px no-repeat,
+    linear-gradient(var(--vs-gold), var(--vs-gold)) 100% 100% / 6px 22px no-repeat;
+}
+:root[data-ui='versus'] .g:hover .cover::after,
+:root[data-ui='versus'] .g:focus-visible .cover::after {
+  opacity: 1;
+  animation: vs-cursor 0.5s steps(1) infinite;
+}
+@keyframes vs-cursor {
+  50% {
+    border-color: #fff;
+    opacity: 0.55;
+  }
+}
+:root[data-ui='versus'] .g .name {
+  margin-top: 14px;
+  font-family: var(--hit);
+  font-weight: 400;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
+}
+:root[data-ui='versus'] .g .sub {
+  color: var(--muted);
+  text-shadow: 1px 1px 0 #000;
+}
+:root[data-ui='versus'] .g:hover .name,
+:root[data-ui='versus'] .g:focus-visible .name {
+  color: var(--vs-gold);
+}
+:root[data-ui='versus'] .g .ach {
+  border-radius: 0;
+  background: #000;
+  border: 1px solid var(--line);
+  height: 6px;
+}
+:root[data-ui='versus'] .g .ach i {
+  background: linear-gradient(90deg, var(--vs-hot), var(--vs-gold));
+}
+:root[data-ui='versus'] .g .badge {
+  border-radius: 0;
+  background: #000d;
+  font-family: var(--disp);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  backdrop-filter: none;
+  left: 0;
+  top: 0;
+  padding: 3px 8px 3px 6px;
+}
+:root[data-ui='versus'] .g .chips {
+  left: 0;
+  top: 24px;
+}
+:root[data-ui='versus'] .g .chips > * {
+  border-radius: 0;
+  backdrop-filter: none;
+}
+:root[data-ui='versus'] .g .uchip.need {
+  background: #b3420a;
+}
+:root[data-ui='versus'] .g .play {
+  font-size: 12px;
+  bottom: 10px;
+  padding: 4px 12px;
+}
+:root[data-ui='versus'] .g .play::before {
+  content: 'Select ';
+}
+:root[data-ui='versus'] .g .glow {
+  background: linear-gradient(0deg, color-mix(in srgb, var(--vs-hot) 70%, transparent), transparent 55%);
+}
+:root[data-ui='versus'] .wrap .quit {
+  right: 0;
+  top: 0;
+  border-radius: 0;
+}
+:root[data-ui='versus'] .banner {
+  border-radius: 0;
+  border: 2px solid var(--vs-gold);
+  background: #000c;
+  color: var(--vs-gold);
+}
+:root[data-ui='versus'] .empty {
+  background: #0b0716d9;
+  border: 2px dashed var(--line);
+  margin-top: 12px;
+}
+:root[data-ui='versus'] .empty b {
+  font-family: var(--hit);
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  color: var(--vs-gold);
+}
+:root[data-ui='versus'] .skel div {
+  border-radius: 0;
+  box-shadow: 0 0 0 3px #000;
+}
+:root[data-ui='versus'] .hero {
+  border-radius: 0;
+  border: 3px solid #000;
+  box-shadow:
+    0 0 0 2px var(--line),
+    6px 6px 0 #000b;
+}
+
+/* ---------- dialogs, command menu, toasts, tips ---------- */
+:root[data-ui='versus'] .cm-dim,
+:root[data-ui='versus'] .rs-dim,
+:root[data-ui='versus'] .ag-dim,
+:root[data-ui='versus'] .ap-dim,
+:root[data-ui='versus'] .ad-dim {
+  background: linear-gradient(112deg, #3a0f04d9 0 50%, #08205ad9 50% 100%);
+}
+:root[data-ui='versus'] .cm,
+:root[data-ui='versus'] .rs {
+  border: 3px solid #fff;
+  border-radius: 0;
+  box-shadow:
+    8px 8px 0 #000,
+    inset 0 5px 0 var(--vs-gold);
+  background: linear-gradient(165deg, #1d1342, #0f0a26);
+  backdrop-filter: none;
+}
+:root[data-ui='versus'] .rs-t {
+  font-family: var(--hit);
+  font-size: 30px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vs-gold);
+  text-shadow: 2px 2px 0 #000;
+}
+:root[data-ui='versus'] .cm-in {
+  font-family: var(--hit);
+  letter-spacing: 0.06em;
+  border-bottom: 3px solid var(--vs-hot);
+}
+:root[data-ui='versus'] .cm-it {
+  border-radius: 0;
+}
+:root[data-ui='versus'] .cm-it[data-selected] {
+  background: var(--vs-gold);
+  color: #1a1100;
+}
+:root[data-ui='versus'] .cm-it[data-selected] .k {
+  color: #1a1100;
+}
+:root[data-ui='versus'] .toast {
+  background: var(--vs-gold);
+  color: #1a1100;
+  border: 3px solid #000;
+  border-radius: 0;
+  box-shadow: 5px 5px 0 #000;
+  backdrop-filter: none;
+  font-family: var(--disp);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transform: skewX(var(--skew));
+}
+:root[data-ui='versus'] .toast.error {
+  background: #ff6b6b;
+  color: #1a0000;
+}
+:root[data-ui='versus'] .tip {
+  background: #000;
+  border: 2px solid var(--vs-gold);
+  border-radius: 0;
+  font-family: var(--disp);
+  letter-spacing: 0.04em;
+}
+
+/* settings tabs sit under the bars */
+:root[data-ui='versus'] .strip {
+  top: 74px;
+  background: #0b0716f2;
+  border-bottom: 3px solid var(--vs-hot);
+}
+:root[data-ui='versus'] .strip .tab {
+  font-family: var(--disp);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 0;
+  transform: skewX(var(--skew));
+  color: var(--muted);
+}
+:root[data-ui='versus'] .strip .tab[aria-selected='true'] {
+  background: var(--vs-gold);
+  color: #1a1100;
+}
+:root[data-ui='versus'] .strip .tab:hover:not([aria-selected='true']) {
+  background: #ffffff1f;
+}
+:root[data-ui='versus'] .strip .ind {
+  display: none;
+}
+:root[data-ui='versus'] .rs.glass,
+:root[data-ui='versus'] .cm.glass {
+  border: 3px solid #fff;
+  box-shadow:
+    8px 8px 0 #000,
+    inset 0 5px 0 var(--vs-gold);
+}
+
+/* ---------- stream chrome ---------- */
+:root[data-ui='versus'] body:has(main:not(.page-in)) {
+  padding-top: 0;
+}
+:root[data-ui='versus'] .bar.glass,
+:root[data-ui='versus'] .center.glass,
+:root[data-ui='versus'] .center.card {
+  background: #0b0716ee;
+  border: 3px solid #fff;
+  border-radius: 0;
+  box-shadow:
+    5px 5px 0 #000,
+    inset 0 3px 0 var(--vs-gold);
+  backdrop-filter: none;
+}
+:root[data-ui='versus'] .bar .ic {
+  border-radius: 0;
+}
+:root[data-ui='versus'] .bar .ic:hover,
+:root[data-ui='versus'] .bar .ic[aria-pressed='true'],
+:root[data-ui='versus'] .bar .ic[aria-expanded='true'] {
+  background: var(--vs-gold);
+  color: #1a1100;
+}
+:root[data-ui='versus'] .stream :is(.sound, .esc, .up, .pill) {
+  border-radius: 0;
+  border: 2px solid #fff;
+  background: #0b0716ee;
+  font-family: var(--disp);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- the Layer: health-bar frames, timer, banners, portrait, combos ---------- */
+:root[data-ui='versus'] .vs-streaks {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+:root[data-ui='versus'] .vs-streaks i {
+  position: absolute;
+  top: -20%;
+  height: 140%;
+  width: 14px;
+  transform: skewX(-22deg);
+  background: linear-gradient(180deg, transparent, #ffffff30, transparent);
+  animation: vs-drift 7s linear infinite;
+  animation-delay: calc(var(--i) * -1.3s);
+  left: calc(var(--i) * 17%);
+  opacity: 0.7;
+}
+:root[data-ui='versus'] .vs-streaks i:nth-child(odd) {
+  width: 4px;
+  animation-duration: 5s;
+}
+:root[data-ui='versus'] .vs-streaks i:nth-child(3n) {
+  background: linear-gradient(180deg, transparent, #ffb24a55, transparent);
+}
+:root[data-ui='versus'] .vs-streaks i:nth-child(4n) {
+  background: linear-gradient(180deg, transparent, #7fb0ff55, transparent);
+}
+@keyframes vs-drift {
+  from {
+    translate: -20vw 0;
+  }
+  to {
+    translate: 40vw 0;
+  }
+}
+:root[data-ui='versus'] .vs-hb {
+  position: fixed;
+  top: 10px;
+  height: 46px;
+  width: var(--vs-half);
+  z-index: 25;
+  pointer-events: none;
+  background: #fff;
+}
+:root[data-ui='versus'] .vs-hb.l {
+  left: 14px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 26px) 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-hb.r {
+  right: 14px;
+  clip-path: polygon(26px 0, 100% 0, 100% 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-hb b {
+  position: absolute;
+  inset: 3px;
+  background: #0b0716;
+  clip-path: inherit;
+}
+:root[data-ui='versus'] .vs-hb.l b {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 25px) 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-hb.r b {
+  clip-path: polygon(25px 0, 100% 0, 100% 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-hb i {
+  position: absolute;
+  inset: 6px 6px 6px 6px;
+  transition:
+    right 0.5s steps(8),
+    left 0.5s steps(8);
+}
+:root[data-ui='versus'] .vs-hb.l i {
+  background: linear-gradient(180deg, #ff9a2e 0 12%, #b3420a 12% 100%);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-hb.r i {
+  background: linear-gradient(180deg, #6fa5ff 0 12%, #1d49b8 12% 100%);
+  clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-hb i.hit {
+  animation: vs-hit 0.9s steps(6) 1 both;
+}
+@keyframes vs-hit {
+  30% {
+    filter: brightness(2.2);
+    translate: -4px 0;
+  }
+  60% {
+    translate: 3px 0;
+    clip-path: polygon(0 0, 88% 0, calc(88% - 18px) 100%, 0 100%);
+  }
+  100% {
+    clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
+  }
+}
+:root[data-ui='versus'] .vs-hb.r i.hit {
+  animation-name: vs-hit-r;
+}
+@keyframes vs-hit-r {
+  30% {
+    filter: brightness(2.2);
+    translate: 4px 0;
+  }
+  60% {
+    translate: -3px 0;
+    clip-path: polygon(30px 0, 100% 0, 100% 100%, 12% 100%);
+  }
+  100% {
+    clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%);
+  }
+}
+:root[data-ui='versus'] .vs-tag {
+  position: fixed;
+  top: 56px;
+  z-index: 25;
+  pointer-events: none;
+  font-family: var(--hit);
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  padding: 0 14px 0 12px;
+  line-height: 18px;
+  height: 18px;
+  color: #1a1100;
+  background: var(--vs-gold);
+  transform: skewX(var(--skew));
+}
+:root[data-ui='versus'] .vs-tag.l {
+  left: 28px;
+}
+:root[data-ui='versus'] .vs-tag.r {
+  right: 28px;
+  background: #9dc0ff;
+}
+:root[data-ui='versus'] .vs-tag s {
+  text-decoration: none;
+  letter-spacing: 0.3em;
+  margin-left: 8px;
+}
+:root[data-ui='versus'] .vs-timer {
+  position: fixed;
+  top: 6px;
+  left: 50%;
+  translate: -50% 0;
+  width: 108px;
+  height: 56px;
+  z-index: 26;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  font-family: var(--hit);
+  font-size: 46px;
+  line-height: 1;
+  color: var(--vs-gold);
+  text-shadow: 2px 2px 0 #000;
+  background: #0b0716;
+  border: 3px solid #fff;
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%);
+}
+:root[data-ui='versus'] .vs-timer.low {
+  color: #ff5a5a;
+}
+:root[data-ui='versus'] .vs-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+:root[data-ui='versus'] .vs-fx > * {
+  grid-area: 1 / 1;
+}
+:root[data-ui='versus'] .vs-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  animation: vs-flash 0.55s ease-out both;
+}
+@keyframes vs-flash {
+  0% {
+    opacity: 0.95;
+  }
+  8% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 0.7;
+  }
+  40%,
+  100% {
+    opacity: 0;
+  }
+}
+:root[data-ui='versus'] .vs-half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 56%;
+  animation: vs-wipe 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+:root[data-ui='versus'] .vs-half.l {
+  left: 0;
+  background: linear-gradient(90deg, #a8330a, #ff5a14);
+  clip-path: polygon(0 0, 100% 0, 84% 100%, 0 100%);
+  --from: -110%;
+}
+:root[data-ui='versus'] .vs-half.r {
+  right: 0;
+  background: linear-gradient(90deg, #2f6bff, #123a9c);
+  clip-path: polygon(16% 0, 100% 0, 100% 100%, 0 100%);
+  --from: 110%;
+}
+@keyframes vs-wipe {
+  0% {
+    translate: var(--from) 0;
+  }
+  22% {
+    translate: 0 0;
+  }
+  70% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  100% {
+    translate: var(--from) 0;
+    opacity: 1;
+  }
+}
+:root[data-ui='versus'] .vs-vs {
+  font-family: var(--hit);
+  font-size: 220px;
+  line-height: 1;
+  color: #fff;
+  -webkit-text-stroke: 8px #000;
+  paint-order: stroke fill;
+  text-shadow: 10px 10px 0 var(--vs-hot);
+  animation: vs-slam 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes vs-slam {
+  0% {
+    scale: 3;
+    opacity: 0;
+  }
+  22% {
+    scale: 1;
+    opacity: 1;
+  }
+  28% {
+    scale: 1.08;
+  }
+  70% {
+    scale: 1;
+    opacity: 1;
+  }
+  100% {
+    scale: 0.6;
+    opacity: 0;
+  }
+}
+:root[data-ui='versus'] .vs-bolt {
+  width: min(70vw, 760px);
+  height: 100%;
+  animation: vs-zap 0.9s steps(2) both;
+}
+@keyframes vs-zap {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  30% {
+    opacity: 1;
+  }
+  20% {
+    opacity: 0.2;
+  }
+  45%,
+  100% {
+    opacity: 0;
+  }
+}
+:root[data-ui='versus'] .vs-banner {
+  font-family: var(--hit);
+  font-size: 120px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vs-gold);
+  -webkit-text-stroke: 7px #000;
+  paint-order: stroke fill;
+  text-shadow: 7px 7px 0 var(--vs-hot);
+  transform: skewX(-8deg);
+  white-space: nowrap;
+  animation: vs-banner 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.55s both;
+}
+@keyframes vs-banner {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+    scale: 2.4;
+  }
+  14% {
+    opacity: 1;
+    scale: 1;
+  }
+  72% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.9;
+    translate: 0 -20px;
+  }
+}
+:root[data-ui='versus'] .vs-sub {
+  margin-top: 150px;
+  font-family: var(--disp);
+  font-size: 26px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #fff;
+  background: #000;
+  padding: 4px 22px;
+  transform: skewX(-8deg);
+  animation: vs-banner 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.7s both;
+}
+:root[data-ui='versus'] .vs-pane {
+  position: fixed;
+  right: 22px;
+  top: 88px;
+  width: 300px;
+  z-index: 5;
+  pointer-events: none;
+  display: grid;
+  gap: 10px;
+}
+:root[data-ui='versus'] .vs-pane .pic {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border: 4px solid #fff;
+  box-shadow:
+    7px 7px 0 #000,
+    0 0 0 4px var(--vs-hot);
+  background-size: cover;
+  background-position: center;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 28px) 100%, 0 100%);
+}
+:root[data-ui='versus'] .vs-pane .pic.pop {
+  animation: vs-pop 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes vs-pop {
+  from {
+    scale: 0.94;
+    filter: brightness(2);
+  }
+}
+:root[data-ui='versus'] .vs-pane .pic img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+:root[data-ui='versus'] .vs-pane .pic em {
+  font-family: var(--hit);
+  font-style: normal;
+  font-size: 120px;
+  color: #ffffffd9;
+  -webkit-text-stroke: 4px #000;
+  paint-order: stroke fill;
+}
+:root[data-ui='versus'] .vs-pane .pic.off {
+  filter: grayscale(1) brightness(0.6);
+}
+:root[data-ui='versus'] .vs-pane .plate {
+  font-family: var(--hit);
+  font-size: 30px;
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  text-transform: uppercase;
+  color: #1a1100;
+  background: var(--vs-gold);
+  border: 3px solid #000;
+  padding: 6px 12px 4px;
+  box-shadow: 5px 5px 0 #000;
+  transform: skewX(-8deg);
+  overflow-wrap: anywhere;
+}
+:root[data-ui='versus'] .vs-pane .stats {
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  background: #0b0716e6;
+  border: 2px solid var(--line);
+  font-family: var(--disp);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root[data-ui='versus'] .vs-pane .stats div {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+:root[data-ui='versus'] .vs-pane .stats span {
+  height: 9px;
+  background: #000;
+  border: 1px solid var(--line);
+}
+:root[data-ui='versus'] .vs-pane .stats span i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--vs-hot), var(--vs-gold));
+}
+:root[data-ui='versus'] .vs-pane .stats p {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:root[data-ui='versus'] .vs-combo {
+  position: fixed;
+  right: 48px;
+  top: 330px;
+  z-index: 90;
+  pointer-events: none;
+  text-align: right;
+  font-family: var(--hit);
+  color: #fff;
+  -webkit-text-stroke: 5px #000;
+  paint-order: stroke fill;
+  text-shadow: 5px 5px 0 var(--vs-hot);
+  transform: skewX(-8deg) rotate(-4deg);
+  animation: vs-combo 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:root[data-ui='versus'] .vs-combo b {
+  display: block;
+  font-weight: 400;
+  font-size: 84px;
+  line-height: 0.9;
+  color: var(--vs-gold);
+}
+:root[data-ui='versus'] .vs-combo span {
+  font-size: 34px;
+  letter-spacing: 0.08em;
+}
+@keyframes vs-combo {
+  from {
+    scale: 1.7;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  :root[data-ui='versus'] body {
+    padding-top: 0;
+  }
+  :root[data-ui='versus'] .app {
+    flex-direction: column;
+  }
+  :root[data-ui='versus'] .side {
+    position: sticky;
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 10px;
+    background: #0b0716f2;
+    border-bottom: 3px solid var(--vs-gold);
+  }
+  :root[data-ui='versus'] .side > .wrap,
+  :root[data-ui='versus'] .side > a.pill {
+    position: static;
+    width: auto;
+    margin-left: auto;
+  }
+  :root[data-ui='versus'] .vs-hb,
+  :root[data-ui='versus'] .vs-tag,
+  :root[data-ui='versus'] .vs-timer,
+  :root[data-ui='versus'] .vs-pane {
+    display: none;
+  }
+  :root[data-ui='versus'] main.page-in:has(input[aria-label='Search games']) {
+    padding-right: 22px;
+  }
+  :root[data-ui='versus'] .vs-banner {
+    font-size: 64px;
+  }
+  :root[data-ui='versus'] .vs-vs {
+    font-size: 130px;
+  }
+}
+@media (max-width: 1180px) and (min-width: 901px) {
+  :root[data-ui='versus'] .side a.nav {
+    padding: 0 7px;
+    font-size: 11px;
+  }
+  :root[data-ui='versus'] .brand {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='versus'] .vs-streaks i {
+    animation: none;
+  }
+  :root[data-ui='versus'] .g .cover::after {
+    animation: none !important;
+  }
+}
