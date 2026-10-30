@@ -5,6 +5,7 @@
 //! header. Facts marked UNVERIFIED were not confirmable from the official docs page (it renders
 //! client-side and could not be fetched); see docs/research/sgdb-notes.md.
 
+use crate::net::HttpError;
 use crate::steam::{base_ok, get_limited};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -153,16 +154,14 @@ fn pace(cfg: &SgdbConfig) {
     *last = Some(Instant::now());
 }
 
-fn map_err(e: String) -> Error {
-    match e.as_str() {
-        "HTTP 401" | "HTTP 403" => Error::Unauthorized,
-        "HTTP 429" => Error::RateLimited,
-        "HTTP 404" => Error::NotFound,
-        "response too large" => Error::TooLarge,
-        s => match s.strip_prefix("HTTP ").and_then(|c| c.parse().ok()) {
-            Some(c) => Error::Http(c),
-            None => Error::Transport(e),
-        },
+fn map_err(e: HttpError) -> Error {
+    match e {
+        HttpError::Status(401 | 403) => Error::Unauthorized,
+        HttpError::Status(429) => Error::RateLimited,
+        HttpError::Status(404) => Error::NotFound,
+        HttpError::Status(c) => Error::Http(c),
+        HttpError::TooLarge => Error::TooLarge,
+        HttpError::Other(s) => Error::Transport(s),
     }
 }
 

@@ -1,6 +1,12 @@
 //! Host routes: status, Sunshine restart, clipboard and file drop.
 
-use super::*;
+use super::{AppState, err};
+use crate::clipboard::{self, Clip, Kind};
+use crate::host::RestartError;
+use axum::extract::{Path as UrlPath, Request, State};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use std::sync::Arc;
 
 pub(super) async fn host_status() -> Response {
     axum::Json(crate::host::host_info().await).into_response()

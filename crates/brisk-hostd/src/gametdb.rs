@@ -5,6 +5,7 @@
 
 use crate::config::Config;
 use crate::fsutil::write_atomic;
+use crate::net::HttpError;
 use crate::steam::{base_ok, get_limited_for, now};
 
 use serde::{Deserialize, Serialize};
@@ -60,11 +61,10 @@ impl std::fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
-fn net(msg: String) -> Error {
-    if msg == "response too large" {
-        Error::TooLarge
-    } else {
-        Error::Network(msg)
+fn net(e: HttpError) -> Error {
+    match e {
+        HttpError::TooLarge => Error::TooLarge,
+        e => Error::Network(e.to_string()),
     }
 }
 

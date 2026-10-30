@@ -1,6 +1,12 @@
 //! The Dolphin controller editor.
 
-use super::*;
+use super::{AppState, blocking, err};
+use crate::controls::{Controls, CtlError, Kind as PadKind};
+use axum::extract::Path as UrlPath;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use std::sync::Arc;
 
 /// The editor needs a library game whose emulator has this editor (`registry` controller types);
 /// and whether any such emulator runs (the config files are shared, so any running one owns them).
