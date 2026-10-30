@@ -11,6 +11,16 @@ export const UI_THEMES = [
   { id: 'command', name: 'Command first', blurb: 'One search box, lists under it' },
   { id: 'sticker', name: 'Sticker', blurb: 'Chunky, bright and playful' },
   { id: 'win95', name: 'Classic desktop', blurb: 'Beveled windows and a taskbar' },
+  { id: 'outrun', name: 'Outrun', blurb: 'Synthwave sunset over a neon grid' },
+  { id: 'zine', name: 'Zine', blurb: 'Cut, taped and photocopied' },
+  { id: 'blueprint', name: 'Blueprint', blurb: 'White lines on blue drafting paper' },
+  { id: 'cozy', name: 'Cozy town', blurb: 'Soft, woodsy and a bit chatty' },
+  { id: 'mecha', name: 'Mecha', blurb: 'Hazard stripes and warning labels' },
+  { id: 'vinyl', name: 'Record shop', blurb: 'Games as record sleeves' },
+  { id: 'gameboy', name: 'Handheld', blurb: 'Four shades of olive green' },
+  { id: 'geocities', name: 'Web 1.0', blurb: 'Under construction since 1997' },
+  { id: 'aurora', name: 'Aurora', blurb: 'Frosted layers over northern lights' },
+  { id: 'comic', name: 'Comic book', blurb: 'Halftone, panels and sound effects' },
 ] as const;
 
 export type UiTheme = (typeof UI_THEMES)[number]['id'];
