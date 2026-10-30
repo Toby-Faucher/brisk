@@ -1,1 +1,721 @@
-/* overworld */
+/* UI style overworld: every rule starts with :root[data-ui='overworld']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/press-start-2p/400.css';
+
+:root[data-ui='overworld'] {
+  color-scheme: dark;
+  --bg: #1d4326;
+  --panel: #1c1510;
+  --panel2: #2c2216;
+  --line: #7a5a2c;
+  --line-hover: #e0b95a;
+  --fg: #f8ecd0;
+  --muted: #d6c49e;
+  --dim: #c9b78f;
+  --ok: #7be062;
+  --warn: #ffd54f;
+  --bad: #ff8a78;
+  --c-lib: #ffd54f;
+  --c-stream: #7cc0ff;
+  --c-host: #62d6f0;
+  --c-set: #d3d9e0;
+  --c-agent: #c9a6ff;
+  --c-news: #ff9a8f;
+  --c-power: #7be062;
+  --c-hist: #ffa75a;
+  --px: 'Press Start 2P', ui-monospace, monospace;
+  --r-card: 0;
+  --r-ctl: 0;
+  --hud-h: 40px;
+  --row-h: 76px;
+  --top-h: 116px;
+  --gold: #e0b95a;
+  --gold-hi: #f7de96;
+  --ink: #0b0806;
+  --wood: #5b4322;
+  --parch: #efdfb0;
+  --parch-2: #e2cd94;
+  --parch-ink: #2e2010;
+  --ow-meadow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128' shape-rendering='crispEdges'%3E%3Crect width='128' height='128' fill='%231d4326'/%3E%3Crect width='64' height='64' fill='%23214b2a'/%3E%3Crect x='64' y='64' width='64' height='64' fill='%23214b2a'/%3E%3Cpath d='M14 40h4v-6h-4zM18 34h4v-8h-4zM22 40h4v-5h-4z' fill='%232f6a39'/%3E%3Cpath d='M84 108h4v-6h-4zM88 102h4v-8h-4zM92 108h4v-5h-4z' fill='%232f6a39'/%3E%3C/svg%3E");
+  --ow-dungeon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='64' shape-rendering='crispEdges'%3E%3Crect width='128' height='64' fill='%23272a33'/%3E%3Cpath d='M0 0h128v4H0zM0 32h128v4H0zM0 0h4v32H0zM64 0h4v32H64zM32 32h4v32H32zM96 32h4v32H96z' fill='%2315171d'/%3E%3Cpath d='M6 6h56v3H6zM70 6h56v3H70zM38 38h56v3H38zM102 38h24v3h-24zM6 38h24v3H6z' fill='%2331353f'/%3E%3Crect x='20' y='18' width='6' height='3' fill='%231e2128'/%3E%3Crect x='84' y='50' width='8' height='3' fill='%231e2128'/%3E%3C/svg%3E");
+  --ow-sword: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='44' viewBox='0 0 16 44' shape-rendering='crispEdges'%3E%3Cpath d='M7 0h2v2h1v22H6V2h1z' fill='%23dfe8ef'/%3E%3Cpath d='M8 2h2v22H8z' fill='%239fb3c2'/%3E%3Cpath d='M2 24h12v4H2z' fill='%23e0b95a'/%3E%3Cpath d='M2 24h12v1H2z' fill='%23f6dc8a'/%3E%3Cpath d='M6 28h4v10H6z' fill='%238a4b2a'/%3E%3Cpath d='M6 31h4v1H6zM6 34h4v1H6z' fill='%235e301a'/%3E%3Cpath d='M5 38h6v4H5z' fill='%23e0b95a'/%3E%3C/svg%3E");
+  --ow-bush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='24' viewBox='0 0 32 24' shape-rendering='crispEdges'%3E%3Cpath d='M4 24V14h4V8h6V4h6v4h6v6h4v10z' fill='%232f8a3e'/%3E%3Cpath d='M8 14h4v4H8zM18 8h4v4h-4zM22 18h4v4h-4z' fill='%2346b052'/%3E%3Cpath d='M4 20h24v4H4z' fill='%231e5f2b'/%3E%3Crect x='13' y='12' width='3' height='3' fill='%23e8576a'/%3E%3Crect x='20' y='15' width='3' height='3' fill='%23e8576a'/%3E%3C/svg%3E");
+}
+
+/* ---- Ground: meadow on Home and Library, dungeon stone elsewhere (Layer.svelte sets the zone) ---- */
+:root[data-ui='overworld'] body {
+  background:
+    var(--ow-meadow) 0 0 / 128px 128px fixed,
+    var(--bg);
+  image-rendering: pixelated;
+}
+:root[data-ui='overworld'] body:has(.ow-zone[data-z='dun']) {
+  --bg: #23252d;
+  background:
+    var(--ow-dungeon) 0 0 / 128px 64px fixed,
+    var(--bg);
+}
+:root[data-ui='overworld'] .bg:has(> canvas) {
+  display: none;
+}
+:root[data-ui='overworld'] {
+  scroll-padding-top: calc(var(--top-h) + 12px);
+}
+:root[data-ui='overworld'] ::selection {
+  background: var(--gold);
+  color: var(--ink);
+}
+:root[data-ui='overworld'] :focus-visible {
+  outline: 3px solid var(--gold-hi);
+  outline-offset: 2px;
+}
+:root[data-ui='overworld'] main.page-in {
+  padding: calc(var(--top-h) + 22px) 26px 56px;
+}
+:root[data-ui='overworld'] h1,
+:root[data-ui='overworld'] h2,
+:root[data-ui='overworld'] h3,
+:root[data-ui='overworld'] h4 {
+  font-family: var(--px);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+:root[data-ui='overworld'] main .top > h1,
+:root[data-ui='overworld'] main .top > h2 {
+  font-size: 16px;
+  color: var(--gold-hi);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+:root[data-ui='overworld'] main .top > h1::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 10px;
+  vertical-align: -2px;
+  background:
+    linear-gradient(var(--gold-hi) 0 0) 6px 0 / 4px 16px no-repeat,
+    linear-gradient(var(--gold-hi) 0 0) 0 6px / 16px 4px no-repeat;
+}
+:root[data-ui='overworld'] .top {
+  border-bottom: 4px dotted rgb(248 236 208 / 0.45);
+  padding-bottom: 14px;
+}
+:root[data-ui='overworld'] .lab,
+:root[data-ui='overworld'] .muted {
+  color: var(--muted);
+}
+
+/* ---- Top row: the sidebar becomes an item-select row under the HUD strip ---- */
+:root[data-ui='overworld'] .side {
+  position: fixed;
+  top: var(--hud-h);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  width: auto;
+  height: var(--row-h);
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: linear-gradient(#3a2a18, #2a1e12);
+  backdrop-filter: none;
+  border: 0;
+  border-top: 3px solid var(--gold);
+  border-bottom: 5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--wood);
+  isolation: isolate;
+}
+:root[data-ui='overworld'] .brand {
+  position: relative;
+  padding: 0 22px 0 0;
+  flex: 0 0 auto;
+}
+:root[data-ui='overworld'] .brand img {
+  width: auto;
+  height: 40px;
+}
+:root[data-ui='overworld'] .brand::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  width: 16px;
+  height: 44px;
+  translate: 0 -50%;
+  rotate: 18deg;
+  background: var(--ow-sword) center / contain no-repeat;
+  image-rendering: pixelated;
+}
+:root[data-ui='overworld'] .side .nav {
+  position: relative;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 88px;
+  height: 58px;
+  padding: 4px 2px;
+  border-radius: 0;
+  background: var(--panel);
+  border: 3px solid var(--line);
+  box-shadow:
+    0 0 0 2px var(--ink),
+    inset 0 0 0 2px var(--ink);
+  color: var(--muted);
+  font-family: var(--px);
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  transition: none;
+}
+:root[data-ui='overworld'] .side .nav svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  filter: drop-shadow(2px 2px 0 var(--ink));
+}
+:root[data-ui='overworld'] .side a.nav:hover {
+  background: var(--panel2);
+  color: var(--fg);
+  border-color: var(--gold);
+  transform: none;
+  translate: 0 -2px;
+}
+:root[data-ui='overworld'] .side .nav[aria-current='page'] {
+  color: var(--gold-hi);
+  border-color: var(--gold);
+  background: var(--panel2);
+}
+/* the item cursor: a dashed frame that blinks around the chosen box */
+:root[data-ui='overworld'] .side .nav[aria-current='page']::before {
+  inset: -9px;
+  z-index: -1;
+  border: 3px dashed var(--accent);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+:root[data-ui='overworld'] .side .nav[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -17px;
+  translate: -50% 0;
+  border: 6px solid transparent;
+  border-top-color: var(--accent);
+  border-bottom: 0;
+}
+:root[data-ui='overworld'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+  border-style: dashed;
+  background: #17110c;
+  cursor: not-allowed;
+}
+:root[data-ui='overworld'] .side .soon svg {
+  filter: grayscale(1) brightness(0.8);
+}
+:root[data-ui='overworld'] .side .soon .tag {
+  display: none;
+}
+:root[data-ui='overworld'] .side .sec {
+  flex: 0 0 auto;
+  padding: 0 4px 0 14px;
+  margin-left: 6px;
+  border-left: 4px dotted var(--line);
+  font-family: var(--px);
+  font-size: 7px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--dim);
+  writing-mode: vertical-rl;
+  rotate: 180deg;
+  line-height: 1;
+}
+:root[data-ui='overworld'] .side .wrap,
+:root[data-ui='overworld'] .side > .pill {
+  margin: 0 0 0 auto;
+  flex: 0 0 auto;
+  width: auto;
+}
+:root[data-ui='overworld'] .pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--fg);
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 0 2px var(--ink);
+  font-family: var(--px);
+  font-size: 8px;
+}
+:root[data-ui='overworld'] .pill:hover {
+  background: var(--panel2);
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .pill .name {
+  flex: 0 1 auto;
+}
+:root[data-ui='overworld'] .pill .st {
+  font-size: 8px;
+  color: var(--muted);
+}
+:root[data-ui='overworld'] .side .menu {
+  top: calc(100% + 12px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  width: 280px;
+  border-radius: 0;
+}
+
+/* ---- Parchment: menus, dialogs and the command box are old paper with a gold frame ---- */
+:root[data-ui='overworld'] .glass {
+  --fg: var(--parch-ink);
+  --muted: #5a4426;
+  --dim: #624a28;
+  --panel: var(--parch-2);
+  --panel2: #d6bd7c;
+  --line: #8a6a32;
+  --line-hover: #5a4426;
+  --accent-fg: #fff7e0;
+  background: var(--parch);
+  color: var(--parch-ink);
+  backdrop-filter: none;
+  border: 4px solid var(--ink);
+  border-radius: 0;
+  box-shadow:
+    0 0 0 3px var(--gold),
+    inset 0 0 0 3px #c4a460,
+    7px 7px 0 3px rgb(0 0 0 / 0.5);
+}
+:root[data-ui='overworld'] .glass :is(h1, h2, h3, h4, .rs-t) {
+  color: var(--parch-ink);
+}
+:root[data-ui='overworld'] .glass .btn:not(.ghost) {
+  background: #2f6a39;
+  color: #fff7e0;
+}
+:root[data-ui='overworld'] .glass .btn.ghost {
+  background: var(--parch-2);
+  color: var(--parch-ink);
+}
+:root[data-ui='overworld'] .cm-dim,
+:root[data-ui='overworld'] .rs-dim {
+  background: rgb(8 20 10 / 0.72);
+}
+
+/* ---- Item boxes: cards ---- */
+:root[data-ui='overworld'] .card {
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  box-shadow:
+    inset 0 0 0 2px var(--wood),
+    0 0 0 3px var(--gold);
+}
+:root[data-ui='overworld'] .card h4 {
+  font-size: 10px;
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .soon.card {
+  opacity: 1;
+  border-style: dashed;
+  background: #14100c;
+  box-shadow:
+    inset 0 0 0 2px #33261a,
+    0 0 0 3px var(--line);
+}
+:root[data-ui='overworld'] :is(.big, .word) {
+  font-family: var(--px);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.3;
+  color: var(--gold-hi);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+:root[data-ui='overworld'] .big {
+  font-size: 18px;
+}
+:root[data-ui='overworld'] .big .lab {
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-shadow: none;
+  color: var(--muted);
+}
+:root[data-ui='overworld'] .word {
+  font-size: 20px;
+}
+
+/* ---- Buttons: chunky, pressed like a real one ---- */
+:root[data-ui='overworld'] .btn {
+  font-family: var(--px);
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 10px 14px;
+  border-radius: 0;
+  border: 3px solid var(--ink);
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow:
+    inset 0 3px 0 rgb(255 255 255 / 0.38),
+    inset 0 -4px 0 rgb(0 0 0 / 0.3),
+    0 0 0 2px var(--gold);
+  transition: none;
+}
+:root[data-ui='overworld'] .btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+}
+:root[data-ui='overworld'] .btn:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 0.25),
+    0 0 0 2px var(--gold);
+}
+:root[data-ui='overworld'] .btn.ghost {
+  background: var(--panel2);
+  color: var(--fg);
+  box-shadow:
+    inset 0 3px 0 rgb(255 255 255 / 0.1),
+    inset 0 -4px 0 rgb(0 0 0 / 0.35),
+    0 0 0 2px var(--line);
+}
+:root[data-ui='overworld'] .btn.ghost:hover {
+  color: var(--gold-hi);
+  box-shadow:
+    inset 0 3px 0 rgb(255 255 255 / 0.1),
+    inset 0 -4px 0 rgb(0 0 0 / 0.35),
+    0 0 0 2px var(--gold);
+}
+:root[data-ui='overworld'] .btn:disabled,
+:root[data-ui='overworld'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  filter: none;
+  transform: none;
+  background: #3a3126;
+  color: var(--dim);
+  box-shadow: 0 0 0 2px var(--line);
+  border-style: dashed;
+}
+:root[data-ui='overworld'] .tag {
+  font-family: var(--px);
+  font-size: 8px;
+  border-radius: 0;
+  background: var(--panel2);
+  border: 2px solid var(--line);
+  color: var(--muted);
+}
+:root[data-ui='overworld'] .search,
+:root[data-ui='overworld'] .dd {
+  border-radius: 0;
+  background: #0f0b08;
+  border: 3px solid var(--line);
+}
+:root[data-ui='overworld'] input,
+:root[data-ui='overworld'] select,
+:root[data-ui='overworld'] textarea {
+  border-radius: 0;
+}
+
+/* ---- Motion: stepped, small, and off with reduced motion ---- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='overworld'] .side .nav[aria-current='page']::before {
+    animation: ow-blink 1s steps(2, jump-none) infinite;
+  }
+  :root[data-ui='overworld'] .side .nav[aria-current='page']::after {
+    animation: ow-bob 0.8s steps(2, jump-none) infinite;
+  }
+  :root[data-ui='overworld'] .side a.nav svg {
+    transition: translate 0.12s steps(2);
+  }
+  :root[data-ui='overworld'] .side a.nav:hover svg {
+    translate: 0 -3px;
+  }
+}
+@keyframes ow-blink {
+  50% {
+    border-color: transparent;
+  }
+}
+@keyframes ow-bob {
+  50% {
+    translate: -50% 3px;
+  }
+}
+
+/* ---- Chips, tabs, swatches: square, framed ---- */
+:root[data-ui='overworld'] :is(.fchip, .chip, .tchip, .pchip, .uchip, .badge, .sel, .chips > *, kbd, .grip) {
+  border-radius: 0;
+}
+:root[data-ui='overworld'] .fchip,
+:root[data-ui='overworld'] .chip {
+  background: var(--panel);
+  border: 2px solid var(--line);
+  color: var(--muted);
+}
+:root[data-ui='overworld'] .fchip:hover,
+:root[data-ui='overworld'] .chip:hover {
+  border-color: var(--gold);
+  color: var(--fg);
+}
+:root[data-ui='overworld'] .fchip[aria-pressed='true'] {
+  background: var(--panel2);
+  border-color: var(--accent);
+  color: var(--fg);
+  box-shadow:
+    0 0 0 2px var(--ink),
+    0 0 0 4px var(--accent);
+}
+:root[data-ui='overworld'] .glass .fchip,
+:root[data-ui='overworld'] .glass .chip {
+  background: var(--parch-2);
+}
+:root[data-ui='overworld'] .grip {
+  background: var(--panel2);
+  border: 2px solid var(--line);
+  color: var(--muted);
+}
+:root[data-ui='overworld'] .st .strip {
+  top: var(--top-h);
+  background: #1c1510;
+  border: 3px solid var(--ink);
+  box-shadow: 0 0 0 2px var(--wood);
+  margin-bottom: 18px;
+}
+:root[data-ui='overworld'] .st .tab {
+  border-radius: 0;
+  font-family: var(--px);
+  font-size: 9px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+:root[data-ui='overworld'] .st .tab:hover {
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .st .tab[aria-selected='true'] {
+  color: var(--ink);
+  background: var(--gold);
+}
+:root[data-ui='overworld'] .st .ind {
+  display: none;
+}
+:root[data-ui='overworld'] .sw {
+  border-radius: 0;
+  box-shadow:
+    0 0 0 3px var(--ink),
+    0 0 0 5px var(--line);
+}
+:root[data-ui='overworld'] .sw[aria-checked='true'] {
+  box-shadow:
+    0 0 0 3px var(--ink),
+    0 0 0 6px var(--gold-hi);
+}
+:root[data-ui='overworld'] .tip {
+  background: var(--parch);
+  color: var(--parch-ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='overworld'] kbd {
+  background: var(--panel2);
+  border: 2px solid var(--line);
+}
+:root[data-ui='overworld'] input[type='checkbox'],
+:root[data-ui='overworld'] input[type='radio'],
+:root[data-ui='overworld'] input[type='range'] {
+  accent-color: var(--accent);
+}
+:root[data-ui='overworld'] input[type='file']::file-selector-button {
+  font-family: var(--px);
+  font-size: 8px;
+  padding: 8px 10px;
+  margin-right: 10px;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  background: var(--panel2);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* ---- Game art: framed like a treasure on a shelf ---- */
+:root[data-ui='overworld'] :is(.cover, img.cover, .hcover, .covers img, .av, .art) {
+  border-radius: 0;
+}
+:root[data-ui='overworld'] .g .cover {
+  box-shadow:
+    0 0 0 3px var(--ink),
+    0 0 0 5px var(--gold);
+}
+:root[data-ui='overworld'] .hero {
+  border-radius: 0;
+  border: 4px solid var(--ink);
+  box-shadow:
+    0 0 0 3px var(--gold),
+    inset 0 0 0 3px #00000055;
+}
+:root[data-ui='overworld'] .hero :is(h1, h2, h3) {
+  font-size: 18px;
+  text-shadow: 3px 3px 0 var(--ink);
+  color: #fff;
+}
+:root[data-ui='overworld'] .g :is(.badge, .uchip, .tchip) {
+  border-radius: 0;
+}
+:root[data-ui='overworld'] .rs.gd .head :is(h1, h2, h3, h4) {
+  color: #fff;
+  text-shadow: 3px 3px 0 var(--ink);
+}
+:root[data-ui='overworld'] .rs.gd .head {
+  color: #fff;
+}
+:root[data-ui='overworld'] .rs.gd {
+  --muted: #5a4426;
+}
+:root[data-ui='overworld'] .cm-it {
+  border-radius: 0;
+}
+:root[data-ui='overworld'] .cm-it[data-selected] {
+  background: var(--ink);
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .cm-it[data-selected] * {
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .cm-it[data-selected] kbd {
+  background: #2c2216;
+  border-color: var(--line);
+}
+:root[data-ui='overworld'] .cm-in {
+  font-family: var(--px);
+  font-size: 11px;
+}
+
+/* ---- History: the stat row has room to breathe ---- */
+:root[data-ui='overworld'] .grid:has(> .card .row.mono) {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+/* ---- Machines: the dungeon map. Rooms are machines, the dotted line is the hallway ---- */
+:root[data-ui='overworld'] body:has(.ow-zone[data-p='/machines']) .grid {
+  margin-top: 18px;
+  padding: 26px;
+  background:
+    radial-gradient(circle, rgb(248 236 208 / 0.32) 2px, transparent 2.5px) 0 0 / 28px 28px,
+    #171a21;
+  border: 4px dashed var(--line);
+  box-shadow: 0 0 0 3px var(--ink);
+}
+:root[data-ui='overworld'] .card:has(.cp) {
+  background: #1c1510;
+}
+:root[data-ui='overworld'] .cp {
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .cp .node {
+  border-radius: 0;
+  background: var(--panel2);
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 0 2px var(--ink);
+  width: 26px;
+  height: 26px;
+}
+:root[data-ui='overworld'] .cp .line {
+  border-top: 4px dotted var(--gold);
+  transform: translateY(-2px);
+}
+:root[data-ui='overworld'] .cp .rnode,
+:root[data-ui='overworld'] .cp .pkt i {
+  border-radius: 0;
+}
+:root[data-ui='overworld'] .cp .pkt i {
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  background: var(--gold-hi);
+}
+
+/* ---- Toasts and the stream chrome ---- */
+:root[data-ui='overworld'] .toast {
+  border-radius: 0;
+}
+:root[data-ui='overworld'] .bar.glass {
+  --fg: #f8ecd0;
+  --muted: #d6c49e;
+  --panel: #1c1510;
+  --panel2: #2c2216;
+  --line: #7a5a2c;
+  background: #1c1510;
+  color: var(--fg);
+}
+:root[data-ui='overworld'] .bar.glass .ic {
+  border-radius: 0;
+  color: var(--fg);
+}
+:root[data-ui='overworld'] .bar.glass .ic svg {
+  fill: currentColor;
+}
+:root[data-ui='overworld'] .bar.glass .ic:hover,
+:root[data-ui='overworld'] .bar.glass .ic[aria-pressed='true'],
+:root[data-ui='overworld'] .bar.glass .ic[aria-expanded='true'] {
+  background: var(--panel2);
+  color: var(--gold-hi);
+}
+:root[data-ui='overworld'] .stream :is(.sound, .esc, .up) {
+  border-radius: 0;
+  background: var(--parch);
+  color: var(--parch-ink);
+  border: 3px solid var(--ink);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+:root[data-ui='overworld'] .spin {
+  border-radius: 0;
+}
+
+/* ---- Narrow windows: the row keeps only icons ---- */
+@media (max-width: 1180px) {
+  :root[data-ui='overworld'] .side .nav {
+    width: 56px;
+    font-size: 0;
+    gap: 0;
+  }
+  :root[data-ui='overworld'] .side .sec,
+  :root[data-ui='overworld'] .pill .st {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  :root[data-ui='overworld'] {
+    --hud-h: 36px;
+  }
+  :root[data-ui='overworld'] .side {
+    padding: 0 8px;
+    gap: 6px;
+    overflow-x: auto;
+  }
+  :root[data-ui='overworld'] .side .nav {
+    width: 46px;
+    height: 48px;
+  }
+  :root[data-ui='overworld'] .brand,
+  :root[data-ui='overworld'] .pill .name {
+    display: none;
+  }
+  :root[data-ui='overworld'] main.page-in {
+    padding-inline: 12px;
+  }
+}
+
+/* the original dims locked achievements with opacity; that falls under AA on parchment, so dim with colour */
+:root[data-ui='overworld'] .locked,
+:root[data-ui='overworld'] .locked * {
+  opacity: 1 !important;
+  color: var(--muted);
+}
