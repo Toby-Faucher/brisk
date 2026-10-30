@@ -47,7 +47,8 @@
   --paper-sh: 0 1px 0 #fff8 inset, 0 2px 0 #b99c6c88, 0 8px 18px -8px #2b180c66;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .55' numOctaves='3' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 .1 0 0 0 0 .04 0 0 0 0 0 0 0 0 .55 -.12'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23g)'/%3E%3C/svg%3E");
   --fibre: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' seed='9'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .22 0 0 0 0 .08 0 0 0 .5 -.18'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23f)'/%3E%3C/svg%3E");
-  --disc: radial-gradient(circle, #efe3c4 0 2.2%, #0c0907 2.6% 5%, var(--label) 5.4% 23%, #0c0907 23.6% 25%, transparent 25.5%),
+  --disc:
+    radial-gradient(circle, #efe3c4 0 2.2%, #0c0907 2.6% 5%, var(--label) 5.4% 23%, #0c0907 23.6% 25%, transparent 25.5%),
     conic-gradient(from 20deg, #0000 0 8%, #fff2 12% 14%, #0000 20% 58%, #fff2 62% 64%, #0000 70%),
     repeating-radial-gradient(circle, #15100c 0 1.5px, #25201a 2.5px 3px, #15100c 4px);
   color-scheme: light;
@@ -131,10 +132,14 @@
   width: 232px;
   padding: 12px 14px 14px;
   gap: 7px;
-  background: var(--grain), repeating-linear-gradient(90deg, #0004 0 2px, transparent 2px 58px), linear-gradient(90deg, #5a3820, #4a2c17 60%, #3c2312);
+  background:
+    var(--grain), repeating-linear-gradient(90deg, #0004 0 2px, transparent 2px 58px), linear-gradient(90deg, #5a3820, #4a2c17 60%, #3c2312);
   background-blend-mode: soft-light, normal, normal;
   border-right: 0;
-  box-shadow: inset -10px 0 14px -8px #0008, 3px 0 0 #2b180c, 6px 0 14px -4px #2b180c88;
+  box-shadow:
+    inset -10px 0 14px -8px #0008,
+    3px 0 0 #2b180c,
+    6px 0 14px -4px #2b180c88;
   backdrop-filter: none;
   color: #f4e6c8;
 }
@@ -147,7 +152,9 @@
   background: linear-gradient(180deg, #1d1109, #2b180c);
   border: 3px solid #d9b46a;
   border-radius: 8px;
-  box-shadow: 0 0 0 3px #1d1109, 0 8px 12px -4px #000a;
+  box-shadow:
+    0 0 0 3px #1d1109,
+    0 8px 12px -4px #000a;
   text-align: center;
   rotate: -1.2deg;
   transform-origin: 50% -14px;
@@ -164,7 +171,9 @@
   font: 400 34px / 0.95 var(--stamp);
   letter-spacing: 0.06em;
   color: var(--sticker);
-  text-shadow: 0 2px 0 #7a5410, 0 0 14px #ffd84a55;
+  text-shadow:
+    0 2px 0 #7a5410,
+    0 0 14px #ffd84a55;
 }
 :root[data-ui='vinyl'] .side .brand::after {
   content: 'records & games' / '';
@@ -187,9 +196,14 @@
   background: var(--cream);
   color: var(--ink);
   font-weight: 650;
-  box-shadow: 0 2px 0 #0006, 0 6px 10px -6px #000a;
+  box-shadow:
+    0 2px 0 #0006,
+    0 6px 10px -6px #000a;
   border-left: 5px solid var(--tab, var(--wood-l));
-  transition: translate 0.3s var(--spring-snappy), rotate 0.3s var(--spring-snappy), background 0.18s;
+  transition:
+    translate 0.3s var(--spring-snappy),
+    rotate 0.3s var(--spring-snappy),
+    background 0.18s;
   transform: none;
 }
 :root[data-ui='vinyl'] .side nav .nav:nth-of-type(odd) {
@@ -198,12 +212,24 @@
 :root[data-ui='vinyl'] .side nav .nav:nth-of-type(even) {
   rotate: 0.5deg;
 }
-:root[data-ui='vinyl'] .side nav .nav:nth-of-type(1) { --tab: #d98324; }
-:root[data-ui='vinyl'] .side nav .nav:nth-of-type(2) { --tab: #3a8f6a; }
-:root[data-ui='vinyl'] .side nav .nav:nth-of-type(3) { --tab: #3a6fb5; }
-:root[data-ui='vinyl'] .side nav .nav:nth-of-type(4) { --tab: #b4261c; }
-:root[data-ui='vinyl'] .side nav .nav:nth-of-type(5) { --tab: #8a5bd0; }
-:root[data-ui='vinyl'] .side nav .nav:nth-of-type(6) { --tab: #c79a2a; }
+:root[data-ui='vinyl'] .side nav .nav:nth-of-type(1) {
+  --tab: #d98324;
+}
+:root[data-ui='vinyl'] .side nav .nav:nth-of-type(2) {
+  --tab: #3a8f6a;
+}
+:root[data-ui='vinyl'] .side nav .nav:nth-of-type(3) {
+  --tab: #3a6fb5;
+}
+:root[data-ui='vinyl'] .side nav .nav:nth-of-type(4) {
+  --tab: #b4261c;
+}
+:root[data-ui='vinyl'] .side nav .nav:nth-of-type(5) {
+  --tab: #8a5bd0;
+}
+:root[data-ui='vinyl'] .side nav .nav:nth-of-type(6) {
+  --tab: #c79a2a;
+}
 :root[data-ui='vinyl'] .side a.nav::after {
   content: counter(bin, upper-alpha);
   counter-increment: bin;
@@ -237,7 +263,10 @@
 }
 :root[data-ui='vinyl'] .side .nav[aria-current='page']::before {
   background: var(--accent);
-  box-shadow: 0 3px 0 #0007, 0 8px 12px -4px #000b, 0 0 0 2px #0003 inset;
+  box-shadow:
+    0 3px 0 #0007,
+    0 8px 12px -4px #000b,
+    0 0 0 2px #0003 inset;
   border-radius: 3px 12px 3px 3px;
 }
 :root[data-ui='vinyl'] .side .nav[aria-current='page']::after {
@@ -302,7 +331,9 @@
   border-radius: 4px 14px 14px 4px;
   clip-path: polygon(0 50%, 14px 0, 100% 0, 100% 100%, 14px 100%);
   font-weight: 700;
-  transition: translate 0.25s var(--spring-snappy), filter 0.2s;
+  transition:
+    translate 0.25s var(--spring-snappy),
+    filter 0.2s;
   cursor: pointer;
 }
 :root[data-ui='vinyl'] .side .pill::before {
@@ -394,8 +425,12 @@
 }
 :root[data-ui='vinyl'] .card {
   background-image: linear-gradient(#0000 27px, #8cb6d033 27px 28px), var(--fibre);
-  background-size: 100% 28px, 220px;
-  background-position: 0 40px, 0 0;
+  background-size:
+    100% 28px,
+    220px;
+  background-position:
+    0 40px,
+    0 0;
   background-color: var(--cream);
 }
 :root[data-ui='vinyl'] .card:nth-child(3n + 2) {
@@ -449,8 +484,13 @@
   padding: 8px 16px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 45%, #000), 0 5px 8px -3px #0006;
-  transition: translate 0.2s var(--spring-snappy), box-shadow 0.2s, filter 0.2s;
+  box-shadow:
+    0 3px 0 color-mix(in srgb, var(--accent) 45%, #000),
+    0 5px 8px -3px #0006;
+  transition:
+    translate 0.2s var(--spring-snappy),
+    box-shadow 0.2s,
+    filter 0.2s;
 }
 :root[data-ui='vinyl'] .btn:hover {
   transform: none;
@@ -465,7 +505,10 @@
 :root[data-ui='vinyl'] .btn.ghost {
   background: var(--cream2);
   color: var(--ink);
-  box-shadow: 0 0 0 1.5px var(--wood-l) inset, 0 3px 0 #b99c6c, 0 5px 8px -3px #0004;
+  box-shadow:
+    0 0 0 1.5px var(--wood-l) inset,
+    0 3px 0 #b99c6c,
+    0 5px 8px -3px #0004;
 }
 :root[data-ui='vinyl'] .btn:disabled,
 :root[data-ui='vinyl'] .btn[aria-disabled='true'] {
@@ -537,7 +580,10 @@
   border-radius: 4px;
   font-weight: 650;
   box-shadow: 0 2px 0 #b99c6c;
-  transition: translate 0.2s var(--spring-snappy), box-shadow 0.2s, background 0.15s;
+  transition:
+    translate 0.2s var(--spring-snappy),
+    box-shadow 0.2s,
+    background 0.15s;
 }
 :root[data-ui='vinyl'] .fchip {
   border-radius: 12px 12px 3px 3px;
@@ -586,7 +632,9 @@
   border-radius: 12px 12px 0 0;
   padding: 8px 18px;
   font: 400 15px / 1.1 var(--display);
-  transition: translate 0.2s var(--spring-snappy), background 0.15s;
+  transition:
+    translate 0.2s var(--spring-snappy),
+    background 0.15s;
 }
 :root[data-ui='vinyl'] .strip .tab:hover {
   background: #fffaea;
@@ -674,7 +722,9 @@
   background-blend-mode: soft-light, normal;
   color: #f4e6c8;
   border: 2px solid #1d1109;
-  box-shadow: 0 8px 18px -8px #000a, 0 1px 0 #ffffff22 inset;
+  box-shadow:
+    0 8px 18px -8px #000a,
+    0 1px 0 #ffffff22 inset;
 }
 :root[data-ui='vinyl'] [data-card='resume'] h4,
 :root[data-ui='vinyl'] [data-card='resume'] .lab {
@@ -715,7 +765,13 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  box-shadow: 0 0 0 6px #0d0907, 0 0 0 7px #3a3028, 0 0 0 9px #0d0907, 0 0 0 10px #2c241d, 0 0 0 13px #0d0907, 0 6px 12px 13px #0007;
+  box-shadow:
+    0 0 0 6px #0d0907,
+    0 0 0 7px #3a3028,
+    0 0 0 9px #0d0907,
+    0 0 0 10px #2c241d,
+    0 0 0 13px #0d0907,
+    0 6px 12px 13px #0007;
   margin: 0 0 0 18px;
   object-fit: cover;
   mask: radial-gradient(circle, transparent 0 4px, #000 4.5px);
@@ -747,7 +803,9 @@
   margin: -4px 2px 0 0;
   border-radius: 50%;
   background: #2b180c;
-  box-shadow: 0 0 0 3px #6d4527, 0 3px 4px #0008;
+  box-shadow:
+    0 0 0 3px #6d4527,
+    0 3px 4px #0008;
   z-index: 3;
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -759,7 +817,9 @@
   }
 }
 :root[data-ui='vinyl'] [data-card='resume'] .btn {
-  box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 45%, #000), 0 0 0 2px #0006;
+  box-shadow:
+    0 3px 0 color-mix(in srgb, var(--accent) 45%, #000),
+    0 0 0 2px #0006;
 }
 @keyframes vinyl-spin {
   to {
@@ -782,7 +842,9 @@
   border: 7px solid var(--wood-l);
   border-top-width: 0;
   border-radius: 0 0 8px 8px;
-  box-shadow: 0 10px 18px -8px #2b180ccc, inset 0 12px 14px -8px #000c;
+  box-shadow:
+    0 10px 18px -8px #2b180ccc,
+    inset 0 12px 14px -8px #000c;
   color: #f4e6c8;
 }
 :root[data-ui='vinyl'] .shelf h4 {
@@ -806,7 +868,6 @@
   color: var(--ink);
   border-radius: 8px 8px 0 0;
   position: relative;
-  top: 1px;
   top: 0;
   box-shadow: 0 0 0 1px var(--line);
   font-size: 14px;
@@ -878,10 +939,16 @@
 :root[data-ui='vinyl'] .wrap[data-gid] .cover {
   aspect-ratio: 1;
   border-radius: 2px;
-  box-shadow: 0 1px 0 #fff6 inset, 0 0 0 1px #0004, 0 6px 10px -4px #000b, 3px 0 0 #00000030 inset;
+  box-shadow:
+    0 1px 0 #fff6 inset,
+    0 0 0 1px #0004,
+    0 6px 10px -4px #000b,
+    3px 0 0 #00000030 inset;
 }
 :root[data-ui='vinyl'] .wrap[data-gid] .cover::before {
-  background: radial-gradient(70% 70% at 22% 10%, #ffffff3a, transparent 60%), radial-gradient(circle at 50% 50%, transparent 56%, #00000022 57%, transparent 58%);
+  background:
+    radial-gradient(70% 70% at 22% 10%, #ffffff3a, transparent 60%),
+    radial-gradient(circle at 50% 50%, transparent 56%, #00000022 57%, transparent 58%);
 }
 :root[data-ui='vinyl'] .wrap[data-gid] .name {
   color: #fff6e0;
@@ -917,7 +984,9 @@
   background-blend-mode: soft-light, normal !important;
   border: 3px solid #1d1109;
   border-radius: 8px;
-  box-shadow: 0 12px 24px -10px #000b, 0 1px 0 #fff3 inset;
+  box-shadow:
+    0 12px 24px -10px #000b,
+    0 1px 0 #fff3 inset;
   color: #f8f0da;
   min-height: 220px;
   gap: 0;
@@ -929,7 +998,9 @@
 :root[data-ui='vinyl'] .hero .cover {
   aspect-ratio: 1;
   border-radius: 2px;
-  box-shadow: 0 8px 16px -4px #000c, 0 0 0 1px #0006;
+  box-shadow:
+    0 8px 16px -4px #000c,
+    0 0 0 1px #0006;
   z-index: 2;
 }
 :root[data-ui='vinyl'] .hero::before {
@@ -995,7 +1066,10 @@
   color: var(--ink);
   border: 2px solid var(--wood);
   border-radius: 8px;
-  box-shadow: 0 0 0 5px var(--cream2), 0 0 0 7px var(--wood-l), 0 30px 60px -10px #000c;
+  box-shadow:
+    0 0 0 5px var(--cream2),
+    0 0 0 7px var(--wood-l),
+    0 30px 60px -10px #000c;
   backdrop-filter: none;
 }
 :root[data-ui='vinyl'] .cm-dim {
@@ -1068,7 +1142,6 @@
   background: var(--accent);
   background-clip: padding-box;
 }
-
 
 /* ---------- game detail: the back of the sleeve ---------- */
 :root[data-ui='vinyl'] .gd-side .head {
@@ -1201,12 +1274,12 @@
   opacity: 0;
 }
 
-
 /* ---------- loading, empty states, motion ---------- */
 :root[data-ui='vinyl'] .skel div {
   aspect-ratio: 1;
-  border-radius: 2px;
-  background: radial-gradient(circle, #0c0907 0 2.5%, var(--cream) 3% 26%, transparent 27%), repeating-radial-gradient(circle, #18120d 0 2px, #261f19 3px 4px), var(--wood);
+  background:
+    radial-gradient(circle, #0c0907 0 2.5%, var(--cream) 3% 26%, transparent 27%),
+    repeating-radial-gradient(circle, #18120d 0 2px, #261f19 3px 4px), var(--wood);
   animation: vinyl-spin 6s linear infinite;
   border-radius: 50%;
   opacity: 0.85;
@@ -1303,7 +1376,10 @@
   background: var(--fibre), var(--cream);
   border: 2px solid var(--wood);
   border-radius: 10px;
-  box-shadow: 0 0 0 4px var(--cream2), 0 0 0 6px var(--wood-l), 0 14px 26px -6px #000b;
+  box-shadow:
+    0 0 0 4px var(--cream2),
+    0 0 0 6px var(--wood-l),
+    0 14px 26px -6px #000b;
 }
 :root[data-ui='vinyl'] .bar .sep {
   background: var(--line);
@@ -1346,7 +1422,9 @@
 :root[data-ui='vinyl'] .stats.glass {
   border: 2px solid var(--wood);
   border-radius: 6px;
-  box-shadow: 0 0 0 4px var(--cream2), 0 14px 26px -6px #000b;
+  box-shadow:
+    0 0 0 4px var(--cream2),
+    0 14px 26px -6px #000b;
 }
 :root[data-ui='vinyl'] .stats h5 {
   font-family: var(--stamp);

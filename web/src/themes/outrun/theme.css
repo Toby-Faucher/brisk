@@ -218,27 +218,15 @@
   z-index: -1;
   pointer-events: none;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    #060012 0%,
-    #1b0643 28%,
-    #4a0f7c 48%,
-    #a3187a 60%,
-    #ff4d7a 66%,
-    #ff9a3c 69%,
-    #0c0222 69.2%
-  );
+  background: linear-gradient(180deg, #060012 0%, #1b0643 28%, #4a0f7c 48%, #a3187a 60%, #ff4d7a 66%, #ff9a3c 69%, #0c0222 69.2%);
 }
 :root[data-ui='outrun'] .ox-stars {
   position: absolute;
   inset: 0 0 38% 0;
   background:
-    radial-gradient(1px 1px at 12% 18%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 34% 8%, #cfe, transparent),
-    radial-gradient(1px 1px at 58% 22%, #fff, transparent),
-    radial-gradient(1px 1px at 77% 12%, #fdf, transparent),
-    radial-gradient(1.5px 1.5px at 91% 30%, #fff, transparent),
-    radial-gradient(1px 1px at 22% 36%, #fff, transparent),
+    radial-gradient(1px 1px at 12% 18%, #fff, transparent), radial-gradient(1.5px 1.5px at 34% 8%, #cfe, transparent),
+    radial-gradient(1px 1px at 58% 22%, #fff, transparent), radial-gradient(1px 1px at 77% 12%, #fdf, transparent),
+    radial-gradient(1.5px 1.5px at 91% 30%, #fff, transparent), radial-gradient(1px 1px at 22% 36%, #fff, transparent),
     radial-gradient(1px 1px at 66% 40%, #fdf, transparent);
   background-size: 420px 300px;
   mask-image: linear-gradient(#000 30%, transparent 90%);
@@ -1102,7 +1090,17 @@
   translate: -50% 0;
   border-radius: 50%;
   background: linear-gradient(180deg, var(--sun1) 8%, var(--sun2) 42%, var(--mag) 76%, #9b2cff 100%);
-  mask-image: linear-gradient(180deg, #000 0 52%, transparent 52% 56%, #000 56% 63%, transparent 63% 68%, #000 68% 75%, transparent 75% 81%, #000 81% 86%, transparent 86%);
+  mask-image: linear-gradient(
+    180deg,
+    #000 0 52%,
+    transparent 52% 56%,
+    #000 56% 63%,
+    transparent 63% 68%,
+    #000 68% 75%,
+    transparent 75% 81%,
+    #000 81% 86%,
+    transparent 86%
+  );
   box-shadow: 0 0 100px 10px color-mix(in srgb, var(--mag) 45%, transparent);
 }
 :root[data-ui='outrun'] .stream .bg::after {

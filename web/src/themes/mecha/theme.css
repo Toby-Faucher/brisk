@@ -130,24 +130,49 @@
 }
 
 /* ---------- chamfered parts: clip-path corner cut plus a drawn diagonal edge ---------- */
-:root[data-ui='mecha'] :is(
-  .card, .hero, .glass, .rs, .cm, .denied, main > .off, .banner, .gate,
-  .btn, .search, .fchip, .pill, .toast, .chip, .ic, .cover, .shot, .tile, .chart, .fold, .dd
+:root[data-ui='mecha']
+:is(
+  .card,
+  .hero,
+  .glass,
+  .rs,
+  .cm,
+  .denied,
+  main > .off,
+  .banner,
+  .gate,
+  .btn,
+  .search,
+  .fchip,
+  .pill,
+  .toast,
+  .chip,
+  .ic,
+  .cover,
+  .shot,
+  .tile,
+  .chart,
+  .fold,
+  .dd
 ):not(#_) {
   --edge: var(--line);
-  --mc-diag: linear-gradient(135deg, transparent 0 calc(var(--cut) * 0.7071), var(--edge) calc(var(--cut) * 0.7071) calc(var(--cut) * 0.7071 + 1.6px), transparent 0)
-      0 0 / calc(var(--cut) + 8px) calc(var(--cut) + 8px) no-repeat,
-    linear-gradient(-45deg, transparent 0 calc(var(--cut) * 0.7071), var(--edge) calc(var(--cut) * 0.7071) calc(var(--cut) * 0.7071 + 1.6px), transparent 0)
-      100% 100% / calc(var(--cut) + 8px) calc(var(--cut) + 8px) no-repeat;
+  --mc-diag:
+    linear-gradient(
+      135deg,
+      transparent 0 calc(var(--cut) * 0.7071),
+      var(--edge) calc(var(--cut) * 0.7071) calc(var(--cut) * 0.7071 + 1.6px),
+      transparent 0
+    )
+    0 0 / calc(var(--cut) + 8px) calc(var(--cut) + 8px) no-repeat,
+    linear-gradient(
+      -45deg,
+      transparent 0 calc(var(--cut) * 0.7071),
+      var(--edge) calc(var(--cut) * 0.7071) calc(var(--cut) * 0.7071 + 1.6px),
+      transparent 0
+    )
+    100% 100% / calc(var(--cut) + 8px) calc(var(--cut) + 8px) no-repeat;
   border-radius: 0;
-  clip-path: polygon(
-    var(--cut) 0,
-    100% 0,
-    100% calc(100% - var(--cut)),
-    calc(100% - var(--cut)) 100%,
-    0 100%,
-    0 var(--cut)
-  );
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
 }
 :root[data-ui='mecha'] :is(.btn, .search, .fchip, .pill, .chip, .ic, .tile, .gate, .toast) {
   --cut: 8px;
@@ -165,7 +190,9 @@
 }
 :root[data-ui='mecha'] .card {
   padding: 18px 18px 16px;
-  transition: border-color 0.15s steps(2), background-color 0.15s steps(2);
+  transition:
+    border-color 0.15s steps(2),
+    background-color 0.15s steps(2);
 }
 :root[data-ui='mecha'] .card:hover {
   transform: none;
@@ -245,7 +272,9 @@
 }
 :root[data-ui='mecha'] .bento .soon {
   --edge: var(--line);
-  background: repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--mc-orange) 9%, transparent) 9px 10px), var(--mc-diag), var(--panel);
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--mc-orange) 9%, transparent) 9px 10px), var(--mc-diag),
+    var(--panel);
 }
 :root[data-ui='mecha'] .bento .soon .lab::before {
   content: 'STANDBY // ';
@@ -317,7 +346,9 @@
 :root[data-ui='mecha'] main > .off {
   --edge: var(--warn);
   border-color: var(--warn);
-  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--warn) 16%, transparent) 0 10px, transparent 10px 20px), var(--mc-diag), var(--panel);
+  background:
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--warn) 16%, transparent) 0 10px, transparent 10px 20px), var(--mc-diag),
+    var(--panel);
   color: var(--fg);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -421,7 +452,9 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   counter-increment: mc-mode;
-  transition: background-color 0.12s steps(2), border-color 0.12s steps(2);
+  transition:
+    background-color 0.12s steps(2),
+    border-color 0.12s steps(2);
 }
 :root[data-ui='mecha'] .side .nav::after {
   content: 'MODE ' counter(mc-mode, decimal-leading-zero);
@@ -446,7 +479,9 @@
 :root[data-ui='mecha'] .side .nav[aria-current='page']::before {
   border-radius: 0;
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 4%, transparent));
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 70%, transparent) inset, 0 -1px 0 color-mix(in srgb, var(--accent) 70%, transparent) inset;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--accent) 70%, transparent) inset,
+    0 -1px 0 color-mix(in srgb, var(--accent) 70%, transparent) inset;
 }
 :root[data-ui='mecha'] .side .nav[aria-current='page']::after {
   content: 'MODE ' counter(mc-mode, decimal-leading-zero) ' // ENGAGED';
@@ -624,7 +659,10 @@
   background: var(--accent);
   color: var(--accent-fg);
   border: 0;
-  transition: translate 0.1s steps(2), background-color 0.1s steps(2), filter 0.1s steps(2);
+  transition:
+    translate 0.1s steps(2),
+    background-color 0.1s steps(2),
+    filter 0.1s steps(2);
 }
 :root[data-ui='mecha'] .btn:hover {
   filter: brightness(1.14);
@@ -730,7 +768,9 @@
   border: 1px solid var(--line);
   background: var(--mc-diag), transparent;
   color: var(--muted);
-  transition: color 0.1s steps(2), border-color 0.1s steps(2);
+  transition:
+    color 0.1s steps(2),
+    border-color 0.1s steps(2);
 }
 :root[data-ui='mecha'] .fchip:hover {
   color: var(--fg);
@@ -1141,7 +1181,9 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
-  transition: color 0.1s steps(2), background-color 0.1s steps(2);
+  transition:
+    color 0.1s steps(2),
+    background-color 0.1s steps(2);
 }
 :root[data-ui='mecha'] .st .tab:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -1382,7 +1424,10 @@
   --edge: var(--mc-orange);
   border-color: var(--mc-orange);
   padding-top: 26px;
-  background: var(--mc-stripe) 0 0 / 100% 8px no-repeat, var(--mc-diag), #0a0c0d;
+  background:
+    var(--mc-stripe) 0 0 / 100% 8px no-repeat,
+    var(--mc-diag),
+    #0a0c0d;
 }
 :root[data-ui='mecha'] .rs:not(.gd) :is(.rs-t, h2, h3)::before {
   content: 'CAUTION // ';
@@ -1422,7 +1467,10 @@
   --edge: var(--bad);
   border-color: var(--bad);
   color: var(--fg);
-  background: var(--mc-stripe) 0 0 / 5px 100% no-repeat, var(--mc-diag), #0a0c0d;
+  background:
+    var(--mc-stripe) 0 0 / 5px 100% no-repeat,
+    var(--mc-diag),
+    #0a0c0d;
 }
 :root[data-ui='mecha'] .toasts .toast.error::before {
   content: 'FAULT';
@@ -1541,7 +1589,8 @@
 :root[data-ui='mecha'] .chart text {
   font-family: var(--mono);
 }
-:root[data-ui='mecha'] :is(.seg, .dd-menu, .dd-item, .ptab, .cands li, .th, fieldset, .in, .line, .pick, .adv select, .adv input, .leg, .row[aria-selected]) {
+:root[data-ui='mecha']
+  :is(.seg, .dd-menu, .dd-item, .ptab, .cands li, .th, fieldset, .in, .line, .pick, .adv select, .adv input, .leg, .row[aria-selected]) {
   border-radius: 0;
 }
 :root[data-ui='mecha'] .dd {
