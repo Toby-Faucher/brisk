@@ -78,6 +78,7 @@ void main(){
   onMount(() => {
     const gl = cv?.getContext('webgl', { antialias: false, powerPreference: 'low-power' });
     if (!cv || !gl) return; // the CSS gradient stays as the background
+    const canvas = cv;
     const mk = (type: number, src: string) => {
       const s = gl.createShader(type) as WebGLShader;
       gl.shaderSource(s, src);
@@ -109,8 +110,8 @@ void main(){
     const size = () => {
       w = Math.max(2, Math.round(innerWidth * SCALE));
       hgt = Math.max(2, Math.round(innerHeight * SCALE));
-      cv.width = w;
-      cv.height = hgt;
+      canvas.width = w;
+      canvas.height = hgt;
       gl.viewport(0, 0, w, hgt);
     };
     const draw = () => {

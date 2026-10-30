@@ -169,11 +169,27 @@
   width: 15px;
   z-index: 3;
   pointer-events: none;
-  background:
-    linear-gradient(90deg, #121419, #5b6070 35%, #9ba0b0 50%, #4a4f5e 70%, #121419),
-    var(--bezel);
-  -webkit-mask: linear-gradient(180deg, transparent 0 8%, #000 8% 28%, transparent 28% 38%, #000 38% 62%, transparent 62% 72%, #000 72% 92%, transparent 92%);
-  mask: linear-gradient(180deg, transparent 0 8%, #000 8% 28%, transparent 28% 38%, #000 38% 62%, transparent 62% 72%, #000 72% 92%, transparent 92%);
+  background: linear-gradient(90deg, #121419, #5b6070 35%, #9ba0b0 50%, #4a4f5e 70%, #121419), var(--bezel);
+  -webkit-mask: linear-gradient(
+    180deg,
+    transparent 0 8%,
+    #000 8% 28%,
+    transparent 28% 38%,
+    #000 38% 62%,
+    transparent 62% 72%,
+    #000 72% 92%,
+    transparent 92%
+  );
+  mask: linear-gradient(
+    180deg,
+    transparent 0 8%,
+    #000 8% 28%,
+    transparent 28% 38%,
+    #000 38% 62%,
+    transparent 62% 72%,
+    #000 72% 92%,
+    transparent 92%
+  );
   border-radius: 6px;
 }
 :root[data-ui='dex'] .side .brand {
@@ -194,8 +210,7 @@
   border-radius: 50%;
   border: 5px solid #f2f4f8;
   background:
-    radial-gradient(circle at 32% 28%, #fff 0 9%, transparent 11%),
-    radial-gradient(circle at 50% 50%, #7cc9ff 0, #1e7fe0 45%, #0a3b9a 100%);
+    radial-gradient(circle at 32% 28%, #fff 0 9%, transparent 11%), radial-gradient(circle at 50% 50%, #7cc9ff 0, #1e7fe0 45%, #0a3b9a 100%);
   box-shadow:
     0 0 0 3px #2a2d36,
     0 0 22px 4px rgba(90, 190, 255, 0.75),
