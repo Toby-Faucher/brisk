@@ -1,1 +1,756 @@
-/* blocky */
+/* UI style blocky (voxel sandbox): every rule starts with :root[data-ui='blocky']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/silkscreen/latin-400.css';
+@import '@fontsource/silkscreen/latin-700.css';
+
+:root[data-ui='blocky'] {
+  --bg: #2a1b10;
+  --panel: #c6c6c6;
+  --panel2: #8b8b8b;
+  --line: #373737;
+  --line-hover: #000;
+  --fg: #1c1c1c;
+  --muted: #3f3f3f;
+  --dim: #444;
+  --ok: #1f6b0e;
+  --warn: #7a4a00;
+  --bad: #a01818;
+  --font: 'Silkscreen', 'Courier New', monospace;
+  --mono: 'Silkscreen', 'Courier New', monospace;
+  --r-card: 0;
+  --r-ctl: 0;
+  --bk-bar: 96px;
+  --bk-hi: #fff;
+  --bk-lo: #555;
+  --bk-edge: #000;
+  /* panel: light bevel top left, dark bottom right, black pixel outline */
+  --bk-panel: 0 0 0 3px var(--bk-edge), inset 3px 3px 0 var(--bk-hi), inset -3px -3px 0 var(--bk-lo);
+  /* slot: the same bevel upside down, so it reads as a hole */
+  --bk-slot: 0 0 0 0 transparent, inset 3px 3px 0 #373737, inset -3px -3px 0 #fff;
+  --bk-text-shadow: 2px 2px 0 #000;
+  --bk-dirt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%235a3d26' d='M0 0h1v1h-1zM4 0h1v1h-1zM7 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM12 0h1v1h-1zM15 0h1v1h-1zM0 1h1v1h-1zM1 1h1v1h-1zM2 1h1v1h-1zM5 1h1v1h-1zM6 1h1v1h-1zM9 1h1v1h-1zM2 2h1v1h-1zM8 2h1v1h-1zM10 2h1v1h-1zM1 3h1v1h-1zM7 3h1v1h-1zM7 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM2 5h1v1h-1zM3 5h1v1h-1zM4 5h1v1h-1zM6 5h1v1h-1zM7 5h1v1h-1zM11 5h1v1h-1zM14 5h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM9 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1zM10 7h1v1h-1zM15 7h1v1h-1zM4 8h1v1h-1zM5 8h1v1h-1zM6 8h1v1h-1zM7 8h1v1h-1zM9 8h1v1h-1zM10 8h1v1h-1zM12 8h1v1h-1zM13 8h1v1h-1zM15 8h1v1h-1zM4 9h1v1h-1zM7 9h1v1h-1zM0 10h1v1h-1zM2 10h1v1h-1zM13 10h1v1h-1zM0 11h1v1h-1zM5 11h1v1h-1zM10 11h1v1h-1zM12 11h1v1h-1zM13 11h1v1h-1zM1 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM14 12h1v1h-1zM0 13h1v1h-1zM2 13h1v1h-1zM3 13h1v1h-1zM4 13h1v1h-1zM5 13h1v1h-1zM6 13h1v1h-1zM7 13h1v1h-1zM11 13h1v1h-1zM13 13h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM6 14h1v1h-1zM8 14h1v1h-1zM10 14h1v1h-1zM13 14h1v1h-1zM1 15h1v1h-1zM7 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM13 15h1v1h-1z'/%3E%3Cpath fill='%236b4a2e' d='M1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM6 0h1v1h-1zM13 0h1v1h-1zM4 1h1v1h-1zM8 1h1v1h-1zM12 1h1v1h-1zM13 1h1v1h-1zM0 2h1v1h-1zM1 2h1v1h-1zM3 2h1v1h-1zM5 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM11 2h1v1h-1zM15 2h1v1h-1zM0 3h1v1h-1zM5 3h1v1h-1zM9 3h1v1h-1zM12 3h1v1h-1zM15 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM8 4h1v1h-1zM11 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM8 5h1v1h-1zM9 5h1v1h-1zM15 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM11 6h1v1h-1zM15 6h1v1h-1zM0 7h1v1h-1zM1 7h1v1h-1zM3 7h1v1h-1zM7 7h1v1h-1zM9 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM0 8h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM11 8h1v1h-1zM14 8h1v1h-1zM0 9h1v1h-1zM1 9h1v1h-1zM2 9h1v1h-1zM3 9h1v1h-1zM6 9h1v1h-1zM8 9h1v1h-1zM10 9h1v1h-1zM12 9h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM9 10h1v1h-1zM10 10h1v1h-1zM11 10h1v1h-1zM1 11h1v1h-1zM3 11h1v1h-1zM14 11h1v1h-1zM0 12h1v1h-1zM2 12h1v1h-1zM3 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM12 12h1v1h-1zM1 13h1v1h-1zM9 13h1v1h-1zM10 13h1v1h-1zM12 13h1v1h-1zM14 13h1v1h-1zM0 14h1v1h-1zM7 14h1v1h-1zM9 14h1v1h-1zM11 14h1v1h-1zM14 14h1v1h-1zM0 15h1v1h-1zM2 15h1v1h-1zM6 15h1v1h-1zM9 15h1v1h-1zM14 15h1v1h-1zM15 15h1v1h-1z'/%3E%3Cpath fill='%237a5636' d='M5 0h1v1h-1zM9 0h1v1h-1zM11 0h1v1h-1zM7 1h1v1h-1zM10 1h1v1h-1zM11 1h1v1h-1zM7 2h1v1h-1zM12 2h1v1h-1zM13 2h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM13 3h1v1h-1zM14 3h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM5 4h1v1h-1zM6 4h1v1h-1zM12 4h1v1h-1zM10 5h1v1h-1zM13 5h1v1h-1zM10 6h1v1h-1zM8 7h1v1h-1zM14 7h1v1h-1zM3 8h1v1h-1zM13 9h1v1h-1zM15 9h1v1h-1zM8 10h1v1h-1zM12 10h1v1h-1zM15 10h1v1h-1zM6 11h1v1h-1zM7 11h1v1h-1zM8 11h1v1h-1zM9 11h1v1h-1zM15 11h1v1h-1zM4 12h1v1h-1zM15 12h1v1h-1zM8 13h1v1h-1zM12 14h1v1h-1zM15 14h1v1h-1zM3 15h1v1h-1zM4 15h1v1h-1z'/%3E%3Cpath fill='%234a321f' d='M14 0h1v1h-1zM3 1h1v1h-1zM14 1h1v1h-1zM15 1h1v1h-1zM4 2h1v1h-1zM14 2h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM11 3h1v1h-1zM1 4h1v1h-1zM9 4h1v1h-1zM13 4h1v1h-1zM15 4h1v1h-1zM5 5h1v1h-1zM12 5h1v1h-1zM13 6h1v1h-1zM2 7h1v1h-1zM5 7h1v1h-1zM8 8h1v1h-1zM5 9h1v1h-1zM9 9h1v1h-1zM11 9h1v1h-1zM14 9h1v1h-1zM1 10h1v1h-1zM3 10h1v1h-1zM14 10h1v1h-1zM2 11h1v1h-1zM4 11h1v1h-1zM11 11h1v1h-1zM5 12h1v1h-1zM15 13h1v1h-1zM1 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM5 15h1v1h-1zM8 15h1v1h-1zM12 15h1v1h-1z'/%3E%3C/svg%3E");
+  --bk-stone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%237d7d7d' d='M0 0h1v1h-1zM1 0h1v1h-1zM5 0h1v1h-1zM13 0h1v1h-1zM0 1h1v1h-1zM9 1h1v1h-1zM12 1h1v1h-1zM13 1h1v1h-1zM15 1h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM5 2h1v1h-1zM7 2h1v1h-1zM14 2h1v1h-1zM5 3h1v1h-1zM7 3h1v1h-1zM9 3h1v1h-1zM12 3h1v1h-1zM13 3h1v1h-1zM15 3h1v1h-1zM0 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM9 4h1v1h-1zM10 4h1v1h-1zM12 4h1v1h-1zM13 4h1v1h-1zM15 4h1v1h-1zM3 5h1v1h-1zM4 5h1v1h-1zM5 5h1v1h-1zM7 5h1v1h-1zM8 5h1v1h-1zM0 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM9 6h1v1h-1zM12 6h1v1h-1zM15 6h1v1h-1zM0 7h1v1h-1zM4 7h1v1h-1zM5 7h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM10 7h1v1h-1zM1 8h1v1h-1zM4 8h1v1h-1zM8 8h1v1h-1zM9 8h1v1h-1zM10 8h1v1h-1zM13 8h1v1h-1zM14 8h1v1h-1zM0 9h1v1h-1zM4 9h1v1h-1zM6 9h1v1h-1zM8 9h1v1h-1zM10 9h1v1h-1zM11 9h1v1h-1zM1 10h1v1h-1zM2 10h1v1h-1zM3 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM10 10h1v1h-1zM13 10h1v1h-1zM14 10h1v1h-1zM2 11h1v1h-1zM3 11h1v1h-1zM8 11h1v1h-1zM10 11h1v1h-1zM11 11h1v1h-1zM14 11h1v1h-1zM5 12h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM12 12h1v1h-1zM14 12h1v1h-1zM1 13h1v1h-1zM4 13h1v1h-1zM6 13h1v1h-1zM7 13h1v1h-1zM8 13h1v1h-1zM11 13h1v1h-1zM13 13h1v1h-1zM1 14h1v1h-1zM7 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM9 15h1v1h-1zM11 15h1v1h-1z'/%3E%3Cpath fill='%236e6e6e' d='M2 0h1v1h-1zM8 0h1v1h-1zM9 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM4 1h1v1h-1zM5 1h1v1h-1zM8 1h1v1h-1zM10 1h1v1h-1zM9 2h1v1h-1zM15 2h1v1h-1zM0 3h1v1h-1zM6 3h1v1h-1zM14 3h1v1h-1zM5 6h1v1h-1zM13 6h1v1h-1zM2 8h1v1h-1zM6 8h1v1h-1zM12 8h1v1h-1zM1 9h1v1h-1zM13 9h1v1h-1zM15 9h1v1h-1zM0 10h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM0 11h1v1h-1zM7 11h1v1h-1zM0 12h1v1h-1zM6 12h1v1h-1zM5 13h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM9 14h1v1h-1zM10 14h1v1h-1zM12 15h1v1h-1z'/%3E%3Cpath fill='%238a8a8a' d='M3 0h1v1h-1zM4 0h1v1h-1zM1 1h1v1h-1zM2 1h1v1h-1zM3 1h1v1h-1zM6 1h1v1h-1zM7 1h1v1h-1zM11 1h1v1h-1zM14 1h1v1h-1zM0 2h1v1h-1zM1 2h1v1h-1zM4 2h1v1h-1zM10 2h1v1h-1zM12 2h1v1h-1zM13 2h1v1h-1zM1 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM11 3h1v1h-1zM1 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM14 4h1v1h-1zM0 5h1v1h-1zM10 5h1v1h-1zM12 5h1v1h-1zM13 5h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM10 6h1v1h-1zM14 6h1v1h-1zM1 7h1v1h-1zM2 7h1v1h-1zM3 7h1v1h-1zM7 7h1v1h-1zM8 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM15 7h1v1h-1zM0 8h1v1h-1zM5 8h1v1h-1zM7 8h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM9 9h1v1h-1zM6 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM15 10h1v1h-1zM1 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM9 11h1v1h-1zM12 11h1v1h-1zM13 11h1v1h-1zM15 11h1v1h-1zM1 12h1v1h-1zM2 12h1v1h-1zM3 12h1v1h-1zM4 12h1v1h-1zM7 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM15 12h1v1h-1zM0 13h1v1h-1zM2 13h1v1h-1zM9 13h1v1h-1zM10 13h1v1h-1zM15 13h1v1h-1zM0 14h1v1h-1zM2 14h1v1h-1zM11 14h1v1h-1zM14 14h1v1h-1zM15 14h1v1h-1zM2 15h1v1h-1zM4 15h1v1h-1zM10 15h1v1h-1zM14 15h1v1h-1z'/%3E%3Cpath fill='%23999' d='M6 0h1v1h-1zM7 0h1v1h-1zM12 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM6 2h1v1h-1zM8 2h1v1h-1zM11 2h1v1h-1zM2 3h1v1h-1zM8 4h1v1h-1zM11 4h1v1h-1zM1 5h1v1h-1zM2 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM11 5h1v1h-1zM14 5h1v1h-1zM15 5h1v1h-1zM7 6h1v1h-1zM11 6h1v1h-1zM3 8h1v1h-1zM11 8h1v1h-1zM15 8h1v1h-1zM2 9h1v1h-1zM7 9h1v1h-1zM12 9h1v1h-1zM14 9h1v1h-1zM7 10h1v1h-1zM6 11h1v1h-1zM3 13h1v1h-1zM12 13h1v1h-1zM14 13h1v1h-1zM3 14h1v1h-1zM6 14h1v1h-1zM8 14h1v1h-1zM0 15h1v1h-1zM1 15h1v1h-1zM3 15h1v1h-1zM5 15h1v1h-1zM6 15h1v1h-1zM7 15h1v1h-1zM8 15h1v1h-1zM13 15h1v1h-1zM15 15h1v1h-1z'/%3E%3C/svg%3E");
+  --bk-grass: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%234e9430' d='M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM6 0h1v1h-1zM7 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM2 1h1v1h-1zM8 1h1v1h-1zM1 2h1v1h-1zM5 2h1v1h-1zM15 3h1v1h-1zM2 4h1v1h-1zM4 4h1v1h-1zM5 4h1v1h-1zM13 4h1v1h-1z'/%3E%3Cpath fill='%235fa83a' d='M3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM8 0h1v1h-1zM12 0h1v1h-1zM13 0h1v1h-1zM0 1h1v1h-1zM1 1h1v1h-1zM3 1h1v1h-1zM6 1h1v1h-1zM7 1h1v1h-1zM9 1h1v1h-1zM11 1h1v1h-1zM14 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM7 2h1v1h-1zM10 2h1v1h-1zM12 2h1v1h-1zM13 2h1v1h-1zM14 2h1v1h-1zM1 3h1v1h-1zM9 3h1v1h-1zM14 3h1v1h-1zM10 4h1v1h-1zM14 4h1v1h-1zM15 4h1v1h-1z'/%3E%3Cpath fill='%236dbb46' d='M9 0h1v1h-1zM4 1h1v1h-1zM5 1h1v1h-1zM10 1h1v1h-1zM12 1h1v1h-1zM13 1h1v1h-1zM15 1h1v1h-1zM8 2h1v1h-1zM9 2h1v1h-1zM11 2h1v1h-1zM15 2h1v1h-1zM0 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM12 4h1v1h-1z'/%3E%3Cpath fill='%237a5636' d='M0 3h1v1h-1zM5 3h1v1h-1zM12 3h1v1h-1zM1 4h1v1h-1zM9 4h1v1h-1zM4 5h1v1h-1zM7 5h1v1h-1zM9 5h1v1h-1zM10 5h1v1h-1zM11 5h1v1h-1zM12 5h1v1h-1zM0 6h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM14 6h1v1h-1zM2 7h1v1h-1zM3 7h1v1h-1zM7 7h1v1h-1zM13 7h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM13 8h1v1h-1zM4 9h1v1h-1zM6 9h1v1h-1zM8 9h1v1h-1zM11 9h1v1h-1zM11 10h1v1h-1zM13 10h1v1h-1zM5 11h1v1h-1zM6 11h1v1h-1zM9 11h1v1h-1zM11 11h1v1h-1zM13 11h1v1h-1zM14 11h1v1h-1zM2 12h1v1h-1zM6 12h1v1h-1zM12 12h1v1h-1zM0 13h1v1h-1zM2 13h1v1h-1zM5 13h1v1h-1zM6 13h1v1h-1zM7 13h1v1h-1zM9 13h1v1h-1zM6 14h1v1h-1zM7 14h1v1h-1zM3 15h1v1h-1zM4 15h1v1h-1z'/%3E%3Cpath fill='%234a321f' d='M2 3h1v1h-1zM3 3h1v1h-1zM6 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h1v1h-1zM7 4h1v1h-1zM11 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM9 6h1v1h-1zM10 6h1v1h-1zM15 6h1v1h-1zM0 7h1v1h-1zM4 7h1v1h-1zM5 7h1v1h-1zM10 7h1v1h-1zM15 7h1v1h-1zM0 8h1v1h-1zM7 8h1v1h-1zM10 8h1v1h-1zM12 8h1v1h-1zM1 9h1v1h-1zM7 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM13 9h1v1h-1zM3 10h1v1h-1zM7 10h1v1h-1zM10 10h1v1h-1zM12 10h1v1h-1zM0 11h1v1h-1zM2 11h1v1h-1zM4 11h1v1h-1zM10 11h1v1h-1zM15 11h1v1h-1zM0 12h1v1h-1zM1 12h1v1h-1zM7 12h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM13 12h1v1h-1zM15 12h1v1h-1zM3 13h1v1h-1zM4 13h1v1h-1zM11 13h1v1h-1zM10 14h1v1h-1zM11 14h1v1h-1zM1 15h1v1h-1zM5 15h1v1h-1zM8 15h1v1h-1z'/%3E%3Cpath fill='%235a3d26' d='M4 3h1v1h-1zM7 3h1v1h-1zM1 5h1v1h-1zM3 5h1v1h-1zM8 5h1v1h-1zM13 5h1v1h-1zM14 5h1v1h-1zM15 5h1v1h-1zM7 6h1v1h-1zM8 6h1v1h-1zM11 6h1v1h-1zM1 7h1v1h-1zM6 7h1v1h-1zM8 7h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM8 8h1v1h-1zM11 8h1v1h-1zM15 8h1v1h-1zM0 9h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM15 9h1v1h-1zM0 10h1v1h-1zM1 10h1v1h-1zM2 10h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM14 10h1v1h-1zM12 11h1v1h-1zM3 12h1v1h-1zM10 12h1v1h-1zM14 12h1v1h-1zM1 13h1v1h-1zM8 13h1v1h-1zM12 13h1v1h-1zM14 13h1v1h-1zM3 14h1v1h-1zM8 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM15 14h1v1h-1zM2 15h1v1h-1zM6 15h1v1h-1zM13 15h1v1h-1zM14 15h1v1h-1zM15 15h1v1h-1z'/%3E%3Cpath fill='%236b4a2e' d='M11 3h1v1h-1zM3 4h1v1h-1zM2 5h1v1h-1zM5 5h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM12 6h1v1h-1zM13 6h1v1h-1zM9 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM14 7h1v1h-1zM5 8h1v1h-1zM9 8h1v1h-1zM14 8h1v1h-1zM2 9h1v1h-1zM12 9h1v1h-1zM14 9h1v1h-1zM6 10h1v1h-1zM15 10h1v1h-1zM1 11h1v1h-1zM3 11h1v1h-1zM7 11h1v1h-1zM8 11h1v1h-1zM4 12h1v1h-1zM5 12h1v1h-1zM11 12h1v1h-1zM10 13h1v1h-1zM13 13h1v1h-1zM15 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM9 14h1v1h-1zM14 14h1v1h-1zM0 15h1v1h-1zM7 15h1v1h-1zM9 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM12 15h1v1h-1z'/%3E%3C/svg%3E");
+  --bk-planks: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23b08848' d='M0 0h1v1h-1zM1 0h1v1h-1zM10 0h1v1h-1zM0 1h1v1h-1zM5 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM8 2h1v1h-1zM10 2h1v1h-1zM14 2h1v1h-1zM1 4h1v1h-1zM4 4h1v1h-1zM7 4h1v1h-1zM9 4h1v1h-1zM11 4h1v1h-1zM13 4h1v1h-1zM15 4h1v1h-1zM0 5h1v1h-1zM1 5h1v1h-1zM4 5h1v1h-1zM6 5h1v1h-1zM11 5h1v1h-1zM1 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM11 6h1v1h-1zM7 8h1v1h-1zM8 8h1v1h-1zM10 8h1v1h-1zM11 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM15 8h1v1h-1zM0 9h1v1h-1zM1 9h1v1h-1zM3 9h1v1h-1zM15 9h1v1h-1zM1 10h1v1h-1zM2 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM11 10h1v1h-1zM15 10h1v1h-1zM2 12h1v1h-1zM7 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM14 12h1v1h-1zM15 12h1v1h-1zM1 13h1v1h-1zM9 13h1v1h-1zM10 13h1v1h-1zM12 13h1v1h-1zM14 13h1v1h-1zM15 13h1v1h-1zM2 14h1v1h-1zM10 14h1v1h-1zM13 14h1v1h-1z'/%3E%3Cpath fill='%23a8803f' d='M2 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM12 0h1v1h-1zM13 0h1v1h-1zM14 0h1v1h-1zM1 1h1v1h-1zM2 1h1v1h-1zM3 1h1v1h-1zM4 1h1v1h-1zM8 1h1v1h-1zM11 1h1v1h-1zM2 2h1v1h-1zM5 2h1v1h-1zM6 2h1v1h-1zM0 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM3 5h1v1h-1zM5 5h1v1h-1zM7 5h1v1h-1zM8 5h1v1h-1zM6 6h1v1h-1zM7 6h1v1h-1zM8 6h1v1h-1zM9 6h1v1h-1zM13 6h1v1h-1zM14 6h1v1h-1zM15 6h1v1h-1zM9 8h1v1h-1zM6 9h1v1h-1zM7 9h1v1h-1zM10 9h1v1h-1zM11 9h1v1h-1zM12 9h1v1h-1zM14 9h1v1h-1zM4 10h1v1h-1zM10 10h1v1h-1zM12 10h1v1h-1zM14 10h1v1h-1zM1 12h1v1h-1zM4 12h1v1h-1zM6 12h1v1h-1zM9 12h1v1h-1zM12 12h1v1h-1zM6 13h1v1h-1zM7 13h1v1h-1zM11 13h1v1h-1zM13 13h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM12 14h1v1h-1zM15 14h1v1h-1z'/%3E%3Cpath fill='%23a07838' d='M3 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM9 0h1v1h-1zM11 0h1v1h-1zM6 1h1v1h-1zM12 1h1v1h-1zM13 1h1v1h-1zM14 1h1v1h-1zM0 2h1v1h-1zM1 2h1v1h-1zM9 2h1v1h-1zM11 2h1v1h-1zM12 2h1v1h-1zM13 2h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM9 5h1v1h-1zM12 5h1v1h-1zM13 5h1v1h-1zM14 5h1v1h-1zM15 5h1v1h-1zM0 6h1v1h-1zM3 6h1v1h-1zM12 6h1v1h-1zM0 8h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM2 9h1v1h-1zM4 9h1v1h-1zM8 9h1v1h-1zM9 9h1v1h-1zM0 10h1v1h-1zM3 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM3 12h1v1h-1zM5 12h1v1h-1zM10 12h1v1h-1zM2 13h1v1h-1zM3 13h1v1h-1zM4 13h1v1h-1zM5 13h1v1h-1zM1 14h1v1h-1zM7 14h1v1h-1zM9 14h1v1h-1zM11 14h1v1h-1zM14 14h1v1h-1z'/%3E%3Cpath fill='%238a6a38' d='M7 0h1v1h-1zM15 0h1v1h-1zM7 1h1v1h-1zM15 1h1v1h-1zM7 2h1v1h-1zM15 2h1v1h-1zM2 4h1v1h-1zM10 4h1v1h-1zM2 5h1v1h-1zM10 5h1v1h-1zM2 6h1v1h-1zM10 6h1v1h-1zM5 8h1v1h-1zM13 8h1v1h-1zM5 9h1v1h-1zM13 9h1v1h-1zM5 10h1v1h-1zM13 10h1v1h-1zM0 12h1v1h-1zM8 12h1v1h-1zM0 13h1v1h-1zM8 13h1v1h-1zM0 14h1v1h-1zM8 14h1v1h-1z'/%3E%3Cpath fill='%237a5a2c' d='M0 3h1v1h-1zM1 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM5 3h1v1h-1zM6 3h1v1h-1zM7 3h1v1h-1zM8 3h1v1h-1zM9 3h1v1h-1zM10 3h1v1h-1zM11 3h1v1h-1zM12 3h1v1h-1zM13 3h1v1h-1zM14 3h1v1h-1zM15 3h1v1h-1zM0 7h1v1h-1zM1 7h1v1h-1zM2 7h1v1h-1zM3 7h1v1h-1zM4 7h1v1h-1zM5 7h1v1h-1zM6 7h1v1h-1zM7 7h1v1h-1zM8 7h1v1h-1zM9 7h1v1h-1zM10 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM15 7h1v1h-1zM0 11h1v1h-1zM1 11h1v1h-1zM2 11h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM6 11h1v1h-1zM7 11h1v1h-1zM8 11h1v1h-1zM9 11h1v1h-1zM10 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM13 11h1v1h-1zM14 11h1v1h-1zM15 11h1v1h-1zM0 15h1v1h-1zM1 15h1v1h-1zM2 15h1v1h-1zM3 15h1v1h-1zM4 15h1v1h-1zM5 15h1v1h-1zM6 15h1v1h-1zM7 15h1v1h-1zM8 15h1v1h-1zM9 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM12 15h1v1h-1zM13 15h1v1h-1zM14 15h1v1h-1zM15 15h1v1h-1z'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+
+/* ---------- the world: dirt underfoot, text pinned to signs ---------- */
+:root[data-ui='blocky'] body {
+  background-color: #2a1b10;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), var(--bk-dirt);
+  background-size:
+    auto,
+    64px 64px;
+  image-rendering: pixelated;
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  -webkit-font-smoothing: none;
+  padding-bottom: calc(var(--bk-bar) + 26px);
+}
+:root[data-ui='blocky'] *,
+:root[data-ui='blocky'] *::before,
+:root[data-ui='blocky'] *::after {
+  text-shadow: none;
+  backdrop-filter: none !important;
+}
+:root[data-ui='blocky'] img,
+:root[data-ui='blocky'] canvas {
+  image-rendering: pixelated;
+}
+:root[data-ui='blocky'] ::selection {
+  background: #3b8f26;
+  color: #fff;
+}
+:root[data-ui='blocky'] :focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 0;
+  box-shadow: 0 0 0 6px #000;
+}
+:root[data-ui='blocky'] .page-in h2,
+:root[data-ui='blocky'] .page-in h1 {
+  display: inline-block;
+  background: #3b2a18;
+  color: #fff;
+  padding: 6px 14px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 #7a5a2c,
+    inset -3px -3px 0 #1e150b;
+  margin-bottom: 4px;
+}
+/* loose text on the dirt reads as white on a dark scrim */
+:root[data-ui='blocky'] .page-in > .page > .lab,
+:root[data-ui='blocky'] .page-in > .page > p.muted {
+  color: #fff;
+}
+:root[data-ui='blocky'] h4 {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='blocky'] .lab,
+:root[data-ui='blocky'] .muted {
+  color: var(--muted);
+}
+:root[data-ui='blocky'] .dim {
+  color: var(--dim);
+}
+:root[data-ui='blocky'] a.link,
+:root[data-ui='blocky'] .link {
+  color: #a9d4ff;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+:root[data-ui='blocky'] hr,
+:root[data-ui='blocky'] .top {
+  border-color: #555;
+}
+:root[data-ui='blocky'] *::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+:root[data-ui='blocky'] *::-webkit-scrollbar-track {
+  background: #373737;
+}
+:root[data-ui='blocky'] *::-webkit-scrollbar-thumb {
+  background: #c6c6c6;
+  box-shadow:
+    inset 3px 3px 0 #fff,
+    inset -3px -3px 0 #555;
+  border: 2px solid #000;
+}
+
+/* ---------- the hotbar: the sidebar drops to the bottom as a row of slots ---------- */
+:root[data-ui='blocky'] .side {
+  position: fixed;
+  inset: auto auto 12px 50%;
+  translate: -50% 0;
+  z-index: 30;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  height: auto;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  padding: 5px;
+  background: #313131;
+  border: 0;
+  border-radius: 0;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 #555,
+    inset -3px -3px 0 #1a1a1a;
+  counter-reset: slot;
+}
+:root[data-ui='blocky'] .side nav {
+  display: contents;
+}
+:root[data-ui='blocky'] .brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  margin: 0 6px 0 0;
+  background: var(--bk-grass) 0 0 / 72px 72px;
+  image-rendering: pixelated;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 rgba(255, 255, 255, 0.35),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.45);
+}
+:root[data-ui='blocky'] .brand img {
+  display: none;
+}
+:root[data-ui='blocky'] .brand::after {
+  content: 'BRISK';
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #000a;
+  padding: 2px 4px;
+}
+:root[data-ui='blocky'] .nav {
+  counter-increment: slot;
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0 4px;
+  padding: 18px 2px 4px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #5c5c5c;
+  box-shadow:
+    inset 3px 3px 0 #2e2e2e,
+    inset -3px -3px 0 #9a9a9a;
+  border-radius: 0;
+  transition: none;
+}
+:root[data-ui='blocky'] .nav::after {
+  content: counter(slot);
+  position: absolute;
+  left: 6px;
+  top: 3px;
+  font-size: 10px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+}
+:root[data-ui='blocky'] .nav svg {
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(2px 2px 0 #000);
+}
+:root[data-ui='blocky'] a.nav:hover {
+  background: #707070;
+  color: #fff;
+  transform: translateY(-4px);
+}
+:root[data-ui='blocky'] .nav[aria-current='page'] {
+  color: #fff;
+  z-index: 1;
+}
+/* the selector frame: white square with a black outline, like the item you hold */
+:root[data-ui='blocky'] .nav[aria-current='page']::before {
+  inset: -5px;
+  z-index: 1;
+  background: none;
+  border-radius: 0;
+  box-shadow:
+    0 0 0 4px #fff,
+    0 0 0 8px #000,
+    inset 0 0 0 3px #000;
+  pointer-events: none;
+}
+:root[data-ui='blocky'] .nav:focus-visible {
+  outline-offset: -6px;
+}
+:root[data-ui='blocky'] .side .sec {
+  display: none;
+}
+:root[data-ui='blocky'] .side .soon {
+  opacity: 1;
+  background: #484848;
+  color: #fff;
+}
+:root[data-ui='blocky'] .side .soon .tag {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  margin: 0;
+  padding: 0;
+  font-size: 8px;
+  background: none;
+  color: #fff;
+}
+:root[data-ui='blocky'] .side .soon svg {
+  opacity: 0.55;
+}
+:root[data-ui='blocky'] .side .wrap {
+  margin: 0 0 0 6px;
+  display: flex;
+  position: relative;
+}
+:root[data-ui='blocky'] .side .pill {
+  margin: 0;
+  width: 72px;
+  height: 72px;
+  padding: 4px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+  border-radius: 0;
+  color: #fff;
+  background: var(--bk-stone) 0 0 / 72px 72px;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 rgba(255, 255, 255, 0.3),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.45);
+  transition: none;
+}
+:root[data-ui='blocky'] .side .pill:hover {
+  background-color: #fff3;
+  color: #fff;
+}
+:root[data-ui='blocky'] .side .pill .name {
+  flex: none;
+  max-width: 64px;
+  font-size: 10px;
+  text-transform: uppercase;
+  background: #000a;
+  padding: 1px 3px;
+}
+:root[data-ui='blocky'] .side .pill .st {
+  font-size: 9px;
+  color: #fff;
+  background: #000a;
+  padding: 0 3px;
+}
+:root[data-ui='blocky'] .side .menu {
+  inset: auto 0 calc(100% + 14px) auto;
+  width: 270px;
+  padding: 6px;
+  gap: 4px;
+  border-radius: 0;
+  background: #c6c6c6;
+  color: var(--fg);
+  box-shadow: var(--bk-panel);
+}
+:root[data-ui='blocky'] .side .it {
+  border-radius: 0;
+  color: var(--fg);
+  background: #8b8b8b;
+  box-shadow: var(--bk-slot);
+  padding: 7px 10px;
+}
+:root[data-ui='blocky'] .side .it .name,
+:root[data-ui='blocky'] .side .it .st,
+:root[data-ui='blocky'] .side .it span {
+  color: #111;
+  background: none;
+}
+:root[data-ui='blocky'] .side .it:hover,
+:root[data-ui='blocky'] .side .it:focus-visible {
+  background: #b9b9b9;
+}
+:root[data-ui='blocky'] .side .it[aria-checked='true'] {
+  box-shadow:
+    var(--bk-slot),
+    0 0 0 3px #fff,
+    0 0 0 6px #000;
+  margin: 3px;
+}
+
+/* ---------- inventory panels: cards, dialogs, menus ---------- */
+:root[data-ui='blocky'] .card,
+:root[data-ui='blocky'] .glass,
+:root[data-ui='blocky'] .rs,
+:root[data-ui='blocky'] .cm,
+:root[data-ui='blocky'] .mp {
+  background: #c6c6c6;
+  color: var(--fg);
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--bk-panel);
+}
+:root[data-ui='blocky'] .card {
+  margin: 3px;
+  padding: 16px 16px 16px;
+  transition: none;
+}
+:root[data-ui='blocky'] .card:hover {
+  transform: none;
+  box-shadow:
+    var(--bk-panel),
+    0 0 0 6px #fff3;
+}
+/* panel title: dark text engraved in the grey, with a ruled underline like the "Inventory" label */
+:root[data-ui='blocky'] .card h4,
+:root[data-ui='blocky'] .card > .head h4 {
+  color: #373737;
+  font-size: 12px;
+  font-weight: 700;
+}
+:root[data-ui='blocky'] .card.soon,
+:root[data-ui='blocky'] .soon.card {
+  opacity: 1;
+  background: #a9a9a9;
+}
+:root[data-ui='blocky'] .card.soon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(135deg, transparent 0 14px, rgba(0, 0, 0, 0.07) 14px 28px);
+  pointer-events: none;
+}
+:root[data-ui='blocky'] .grip {
+  border-radius: 0;
+  color: #373737;
+}
+:root[data-ui='blocky'] .grip:hover,
+:root[data-ui='blocky'] .grip:focus-visible,
+:root[data-ui='blocky'] .grip[aria-pressed='true'] {
+  background: #8b8b8b;
+  color: #fff;
+}
+:root[data-ui='blocky'] .tag,
+:root[data-ui='blocky'] .chip,
+:root[data-ui='blocky'] .fchip,
+:root[data-ui='blocky'] .pchip,
+:root[data-ui='blocky'] .uchip,
+:root[data-ui='blocky'] .tchip {
+  border-radius: 0;
+  background: #8b8b8b;
+  color: #111;
+  box-shadow: var(--bk-slot);
+  padding: 3px 8px;
+  font-weight: 400;
+}
+:root[data-ui='blocky'] .chip[aria-checked='true'],
+:root[data-ui='blocky'] .fchip[aria-pressed='true'] {
+  background: #2f7a1c;
+  color: #fff;
+  box-shadow:
+    var(--bk-panel),
+    0 0 0 3px #fff;
+  margin: 3px;
+}
+:root[data-ui='blocky'] .dot {
+  border-radius: 0;
+  width: 10px;
+  height: 10px;
+  background: var(--ok);
+  box-shadow: 0 0 0 2px #000;
+  animation: none;
+}
+:root[data-ui='blocky'] .search {
+  border-radius: 0;
+  background: #8b8b8b;
+  color: #111;
+  border: 0;
+  box-shadow: var(--bk-slot);
+}
+:root[data-ui='blocky'] .search input {
+  color: #111;
+}
+:root[data-ui='blocky'] input:not([type='checkbox'], [type='radio'], [type='range']),
+:root[data-ui='blocky'] textarea,
+:root[data-ui='blocky'] select {
+  border-radius: 0;
+  background: #1b1b1b;
+  color: #fff;
+  border: 0;
+  box-shadow:
+    0 0 0 2px #000,
+    inset 0 0 0 2px #a0a0a0;
+  font-family: var(--font);
+  padding: 6px 8px;
+}
+
+/* a link inside a grey panel needs a darker blue than one on the dirt */
+:root[data-ui='blocky'] :is(.card, .rs, .cm, .mp) :is(a.link, .link) {
+  color: #0a3d7a;
+}
+
+/* locked achievements: dim the icon, not the text, so the words stay readable */
+:root[data-ui='blocky'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='blocky'] .alist li.locked :is(b, small) {
+  color: #2b2b2b;
+}
+
+/* the page starts on the grass line, so the sky shows above it */
+:root[data-ui='blocky'] main.page-in {
+  padding-top: 62px;
+}
+
+:root[data-ui='blocky'] .skel div {
+  border-radius: 0;
+  background: #8b8b8b;
+  box-shadow: var(--bk-panel);
+}
+
+/* hard-coded light greys inside the controller test and the shortcut list */
+:root[data-ui='blocky'] .stick .nums b {
+  color: #1c1c1c;
+}
+:root[data-ui='blocky'] kbd {
+  border-radius: 0;
+  border: 0;
+  background: #e4e4e4;
+  color: #111;
+  box-shadow: 0 0 0 2px #000;
+}
+
+/* ---------- buttons are stone slabs; the main one is grass ---------- */
+:root[data-ui='blocky'] .btn {
+  border-radius: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  padding: 9px 14px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 rgba(255, 255, 255, 0.55),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.35);
+  transition: none;
+}
+:root[data-ui='blocky'] .btn.ghost {
+  background: #8b8b8b;
+  color: #111;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 #d8d8d8,
+    inset -3px -3px 0 #4a4a4a;
+}
+:root[data-ui='blocky'] .btn:hover {
+  filter: brightness(1.12);
+  transform: none;
+}
+:root[data-ui='blocky'] .btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 0 0 3px #000,
+    inset 3px 3px 0 rgba(0, 0, 0, 0.35),
+    inset -3px -3px 0 rgba(255, 255, 255, 0.25);
+}
+:root[data-ui='blocky'] .btn:disabled,
+:root[data-ui='blocky'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  filter: grayscale(1) brightness(0.8);
+}
+:root[data-ui='blocky'] .btn[aria-pressed='true'],
+:root[data-ui='blocky'] .btn.on {
+  box-shadow:
+    0 0 0 3px #000,
+    0 0 0 6px #fff,
+    inset 3px 3px 0 rgba(0, 0, 0, 0.3);
+  margin: 3px;
+}
+
+/* ---------- covers are item frames; progress bars are XP bars ---------- */
+:root[data-ui='blocky'] .cover {
+  border-radius: 0;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 0 0 0 3px #555;
+  image-rendering: pixelated;
+}
+:root[data-ui='blocky'] .cover img {
+  image-rendering: pixelated;
+}
+:root[data-ui='blocky'] .g {
+  border-radius: 0;
+  padding: 6px;
+  background: #a8a8a8;
+  box-shadow: var(--bk-slot);
+  transition: none;
+}
+:root[data-ui='blocky'] .wrap:hover,
+:root[data-ui='blocky'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='blocky'] .g:hover,
+:root[data-ui='blocky'] .g:focus-visible {
+  background: #b0b0b0;
+}
+:root[data-ui='blocky'] .name {
+  color: #111;
+}
+:root[data-ui='blocky'] .sub {
+  color: #333;
+}
+:root[data-ui='blocky'] .ach,
+:root[data-ui='blocky'] .bar-track {
+  border-radius: 0;
+  height: 8px;
+  background: #1b1b1b;
+  box-shadow: 0 0 0 2px #000;
+}
+:root[data-ui='blocky'] .ach i {
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, #7bd33a 0 6px, #5aa626 6px 8px);
+}
+:root[data-ui='blocky'] .badge,
+:root[data-ui='blocky'] .pchip,
+:root[data-ui='blocky'] .uchip {
+  border-radius: 0;
+  color: #fff;
+  background: #000c;
+  box-shadow: none;
+}
+:root[data-ui='blocky'] .badge i {
+  border-radius: 0;
+}
+:root[data-ui='blocky'] .uchip {
+  background: #1f6b0e;
+}
+:root[data-ui='blocky'] .uchip.need {
+  background: #8a3a00;
+}
+
+/* ---------- chat-log toasts, bottom left above the hotbar ---------- */
+:root[data-ui='blocky'] .toasts {
+  left: 10px;
+  right: auto;
+  bottom: calc(var(--bk-bar) + 34px);
+  transform: none;
+  justify-items: start;
+  gap: 2px;
+}
+:root[data-ui='blocky'] .toast {
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+:root[data-ui='blocky'] .toast::before {
+  content: '<Brisk>';
+  color: #ffd84a;
+  margin-right: 6px;
+}
+:root[data-ui='blocky'] .toast.error {
+  color: #ffb4b4;
+}
+:root[data-ui='blocky'] .toast .btn {
+  padding: 2px 8px;
+}
+
+/* ---------- text on the dirt is white; anything on a grey panel flips back to dark ---------- */
+:root[data-ui='blocky'] .page-in {
+  --fg: #fff;
+  --muted: #ececec;
+  --dim: #e0e0e0;
+  color: #fff;
+}
+:root[data-ui='blocky'] .page-in :is(.card, .chart, .g, .rs, .search, .empty:has(.btn)),
+:root[data-ui='blocky'] :is(.rs, .cm, .mp, .dd-menu, .side .menu) {
+  --fg: #1c1c1c;
+  --muted: #3f3f3f;
+  --dim: #444;
+  color: #1c1c1c;
+}
+:root[data-ui='blocky'] .page-in h3 {
+  color: #fff;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='blocky'] .chart {
+  background: #c6c6c6;
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--bk-panel);
+  margin: 3px;
+}
+:root[data-ui='blocky'] .chart figcaption {
+  color: #222;
+}
+:root[data-ui='blocky'] .chart .plot .lc-axis-tick-label {
+  fill: #333;
+}
+:root[data-ui='blocky'] .chart .plot :is(.lc-rule-y-line, .lc-grid-y-line) {
+  stroke: #8b8b8b;
+}
+/* the hero is a furnace: dark stone, white text */
+:root[data-ui='blocky'] .hero {
+  --fg: #fff;
+  --muted: #ececec;
+  border: 0;
+  border-radius: 0;
+  background: var(--bk-stone) 0 0 / 64px 64px;
+  box-shadow:
+    0 0 0 3px #000,
+    inset 0 0 0 3px #555;
+  color: #fff;
+}
+:root[data-ui='blocky'] .hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  pointer-events: none;
+}
+:root[data-ui='blocky'] .hero > :not(.art) {
+  z-index: 1;
+}
+:root[data-ui='blocky'] .hero .lab,
+:root[data-ui='blocky'] .hero h3 {
+  color: #fff;
+}
+:root[data-ui='blocky'] .hero .art {
+  z-index: 0;
+  opacity: 0.35;
+}
+:root[data-ui='blocky'] .more,
+:root[data-ui='blocky'] .chev {
+  border-radius: 0;
+}
+:root[data-ui='blocky'] .chev {
+  background: #8b8b8b;
+  color: #111;
+  border: 0;
+  box-shadow: var(--bk-slot);
+}
+:root[data-ui='blocky'] .dd {
+  border-radius: 0;
+  border: 0;
+  background: #8b8b8b;
+  color: #111;
+  box-shadow: var(--bk-slot);
+}
+:root[data-ui='blocky'] .dd-menu {
+  border-radius: 0;
+  background: #c6c6c6;
+  border: 0;
+  box-shadow: var(--bk-panel);
+}
+:root[data-ui='blocky'] .dd-item {
+  border-radius: 0;
+  color: #111;
+}
+:root[data-ui='blocky'] .dd-item[data-highlighted] {
+  background: #8b8b8b;
+  color: #111;
+}
+:root[data-ui='blocky'] .ring,
+:root[data-ui='blocky'] .ring b {
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  :root[data-ui='blocky'] {
+    --bk-bar: 70px;
+  }
+  :root[data-ui='blocky'] .nav,
+  :root[data-ui='blocky'] .brand,
+  :root[data-ui='blocky'] .side .pill {
+    width: 46px;
+    height: 46px;
+    padding: 6px 0 0;
+  }
+  :root[data-ui='blocky'] .nav {
+    margin: 0 2px;
+    font-size: 0;
+    gap: 0;
+  }
+  :root[data-ui='blocky'] .nav::after,
+  :root[data-ui='blocky'] .brand::after,
+  :root[data-ui='blocky'] .side .pill .name,
+  :root[data-ui='blocky'] .side .pill .st,
+  :root[data-ui='blocky'] .side .soon .tag {
+    display: none;
+  }
+  :root[data-ui='blocky'] .nav svg {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='blocky'] * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
