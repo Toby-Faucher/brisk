@@ -22,6 +22,7 @@ const MAX_WALK: usize = 2000;
 const MAX_DEPTH: usize = 4;
 const STATE_SLOTS: u32 = 10;
 
+/// The kind of save data.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Kind {
@@ -30,6 +31,7 @@ pub enum Kind {
     NandSave,
 }
 
+/// One save file or folder an emulator holds.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveItem {
@@ -98,8 +100,15 @@ fn file_item(base: &Path, parts: &[&str], kind: Kind, note: Option<&str>) -> Opt
     })
 }
 
-/// Regular files under `dir`: (count, total size, newest mtime). Bounded by entries and depth.
-fn walk(dir: &Path) -> (u32, u64, Option<u64>) {
+/// What `walk` found under a folder.
+struct Tally {
+    files: u32,
+    size: u64,
+    newest: Option<u64>,
+}
+
+/// Regular files under `dir`: count, total size, newest mtime. Bounded by entries and depth.
+fn walk(dir: &Path) -> Tally {
     let (mut n, mut size, mut newest) = (0u32, 0u64, None);
     let mut seen = 0;
     let mut todo = vec![(dir.to_path_buf(), 0)];
@@ -110,7 +119,11 @@ fn walk(dir: &Path) -> (u32, u64, Option<u64>) {
         for e in rd.flatten() {
             seen += 1;
             if seen > MAX_WALK {
-                return (n, size, newest);
+                return Tally {
+                    files: n,
+                    size,
+                    newest,
+                };
             }
             let Some(m) = plain(&e.path()) else { continue };
             if m.is_file() {
@@ -122,7 +135,11 @@ fn walk(dir: &Path) -> (u32, u64, Option<u64>) {
             }
         }
     }
-    (n, size, newest)
+    Tally {
+        files: n,
+        size,
+        newest,
+    }
 }
 
 /// Cards whose name says they belong to the game's region (all cards when the region is unknown).
@@ -155,7 +172,11 @@ pub fn list(user: &Path, disc: &str, system: &str) -> Option<Vec<SaveItem>> {
             let Some(dir) = dir_under(user, &parts) else {
                 continue;
             };
-            let (files, size, modified) = walk(&dir);
+            let Tally {
+                files,
+                size,
+                newest: modified,
+            } = walk(&dir);
             out.push(SaveItem {
                 kind: Kind::NandSave,
                 name: "Wii save data".into(),

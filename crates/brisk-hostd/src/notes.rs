@@ -123,7 +123,7 @@ impl NotesStore {
 
     /// All notes and tags.
     pub fn all(&self) -> Notes {
-        self.inner.lock().unwrap().clone()
+        self.inner.lock().expect("lock poisoned").clone()
     }
 
     /// Creates or replaces tag `id`; returns it as stored (name trimmed).
@@ -157,7 +157,13 @@ impl NotesStore {
 
     /// Removes the tag and takes it off every game (a game left empty goes too). Unknown id: no-op.
     pub(crate) fn delete_tag(&self, id: &str) -> Result<(), NotesError> {
-        if !self.inner.lock().unwrap().tags.contains_key(id) {
+        if !self
+            .inner
+            .lock()
+            .expect("lock poisoned")
+            .tags
+            .contains_key(id)
+        {
             return Ok(());
         }
         self.change(|n| {
@@ -203,7 +209,7 @@ impl NotesStore {
     /// copy first. A new key that is already there wins and the old entry stays. Returns how many moved.
     pub fn rekey(&self, map: &BTreeMap<String, String>) -> Result<usize, NotesError> {
         let hit = |n: &Notes| map.keys().any(|k| n.games.contains_key(k));
-        if !hit(&self.inner.lock().unwrap()) {
+        if !hit(&self.inner.lock().expect("lock poisoned")) {
             return Ok(0);
         }
         crate::migrate::backup_once(&self.path).map_err(|_| NotesError::Io)?;
@@ -227,7 +233,7 @@ impl NotesStore {
         &self,
         f: impl FnOnce(&mut Notes) -> Result<(), NotesError>,
     ) -> Result<(), NotesError> {
-        let mut m = self.inner.lock().unwrap();
+        let mut m = self.inner.lock().expect("lock poisoned");
         let mut next = m.clone();
         f(&mut next)?;
         if next != *m {

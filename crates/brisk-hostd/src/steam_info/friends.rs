@@ -1,9 +1,12 @@
+//! Steam friends who are online, held in memory only.
+
 use crate::config::Config;
 use crate::http::AppState;
 use crate::steam::{is_refusal, read_key, steam_get, steam_id};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
+/// Steam friends who are online. Empty with `available` false when there is no key.
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Friends {
@@ -48,7 +51,7 @@ pub type FriendsEntry = (Instant, Instant, Friends);
 /// A transient failure (timeout, 5xx, TLS) keeps a good list for at most 10 minutes and retries after 60 s;
 /// a refusal (private list, bad key) or a local config error gives `available: false` at once.
 pub async fn friends_cached(state: &AppState) -> Friends {
-    if let Some((at, _, f)) = &*state.friends.lock().unwrap() {
+    if let Some((at, _, f)) = &*state.friends.lock().expect("lock poisoned") {
         let ttl = if f.available {
             FRIENDS_TTL
         } else {
@@ -61,7 +64,7 @@ pub async fn friends_cached(state: &AppState) -> Friends {
     let result = fetch_friends(&state.cfg).await;
     let now = Instant::now();
     // one lock for take, decide and store: a concurrent request cannot see a half-way state
-    let mut slot = state.friends.lock().unwrap();
+    let mut slot = state.friends.lock().expect("lock poisoned");
     let entry = match result {
         Ok(f) => (now, now, f),
         Err(Fail::Transient(err)) => {

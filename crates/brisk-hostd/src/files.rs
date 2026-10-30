@@ -68,6 +68,7 @@ pub(crate) fn disk_free(p: &Path) -> Option<u64> {
     Some(s.f_bavail * s.f_frsize)
 }
 
+/// Files being uploaded into a folder, one at a time per name.
 pub struct Files {
     pub dir: PathBuf,
     /// `disk_free`; tests fake a full disk.
@@ -86,7 +87,11 @@ struct Guard<'a> {
 impl Drop for Guard<'_> {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.tmp);
-        self.files.active.lock().unwrap().remove(&self.name);
+        self.files
+            .active
+            .lock()
+            .expect("lock poisoned")
+            .remove(&self.name);
     }
 }
 
@@ -160,7 +165,12 @@ impl Files {
         if short(len.unwrap_or(0)) {
             return Err(no_space());
         }
-        if !self.active.lock().unwrap().insert(name.clone()) {
+        if !self
+            .active
+            .lock()
+            .expect("lock poisoned")
+            .insert(name.clone())
+        {
             return Err(fail(
                 StatusCode::CONFLICT,
                 "this file is already being sent",

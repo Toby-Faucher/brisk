@@ -10,6 +10,7 @@ use std::fmt;
 /// Emulator games used ids from here up in the first emulator version (a hash of the name).
 pub(crate) const LEGACY_EMU_BASE: u32 = 0xE000_0000;
 
+/// Where a game comes from.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
@@ -128,6 +129,7 @@ pub struct Caps {
     pub art: bool,
 }
 
+/// One game in the library.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Game {
@@ -181,6 +183,7 @@ pub struct Game {
     pub needs_match: bool,
 }
 
+/// Descriptive facts about a game.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Details {

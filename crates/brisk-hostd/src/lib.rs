@@ -1,3 +1,5 @@
+//! The brisk host agent as a library: the HTTP API, the game library and the stream supervisor.
+
 pub mod art;
 pub mod auth;
 pub mod clipboard;

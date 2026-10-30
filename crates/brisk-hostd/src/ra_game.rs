@@ -43,6 +43,7 @@ pub fn caps_on(cfg: &Config, games: &mut [Game]) {
     }
 }
 
+/// The RetroAchievements hash computed for a game file, cached with its source.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HashInfo {
@@ -53,6 +54,7 @@ pub struct HashInfo {
     pub computed_at: u64,
 }
 
+/// Why a game file could not be hashed.
 #[derive(Debug, PartialEq, Eq)]
 pub enum HashErr {
     /// A container or format `rahash` cannot decode (RVZ, WIA, unknown): never a guessed hash.

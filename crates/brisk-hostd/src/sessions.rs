@@ -12,11 +12,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Points per session (5 s each: 24 h) and series files kept (newest sessions).
 pub const MAX_POINTS: usize = 17_280;
+/// The most series files kept.
 pub const MAX_SERIES: usize = 200;
 
 /// `[t seconds since started, delay ms, fps, Mbit/s]`.
 pub type Point = [f64; 4];
 
+/// One streaming session as recorded in the history.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionRec {
@@ -53,6 +55,7 @@ impl SessionRec {
     }
 }
 
+/// Whether a session passed its quality gate.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Gate {
@@ -219,6 +222,7 @@ pub(crate) fn valid_point(p: &Point) -> bool {
         .all(|(v, m)| v.is_finite() && (0.0..=m).contains(v))
 }
 
+/// Why a series could not be stored.
 #[derive(Debug, PartialEq)]
 pub enum SeriesError {
     NoSession,
@@ -232,6 +236,7 @@ pub(crate) fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+/// The session history file and its series files.
 pub struct Sessions {
     pub path: PathBuf,
     /// Serializes series read-merge-writes.

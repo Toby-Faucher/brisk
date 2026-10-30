@@ -28,7 +28,7 @@ pub(super) async fn path_game(s: &AppState, raw: &str) -> Result<Game, Response>
 
 pub(super) async fn games(State(s): State<Arc<AppState>>, req: Request) -> Response {
     let refresh = query_flag(req.uri().query(), "refresh=1");
-    let g = steam::load_games_with(&s.cfg, refresh).await;
+    let g = steam::load_games_with(&s.cfg, refresh.into()).await;
     *s.games.lock().unwrap() = Some(g.clone());
     // Games with play time are the ones worth warming; the task never delays this answer.
     steam_info::warm(
@@ -64,7 +64,7 @@ pub(super) async fn game_info(
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
     };
     let refresh = query_flag(req.uri().query(), "refresh=1");
-    axum::Json(steam_info::info(&s.cfg, id, refresh).await).into_response()
+    axum::Json(steam_info::info(&s.cfg, id, refresh.into()).await).into_response()
 }
 
 /// Achievements for the detail panel; 404 for an unknown game before any upstream call. A game
@@ -82,7 +82,7 @@ pub(super) async fn game_achievements(
     let Some(id) = g.id.steam_appid() else {
         return emu_achievements(&s, &g, refresh).await;
     };
-    axum::Json(steam_info::achievements(&s.cfg, id, refresh).await).into_response()
+    axum::Json(steam_info::achievements(&s.cfg, id, refresh.into()).await).into_response()
 }
 
 /// RetroAchievements progress for an emulator game, always a 200 whose `state` says what the
@@ -149,7 +149,7 @@ pub(super) async fn game_news(
         return err(StatusCode::NOT_FOUND, "no Steam details for this game");
     };
     let refresh = query_flag(req.uri().query(), "refresh=1");
-    axum::Json(steam_info::news(&s.cfg, id, refresh).await).into_response()
+    axum::Json(steam_info::news(&s.cfg, id, refresh.into()).await).into_response()
 }
 
 /// Screenshot names and a cloud-save summary from the host's Steam folder; 404 for an unknown game.
@@ -401,7 +401,7 @@ pub(super) async fn quit(State(s): State<Arc<AppState>>, b: axum::body::Bytes) -
     };
     // Own task: a client that hangs up must not stop a quit between its steps.
     let s2 = s.clone();
-    let job = tokio::spawn(async move { s2.quit.quit(&g.id, force).await });
+    let job = tokio::spawn(async move { s2.quit.quit(&g.id, force.into()).await });
     let state = match tokio::time::timeout(std::time::Duration::from_secs(25), job).await {
         Ok(Ok(Ok(st))) => st,
         Ok(Ok(Err(QuitError::NotRunning))) => return err(StatusCode::CONFLICT, "not running"),
@@ -459,7 +459,7 @@ pub(super) async fn library_scan(
     let _slot = ScanSlot(&s.scan_gate);
     let cfg = s.cfg.clone();
     match tokio::task::spawn_blocking(move || {
-        crate::ingest::scan_library_with(&cfg, include_removed)
+        crate::ingest::scan_library_with(&cfg, include_removed.into())
     })
     .await
     {

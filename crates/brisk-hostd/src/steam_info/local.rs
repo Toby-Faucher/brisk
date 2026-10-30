@@ -1,3 +1,5 @@
+//! Local Steam data for a game: save files and screenshots found on disk.
+
 use crate::config::Config;
 use crate::steam::{account_id, steam_id};
 use serde::Serialize;
@@ -55,13 +57,13 @@ impl ShotCache {
 
     /// Blocking: lists `dir` unless this game was listed less than the TTL ago (as of `now`).
     fn listing(&self, appid: u32, dir: &Path, now: Instant) -> Vec<String> {
-        if let Some((at, v)) = self.m.lock().unwrap().get(&appid)
+        if let Some((at, v)) = self.m.lock().expect("lock poisoned").get(&appid)
             && now.saturating_duration_since(*at) < self.ttl
         {
             return v.clone();
         }
         let v = list_shots(dir);
-        let mut m = self.m.lock().unwrap();
+        let mut m = self.m.lock().expect("lock poisoned");
         m.retain(|_, (at, _)| now.saturating_duration_since(*at) < self.ttl);
         m.insert(appid, (now, v.clone()));
         v

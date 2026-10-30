@@ -36,6 +36,7 @@ impl std::fmt::Debug for Key {
     }
 }
 
+/// Where and how to talk to SteamGridDB.
 #[derive(Clone, Debug)]
 pub struct SgdbConfig {
     pub base: String,
@@ -46,6 +47,7 @@ pub struct SgdbConfig {
     pub min_interval: Duration,
 }
 
+/// Why a SteamGridDB call failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     /// A name, key or path that is not safe to use.
@@ -182,6 +184,7 @@ fn api_get(cfg: &SgdbConfig, path_query: &str) -> Result<Value, Error> {
 
 // ---- search and ranking ----
 
+/// A game SteamGridDB found for a search.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Candidate {
     pub id: u64,
@@ -268,6 +271,7 @@ fn normalize(name: &str) -> String {
     w.join(" ")
 }
 
+/// Search results sorted by how well they match.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ranked {
     pub best: Option<Candidate>,
@@ -328,6 +332,7 @@ pub fn rank(name: &str, cands: &[Candidate]) -> Ranked {
 
 // ---- art lists ----
 
+/// The kind of artwork.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtKind {
     Grid,
@@ -363,6 +368,7 @@ impl ArtKind {
     }
 }
 
+/// One image on offer for a game.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtChoice {
     pub id: u64,

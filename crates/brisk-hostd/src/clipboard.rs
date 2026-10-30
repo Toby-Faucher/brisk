@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 /// Bigger clipboards are ignored both ways.
 pub const MAX: usize = 16 << 20;
 
+/// The type of clipboard content.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     Text,
@@ -28,6 +29,7 @@ impl Kind {
     }
 }
 
+/// One clipboard value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Clip {
     pub kind: Kind,
@@ -57,6 +59,7 @@ struct Cur {
     clip: Option<Clip>,
 }
 
+/// Shares the host clipboard with clients.
 pub struct Clipboard {
     backend: Arc<dyn Backend>,
     cur: Mutex<Cur>,
@@ -92,7 +95,7 @@ impl Clipboard {
 
     fn observe(&self, c: Option<Clip>) {
         let h = c.as_ref().map(hash);
-        let mut s = self.cur.lock().unwrap();
+        let mut s = self.cur.lock().expect("lock poisoned");
         if h != s.hash {
             s.seq += 1;
             s.hash = h;
@@ -102,7 +105,7 @@ impl Clipboard {
 
     /// The current seq, plus the content if it is newer than `since` (None: only the seq).
     pub fn since(&self, since: Option<u64>) -> (u64, Option<Clip>) {
-        let s = self.cur.lock().unwrap();
+        let s = self.cur.lock().expect("lock poisoned");
         let newer = since.is_some_and(|n| n != s.seq);
         (s.seq, s.clip.clone().filter(|_| newer))
     }
@@ -112,7 +115,7 @@ impl Clipboard {
     /// On failure the previous hash and clip are restored.
     pub fn set(&self, c: Clip) -> bool {
         let prev = {
-            let mut s = self.cur.lock().unwrap();
+            let mut s = self.cur.lock().expect("lock poisoned");
             let prev = (s.hash, s.clip.clone());
             s.hash = Some(hash(&c));
             s.clip = Some(c.clone());
@@ -120,7 +123,7 @@ impl Clipboard {
         };
         let ok = self.backend.write(&c);
         if !ok {
-            let mut s = self.cur.lock().unwrap();
+            let mut s = self.cur.lock().expect("lock poisoned");
             (s.hash, s.clip) = prev;
         }
         ok
@@ -219,7 +222,7 @@ impl Backend for WlBackend {
     }
 
     fn write(&self, c: &Clip) -> bool {
-        let mut slot = self.copy.lock().unwrap();
+        let mut slot = self.copy.lock().expect("lock poisoned");
         let Ok(mut new) = cmd(
             "wl-copy",
             &["--foreground", "--type", c.kind.mime()],
@@ -256,8 +259,8 @@ impl Backend for WlBackend {
     }
 
     fn wait_change(&self) {
-        reap(&mut self.copy.lock().unwrap());
-        let mut w = self.watch.lock().unwrap();
+        reap(&mut self.copy.lock().expect("lock poisoned"));
+        let mut w = self.watch.lock().expect("lock poisoned");
         if w.is_none() {
             use std::os::unix::process::CommandExt;
             let mut c = cmd("wl-paste", &["--watch", "echo"], &wayland_env());

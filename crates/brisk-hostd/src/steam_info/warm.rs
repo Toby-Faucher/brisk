@@ -1,9 +1,12 @@
+//! Fills the Steam caches in the background so the first page view is fast.
+
 use super::achievements::HOUR_S;
 use super::news::NEWS_TTL_S;
 use super::store::WEEK_S;
 use super::{achievements, answers_fresh, info, news};
 use crate::config::Config;
 use crate::http::AppState;
+use crate::steam::Refresh;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -35,8 +38,8 @@ pub async fn warm_games(
             tokio::time::sleep(pause).await;
         }
         went = true;
-        achievements(cfg, id, false).await;
-        news(cfg, id, false).await;
+        achievements(cfg, id, Refresh::Cached).await;
+        news(cfg, id, Refresh::Cached).await;
     }
     went = false;
     for id in owned.into_iter().take(WARM_INFO_MAX) {
@@ -47,7 +50,7 @@ pub async fn warm_games(
             tokio::time::sleep(info_pause).await;
         }
         went = true;
-        info(cfg, id, false).await;
+        info(cfg, id, Refresh::Cached).await;
     }
 }
 

@@ -1,3 +1,5 @@
+//! Settings read from the environment and the files they point to.
+
 use rand_core::{OsRng, RngCore};
 use std::ffi::OsString;
 use std::net::SocketAddr;
@@ -122,9 +124,28 @@ impl Config {
     }
 }
 
-/// hostd's startup line. Under systemd (`service`) it goes to the journal, so no secret in it.
-pub fn page_line(secret: &str, service: bool) -> String {
-    if service {
+/// Where hostd's output goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RunMode {
+    /// A terminal: a link with the secret may be printed.
+    Terminal,
+    /// A systemd service: output goes to the journal.
+    Service,
+}
+
+impl From<bool> for RunMode {
+    fn from(service: bool) -> Self {
+        if service {
+            Self::Service
+        } else {
+            Self::Terminal
+        }
+    }
+}
+
+/// hostd's startup line. Under systemd (`RunMode::Service`) it goes to the journal, so no secret in it.
+pub fn page_line(secret: &str, mode: RunMode) -> String {
+    if mode == RunMode::Service {
         "page\thttp://localhost:8443/ (link: scripts/brisk-service.sh link)".into()
     } else {
         format!("page\thttp://localhost:8443/?s={secret}")

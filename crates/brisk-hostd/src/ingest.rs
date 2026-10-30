@@ -53,11 +53,13 @@ fn emulator_for(s: System) -> Option<&'static registry::Emulator> {
         .find(|e| e.systems.iter().any(|x| x.id == folder(s)))
 }
 
+/// One game file the scan recognized.
 pub struct Found {
     pub path: PathBuf,
     pub id: Identity,
 }
 
+/// What a walk of the games folder saw, before anything is registered.
 #[derive(Default)]
 pub struct Scan {
     pub found: Vec<Found>,
@@ -178,6 +180,7 @@ pub fn record(path: &Path, i: &Identity, source: &str) -> Option<Record> {
     })
 }
 
+/// How a scan changed the library.
 #[derive(Default, Debug)]
 pub struct Merged {
     pub added: Vec<GameId>,
@@ -366,22 +369,22 @@ fn found_id(f: &Found, source: &str) -> Option<String> {
     record(&f.path, &f.id, source).map(|r| r.id.to_string())
 }
 
-/// `merge` with the removed list (call under `update`). `respect`: a scan skips removed games
-/// and counts them; an explicit add (`respect` false) clears the entry instead. Whatever gets
+/// `merge` with the removed list (call under `update`). `RemovedGames::Skip`: a scan skips removed games
+/// and counts them; an explicit add (`Restore`) clears the entry instead. Whatever gets
 /// registered is cleared from the list.
 pub fn register(
     data_dir: &Path,
     recs: &mut Vec<Record>,
     found: Vec<Found>,
     source: &str,
-    respect: bool,
+    removed: RemovedGames,
 ) -> Merged {
     register_with(
         data_dir,
         recs,
         found,
         source,
-        respect,
+        removed,
         &mut Canon::new(&real_canon),
     )
 }
@@ -391,7 +394,7 @@ fn register_with(
     recs: &mut Vec<Record>,
     found: Vec<Found>,
     source: &str,
-    respect: bool,
+    removed: RemovedGames,
     c: &mut Canon,
 ) -> Merged {
     let mut tombs = tombs_load(data_dir);
@@ -401,7 +404,7 @@ fn register_with(
     }
     let (skip, keep): (Vec<_>, Vec<_>) = found
         .into_iter()
-        .partition(|f| respect && gone.hits(&f.path, found_id(f, source), c));
+        .partition(|f| removed == RemovedGames::Skip && gone.hits(&f.path, found_id(f, source), c));
     let mut m = merge_with(recs, &keep, source, c);
     m.removed = skip.len();
     let n = tombs.len();
@@ -524,31 +527,52 @@ pub fn forget(data_dir: &Path, id: &GameId) -> Result<bool, String> {
     })
 }
 
+/// The result of one scan: what the walk found and what was merged.
 pub struct ScanReport {
     pub scan: Scan,
     pub merged: Merged,
 }
 
-/// Scans `cfg.games_dir` and registers what is new. The walk runs outside the lock.
-pub fn scan_library(cfg: &Config) -> Result<ScanReport, String> {
-    scan_library_with(cfg, false)
+/// What a scan does with games the owner removed from the library.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemovedGames {
+    /// Leave them out.
+    Skip,
+    /// Bring them back.
+    Restore,
 }
 
-/// `include_removed` ignores the removed list, so those games come back.
-pub(crate) fn scan_library_with(cfg: &Config, include_removed: bool) -> Result<ScanReport, String> {
+impl From<bool> for RemovedGames {
+    fn from(include_removed: bool) -> Self {
+        if include_removed {
+            Self::Restore
+        } else {
+            Self::Skip
+        }
+    }
+}
+
+/// Scans `cfg.games_dir` and registers what is new. The walk runs outside the lock.
+pub fn scan_library(cfg: &Config) -> Result<ScanReport, String> {
+    scan_library_with(cfg, RemovedGames::Skip)
+}
+
+/// `RemovedGames::Restore` ignores the removed list, so those games come back.
+pub(crate) fn scan_library_with(cfg: &Config, removed: RemovedGames) -> Result<ScanReport, String> {
     // Without the removed list a scan would bring removed games back: refuse instead.
-    if !include_removed {
+    if removed == RemovedGames::Skip {
         tombs_read(&cfg.data_dir)?;
     }
     let mut scan = scan(&cfg.games_dir);
     let found = std::mem::take(&mut scan.found);
     let merged = update(&cfg.data_dir, |recs| {
-        let m = register(&cfg.data_dir, recs, found, "scan", !include_removed);
+        let m = register(&cfg.data_dir, recs, found, "scan", removed);
         (!m.added.is_empty() || m.aliased > 0, m)
     })?;
     Ok(ScanReport { scan, merged })
 }
 
+/// How an imported file reaches the games folder.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Mode {
     Move,
@@ -668,7 +692,7 @@ pub fn add_cmd(cfg: &Config, args: &[String]) -> (i32, String) {
     };
     let f = vec![Found { path, id }];
     match update(&cfg.data_dir, |recs| {
-        let m = register(&cfg.data_dir, recs, f, "add", false);
+        let m = register(&cfg.data_dir, recs, f, "add", RemovedGames::Restore);
         (!m.added.is_empty() || m.aliased > 0, m)
     }) {
         Ok(m) if !m.added.is_empty() => (0, format!("added {}", m.added[0])),

@@ -8,7 +8,7 @@ mod store;
 mod warm;
 
 use crate::config::Config;
-use crate::steam::now;
+use crate::steam::{Refresh, now};
 pub use achievements::{Ach, Achievements, ach_counts, achievements};
 pub use friends::{Friend, Friends, FriendsEntry, friends_cached};
 pub use local::{Local, SaveInfo, ShotCache, local, screenshot};
@@ -30,7 +30,7 @@ pub(crate) async fn cached<T: Serialize + DeserializeOwned + Clone>(
     cfg: &Config,
     name: &str,
     ttl_s: u64,
-    refresh: bool,
+    refresh: Refresh,
     fetch: impl Future<Output = Result<T, String>>,
 ) -> Option<T> {
     assert!(
@@ -47,7 +47,7 @@ pub(crate) async fn cached<T: Serialize + DeserializeOwned + Clone>(
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok());
     if let Some(e) = &old
-        && !refresh
+        && refresh == Refresh::Cached
         && now().saturating_sub(e.fetched) < ttl_s
     {
         return Some(e.value.clone());
@@ -94,7 +94,7 @@ async fn cached_with_misses<T: Serialize + DeserializeOwned + Clone + Default>(
     cfg: &Config,
     name: &str,
     ok_ttl_s: u64,
-    refresh: bool,
+    refresh: Refresh,
     fetch: impl Future<Output = Result<T, String>>,
 ) -> T {
     let inner = async {
@@ -136,7 +136,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let c = cfg(d.path());
         seed(&c, "a", 10, 1);
-        let r = cached(&c, "a", 100, false, async { panic!("fetched") }).await;
+        let r = cached(&c, "a", 100, Refresh::Cached, async { panic!("fetched") }).await;
         assert_eq!(r, Some(1));
     }
 
@@ -146,20 +146,20 @@ mod tests {
         let c = cfg(d.path());
         seed(&c, "a", 200, 1);
         assert_eq!(
-            cached(&c, "a", 100, false, async { Ok(2u32) }).await,
+            cached(&c, "a", 100, Refresh::Cached, async { Ok(2u32) }).await,
             Some(2)
         );
         // Now fresh with 2; refresh still refetches.
         assert_eq!(
-            cached(&c, "a", 100, false, async { Ok(9u32) }).await,
+            cached(&c, "a", 100, Refresh::Cached, async { Ok(9u32) }).await,
             Some(2)
         );
         assert_eq!(
-            cached(&c, "a", 100, true, async { Ok(3u32) }).await,
+            cached(&c, "a", 100, Refresh::Force, async { Ok(3u32) }).await,
             Some(3)
         );
         assert_eq!(
-            cached(&c, "a", 100, false, async { Ok(9u32) }).await,
+            cached(&c, "a", 100, Refresh::Cached, async { Ok(9u32) }).await,
             Some(3)
         );
     }
@@ -169,7 +169,10 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let c = cfg(d.path());
         seed(&c, "a", 200, 1);
-        let r = cached(&c, "a", 100, false, async { Err::<u32, _>("down".into()) }).await;
+        let r = cached(&c, "a", 100, Refresh::Cached, async {
+            Err::<u32, _>("down".into())
+        })
+        .await;
         assert_eq!(r, Some(1));
     }
 
@@ -177,7 +180,10 @@ mod tests {
     async fn cached_none_on_error_without_stale() {
         let d = tempfile::tempdir().unwrap();
         let c = cfg(d.path());
-        let r = cached(&c, "a", 100, false, async { Err::<u32, _>("down".into()) }).await;
+        let r = cached(&c, "a", 100, Refresh::Cached, async {
+            Err::<u32, _>("down".into())
+        })
+        .await;
         assert_eq!(r, None);
     }
 
@@ -185,6 +191,9 @@ mod tests {
     #[should_panic(expected = "bad cache name")]
     async fn cached_rejects_bad_name() {
         let d = tempfile::tempdir().unwrap();
-        cached(&cfg(d.path()), "../x", 1, false, async { Ok(1u32) }).await;
+        cached(&cfg(d.path()), "../x", 1, Refresh::Cached, async {
+            Ok(1u32)
+        })
+        .await;
     }
 }

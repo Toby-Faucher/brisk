@@ -96,10 +96,12 @@ impl Mem {
         self.0.get(Path::new(rel))?.0.clone()
     }
 
+    /// The number of embedded files.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// True when nothing is embedded.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -119,6 +121,7 @@ impl Mem {
     }
 }
 
+/// Size and time of an embedded file or folder.
 #[derive(Clone)]
 pub struct Meta {
     dir: bool,
@@ -138,6 +141,7 @@ impl Metadata for Meta {
     }
 }
 
+/// An embedded file served from memory.
 pub struct MemFile(io::Cursor<Bytes>, Meta);
 
 impl AsyncRead for MemFile {

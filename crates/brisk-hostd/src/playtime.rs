@@ -24,6 +24,7 @@ struct Entry {
     sessions: Vec<(u64, u64)>,
 }
 
+/// Playtime per game, saved to one file.
 #[derive(Default, Debug, PartialEq)]
 pub struct Store {
     games: BTreeMap<String, Entry>,

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Power settings for one machine.
 #[derive(Clone, Debug, Deserialize)]
 pub struct PowerCfg {
     pub proxmox: ProxmoxCfg,
@@ -17,6 +18,7 @@ pub struct PowerCfg {
     pub temp_url: Option<String>,
 }
 
+/// How to reach the Proxmox VM that backs a machine.
 #[derive(Clone, Debug, Deserialize)]
 pub struct ProxmoxCfg {
     /// `https://host:8006`
@@ -32,6 +34,7 @@ pub struct ProxmoxCfg {
     pub ca_file: Option<PathBuf>,
 }
 
+/// Whether the VM is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VmState {
     Running,
@@ -88,6 +91,12 @@ pub(crate) fn check(c: &ProxmoxCfg) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Method {
+    Get,
+    Post,
+}
+
 struct Proxmox {
     cfg: ProxmoxCfg,
 }
@@ -122,7 +131,7 @@ impl Power for Proxmox {
         if self.status()? == VmState::Running {
             return Ok(());
         }
-        self.call(true, "status/start").map(drop)
+        self.call(Method::Post, "status/start").map(drop)
     }
 
     /// Already stopped counts as shut down (status is checked first).
@@ -130,14 +139,14 @@ impl Power for Proxmox {
         if self.status()? == VmState::Stopped {
             return Ok(());
         }
-        self.call(true, "status/shutdown").map(drop)
+        self.call(Method::Post, "status/shutdown").map(drop)
     }
 }
 
 impl Proxmox {
     /// The `data` object of `status/current`.
     fn current(&self) -> Result<serde_json::Value, String> {
-        let body = self.call(false, "status/current")?;
+        let body = self.call(Method::Get, "status/current")?;
         let mut v: serde_json::Value =
             serde_json::from_slice(&body).map_err(|_| "response is not JSON")?;
         Ok(v["data"].take())
@@ -156,7 +165,7 @@ impl Proxmox {
 
     /// One request (GET, or POST with an empty body). The secret is read here and only goes into
     /// the Authorization header; errors carry only the kind of failure.
-    fn call(&self, post: bool, suffix: &str) -> Result<Vec<u8>, String> {
+    fn call(&self, method: Method, suffix: &str) -> Result<Vec<u8>, String> {
         use ureq::tls::{Certificate, RootCerts, parse_pem};
         let url = self.url(suffix)?;
         let secret = std::fs::read_to_string(&self.cfg.token_file).map_err(|_| "no token file")?;
@@ -189,7 +198,7 @@ impl Proxmox {
             true,
         );
         let auth = format!("PVEAPIToken={}={secret}", self.cfg.token_id);
-        let res = if post {
+        let res = if method == Method::Post {
             agent.post(&url).header("Authorization", &auth).send_empty()
         } else {
             agent.get(&url).header("Authorization", &auth).call()

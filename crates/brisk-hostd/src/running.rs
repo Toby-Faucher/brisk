@@ -63,6 +63,7 @@ fn same_process(proc: &Path, seen: &Proc) -> bool {
         .is_some_and(|now| now.start.is_some() && now.start == seen.start && now.argv == seen.argv)
 }
 
+/// A signal sent to quit a game.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Sig {
     Term,
@@ -345,6 +346,7 @@ pub(crate) async fn focus_class(
     .await;
 }
 
+/// The result of a quit request.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Quit {
@@ -352,6 +354,7 @@ pub enum Quit {
     StillRunning,
 }
 
+/// Why a game could not be asked to quit.
 #[derive(Debug, PartialEq)]
 pub enum QuitError {
     NotRunning,
@@ -359,6 +362,21 @@ pub enum QuitError {
     Busy,
     /// hostd runs as root, where a wrong pid would hurt far more: quit is off.
     Root,
+}
+
+/// How hard to try to quit a game.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuitMode {
+    /// Close the windows first, then SIGTERM.
+    Polite,
+    /// SIGTERM, then SIGKILL.
+    Force,
+}
+
+impl From<bool> for QuitMode {
+    fn from(force: bool) -> Self {
+        if force { Self::Force } else { Self::Polite }
+    }
 }
 
 /// Quits running games: sway's polite close on the game's windows, then SIGTERM, then (forced
@@ -487,9 +505,10 @@ impl Quitter {
         .await;
     }
 
-    /// Closes `appid` politely, escalates to SIGTERM, and with `force` to SIGKILL. A forced quit
+    /// Closes `appid` politely, escalates to SIGTERM, and with `QuitMode::Force` to SIGKILL. A forced quit
     /// skips the polite close: SIGTERM, 3 s, SIGKILL.
-    pub async fn quit(&self, id: &GameId, force: bool) -> Result<Quit, QuitError> {
+    pub async fn quit(&self, id: &GameId, how: QuitMode) -> Result<Quit, QuitError> {
+        let force = how == QuitMode::Force;
         if self.as_root {
             return Err(QuitError::Root);
         }

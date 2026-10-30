@@ -1,7 +1,7 @@
 //! Store page facts (`Info`) and the Store HTML-to-text helpers.
 use super::{Entry, cached_with_misses};
 use crate::config::Config;
-use crate::steam::store_get;
+use crate::steam::{Refresh, store_get};
 use serde::{Deserialize, Serialize};
 
 /// Store page facts for the detail panel. `available: false` when the Store has nothing (or is down).
@@ -46,7 +46,7 @@ pub fn cached_controls(cfg: &Config, appid: u32) -> Option<(Option<String>, bool
 }
 
 /// Store details of `appid`, cached for a week.
-pub async fn info(cfg: &Config, appid: u32, refresh: bool) -> Info {
+pub async fn info(cfg: &Config, appid: u32, refresh: Refresh) -> Info {
     cached_with_misses(
         cfg,
         &format!("info-{appid}"),

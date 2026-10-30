@@ -3,6 +3,7 @@
 
 use tracing::{Level, Metadata};
 
+/// A `tracing` subscriber that writes lines to stderr at one level.
 pub struct StderrLog(Level);
 
 impl StderrLog {

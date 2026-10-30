@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+/// The most entries a client may store in one list.
 pub const MAX_ENTRIES: usize = 500;
 /// Home cards are a handful; the caps only bound what a client can make hostd store.
 const HOME_MAX: usize = 32;
@@ -155,22 +156,22 @@ impl Prefs {
 
     /// Every game's saved quality.
     pub fn all(&self) -> BTreeMap<String, Entry> {
-        self.inner.lock().unwrap().map.clone()
+        self.inner.lock().expect("lock poisoned").map.clone()
     }
 
     /// The saved Home card order.
     pub(crate) fn home_order(&self) -> Vec<String> {
-        self.inner.lock().unwrap().home.clone()
+        self.inner.lock().expect("lock poisoned").home.clone()
     }
 
     /// The saved Machines page order.
     pub(crate) fn machines_order(&self) -> Vec<String> {
-        self.inner.lock().unwrap().machines.clone()
+        self.inner.lock().expect("lock poisoned").machines.clone()
     }
 
     /// The saved machine colours.
     pub(crate) fn machine_colors(&self) -> BTreeMap<String, String> {
-        self.inner.lock().unwrap().colors.clone()
+        self.inner.lock().expect("lock poisoned").colors.clone()
     }
 
     /// Cleans, stores and writes the lists that are `Some` (the other keeps its value); an empty
@@ -183,7 +184,7 @@ impl Prefs {
         machines: Option<Vec<String>>,
         colors: Option<BTreeMap<String, Option<String>>>,
     ) -> Result<Layout, &'static str> {
-        let mut m = self.inner.lock().unwrap();
+        let mut m = self.inner.lock().expect("lock poisoned");
         let mut merged = m.colors.clone();
         for (id, c) in colors.unwrap_or_default() {
             if !valid_id(&id) {
@@ -212,7 +213,7 @@ impl Prefs {
 
     /// Stores `e` with its `updated` as given and writes the file.
     pub fn put_entry(&self, id: &str, e: Entry) {
-        let mut m = self.inner.lock().unwrap();
+        let mut m = self.inner.lock().expect("lock poisoned");
         m.map.insert(id.into(), e);
         evict(&mut m.map);
         self.save(&m);
@@ -220,7 +221,7 @@ impl Prefs {
 
     /// Like `put_entry` with `updated` = now, but always newer than every entry already there.
     pub fn put(&self, id: &str, mut e: Entry) -> Entry {
-        let mut m = self.inner.lock().unwrap();
+        let mut m = self.inner.lock().expect("lock poisoned");
         let newest = m.map.values().map(|e| e.updated).max().unwrap_or(0);
         e.updated = now_ms().max(newest + 1);
         m.map.insert(id.into(), e.clone());
@@ -232,7 +233,7 @@ impl Prefs {
     /// Moves entries from old game keys to new ones (`{old: new}`), keeping the file's `.pre-ids`
     /// copy first. A new key that is already there wins and the old entry stays. Returns how many moved.
     pub fn rekey(&self, map: &BTreeMap<String, String>) -> usize {
-        let mut m = self.inner.lock().unwrap();
+        let mut m = self.inner.lock().expect("lock poisoned");
         if !map.keys().any(|k| m.map.contains_key(k)) {
             return 0;
         }
@@ -255,7 +256,7 @@ impl Prefs {
 
     /// Forgets the game's saved quality.
     pub fn delete(&self, id: &str) {
-        let mut m = self.inner.lock().unwrap();
+        let mut m = self.inner.lock().expect("lock poisoned");
         if m.map.remove(id).is_some() {
             self.save(&m);
         }

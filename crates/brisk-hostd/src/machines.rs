@@ -24,6 +24,7 @@ const STOPPING_FOR: Duration = Duration::from_secs(120);
 /// Proxmox takes a few seconds to report a started VM as running; until then the machine is `starting`, not `off`.
 const STARTING_FOR: Duration = Duration::from_secs(120);
 
+/// One machine a hub manages, as written in the machines file.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MachineCfg {
@@ -139,6 +140,7 @@ pub fn parse(text: &str) -> Result<Vec<MachineCfg>, String> {
     Ok(f.machines)
 }
 
+/// A configured machine and, if it has one, its power control.
 pub struct Entry {
     pub cfg: MachineCfg,
     power: Option<Arc<dyn Power>>,
@@ -156,12 +158,29 @@ pub struct Hub {
     status_failing: Mutex<HashSet<String>>,
 }
 
+/// Whether the machines file path was chosen by the user.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MachinesFile {
+    /// The built-in default path. A missing file is fine.
+    Default,
+    /// A path the user named. A missing file is an error.
+    Named,
+}
+
+impl From<bool> for MachinesFile {
+    fn from(explicit: bool) -> Self {
+        if explicit { Self::Named } else { Self::Default }
+    }
+}
+
 /// `Ok(None)`: no file at the default path (single-host mode). A file that is there but bad, or
 /// an explicitly named one that is missing, is an error: never a silent fallback.
-pub fn load(path: &Path, explicit: bool) -> Result<Option<Hub>, String> {
+pub fn load(path: &Path, file: MachinesFile) -> Result<Option<Hub>, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && file == MachinesFile::Default => {
+            return Ok(None);
+        }
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
     let cfgs = parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -192,7 +211,7 @@ impl Hub {
     }
 
     fn invalidate(&self, id: &str) {
-        self.cache.lock().unwrap().remove(id);
+        self.cache.lock().expect("lock poisoned").remove(id);
     }
 
     fn is_stopping(&self, id: &str) -> bool {
@@ -204,25 +223,25 @@ impl Hub {
     }
 
     fn mark_starting(&self, id: &str) {
-        self.stopping.lock().unwrap().remove(id);
+        self.stopping.lock().expect("lock poisoned").remove(id);
         self.starting
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .insert(id.to_string(), Instant::now());
     }
 
     fn mark_stopping(&self, id: &str) {
-        self.starting.lock().unwrap().remove(id);
+        self.starting.lock().expect("lock poisoned").remove(id);
         self.stopping
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .insert(id.to_string(), Instant::now());
     }
 
     fn recent(marks: &Mutex<HashMap<String, Instant>>, id: &str, within: Duration) -> bool {
         marks
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .get(id)
             .is_some_and(|t| t.elapsed() < within)
     }
@@ -272,16 +291,27 @@ impl Hub {
                 (None, _) => Self::view(e, "unreachable", None),
             },
             Some(p) => match p.status().inspect(|_| {
-                self.status_failing.lock().unwrap().remove(&e.cfg.id);
+                self.status_failing
+                    .lock()
+                    .expect("lock poisoned")
+                    .remove(&e.cfg.id);
             }) {
                 Err(err) => {
-                    if self.status_failing.lock().unwrap().insert(e.cfg.id.clone()) {
+                    if self
+                        .status_failing
+                        .lock()
+                        .expect("lock poisoned")
+                        .insert(e.cfg.id.clone())
+                    {
                         tracing::warn!("machine {}: power status failed: {err}", e.cfg.id);
                     }
                     Self::view(e, "unreachable", None)
                 }
                 Ok(VmState::Stopped) => {
-                    self.stopping.lock().unwrap().remove(&e.cfg.id);
+                    self.stopping
+                        .lock()
+                        .expect("lock poisoned")
+                        .remove(&e.cfg.id);
                     if self.is_starting(&e.cfg.id) {
                         Self::view(e, "starting", None)
                     } else {
@@ -294,7 +324,10 @@ impl Hub {
                     let state = if self.is_stopping(&e.cfg.id) {
                         "stopping"
                     } else if ready {
-                        self.starting.lock().unwrap().remove(&e.cfg.id);
+                        self.starting
+                            .lock()
+                            .expect("lock poisoned")
+                            .remove(&e.cfg.id);
                         "ready"
                     } else {
                         "starting"
@@ -306,7 +339,7 @@ impl Hub {
     }
 
     fn cached(&self, e: &Entry) -> Value {
-        if let Some((t, v)) = self.cache.lock().unwrap().get(&e.cfg.id)
+        if let Some((t, v)) = self.cache.lock().expect("lock poisoned").get(&e.cfg.id)
             && t.elapsed() < PROBE_TTL
         {
             return v.clone();
@@ -314,7 +347,7 @@ impl Hub {
         let v = self.probe(e);
         self.cache
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .insert(e.cfg.id.clone(), (Instant::now(), v.clone()));
         v
     }
@@ -1126,10 +1159,10 @@ mod tests {
     fn load_missing_and_bad_files() {
         let d = tempfile::tempdir().unwrap();
         let f = d.path().join("m.json");
-        assert!(load(&f, false).unwrap().is_none());
-        assert!(load(&f, true).is_err());
+        assert!(load(&f, MachinesFile::Default).unwrap().is_none());
+        assert!(load(&f, MachinesFile::Named).is_err());
         std::fs::write(&f, "{").unwrap();
-        let e = load(&f, false).err().unwrap();
+        let e = load(&f, MachinesFile::Default).err().unwrap();
         assert!(e.contains("m.json") && e.contains("not valid"), "{e}");
     }
 
