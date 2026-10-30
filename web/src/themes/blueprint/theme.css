@@ -1,1 +1,1159 @@
 /* UI style blueprint: every rule starts with :root[data-ui='blueprint']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/share-tech-mono/latin-400.css';
+@import '@fontsource/architects-daughter/latin-400.css';
+
+/* registered so linework can draw itself and numbers can tick (animated by keyframes below) */
+@property --bp-p {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+@property --bp-n {
+  syntax: '<integer>';
+  inherits: false;
+  initial-value: 0;
+}
+
+:root[data-ui='blueprint'] {
+  --paper: #0d3a8f;
+  --paper-deep: #082a72;
+  --ink: #f2f8ff;
+  --ink-2: #cfe3ff;
+  --bg: var(--paper);
+  --panel: #0a3184;
+  --panel2: #123f9b;
+  --line: #5a84cf;
+  --line-hover: #cfe3ff;
+  --fg: #f2f8ff;
+  --muted: #bcd5f5;
+  --dim: #a5c4ee;
+  --ok: #86f7b6;
+  --warn: #ffd877;
+  --bad: #ff9d94;
+  --pencil: #ff9d94;
+  --c-lib: #ffd877;
+  --c-stream: #9cc8ff;
+  --c-host: #8fe3ff;
+  --c-set: #cfe3ff;
+  --c-agent: #c9b8ff;
+  --c-news: #ff9d94;
+  --c-power: #86f7b6;
+  --c-hist: #ffb98a;
+  --font: 'Share Tech Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --mono: 'Share Tech Mono', ui-monospace, monospace;
+  --hand: 'Architects Daughter', 'Comic Sans MS', cursive;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --tick: rgba(242, 248, 255, 0.9);
+  --draw: rgba(242, 248, 255, 0.5);
+  --ease-draw: cubic-bezier(0.6, 0, 0.2, 1);
+  color-scheme: dark;
+}
+/* accent: the user's accent colours the primary buttons, the current-page mark, bars and focus; the rest is one blue */
+
+/* ---------- paper: minor and major grid, light pooled top left ---------- */
+:root[data-ui='blueprint'] {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 28% 0%, rgba(110, 170, 255, 0.32), transparent 70%),
+    linear-gradient(rgba(190, 220, 255, 0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(190, 220, 255, 0.2) 1px, transparent 1px),
+    linear-gradient(rgba(190, 220, 255, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(190, 220, 255, 0.08) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    120px 120px,
+    120px 120px,
+    24px 24px,
+    24px 24px;
+  background-attachment: fixed;
+}
+:root[data-ui='blueprint'] body {
+  background: transparent;
+  font-size: 14.5px;
+  letter-spacing: 0.015em;
+}
+:root[data-ui='blueprint'] ::selection {
+  background: var(--ink);
+  color: var(--paper-deep);
+}
+:root[data-ui='blueprint'] :focus-visible {
+  outline: 2px dashed var(--ink);
+  outline-offset: 3px;
+}
+:root[data-ui='blueprint'] h1,
+:root[data-ui='blueprint'] h2,
+:root[data-ui='blueprint'] h3,
+:root[data-ui='blueprint'] h4 {
+  font-family: var(--mono);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] h2 {
+  font-size: 21px;
+  letter-spacing: 0.22em;
+}
+:root[data-ui='blueprint'] .lab,
+:root[data-ui='blueprint'] .muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+:root[data-ui='blueprint'] code,
+:root[data-ui='blueprint'] kbd {
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  padding: 0 5px;
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] *::-webkit-scrollbar-thumb {
+  background: rgba(207, 227, 255, 0.45);
+  border-radius: 0;
+  border-width: 4px 3px;
+}
+:root[data-ui='blueprint'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--ink);
+  background-clip: padding-box;
+}
+
+/* ---------- sheet index (sidebar) ---------- */
+:root[data-ui='blueprint'] .side {
+  width: 244px;
+  padding: 34px 14px 24px 28px;
+  gap: 4px;
+  background: rgba(6, 36, 100, 0.55);
+  backdrop-filter: none;
+  border-right: 3px double rgba(207, 227, 255, 0.55);
+  counter-reset: sheet;
+  z-index: 5;
+}
+:root[data-ui='blueprint'] .brand {
+  flex-wrap: wrap;
+  padding: 6px 6px 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--ink-2);
+  position: relative;
+}
+:root[data-ui='blueprint'] .brand::before,
+:root[data-ui='blueprint'] .brand::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--ink);
+}
+:root[data-ui='blueprint'] .brand::before {
+  left: -4px;
+  top: -4px;
+}
+:root[data-ui='blueprint'] .brand::after {
+  right: -4px;
+  bottom: -4px;
+}
+:root[data-ui='blueprint'] .brand img {
+  filter: grayscale(1) contrast(1.5) brightness(1.8);
+  mix-blend-mode: screen;
+  width: 96px;
+  height: 46px;
+}
+:root[data-ui='blueprint'] .side .nav {
+  position: relative;
+  border-radius: 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 13px;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+:root[data-ui='blueprint'] .side a.nav {
+  counter-increment: sheet;
+}
+:root[data-ui='blueprint'] .side a.nav::after {
+  content: counter(sheet, decimal-leading-zero);
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--dim);
+}
+:root[data-ui='blueprint'] .side a.nav:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px dashed var(--ink-2);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .side a.nav:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+:root[data-ui='blueprint'] .side .nav[aria-current='page'] {
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .side .nav[aria-current='page']::before {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 0 1px var(--ink),
+    inset 4px 0 0 var(--accent);
+}
+:root[data-ui='blueprint'] .side .nav[aria-current='page']::after {
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .side .nav.soon {
+  opacity: 1;
+  color: var(--dim);
+  border: 1px dashed rgba(165, 196, 238, 0.55);
+  font-size: 12px;
+  padding: 5px 9px;
+}
+:root[data-ui='blueprint'] .side .nav.soon .tag {
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid var(--dim);
+  color: var(--dim);
+  font-size: 10px;
+  padding: 0 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  rotate: -4deg;
+}
+:root[data-ui='blueprint'] .side .sec {
+  color: var(--dim);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  padding: 18px 2px 4px;
+  border-top: 1px dashed rgba(165, 196, 238, 0.5);
+  margin-top: 10px;
+}
+:root[data-ui='blueprint'] .side .sec::after {
+  content: ' / not yet drawn';
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+:root[data-ui='blueprint'] .side .pill {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ink-2);
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+}
+:root[data-ui='blueprint'] .side .pill:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .side .pill .st {
+  color: var(--muted);
+}
+:root[data-ui='blueprint'] .side .it {
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] .side .it:hover,
+:root[data-ui='blueprint'] .side .it:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* ---------- page ---------- */
+:root[data-ui='blueprint'] main {
+  counter-reset: fig plate;
+  padding: 36px 44px 110px 36px;
+}
+:root[data-ui='blueprint'] main > .off {
+  border: 1px dashed var(--pencil);
+  border-radius: 0;
+  background: rgba(255, 157, 148, 0.1);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .denied {
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper-deep);
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='blueprint'] .btn {
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--mono);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12.5px;
+  padding: 7px 14px;
+  box-shadow: 3px 3px 0 rgba(3, 18, 60, 0.55);
+  transition:
+    translate 0.12s,
+    box-shadow 0.12s,
+    background 0.15s;
+}
+:root[data-ui='blueprint'] .btn:hover {
+  filter: none;
+  transform: none;
+  translate: -1px -1px;
+  box-shadow: 4px 4px 0 rgba(3, 18, 60, 0.55);
+}
+:root[data-ui='blueprint'] .btn:active {
+  transform: none;
+  translate: 2px 2px;
+  box-shadow: 0 0 0 rgba(3, 18, 60, 0.55);
+}
+:root[data-ui='blueprint'] .btn.ghost {
+  background: rgba(6, 36, 100, 0.45);
+  color: var(--ink);
+  box-shadow: none;
+  border: 1px solid var(--ink-2);
+}
+:root[data-ui='blueprint'] .btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.16);
+  translate: 0 0;
+  border-style: dashed;
+}
+:root[data-ui='blueprint'] .btn.ghost:active {
+  translate: 1px 1px;
+  background: rgba(255, 255, 255, 0.26);
+}
+:root[data-ui='blueprint'] .btn:disabled,
+:root[data-ui='blueprint'] .btn[aria-disabled='true'] {
+  opacity: 0.55;
+  border-style: dashed;
+  box-shadow: none;
+  translate: 0 0;
+}
+:root[data-ui='blueprint'] .search {
+  border-radius: 0;
+  border: 1px solid var(--ink-2);
+  border-width: 0 0 1px;
+  background: rgba(6, 36, 100, 0.4);
+  color: var(--muted);
+}
+:root[data-ui='blueprint'] .search input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+:root[data-ui='blueprint'] .search:focus-within {
+  border-color: var(--ink);
+  outline: 2px dashed var(--ink);
+  outline-offset: 3px;
+}
+:root[data-ui='blueprint'] .search input::placeholder,
+:root[data-ui='blueprint'] input::placeholder,
+:root[data-ui='blueprint'] textarea::placeholder {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+:root[data-ui='blueprint'] input[type='text'],
+:root[data-ui='blueprint'] input[type='number'],
+:root[data-ui='blueprint'] input[type='search'],
+:root[data-ui='blueprint'] input:not([type]),
+:root[data-ui='blueprint'] select,
+:root[data-ui='blueprint'] textarea {
+  font-family: var(--mono);
+  background: rgba(4, 24, 76, 0.55);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] input::file-selector-button {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--ink-2);
+  border-radius: 0;
+  background: rgba(6, 36, 100, 0.6);
+  color: var(--ink);
+  padding: 5px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+:root[data-ui='blueprint'] input[type='checkbox'],
+:root[data-ui='blueprint'] input[type='radio'] {
+  accent-color: var(--accent);
+}
+:root[data-ui='blueprint'] .fchip,
+:root[data-ui='blueprint'] .chip,
+:root[data-ui='blueprint'] .tchip,
+:root[data-ui='blueprint'] .vchip {
+  border-radius: 0;
+  font-family: var(--mono);
+}
+:root[data-ui='blueprint'] .fchip {
+  border: 1px solid var(--line);
+  background: rgba(6, 36, 100, 0.4);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+:root[data-ui='blueprint'] .fchip:hover {
+  border-color: var(--ink);
+  border-style: dashed;
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .fchip[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper-deep);
+  box-shadow: 3px 3px 0 rgba(3, 18, 60, 0.5);
+}
+:root[data-ui='blueprint'] .fchip[aria-pressed='true'] .cnt {
+  color: var(--paper-deep);
+}
+:root[data-ui='blueprint'] .tag {
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='blueprint'] .dot {
+  border-radius: 0;
+  rotate: 45deg;
+  width: 8px;
+  height: 8px;
+}
+:root[data-ui='blueprint'] .glass {
+  background: var(--paper-deep);
+  backdrop-filter: none;
+  border: 1px solid var(--ink-2);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 rgba(2, 12, 44, 0.6);
+}
+:root[data-ui='blueprint'] .dd-menu {
+  background: var(--paper-deep);
+  border: 1px solid var(--ink-2);
+  border-radius: 0;
+  box-shadow: 5px 5px 0 rgba(2, 12, 44, 0.6);
+}
+:root[data-ui='blueprint'] .dd {
+  border-radius: 0;
+  background: rgba(6, 36, 100, 0.5);
+  border: 1px solid var(--ink-2);
+  color: var(--ink);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+:root[data-ui='blueprint'] .dd:hover,
+:root[data-ui='blueprint'] .dd[data-state='open'] {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .dd-item {
+  border-radius: 0;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+}
+:root[data-ui='blueprint'] .dd-item[data-highlighted] {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .dd-menu [role='option']:hover,
+:root[data-ui='blueprint'] .dd-menu [data-highlighted] {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ---------- cards as technical drawings ---------- */
+:root[data-ui='blueprint'] div.card[role='group'],
+:root[data-ui='blueprint'] .chart,
+:root[data-ui='blueprint'] .hero {
+  --bp-p: 100%;
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  background-color: rgba(5, 30, 90, 0.42);
+  background-image:
+    linear-gradient(var(--draw), var(--draw)), linear-gradient(var(--draw), var(--draw)), linear-gradient(var(--draw), var(--draw)),
+    linear-gradient(var(--draw), var(--draw));
+  background-repeat: no-repeat;
+  background-position:
+    0 0,
+    100% 0,
+    100% 100%,
+    0 100%;
+  background-size:
+    var(--bp-p) 1px,
+    1px var(--bp-p),
+    var(--bp-p) 1px,
+    1px var(--bp-p);
+  box-shadow: none;
+  transform: none;
+  padding: 24px 18px 18px;
+  overflow: hidden;
+  animation: bp-outline 0.9s var(--ease-draw) calc(var(--i, 0) * 70ms) backwards;
+  transition:
+    background-color 0.2s,
+    box-shadow 0.2s;
+}
+:root[data-ui='blueprint'] div.card[role='group']:hover,
+:root[data-ui='blueprint'] .chart:hover {
+  transform: none;
+  background-color: rgba(8, 44, 120, 0.55);
+  box-shadow: inset 0 0 0 1px var(--tick);
+}
+/* dashed construction frame, open at the top where the dimension line runs */
+:root[data-ui='blueprint'] div.card[role='group']::before,
+:root[data-ui='blueprint'] .chart::before {
+  position: absolute;
+  inset: 11px 6px 6px;
+  border: 1px dashed rgba(207, 227, 255, 0.22);
+  border-top: 0;
+  pointer-events: none;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 4px 1px;
+  font: 9px / 1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  content: 'FIG.' counter(fig);
+}
+/* width dimension: line, arrow heads, extension ticks and the real width counting up */
+:root[data-ui='blueprint'] div.card[role='group']::after,
+:root[data-ui='blueprint'] .chart::after,
+:root[data-ui='blueprint'] .hero::after {
+  --bp-n: var(--dw, 0);
+  counter-reset: bpw var(--bp-n);
+  content: counter(bpw) ' PX';
+  position: absolute;
+  left: 12px;
+  right: 40px;
+  top: 3px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-2);
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(var(--ink-2), var(--ink-2)) 0 50% / calc(50% - 4.2ch) 1px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) 100% 50% / calc(50% - 4.2ch) 1px no-repeat,
+    conic-gradient(from 60deg at 0 50%, var(--ink-2) 60deg, transparent 0) 0 50% / 8px 8px no-repeat,
+    conic-gradient(from 240deg at 100% 50%, var(--ink-2) 60deg, transparent 0) 100% 50% / 8px 8px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) 0 50% / 1px 12px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) 100% 50% / 1px 12px no-repeat;
+  animation: bp-dim 1s var(--ease-draw) calc(0.3s + var(--i, 0) * 70ms) backwards;
+}
+/* corner grips, like a CAD selection */
+:root[data-ui='blueprint'] div.card[role='group']:hover::before {
+  border-color: rgba(207, 227, 255, 0.6);
+}
+:root[data-ui='blueprint'] .grip {
+  border-radius: 0;
+  color: var(--ink-2);
+  top: 20px;
+  right: 8px;
+}
+:root[data-ui='blueprint'] .grip:hover,
+:root[data-ui='blueprint'] .grip:focus-visible,
+:root[data-ui='blueprint'] .grip[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .card h4 {
+  color: var(--ink);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  position: relative;
+  z-index: 1;
+}
+:root[data-ui='blueprint'] div.card[role='group'],
+:root[data-ui='blueprint'] .chart {
+  counter-increment: fig;
+}
+:root[data-ui='blueprint'] .card .num,
+:root[data-ui='blueprint'] .card .big {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .ring b {
+  font-weight: 400;
+}
+
+/* ---------- library ---------- */
+:root[data-ui='blueprint'] .top {
+  border-bottom: 0;
+  position: relative;
+  padding-bottom: 14px;
+}
+:root[data-ui='blueprint'] .top::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+  background:
+    repeating-linear-gradient(90deg, var(--ink-2) 0 1px, transparent 1px 12px) 0 100% / 100% 5px no-repeat,
+    repeating-linear-gradient(90deg, var(--ink-2) 0 1px, transparent 1px 60px) 0 100% / 100% 9px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) 0 100% / 100% 1px no-repeat;
+  opacity: 0.7;
+  pointer-events: none;
+  animation: bp-wipe 1.2s var(--ease-draw) 0.2s backwards;
+}
+:root[data-ui='blueprint'] .top h2::after {
+  content: 'rev C';
+  font-family: var(--hand);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--pencil);
+  font-size: 16px;
+  margin-left: 12px;
+  rotate: -6deg;
+  display: inline-block;
+}
+:root[data-ui='blueprint'] .filters {
+  position: relative;
+}
+:root[data-ui='blueprint'] .cnt {
+  color: var(--dim);
+}
+:root[data-ui='blueprint'] .hero {
+  background-color: rgba(5, 30, 90, 0.5) !important;
+  background-image:
+    linear-gradient(var(--draw), var(--draw)), linear-gradient(var(--draw), var(--draw)), linear-gradient(var(--draw), var(--draw)),
+    linear-gradient(var(--draw), var(--draw)) !important;
+  /* the hero's inline background shorthand resets these, so they need !important too */
+  background-repeat: no-repeat !important;
+  background-position:
+    0 0,
+    100% 0,
+    100% 100%,
+    0 100% !important;
+  background-size:
+    var(--bp-p) 1px,
+    1px var(--bp-p),
+    var(--bp-p) 1px,
+    1px var(--bp-p) !important;
+  min-height: 0;
+}
+:root[data-ui='blueprint'] .hero .art {
+  filter: grayscale(1) contrast(1.8) brightness(0.5);
+  mix-blend-mode: screen;
+  opacity: 0.16;
+}
+:root[data-ui='blueprint'] .hero::after {
+  left: 18px;
+  right: 18px;
+  top: 6px;
+}
+:root[data-ui='blueprint'] .hero .lab {
+  font-family: var(--hand);
+  color: var(--pencil);
+  font-size: 16px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+:root[data-ui='blueprint'] .shelf h4,
+:root[data-ui='blueprint'] .shelf .head {
+  position: relative;
+}
+:root[data-ui='blueprint'] .shelf h4::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--ink-2) 0 6px, transparent 6px 10px);
+  opacity: 0.5;
+  align-self: center;
+  margin-left: 6px;
+}
+:root[data-ui='blueprint'] .shelf .n {
+  color: var(--dim);
+}
+:root[data-ui='blueprint'] .shelf .more {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+}
+
+/* game covers: inked line art on blue paper */
+:root[data-ui='blueprint'] .wrap {
+  transition: translate 0.2s;
+}
+:root[data-ui='blueprint'] .wrap:hover,
+:root[data-ui='blueprint'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='blueprint'] .g {
+  border-radius: 0;
+  counter-increment: plate;
+}
+:root[data-ui='blueprint'] .cover {
+  background: var(--paper-deep) !important;
+  border: 1px solid var(--ink-2);
+  border-radius: 0;
+  outline: 1px dashed rgba(207, 227, 255, 0.35);
+  outline-offset: 4px;
+  transition: outline-color 0.2s;
+}
+:root[data-ui='blueprint'] .cover::before {
+  background: repeating-linear-gradient(135deg, rgba(207, 227, 255, 0.1) 0 1px, transparent 1px 6px);
+}
+:root[data-ui='blueprint'] .cover img {
+  filter: grayscale(1) contrast(2.6) brightness(0.62);
+  mix-blend-mode: screen;
+  opacity: 0.95;
+  transition: filter 0.3s;
+}
+:root[data-ui='blueprint'] .cover b {
+  font-family: var(--mono);
+  font-weight: 400;
+  text-shadow: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+}
+:root[data-ui='blueprint'] .cover .shape {
+  background: transparent;
+  border: 1px dashed rgba(207, 227, 255, 0.5);
+}
+:root[data-ui='blueprint'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--tick), var(--tick)) 6px 6px / 12px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) 6px 6px / 1px 12px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) calc(100% - 6px) calc(100% - 6px) / 12px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) calc(100% - 6px) calc(100% - 6px) / 1px 12px no-repeat;
+  background-position:
+    6px 6px,
+    6px 6px,
+    calc(100% - 6px) calc(100% - 6px),
+    calc(100% - 6px) calc(100% - 6px);
+  z-index: 1;
+}
+:root[data-ui='blueprint'] .wrap:hover .cover,
+:root[data-ui='blueprint'] .g:focus-visible .cover {
+  outline-style: solid;
+  outline-color: var(--ink);
+}
+:root[data-ui='blueprint'] .wrap:hover .cover img {
+  filter: grayscale(0.3) contrast(1.4) brightness(1);
+}
+:root[data-ui='blueprint'] .g.off .cover,
+:root[data-ui='blueprint'] .off .cover {
+  filter: none;
+  opacity: 0.7;
+}
+:root[data-ui='blueprint'] .g.off .cover {
+  outline-style: dotted;
+}
+:root[data-ui='blueprint'] .g:focus-visible {
+  outline: none;
+}
+:root[data-ui='blueprint'] .g:focus-visible .cover {
+  outline: 2px dashed var(--ink);
+  outline-offset: 4px;
+}
+:root[data-ui='blueprint'] .g .name {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  margin-top: 12px;
+}
+:root[data-ui='blueprint'] .g .name::before {
+  content: 'PL.' counter(plate, decimal-leading-zero) ' ';
+  color: var(--pencil);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='blueprint'] .g .sub {
+  color: var(--muted);
+}
+:root[data-ui='blueprint'] .g .ach {
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid var(--line);
+  height: 5px;
+}
+:root[data-ui='blueprint'] .badge {
+  border-radius: 0;
+  background: var(--paper-deep);
+  backdrop-filter: none;
+  border: 1px solid var(--ink-2);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10px;
+  padding: 2px 6px;
+}
+:root[data-ui='blueprint'] .badge i {
+  border-radius: 0;
+  rotate: 45deg;
+}
+:root[data-ui='blueprint'] .badge.run {
+  border-color: var(--accent);
+}
+:root[data-ui='blueprint'] .pchip,
+:root[data-ui='blueprint'] .tchip,
+:root[data-ui='blueprint'] .uchip {
+  border-radius: 0;
+  backdrop-filter: none;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='blueprint'] .uchip.need {
+  background: #5a3a05;
+  border-color: var(--warn);
+  color: #fff0c4;
+}
+:root[data-ui='blueprint'] .g .play {
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--paper-deep);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  box-shadow: 3px 3px 0 rgba(3, 18, 60, 0.6);
+}
+:root[data-ui='blueprint'] .glow {
+  background: repeating-linear-gradient(135deg, rgba(207, 227, 255, 0.22) 0 1px, transparent 1px 5px);
+}
+:root[data-ui='blueprint'] .wrap .quit {
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] .skel div {
+  border-radius: 0;
+  border: 1px dashed var(--line);
+  background: repeating-linear-gradient(135deg, rgba(207, 227, 255, 0.1) 0 1px, transparent 1px 8px);
+  position: relative;
+  animation: bp-hatch 1.2s linear infinite;
+}
+:root[data-ui='blueprint'] .skel div::after {
+  content: 'drafting...';
+  position: absolute;
+  inset: auto 0 10px;
+  text-align: center;
+  font-family: var(--hand);
+  color: var(--pencil);
+  font-size: 15px;
+}
+:root[data-ui='blueprint'] .empty {
+  border: 1px dashed var(--line);
+  background: rgba(5, 30, 90, 0.3);
+  padding: 30px 20px;
+  position: relative;
+}
+:root[data-ui='blueprint'] .empty b {
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 15px;
+}
+:root[data-ui='blueprint'] .empty::after {
+  content: 'nothing drawn yet';
+  position: absolute;
+  right: 18px;
+  bottom: 8px;
+  font-family: var(--hand);
+  color: var(--pencil);
+  rotate: -4deg;
+  font-size: 16px;
+}
+:root[data-ui='blueprint'] .banner {
+  border: 1px dashed var(--warn);
+  border-radius: 0;
+  background: rgba(255, 216, 119, 0.1);
+  color: var(--ink);
+}
+
+/* ---------- dialogs, command menu, toasts ---------- */
+:root[data-ui='blueprint'] .cm-dim,
+:root[data-ui='blueprint'] .ad-dim,
+:root[data-ui='blueprint'] .ag-dim,
+:root[data-ui='blueprint'] .lb-dim,
+:root[data-ui='blueprint'] .te-dim,
+:root[data-ui='blueprint'] .ap-dim {
+  background: rgba(2, 14, 50, 0.62);
+  background-image:
+    linear-gradient(rgba(190, 220, 255, 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(190, 220, 255, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+:root[data-ui='blueprint'] .cm,
+:root[data-ui='blueprint'] .rs,
+:root[data-ui='blueprint'] .mp,
+:root[data-ui='blueprint'] .ad,
+:root[data-ui='blueprint'] .ag,
+:root[data-ui='blueprint'] .ap,
+:root[data-ui='blueprint'] .te,
+:root[data-ui='blueprint'] .gd {
+  background-color: var(--paper-deep);
+  background-image:
+    linear-gradient(rgba(190, 220, 255, 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(190, 220, 255, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  box-shadow:
+    0 0 0 5px var(--paper-deep),
+    0 0 0 6px rgba(207, 227, 255, 0.6),
+    10px 10px 0 6px rgba(2, 12, 44, 0.6);
+  color: var(--ink);
+  backdrop-filter: none;
+}
+:root[data-ui='blueprint'] .cm-in {
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  text-transform: none;
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] .cm-it {
+  border-radius: 0;
+  border: 1px solid transparent;
+}
+:root[data-ui='blueprint'] .cm-it[data-selected] {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px dashed var(--ink-2);
+}
+:root[data-ui='blueprint'] .cm-empty {
+  color: var(--muted);
+}
+:root[data-ui='blueprint'] .rs h3,
+:root[data-ui='blueprint'] .rs-t {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+:root[data-ui='blueprint'] .rs-t::before {
+  content: 'note 1:';
+  display: inline-block;
+  margin-right: 8px;
+  rotate: -4deg;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--pencil);
+  font-family: var(--hand);
+  text-transform: none;
+  letter-spacing: 0;
+}
+:root[data-ui='blueprint'] .gd-side,
+:root[data-ui='blueprint'] .gd-main {
+  background: transparent;
+  border-color: var(--line);
+}
+:root[data-ui='blueprint'] .gd-x {
+  border-radius: 0;
+  border: 1px solid var(--ink-2);
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .gd-x:hover {
+  background: var(--ink);
+  color: var(--paper-deep);
+}
+:root[data-ui='blueprint'] .toasts {
+  z-index: 60;
+}
+:root[data-ui='blueprint'] .toast {
+  background: var(--paper-deep);
+  border: 1px solid var(--ink);
+  border-left: 6px solid var(--accent);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 rgba(2, 12, 44, 0.65);
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 13px;
+}
+:root[data-ui='blueprint'] .toast::before {
+  content: 'noted: ';
+  font-family: var(--hand);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--pencil);
+  font-size: 15px;
+}
+:root[data-ui='blueprint'] .toast.error {
+  border-left-color: var(--bad);
+}
+:root[data-ui='blueprint'] .toast.error::before {
+  content: 'redline: ';
+}
+:root[data-ui='blueprint'] .tip {
+  background: var(--paper-deep);
+  color: var(--ink);
+  border: 1px solid var(--ink-2);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 rgba(2, 12, 44, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+/* ---------- settings, history, machines ---------- */
+:root[data-ui='blueprint'] .strip {
+  background: rgba(8, 42, 114, 0.9);
+  border-bottom: 1px solid var(--ink-2);
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] .strip .tab,
+:root[data-ui='blueprint'] .seg button,
+:root[data-ui='blueprint'] .segb {
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--mono);
+}
+:root[data-ui='blueprint'] .seg button {
+  padding: 4px 8px;
+  letter-spacing: 0.04em;
+  font-size: 11.5px;
+}
+:root[data-ui='blueprint'] .seg {
+  border-radius: 0;
+  border: 1px solid var(--ink-2);
+  background: rgba(6, 36, 100, 0.5);
+}
+:root[data-ui='blueprint'] .seg button[aria-pressed='true'],
+:root[data-ui='blueprint'] .seg button[aria-checked='true'],
+:root[data-ui='blueprint'] .seg button.on {
+  background: var(--ink);
+  color: var(--paper-deep);
+}
+:root[data-ui='blueprint'] .sw {
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] table {
+  border-collapse: collapse;
+}
+:root[data-ui='blueprint'] th {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+:root[data-ui='blueprint'] .bar,
+:root[data-ui='blueprint'] .pb {
+  border-radius: 0;
+}
+
+/* ---------- stream chrome ---------- */
+:root[data-ui='blueprint'] .stream .center .card {
+  background: var(--paper-deep);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 8px 8px 0 rgba(2, 12, 44, 0.7);
+}
+:root[data-ui='blueprint'] .stream .ic,
+:root[data-ui='blueprint'] .stream .chip,
+:root[data-ui='blueprint'] .stream .hostchip,
+:root[data-ui='blueprint'] .stream .padchip {
+  border-radius: 0;
+}
+:root[data-ui='blueprint'] .stream .bar,
+:root[data-ui='blueprint'] .stream .menu {
+  background: var(--paper-deep);
+  border: 1px solid var(--ink-2);
+  border-radius: 0;
+  box-shadow: 5px 5px 0 rgba(2, 12, 44, 0.6);
+  backdrop-filter: none;
+}
+
+:root[data-ui='blueprint'] .stream .ic {
+  border: 1px solid transparent;
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .stream .ic:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px dashed var(--ink-2);
+  transform: none;
+}
+:root[data-ui='blueprint'] .stream .ic[aria-pressed='true'],
+:root[data-ui='blueprint'] .stream .ic[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--ink);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+:root[data-ui='blueprint'] .stream .chip {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='blueprint'] .stream .chip[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--paper-deep);
+  box-shadow: none;
+}
+:root[data-ui='blueprint'] .stream .hostchip,
+:root[data-ui='blueprint'] .stream .menu {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+:root[data-ui='blueprint'] .stream .bar::before {
+  content: 'LIVE VIEW';
+  position: absolute;
+  left: 12px;
+  top: -9px;
+  background: var(--paper-deep);
+  padding: 0 6px;
+  font: 9.5px / 1 var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--ink-2);
+}
+:root[data-ui='blueprint'] .stream .adv select,
+:root[data-ui='blueprint'] .stream .adv input {
+  border-radius: 0;
+}
+
+/* ---------- motion ---------- */
+@keyframes bp-outline {
+  from {
+    --bp-p: 0%;
+  }
+}
+@keyframes bp-dim {
+  from {
+    --bp-n: 0;
+    clip-path: inset(0 50% 0 50%);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@keyframes bp-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+}
+@keyframes bp-hatch {
+  to {
+    background-position: 24px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='blueprint'] * {
+    animation: none !important;
+  }
+}
