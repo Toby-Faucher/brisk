@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copy check: fails when user-facing text (README, docs, the web app's strings) contains a phrase
 # from scripts/wording-banned.txt, the stock words that make writing sound machine-made.
-# Checked: *.md and web/src/**/*.{svelte,astro,ts}, minus tests, plans, mockups, research, fixtures
+# Checked: *.md, site/*.html and web/src/**/*.{svelte,astro,ts}, minus tests, plans, mockups, research, fixtures
 # and agent instructions (CLAUDE.md). A real use of a listed phrase goes in scripts/wording-allow.txt
 # as `path | text on the line | reason`.
 # Usage: scripts/check-wording.sh   (WORDING_ROOT overrides the repo root, for the test)
@@ -30,7 +30,7 @@ while IFS= read -r f; do
     done
     [ $ok = 1 ] || { echo "$f:$hit"; bad=1; }
   done < <(grep -nEi -- "$pat" "$f")
-done < <(find . -type f \( -name '*.md' -o -path './web/src/*' \( -name '*.svelte' -o -name '*.astro' -o -name '*.ts' \) \) \
+done < <(find . -type f \( -name '*.md' -o -path './site/*' -name '*.html' -o -path './web/src/*' \( -name '*.svelte' -o -name '*.astro' -o -name '*.ts' \) \) \
   -not -path './node_modules/*' -not -path './web/node_modules/*' -not -path './target/*' -not -path './.git/*' \
   -not -path './docs/plans/*' -not -path './docs/ui-mockups/*' -not -path './research/*' \
   -not -path '*/fixtures/*' -not -path './.superpowers/*' -not -path './.claude/*' -not -name 'CLAUDE.md' \
