@@ -1,1 +1,416 @@
-/* maze */
+/* UI style maze (Maze chase): every rule starts with :root[data-ui='maze']. Owner: this folder only. See ../README.md.
+   A black field, crisp neon-blue double-line walls, pellet dots as dividers. No scanlines, no blur: flat vector colour. */
+@import '@fontsource/press-start-2p/latin-400.css';
+
+/* ---------- tokens ---------- */
+:root[data-ui='maze'] {
+  --mz-wall: #2f4bff;
+  --mz-wall-hi: #6f86ff;
+  --mz-pellet: #ffd2b0;
+  --mz-yellow: #ffe600;
+  --mz-red: #ff3b3b;
+  --mz-pink: #ffb0ff;
+  --mz-cyan: #36f3ff;
+  --mz-orange: #ffb552;
+  --bg: #000;
+  --panel: #03030c;
+  --panel2: #0a0a22;
+  --line: var(--mz-wall);
+  --line-hover: var(--mz-wall-hi);
+  --fg: #fff;
+  --muted: #c4cbff;
+  --dim: #a9b2ff;
+  --accent: #ffe600;
+  --accent-fg: #000;
+  --ok: #5dff7a;
+  --warn: #ffb552;
+  --bad: #ff6b7d;
+  --c-lib: #ffe600;
+  --c-stream: #6f86ff;
+  --c-host: #36f3ff;
+  --c-set: #c4cbff;
+  --c-agent: #ffb0ff;
+  --c-news: #ff6b7d;
+  --c-power: #5dff7a;
+  --c-hist: #ffb552;
+  --font: ui-monospace, 'DejaVu Sans Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --mono: var(--font);
+  --arc: 'Press Start 2P', ui-monospace, monospace;
+  --r-card: 16px;
+  --r-ctl: 999px;
+  --ease: steps(4, end);
+  --dur-page: 200ms;
+  --rise: 0px;
+  --rise-scroll: 0px;
+  --rise-enter: 0px;
+  --stagger: 50ms;
+  /* the wall: one thin line, a black gap, then a second line outside it, plus a soft neon halo */
+  --mz-wall-fx: 0 0 0 4px #000, 0 0 0 5.5px var(--mz-wall), 0 0 14px 3px color-mix(in srgb, var(--mz-wall) 55%, transparent);
+  --mz-dots: radial-gradient(circle at 50% 50%, var(--mz-pellet) 0 2px, transparent 2.6px);
+  color-scheme: dark;
+  background: #000;
+}
+:root[data-ui='maze'][data-accent='mint'] {
+  --accent: #ffe600;
+  --accent-fg: #000;
+}
+:root[data-ui='maze'] body {
+  background: #000;
+  color: var(--fg);
+  font-size: 14px;
+}
+:root[data-ui='maze'] ::selection {
+  background: var(--mz-yellow);
+  color: #000;
+}
+:root[data-ui='maze'] :focus-visible {
+  outline: 3px solid var(--mz-yellow);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+:root[data-ui='maze'] :is(h1, h2, h3, h4) {
+  font-family: var(--arc);
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+:root[data-ui='maze'] .lab,
+:root[data-ui='maze'] .muted {
+  color: var(--muted);
+}
+:root[data-ui='maze'] .mono {
+  font-family: var(--font);
+}
+
+/* ---------- the board: a corridor around the whole window, content sits inside it ---------- */
+:root[data-ui='maze'] .app {
+  padding: 66px 40px 40px;
+  gap: 28px;
+  position: relative;
+  z-index: 1;
+}
+:root[data-ui='maze'] main {
+  padding: 0;
+}
+:root[data-ui='maze'] main .bg {
+  display: none;
+}
+:root[data-ui='maze'] .page-in {
+  animation: mz-page var(--dur-page) steps(4, end) backwards;
+}
+@keyframes mz-page {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- headers: the page title and its row of pellets ---------- */
+:root[data-ui='maze'] .top {
+  border-bottom: 0;
+  padding: 0 0 18px;
+  background: var(--mz-dots) 0 100% / 16px 6px repeat-x;
+  gap: 10px 14px;
+}
+:root[data-ui='maze'] .top h2 {
+  font-size: 18px;
+  color: var(--mz-yellow);
+  margin-right: 6px;
+}
+:root[data-ui='maze'] .top h2::before {
+  content: '';
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.55em;
+  vertical-align: -0.1em;
+  background: var(--mz-yellow);
+  border-radius: 50%;
+  clip-path: polygon(50% 50%, 100% 20%, 100% 0, 0 0, 0 100%, 100% 100%, 100% 80%);
+}
+:root[data-ui='maze'] hr {
+  border: 0;
+  height: 6px;
+  background: var(--mz-dots) 0 50% / 16px 6px repeat-x;
+}
+
+/* ---------- the sidebar: a lit wall with the pellet menu inside ---------- */
+:root[data-ui='maze'] .side {
+  top: 66px;
+  width: 218px;
+  height: calc(100vh - 106px);
+  background: #000;
+  backdrop-filter: none;
+  border: 1px solid var(--mz-wall);
+  border-radius: 16px;
+  box-shadow: var(--mz-wall-fx);
+  padding: 16px 12px 14px 12px;
+  gap: 6px;
+  overflow: hidden auto;
+}
+:root[data-ui='maze'] .side .brand {
+  padding: 0 0 10px;
+  margin-bottom: 4px;
+  background: var(--mz-dots) 0 100% / 16px 6px repeat-x;
+}
+:root[data-ui='maze'] .side .brand img {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mz-wall) 70%, transparent));
+}
+:root[data-ui='maze'] .side .nav {
+  position: relative;
+  padding: 10px 10px 10px 34px;
+  border-radius: 999px;
+  font-family: var(--arc);
+  font-size: 10px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.2s;
+}
+:root[data-ui='maze'] .side .nav svg {
+  flex: none;
+}
+/* a pellet in front of every entry; the active one is the big, pulsing power pellet */
+:root[data-ui='maze'] .side .nav::after {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 0;
+  border-radius: 50%;
+  background: var(--mz-pellet);
+}
+:root[data-ui='maze'] .side a.nav:hover {
+  background: transparent;
+  transform: none;
+  color: var(--mz-yellow);
+}
+:root[data-ui='maze'] .side a.nav:hover::after {
+  background: var(--mz-yellow);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mz-yellow) 30%, transparent);
+}
+:root[data-ui='maze'] .side .nav[aria-current='page'] {
+  color: var(--mz-yellow);
+}
+:root[data-ui='maze'] .side .nav[aria-current='page']::before {
+  background: transparent;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1.5px var(--mz-wall) inset,
+    0 0 10px color-mix(in srgb, var(--mz-wall) 70%, transparent);
+}
+:root[data-ui='maze'] .side .nav[aria-current='page']::after {
+  left: 9px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  background: var(--mz-pink);
+  animation: mz-power 0.9s steps(1) infinite;
+}
+@keyframes mz-power {
+  50% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+:root[data-ui='maze'] .side .sec {
+  font-family: var(--arc);
+  font-size: 8px;
+  letter-spacing: 0;
+  color: var(--mz-cyan);
+  padding: 18px 12px 6px;
+}
+:root[data-ui='maze'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+}
+/* the "soon" entries are frightened ghosts */
+:root[data-ui='maze'] .side .soon::after {
+  left: 10px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 6px 6px 0 0;
+  background: #3b4cff;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 80% 78%, 60% 100%, 40% 78%, 20% 100%, 0 78%);
+}
+:root[data-ui='maze'] .tag {
+  font-family: var(--arc);
+  font-size: 8px;
+  text-transform: uppercase;
+  padding: 4px 7px 3px;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mz-cyan);
+  box-shadow: 0 0 0 1px var(--mz-wall) inset;
+}
+
+/* host pill: "PLAYER 1" */
+:root[data-ui='maze'] .side .pill {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #000;
+  box-shadow: 0 0 0 1.5px var(--mz-yellow) inset;
+  color: var(--mz-yellow);
+  font-family: var(--arc);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+:root[data-ui='maze'] .side .wrap {
+  margin-top: auto;
+}
+:root[data-ui='maze'] .side .wrap .pill {
+  margin-top: 0;
+}
+:root[data-ui='maze'] .side .pill .st {
+  font-family: var(--font);
+  text-transform: none;
+  color: var(--muted);
+}
+:root[data-ui='maze'] .side .pill:hover {
+  background: color-mix(in srgb, var(--mz-yellow) 12%, #000);
+}
+:root[data-ui='maze'] .menu {
+  background: #000;
+  border: 1px solid var(--mz-wall);
+  border-radius: 14px;
+  box-shadow: var(--mz-wall-fx);
+  backdrop-filter: none;
+}
+:root[data-ui='maze'] .menu .it {
+  border-radius: 8px;
+}
+:root[data-ui='maze'] .menu .it:hover,
+:root[data-ui='maze'] .menu .it:focus-visible {
+  background: color-mix(in srgb, var(--mz-wall) 28%, #000);
+}
+
+/* ---------- walls: every card, hero, field and dialog is a neon double-line wall ---------- */
+:root[data-ui='maze'] :is(.card, .hero, .glass, .search, .cm, .rs, main > .off, .denied) {
+  background: #000;
+  backdrop-filter: none;
+  border: 1px solid var(--mz-wall);
+  border-radius: 16px;
+  box-shadow: var(--mz-wall-fx);
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+:root[data-ui='maze'] .card:hover {
+  border-color: var(--mz-wall-hi);
+  box-shadow:
+    0 0 0 4px #000,
+    0 0 0 5.5px var(--mz-wall-hi),
+    0 0 18px 4px color-mix(in srgb, var(--mz-wall) 70%, transparent);
+}
+:root[data-ui='maze'] .search {
+  border-radius: 999px;
+  min-width: 230px;
+}
+:root[data-ui='maze'] .search:focus-within {
+  outline: 3px solid var(--mz-yellow);
+  outline-offset: 7px;
+}
+:root[data-ui='maze'] .cm-dim {
+  background: rgb(0 0 0 / 0.82);
+}
+:root[data-ui='maze'] .card h4 {
+  font-size: 10px;
+  color: var(--mz-cyan);
+}
+
+/* ---------- buttons: a yellow pill; the ghost one is a hollow wall ---------- */
+:root[data-ui='maze'] .btn {
+  font-family: var(--arc);
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  padding: 11px 18px 10px;
+  border-radius: 999px;
+  background: var(--mz-yellow);
+  color: #000;
+  box-shadow: 0 0 0 1px #000 inset;
+  transition: none;
+}
+:root[data-ui='maze'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: #fff;
+}
+:root[data-ui='maze'] .btn:active {
+  transform: translateY(2px);
+}
+:root[data-ui='maze'] .btn.ghost {
+  background: #000;
+  color: var(--fg);
+  box-shadow: 0 0 0 1.5px var(--mz-wall) inset;
+}
+:root[data-ui='maze'] .btn.ghost:hover {
+  background: color-mix(in srgb, var(--mz-wall) 30%, #000);
+  box-shadow: 0 0 0 1.5px var(--mz-wall-hi) inset;
+}
+:root[data-ui='maze'] .btn.sm {
+  font-size: 9px;
+  padding: 8px 12px 7px;
+}
+:root[data-ui='maze'] .btn:disabled,
+:root[data-ui='maze'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: #1a1a33;
+  color: #9ea6e0;
+}
+
+/* ---------- scroll bars: a thin wall ---------- */
+:root[data-ui='maze'] *::-webkit-scrollbar-thumb {
+  background: var(--mz-wall);
+  border-radius: 999px;
+}
+:root[data-ui='maze'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--mz-wall-hi);
+}
+
+/* ---------- settings tabs: arcade labels, the selected one lit like a power pellet ---------- */
+:root[data-ui='maze'] .st .tab {
+  font-family: var(--arc);
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 12px 12px 11px;
+}
+:root[data-ui='maze'] .st .tab:hover {
+  color: var(--mz-yellow);
+}
+:root[data-ui='maze'] .st .tab[aria-selected='true'] {
+  color: var(--mz-yellow);
+}
+:root[data-ui='maze'] .st .ind {
+  background: var(--mz-yellow);
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ---------- Library: the hovered cover lights its cell like a maze wall ---------- */
+:root[data-ui='maze'] [data-gid] .g:hover,
+:root[data-ui='maze'] [data-gid] .g:focus-visible {
+  box-shadow:
+    0 0 0 3px #000,
+    0 0 0 4.5px var(--mz-wall-hi),
+    0 0 16px 3px color-mix(in srgb, var(--mz-wall) 70%, transparent);
+}
+:root[data-ui='maze'] .toast,
+:root[data-ui='maze'] .tip {
+  background: #000;
+  color: var(--fg);
+  border: 1px solid var(--mz-wall);
+  border-radius: 12px;
+  box-shadow: var(--mz-wall-fx);
+  backdrop-filter: none;
+}
+@media (max-width: 899px) {
+  :root[data-ui='maze'] .app {
+    padding: 62px 14px 34px;
+    gap: 14px;
+  }
+}
