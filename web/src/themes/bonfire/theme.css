@@ -1,1 +1,453 @@
-/* bonfire */
+/* UI style bonfire: every rule starts with :root[data-ui='bonfire']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/im-fell-english/latin-400.css';
+@import '@fontsource/im-fell-english/latin-400-italic.css';
+@import '@fontsource/cinzel/latin-400.css';
+@import '@fontsource/cinzel/latin-600.css';
+
+/* ---------- tokens: ash, bone and one ember ---------- */
+:root[data-ui='bonfire'] {
+  --bg: #0a0908;
+  --panel: #12100e;
+  --panel2: #1b1815;
+  --line: #3a342c;
+  --line-hover: #7a6a55;
+  --fg: #d9d2c3;
+  --muted: #a89f8f;
+  --dim: #978e7e;
+  --accent: #e8742a;
+  --accent-fg: #170a02;
+  --ok: #9bb27a;
+  --warn: #d9a441;
+  --bad: #d9705f;
+  --font: 'IM Fell English', 'Iowan Old Style', Georgia, serif;
+  --mono: 'IM Fell English', Georgia, serif;
+  --head: 'Cinzel', 'IM Fell English', Georgia, serif;
+  --r-card: 3px;
+  --r-ctl: 2px;
+  --ease: cubic-bezier(0.3, 0.1, 0.2, 1);
+  --dur-page: 600ms;
+  --dur-tab: 400ms;
+  --dur-enter: 900ms;
+  --rise-enter: 6px;
+  --rise: 4px;
+  --stagger: 90ms;
+  --bf-ember: #e8742a;
+  --bf-slot: linear-gradient(160deg, #1d1a16 0%, #100e0c 70%);
+  --bf-slot-edge: inset 0 0 0 1px #0a0908, inset 0 0 0 2px #2c2720, inset 0 0 24px #000a;
+}
+/* other accents tint the ember */
+:root[data-ui='bonfire'][data-accent]:not([data-accent='mint']) {
+  --bf-ember: var(--accent);
+}
+:root[data-ui='bonfire'][data-accent='mint'] {
+  --accent: #e8742a;
+  --accent-fg: #170a02;
+}
+:root[data-ui='bonfire'] body {
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  background: radial-gradient(90% 70% at 20% 100%, #1a120b 0%, #0a0908 60%) fixed #0a0908;
+}
+:root[data-ui='bonfire'] ::selection {
+  background: color-mix(in srgb, var(--bf-ember) 55%, #000);
+  color: #fff;
+}
+:root[data-ui='bonfire'] :focus-visible {
+  outline: 1px solid var(--bf-ember);
+  outline-offset: 3px;
+  border-radius: 1px;
+}
+:root[data-ui='bonfire'] h1,
+:root[data-ui='bonfire'] h2,
+:root[data-ui='bonfire'] h3,
+:root[data-ui='bonfire'] h4 {
+  font-family: var(--head);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root[data-ui='bonfire'] .muted,
+:root[data-ui='bonfire'] .lab {
+  color: var(--muted);
+  font-size: 14px;
+}
+:root[data-ui='bonfire'] .mono {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+:root[data-ui='bonfire'] .bg {
+  display: none;
+}
+:root[data-ui='bonfire'] main {
+  padding: 36px 44px 120px;
+}
+
+/* ---------- page title: carved, with a thin rule under it ---------- */
+:root[data-ui='bonfire'] .top {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  position: relative;
+}
+:root[data-ui='bonfire'] .top::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 64px;
+  height: 1px;
+  background: var(--bf-ember);
+  box-shadow: 0 0 8px var(--bf-ember);
+}
+:root[data-ui='bonfire'] .top h2 {
+  font-size: 26px;
+  letter-spacing: 0.18em;
+  color: #e6dfd0;
+}
+
+/* ---------- the narrow left column ---------- */
+:root[data-ui='bonfire'] .side {
+  width: 196px;
+  padding: 26px 0 18px 0;
+  gap: 0;
+  background: linear-gradient(90deg, #070606 0%, #0d0b09 85%, transparent 100%);
+  border-right: 1px solid #231f1a;
+  backdrop-filter: none;
+}
+:root[data-ui='bonfire'] .brand {
+  padding: 0 22px 26px;
+}
+:root[data-ui='bonfire'] .brand img {
+  filter: grayscale(1) sepia(0.4) brightness(0.9) contrast(1.1);
+  opacity: 0.85;
+}
+:root[data-ui='bonfire'] .side a.nav,
+:root[data-ui='bonfire'] .side .nav.soon {
+  position: relative;
+  padding: 7px 14px 7px 36px;
+  border-radius: 0;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  transform: none;
+  transition: color 0.6s var(--ease);
+}
+:root[data-ui='bonfire'] .side .nav svg {
+  display: none;
+}
+:root[data-ui='bonfire'] .side a.nav:hover {
+  background: none;
+  color: var(--fg);
+  transform: none;
+}
+:root[data-ui='bonfire'] .side a.nav[aria-current='page'] {
+  color: #f0e8d6;
+}
+/* the thin ember selection marker (glide() moves this pseudo between pages) */
+:root[data-ui='bonfire'] .side a.nav[aria-current='page']::before {
+  inset: 3px auto 3px 0;
+  width: 2px;
+  border-radius: 0;
+  background: var(--bf-ember);
+  box-shadow:
+    0 0 10px var(--bf-ember),
+    0 0 2px #ffb070;
+}
+/* a small fire where the active item sits */
+:root[data-ui='bonfire'] .side a.nav[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 150px;
+  height: 52px;
+  margin-top: -26px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(60% 55% at 0% 50%, color-mix(in srgb, var(--bf-ember) 38%, transparent), transparent 80%);
+  transform-origin: 0 50%;
+}
+:root[data-ui='bonfire'] .side a.nav:not([aria-current='page']):hover::after {
+  content: '\2022';
+  position: absolute;
+  left: 15px;
+  color: var(--bf-ember);
+  opacity: 0.8;
+}
+:root[data-ui='bonfire'] .side .nav.soon {
+  opacity: 1;
+  color: var(--dim);
+  font-style: italic;
+}
+:root[data-ui='bonfire'] .side .sec {
+  font-family: var(--head);
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  padding: 24px 14px 6px 36px;
+}
+:root[data-ui='bonfire'] .tag {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 1px;
+  color: var(--muted);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+:root[data-ui='bonfire'] .pill {
+  margin: 0 12px;
+  background: var(--bf-slot);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg);
+}
+:root[data-ui='bonfire'] .pill:hover {
+  border-color: var(--line-hover);
+}
+
+/* ---------- item slots: cards are worn inventory squares ---------- */
+:root[data-ui='bonfire'] :is(.card, .glass, .hero, .shelf, .cm, .rs, .mp, .menu, .toast) {
+  background: var(--bf-slot);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  box-shadow: var(--bf-slot-edge);
+  backdrop-filter: none;
+}
+:root[data-ui='bonfire'] .card {
+  transition:
+    border-color 0.7s var(--ease),
+    box-shadow 0.7s var(--ease);
+}
+:root[data-ui='bonfire'] .card:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--bf-ember) 55%, var(--line));
+  box-shadow:
+    var(--bf-slot-edge),
+    0 0 22px -8px var(--bf-ember);
+}
+:root[data-ui='bonfire'] .card h4 {
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='bonfire'] .btn {
+  background: linear-gradient(180deg, #2a2119, #1a140f);
+  color: #f0dcc0;
+  font-family: var(--head);
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid #6a4a2c;
+  border-radius: 2px;
+  box-shadow: inset 0 0 12px #000a;
+  transform: none;
+  transition:
+    border-color 0.5s var(--ease),
+    color 0.5s var(--ease),
+    box-shadow 0.5s var(--ease);
+}
+:root[data-ui='bonfire'] .btn:hover {
+  filter: none;
+  transform: none;
+  border-color: var(--bf-ember);
+  color: #fff3dd;
+  box-shadow:
+    inset 0 0 12px #000a,
+    0 0 14px -4px var(--bf-ember);
+}
+:root[data-ui='bonfire'] .btn:active {
+  transform: none;
+  background: #120e0a;
+}
+:root[data-ui='bonfire'] .btn.ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+:root[data-ui='bonfire'] .btn.ghost:hover {
+  color: var(--fg);
+}
+:root[data-ui='bonfire'] .search,
+:root[data-ui='bonfire'] input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+:root[data-ui='bonfire'] textarea,
+:root[data-ui='bonfire'] select {
+  background: #0b0a08;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg);
+  font-family: var(--font);
+}
+:root[data-ui='bonfire'] .search input {
+  border: 0;
+  background: transparent;
+}
+:root[data-ui='bonfire'] .search:focus-within {
+  border-color: var(--bf-ember);
+  outline: 0;
+}
+
+/* ---------- Library: game cards as inventory slots ---------- */
+:root[data-ui='bonfire'] .cover {
+  border-radius: 2px;
+  border: 1px solid #2c2720;
+  box-shadow: 0 0 0 3px #0a0908;
+  filter: saturate(0.55) brightness(0.88) contrast(1.05);
+  transition:
+    filter 0.8s var(--ease),
+    box-shadow 0.8s var(--ease);
+}
+:root[data-ui='bonfire'] .wrap:is(:hover, :has(:focus-visible)) .cover {
+  filter: saturate(0.95) brightness(1);
+  box-shadow:
+    0 0 0 3px #0a0908,
+    0 0 18px -2px color-mix(in srgb, var(--bf-ember) 60%, transparent);
+}
+:root[data-ui='bonfire'] .wrap:hover,
+:root[data-ui='bonfire'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='bonfire'] .wrap[data-gid] .name {
+  color: var(--fg);
+  letter-spacing: 0.02em;
+}
+:root[data-ui='bonfire'] .wrap[data-gid] .sub {
+  color: var(--muted);
+  font-style: italic;
+}
+:root[data-ui='bonfire'] .hero::after {
+  content: 'A fire still burns.';
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* ---------- Home gauges become thin health bars ---------- */
+:root[data-ui='bonfire'] div.ring {
+  width: 104px;
+  height: 8px;
+  border-radius: 0;
+  display: block;
+  position: relative;
+  border: 1px solid #4a4237;
+  background: linear-gradient(90deg, #8c2f24 0%, #b8452e calc(var(--p, 0) * 1%), #0a0908 0);
+  box-shadow: 0 0 0 2px #0a0908;
+  margin-bottom: 18px;
+}
+:root[data-ui='bonfire'] div.ring b {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  width: auto;
+  height: auto;
+  background: none;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+/* ---------- Settings tabs, Command menu, dialogs ---------- */
+:root[data-ui='bonfire'] .st .strip {
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  gap: 18px;
+}
+:root[data-ui='bonfire'] .st .tab {
+  border-radius: 0;
+  font-family: var(--head);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+:root[data-ui='bonfire'] .st .tab[aria-selected='true'] {
+  color: #f0e8d6;
+  box-shadow: inset 0 -1px 0 var(--bf-ember);
+}
+:root[data-ui='bonfire'] .cm-dim {
+  background: rgb(4 3 2 / 0.82);
+  backdrop-filter: none;
+}
+:root[data-ui='bonfire'] .cm-in {
+  background: transparent;
+  border: 0;
+  font-style: italic;
+}
+:root[data-ui='bonfire'] .cm-it {
+  border-radius: 0;
+  position: relative;
+  padding-left: 22px;
+}
+:root[data-ui='bonfire'] .cm-it[data-selected] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--bf-ember) 14%, transparent), transparent);
+  color: #f0e8d6;
+}
+:root[data-ui='bonfire'] .cm-it[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--bf-ember);
+  box-shadow: 0 0 8px var(--bf-ember);
+}
+:root[data-ui='bonfire'] .rs-t {
+  font-family: var(--head);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* ---------- motion: slow and heavy ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes bf-flicker {
+    0%,
+    100% {
+      opacity: 0.85;
+      transform: scale(1, 1);
+    }
+    18% {
+      opacity: 1;
+      transform: scale(1.06, 1.1);
+    }
+    37% {
+      opacity: 0.7;
+      transform: scale(0.96, 0.92);
+    }
+    61% {
+      opacity: 1;
+      transform: scale(1.03, 1.05);
+    }
+    80% {
+      opacity: 0.8;
+      transform: scale(0.98, 1);
+    }
+  }
+  :root[data-ui='bonfire'] .side a.nav[aria-current='page']::after {
+    animation: bf-flicker 3.1s steps(1, end) infinite;
+    animation-timing-function: ease-in-out;
+  }
+  @keyframes bf-rise {
+    from {
+      opacity: 0;
+      filter: brightness(0.5);
+    }
+  }
+  :root[data-ui='bonfire'] :is(.card, .hero, .shelf) {
+    animation: bf-rise 1s var(--ease) backwards;
+  }
+}
+
+:root[data-ui='bonfire'] .hero {
+  filter: saturate(0.55) brightness(0.9);
+}
+
+:root[data-ui='bonfire'] .note,
+:root[data-ui='bonfire'] .link {
+  background-color: #0e0c0a;
+}
