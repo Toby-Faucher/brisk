@@ -1,3 +1,5 @@
+//! Fills the Steam caches in the background so the first page view is fast.
+
 use super::achievements::HOUR_S;
 use super::news::NEWS_TTL_S;
 use super::store::WEEK_S;

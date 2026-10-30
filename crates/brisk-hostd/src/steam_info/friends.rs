@@ -1,3 +1,5 @@
+//! Steam friends who are online, held in memory only.
+
 use crate::config::Config;
 use crate::http::AppState;
 use crate::steam::{is_refusal, read_key, steam_get, steam_id};

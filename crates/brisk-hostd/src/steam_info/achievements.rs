@@ -1,3 +1,5 @@
+//! Achievements for a Steam game, cached.
+
 use super::{Entry, cached_with_misses};
 use crate::config::Config;
 use crate::steam::{steam_get, steam_id};

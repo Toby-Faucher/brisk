@@ -1,3 +1,5 @@
+//! Local Steam data for a game: save files and screenshots found on disk.
+
 use crate::config::Config;
 use crate::steam::{account_id, steam_id};
 use serde::Serialize;

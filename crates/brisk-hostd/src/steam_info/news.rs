@@ -1,3 +1,5 @@
+//! News posts for a Steam game, cached.
+
 use super::store::plain_text;
 use super::{Entry, cached_with_misses};
 use crate::config::Config;

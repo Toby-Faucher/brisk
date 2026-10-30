@@ -1,3 +1,5 @@
+//! Settings read from the environment and the files they point to.
+
 use rand_core::{OsRng, RngCore};
 use std::ffi::OsString;
 use std::net::SocketAddr;
