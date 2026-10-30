@@ -1,1 +1,935 @@
-/* persona */
+/* UI style persona: every rule starts with :root[data-ui='persona']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/anton/400.css';
+@import '@fontsource/rubik/400.css';
+@import '@fontsource/rubik/500.css';
+@import '@fontsource/rubik/700.css';
+@import '@fontsource/rubik/800-italic.css';
+
+/* ---------- tokens: red, black, white ---------- */
+:root[data-ui='persona'] {
+  --bg: #0b0b0b;
+  --panel: #151515;
+  --panel2: #232323;
+  --line: #5a5a5a;
+  --line-hover: #fff;
+  --fg: #fff;
+  --muted: #d4d4d4;
+  --dim: #bdbdbd;
+  --ok: #5dff9a;
+  --warn: #ffd23f;
+  --bad: #ff6674;
+  --font: 'Rubik', system-ui, sans-serif;
+  --display: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+  --r-card: 0;
+  --r-ctl: 0;
+  --pr-red: #e60012;
+  --pr-hi: #ff4d5c;
+  --pop: linear(0, 0.2 12%, 0.62 24%, 0.98 36%, 1.14 46%, 1.1 54%, 0.97 68%, 1.02 82%, 1);
+  --dur-enter: 420ms;
+  --rise-enter: 26px;
+  --stagger: 50ms;
+  --dur-page: 200ms;
+  --rise: 10px;
+  /* a star as the pointer; hot spot in the middle */
+  --pr-cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 100 100'%3E%3Cpolygon points='50,2 60,36 97,33 68,56 80,92 50,71 19,93 31,57 3,36 40,35' fill='%23fff' stroke='%23000' stroke-width='7'/%3E%3C/svg%3E")
+    13 13,
+    auto;
+  --pr-cursor-hot:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 100 100'%3E%3Cpolygon points='50,2 60,36 97,33 68,56 80,92 50,71 19,93 31,57 3,36 40,35' fill='%23e60012' stroke='%23fff' stroke-width='7'/%3E%3C/svg%3E")
+    15 15,
+    pointer;
+}
+/* the default (mint) accent becomes the red; any other pick still tints focus rings and ticks */
+:root[data-ui='persona'][data-accent='mint'] {
+  --accent: #e60012;
+  --accent-fg: #fff;
+}
+:root[data-ui='persona'] body {
+  background: #0b0b0b;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: var(--pr-cursor);
+}
+:root[data-ui='persona']
+  :is(
+    a,
+    button,
+    [role='button'],
+    [role='tab'],
+    [role='option'],
+    [role='menuitem'],
+    [role='menuitemradio'],
+    label,
+    select,
+    summary,
+    .g,
+    .card .grip
+  ) {
+  cursor: var(--pr-cursor-hot);
+}
+:root[data-ui='persona'] ::selection {
+  background: var(--pr-red);
+  color: #fff;
+}
+:root[data-ui='persona'] :focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--pr-red);
+  border-radius: 0;
+}
+:root[data-ui='persona'] h1,
+:root[data-ui='persona'] h2,
+:root[data-ui='persona'] h3,
+:root[data-ui='persona'] h4,
+:root[data-ui='persona'] h5 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='persona'] .muted,
+:root[data-ui='persona'] .lab {
+  color: var(--muted);
+}
+:root[data-ui='persona'] .app {
+  display: block;
+}
+:root[data-ui='persona'] main {
+  margin-left: 300px;
+  max-width: 1280px;
+  padding: 34px 44px 90px 28px;
+}
+:root[data-ui='persona'] main .bg {
+  display: none;
+}
+/* the calling-card reveal replaces the plain fade (the veil is below) */
+:root[data-ui='persona'] main.page-in {
+  animation: none;
+}
+
+/* ---------- page titles: a white slab under a red slab, both slashed ---------- */
+:root[data-ui='persona'] .top {
+  border-bottom: 0;
+  padding: 0 4px 10px;
+  gap: 8px 22px;
+  align-items: center;
+}
+:root[data-ui='persona'] .top h2 {
+  position: relative;
+  isolation: isolate;
+  font-size: clamp(44px, 5vw, 66px);
+  line-height: 1;
+  width: fit-content;
+  padding: 8px 36px 6px 24px;
+  margin: 0 10px 14px 6px;
+  color: #fff;
+  text-shadow: 3px 3px 0 #000;
+  rotate: -1.6deg;
+}
+:root[data-ui='persona'] .top h2::before,
+:root[data-ui='persona'] .top h2::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--pr-red);
+  clip-path: polygon(0 10%, 100% 0, 95% 100%, 3% 90%);
+}
+:root[data-ui='persona'] .top h2::after {
+  z-index: -2;
+  background: #fff;
+  translate: 8px 7px;
+  clip-path: polygon(0 4%, 100% 12%, 98% 100%, 1% 96%);
+}
+:root[data-ui='persona'] .top .lab {
+  font: 800 italic 14px / 1 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: #000;
+  padding: 6px 12px;
+  rotate: 1.4deg;
+}
+
+:root[data-ui='persona'] .tag {
+  border-radius: 0;
+  font: 800 italic 11.5px / 1.3 var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #fff;
+  color: #000;
+  padding: 2px 9px;
+  clip-path: polygon(6% 0, 100% 0, 94% 100%, 0 100%);
+}
+:root[data-ui='persona'] .search svg {
+  color: #000;
+}
+
+/* ---------- the tall slashed menu ---------- */
+:root[data-ui='persona'] .side {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20; /* under the stream (30), dialogs (41) and toasts */
+  isolation: isolate;
+  width: 292px;
+  height: 100vh;
+  padding: 22px 52px 22px 16px;
+  gap: 6px;
+  border: 0;
+  background: none;
+  backdrop-filter: none;
+}
+:root[data-ui='persona'] .side::before,
+:root[data-ui='persona'] .side::after {
+  content: '';
+  position: absolute;
+  z-index: -3;
+  top: -20px;
+  bottom: -20px;
+  left: -60px;
+  width: 340px;
+  background: #000;
+  transform: skewX(-4deg);
+  transform-origin: 100% 0;
+  box-shadow: 0 0 40px rgb(0 0 0 / 0.7);
+}
+:root[data-ui='persona'] .side::after {
+  z-index: -4;
+  width: 356px;
+  background: var(--pr-red);
+  box-shadow: none;
+}
+:root[data-ui='persona'] .brand {
+  position: relative;
+  height: 56px;
+  margin: 2px 0 14px 8px;
+}
+/* the wordmark stays in the page for screen readers; the sighted logo is set in type */
+:root[data-ui='persona'] .brand img {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+:root[data-ui='persona'] .brand::before {
+  content: 'BRISK';
+  font: 400 italic 46px / 1 var(--display);
+  letter-spacing: 0.06em;
+  color: #fff;
+  padding: 2px 14px 0 8px;
+  background: #000;
+  text-shadow: 3px 3px 0 var(--pr-red);
+  rotate: -5deg;
+}
+:root[data-ui='persona'] .brand::after {
+  content: '';
+  position: absolute;
+  left: 118px;
+  top: 2px;
+  width: 22px;
+  height: 22px;
+  background: #fff;
+  clip-path: polygon(50% 0, 62% 36%, 100% 34%, 70% 57%, 82% 94%, 50% 72%, 18% 94%, 30% 57%, 0 34%, 38% 36%);
+  rotate: 14deg;
+}
+:root[data-ui='persona'] .side .nav {
+  position: relative;
+  gap: 12px;
+  padding: 11px 14px 9px 18px;
+  border-radius: 0;
+  font: 400 27px / 1.05 var(--display);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #fff;
+  transform: skewX(-9deg);
+  transform-origin: 0 100%;
+  transition:
+    scale 0.4s var(--pop),
+    translate 0.4s var(--pop),
+    color 0.12s,
+    background 0.12s;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='persona'] .side .nav {
+    animation: pr-nav-in 0.55s var(--pop) backwards;
+    animation-delay: calc(var(--n, 0) * 70ms + 120ms);
+  }
+  :root[data-ui='persona'] .side nav .nav:nth-child(2) {
+    --n: 1;
+  }
+  :root[data-ui='persona'] .side nav .nav:nth-child(3) {
+    --n: 2;
+  }
+  :root[data-ui='persona'] .side nav .nav:nth-child(4) {
+    --n: 3;
+  }
+  :root[data-ui='persona'] .side nav .nav:nth-child(5) {
+    --n: 4;
+  }
+  :root[data-ui='persona'] .side nav .nav:nth-child(6) {
+    --n: 5;
+  }
+  :root[data-ui='persona'] .side .soon {
+    --n: 6;
+  }
+  :root[data-ui='persona'] .brand {
+    animation: pr-nav-in 0.5s var(--pop) backwards;
+  }
+}
+@keyframes pr-nav-in {
+  from {
+    opacity: 0;
+    translate: -120px -10px;
+    rotate: -8deg;
+  }
+}
+:root[data-ui='persona'] .side .nav svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  filter: drop-shadow(2px 2px 0 #000);
+}
+/* the item you are on is a red slash with a white edge; hover is a white one */
+:root[data-ui='persona'] .side .nav::before {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  transition: background 0.12s;
+}
+:root[data-ui='persona'] .side .nav[aria-current='page']::before {
+  inset: -2px -26px -2px -10px;
+  background: var(--pr-red);
+  clip-path: polygon(0 12%, 6% 0, 100% 8%, 94% 100%, 3% 88%);
+  box-shadow: none;
+}
+:root[data-ui='persona'] .side .nav[aria-current='page'] {
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
+  translate: 14px 0;
+}
+:root[data-ui='persona'] .side a.nav:hover,
+:root[data-ui='persona'] .side a.nav:focus-visible {
+  color: #000;
+  scale: 1.07;
+  translate: 10px 0;
+  transform: skewX(-9deg);
+  background: transparent;
+}
+:root[data-ui='persona'] .side a.nav:hover::before,
+:root[data-ui='persona'] .side a.nav:focus-visible::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -2px -22px -2px -8px;
+  background: #fff;
+  clip-path: polygon(2% 0, 100% 10%, 96% 90%, 0 100%);
+}
+:root[data-ui='persona'] .side a.nav:hover svg {
+  filter: none;
+}
+:root[data-ui='persona'] .side a.nav[aria-current='page']:hover {
+  color: #fff;
+}
+:root[data-ui='persona'] .side a.nav[aria-current='page']:hover::before {
+  background: var(--pr-red);
+}
+:root[data-ui='persona'] .side .sec {
+  margin: 16px 0 2px 14px;
+  padding: 3px 14px;
+  width: fit-content;
+  font: 800 italic 12px / 1.2 var(--font);
+  letter-spacing: 0.14em;
+  color: #000;
+  background: #fff;
+  rotate: -3deg;
+}
+:root[data-ui='persona'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+  font-size: 21px;
+  padding-top: 7px;
+  padding-bottom: 6px;
+  cursor: default;
+}
+:root[data-ui='persona'] .side .soon .tag {
+  margin-left: auto;
+  font: 800 italic 11px / 1.2 var(--font);
+  letter-spacing: 0.08em;
+  background: #2a2a2a;
+  color: #fff;
+}
+/* host pill: a slanted white tab at the foot of the menu */
+:root[data-ui='persona'] .side .wrap {
+  margin-top: auto;
+}
+:root[data-ui='persona'] .side .pill {
+  margin-top: auto;
+  padding: 11px 16px;
+  color: #000;
+  background: #fff;
+  font-weight: 800;
+  font-style: italic;
+  text-transform: uppercase;
+  clip-path: polygon(0 0, 100% 8%, 96% 100%, 3% 92%);
+  rotate: -1.5deg;
+  transition:
+    scale 0.4s var(--pop),
+    background 0.12s;
+}
+:root[data-ui='persona'] .side .pill:hover {
+  background: var(--pr-hi);
+  color: #000;
+  scale: 1.05;
+}
+:root[data-ui='persona'] .side .pill .st {
+  color: #333;
+}
+:root[data-ui='persona'] .side .menu {
+  left: 0;
+  right: -30px;
+  bottom: calc(100% + 12px);
+  padding: 14px 18px;
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  color: #fff;
+  background: #000;
+  clip-path: polygon(0 0, 100% 3%, 98% 100%, 2% 97%);
+  box-shadow: none;
+  backdrop-filter: none;
+  transform-origin: 0 100%;
+  animation: pr-pop 0.5s var(--pop) backwards;
+}
+:root[data-ui='persona'] .side .menu .it {
+  border-radius: 0;
+  font-weight: 700;
+  color: #fff;
+}
+:root[data-ui='persona'] .side .menu .it:hover,
+:root[data-ui='persona'] .side .menu .it:focus-visible {
+  background: var(--pr-red);
+  color: #fff;
+}
+:root[data-ui='persona'] .side .menu .st {
+  color: var(--muted);
+  margin-left: auto;
+}
+:root[data-ui='persona'] .side .menu .it:hover .st {
+  color: #fff;
+}
+@keyframes pr-pop {
+  from {
+    opacity: 0;
+    scale: 0.6;
+    rotate: -9deg;
+  }
+}
+
+/* ---------- panels: slashed, with a red edge ---------- */
+:root[data-ui='persona'] .card,
+:root[data-ui='persona'] .glass,
+:root[data-ui='persona'] .hero,
+:root[data-ui='persona'] main > .off,
+:root[data-ui='persona'] .denied {
+  border: 0;
+  border-left: 7px solid var(--pr-red);
+  border-bottom: 3px solid #fff;
+  border-radius: 0;
+  background: linear-gradient(112deg, #1a1a1a 0 70%, #101010 70% 100%);
+  backdrop-filter: none;
+  box-shadow: none;
+  clip-path: polygon(0 1.5%, 99% 0, 100% 97%, 1% 100%);
+}
+:root[data-ui='persona'] .card {
+  transition:
+    rotate 0.4s var(--pop),
+    scale 0.4s var(--pop),
+    background 0.2s;
+}
+:root[data-ui='persona'] .card:nth-of-type(odd) {
+  rotate: -0.35deg;
+}
+:root[data-ui='persona'] .card:nth-of-type(even) {
+  rotate: 0.3deg;
+}
+:root[data-ui='persona'] .card:hover {
+  rotate: 0deg;
+  scale: 1.012;
+  background: linear-gradient(112deg, #2a0006 0 58%, #181818 58% 100%);
+}
+:root[data-ui='persona'] .card h4,
+:root[data-ui='persona'] .sec h3,
+:root[data-ui='persona'] .gd-main h3,
+:root[data-ui='persona'] .shelf h4 {
+  font-size: 19px;
+  color: #fff;
+}
+:root[data-ui='persona'] .card h4::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  background: var(--pr-red);
+  clip-path: polygon(50% 0, 62% 36%, 100% 34%, 70% 57%, 82% 94%, 50% 72%, 18% 94%, 30% 57%, 0 34%, 38% 36%);
+  scale: 1.5;
+}
+:root[data-ui='persona'] .card .big {
+  font: 400 italic 54px / 1 var(--display);
+  letter-spacing: 0.02em;
+}
+:root[data-ui='persona'] .hero {
+  border-left-width: 12px;
+  background: linear-gradient(112deg, #1a1a1a 0 55%, #3d0008 55% 100%) !important;
+}
+:root[data-ui='persona'] .hero h3,
+:root[data-ui='persona'] .gd-t {
+  font-size: clamp(38px, 4.6vw, 62px);
+  line-height: 1;
+  text-shadow: 3px 3px 0 var(--pr-red);
+}
+:root[data-ui='persona'] .grip {
+  border-radius: 0;
+}
+
+/* ---------- buttons, tags, search ---------- */
+:root[data-ui='persona'] .btn {
+  padding: 10px 24px 9px;
+  border: 0;
+  border-radius: 0;
+  font: 800 italic 14px / 1.1 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: var(--pr-red);
+  box-shadow: none;
+  clip-path: polygon(5% 0, 100% 10%, 95% 100%, 0 90%);
+  transition:
+    scale 0.35s var(--pop),
+    rotate 0.35s var(--pop),
+    background 0.12s,
+    color 0.12s;
+}
+:root[data-ui='persona'] .btn:hover {
+  background: #fff;
+  color: #000;
+  scale: 1.09;
+  rotate: -2.5deg;
+  filter: none;
+}
+:root[data-ui='persona'] .btn:active {
+  scale: 0.94;
+}
+:root[data-ui='persona'] .btn.ghost {
+  color: #000;
+  background: #fff;
+  border: 0;
+}
+:root[data-ui='persona'] .btn.ghost:hover {
+  background: var(--pr-hi);
+  color: #000;
+}
+:root[data-ui='persona'] .btn:disabled,
+:root[data-ui='persona'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  color: #bbb;
+  background: #333;
+}
+:root[data-ui='persona'] .search {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  padding: 8px 18px;
+  clip-path: polygon(2% 0, 100% 6%, 98% 100%, 0 94%);
+  transition: background 0.12s;
+}
+:root[data-ui='persona'] .search:focus-within {
+  background: #ffe1e4;
+  outline: 0;
+  box-shadow: none;
+}
+:root[data-ui='persona'] .search input[type] {
+  clip-path: none;
+  color: #000;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+}
+:root[data-ui='persona'] .search input::placeholder {
+  color: #4a4a4a;
+}
+:root[data-ui='persona'] .dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent);
+  border-radius: 0;
+  rotate: 45deg;
+}
+
+/* ---------- controls inside screens ---------- */
+:root[data-ui='persona'] input[type='text'],
+:root[data-ui='persona'] input[type='search'],
+:root[data-ui='persona'] input[type='number'],
+:root[data-ui='persona'] input[type='password'],
+:root[data-ui='persona'] textarea,
+:root[data-ui='persona'] select,
+:root[data-ui='persona'] .dd {
+  color: #fff;
+  background: #1c1c1c;
+  border: 0;
+  border-bottom: 3px solid #fff;
+  border-left: 6px solid var(--pr-red);
+  border-radius: 0;
+  clip-path: polygon(0 0, 100% 0, 98% 100%, 0 100%);
+  transition: background 0.12s;
+}
+:root[data-ui='persona'] input:focus-visible,
+:root[data-ui='persona'] textarea:focus-visible,
+:root[data-ui='persona'] select:focus-visible {
+  background: #2e0a0e;
+  outline: 0;
+  box-shadow: none;
+}
+:root[data-ui='persona'] .dd {
+  padding: 7px 14px;
+  font-weight: 700;
+}
+:root[data-ui='persona'] input[type='range'],
+:root[data-ui='persona'] input[type='checkbox'] {
+  accent-color: var(--pr-red);
+}
+
+/* ---------- toasts, tooltips, menus ---------- */
+:root[data-ui='persona'] .toasts {
+  bottom: 26px;
+}
+:root[data-ui='persona'] .toast {
+  border: 0;
+  border-left: 10px solid var(--pr-red);
+  border-radius: 0;
+  padding: 12px 22px;
+  font-weight: 700;
+  color: #000;
+  background: #fff;
+  box-shadow: none;
+  clip-path: polygon(0 0, 100% 8%, 98% 100%, 2% 92%);
+  animation: pr-pop 0.5s var(--pop) backwards;
+}
+:root[data-ui='persona'] .toast.error {
+  border-left-color: #000;
+  background: var(--pr-hi);
+}
+:root[data-ui='persona'] .toast .thumb {
+  border-radius: 0;
+}
+:root[data-ui='persona'] .tip {
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font: 800 italic 12px / 1.3 var(--font);
+  text-transform: uppercase;
+  padding: 4px 12px;
+  box-shadow: none;
+  clip-path: polygon(0 0, 100% 10%, 96% 100%, 2% 90%);
+}
+:root[data-ui='persona'] .dd-menu {
+  border: 0;
+  border-left: 7px solid var(--pr-red);
+  border-radius: 0;
+  background: #000;
+  padding: 8px;
+  box-shadow: none;
+  clip-path: polygon(0 0, 100% 2%, 98% 100%, 1% 98%);
+  animation: pr-pop 0.4s var(--pop) backwards;
+}
+:root[data-ui='persona'] .dd-item {
+  border-radius: 0;
+  font-weight: 700;
+}
+:root[data-ui='persona'] .dd-item[data-highlighted],
+:root[data-ui='persona'] .dd-item:hover {
+  background: var(--pr-red);
+  color: #fff;
+}
+
+/* ---------- command menu and dialogs: they tilt in with an overshoot ---------- */
+:root[data-ui='persona'] .cm-dim {
+  background: linear-gradient(115deg, rgb(230 0 18 / 0.35) 0 30%, transparent 30% 100%), rgb(0 0 0 / 0.82);
+  backdrop-filter: none;
+}
+:root[data-ui='persona'] .cm,
+:root[data-ui='persona'] .rs {
+  border: 0;
+  border-left: 14px solid var(--pr-red);
+  border-bottom: 5px solid #fff;
+  border-radius: 0;
+  background: #0b0b0b;
+  box-shadow: none;
+  backdrop-filter: none;
+  clip-path: polygon(0 2%, 99% 0, 100% 97%, 1% 100%);
+  rotate: -1.2deg;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='persona'] :is(.cm, .rs) {
+    transition:
+      opacity var(--dur-page) var(--ease),
+      translate 0.5s var(--pop),
+      scale 0.5s var(--pop),
+      rotate 0.5s var(--pop);
+  }
+  @starting-style {
+    :root[data-ui='persona'] :is(.cm, .rs) {
+      rotate: -9deg;
+      scale: 0.7;
+    }
+  }
+  :root[data-ui='persona'] :is(.cm, .rs)[data-ending-style] {
+    rotate: 6deg;
+    scale: 0.85;
+  }
+}
+:root[data-ui='persona'] .cm-in {
+  font: 400 italic 28px / 1.2 var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid #fff;
+  clip-path: none;
+}
+:root[data-ui='persona'] .cm-in::placeholder {
+  color: var(--dim);
+}
+:root[data-ui='persona'] .cm-it {
+  border-radius: 0;
+  font-weight: 700;
+}
+:root[data-ui='persona'] .cm-it[data-selected],
+:root[data-ui='persona'] .cm-it[aria-selected='true'] {
+  background: var(--pr-red);
+  color: #fff;
+  clip-path: polygon(0 0, 100% 8%, 98% 100%, 1% 92%);
+}
+:root[data-ui='persona'] kbd,
+:root[data-ui='persona'] .k {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font: 800 11px / 1.3 var(--font);
+  padding: 1px 6px;
+  box-shadow: 2px 2px 0 var(--pr-red);
+}
+:root[data-ui='persona'] .rs-t,
+:root[data-ui='persona'] .mm-h h3 {
+  font-size: 30px;
+}
+
+/* ---------- Settings tabs ---------- */
+:root[data-ui='persona'] .st .strip {
+  top: 0;
+  isolation: isolate;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 6px 14px;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  backdrop-filter: none;
+  box-shadow: none;
+  clip-path: polygon(0 0, 100% 10%, 98% 100%, 1% 90%);
+}
+:root[data-ui='persona'] .st .tab {
+  border-radius: 0;
+  padding: 8px 20px;
+  font: 400 21px / 1.1 var(--display);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+:root[data-ui='persona'] .st .tab:hover {
+  background: #2a2a2a;
+}
+:root[data-ui='persona'] .st .ind {
+  top: 4px;
+  bottom: 4px;
+  height: auto;
+  z-index: -1;
+  border-radius: 0;
+  background: var(--pr-red);
+  box-shadow: none;
+  clip-path: polygon(4% 0, 100% 8%, 96% 100%, 0 92%);
+}
+
+/* ---------- chips, swatches ---------- */
+:root[data-ui='persona'] .fchip {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font-weight: 800;
+  font-style: italic;
+  text-transform: uppercase;
+  clip-path: polygon(5% 0, 100% 0, 95% 100%, 0 100%);
+  transition:
+    scale 0.35s var(--pop),
+    background 0.12s;
+}
+:root[data-ui='persona'] .fchip:hover {
+  scale: 1.07;
+  background: var(--pr-hi);
+}
+:root[data-ui='persona'] .fchip[aria-pressed='true'] {
+  color: #fff;
+}
+:root[data-ui='persona'] .fchip[aria-pressed='true']::before {
+  background: var(--pr-red);
+  box-shadow: none;
+  border-radius: 0;
+}
+:root[data-ui='persona'] .sw {
+  border-radius: 0;
+  rotate: 45deg;
+  transition: scale 0.35s var(--pop);
+}
+:root[data-ui='persona'] .sw:hover {
+  scale: 1.25;
+}
+:root[data-ui='persona'] .sw[aria-checked='true'] {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+/* ---------- covers ---------- */
+:root[data-ui='persona'] .g {
+  position: relative;
+  transition:
+    rotate 0.4s var(--pop),
+    scale 0.4s var(--pop);
+}
+:root[data-ui='persona'] .g:hover,
+:root[data-ui='persona'] .g:focus-visible {
+  rotate: -2deg;
+  scale: 1.06;
+  z-index: 2;
+}
+:root[data-ui='persona'] .cover {
+  border-radius: 0;
+  box-shadow: none;
+  clip-path: polygon(0 0, 100% 0, 100% 90%, 86% 100%, 0 100%);
+}
+:root[data-ui='persona'] .g:hover .cover {
+  outline: 3px solid #fff;
+  outline-offset: -3px;
+}
+:root[data-ui='persona'] .wrap .name {
+  font-weight: 700;
+}
+:root[data-ui='persona'] .g .badge,
+:root[data-ui='persona'] .g .pchip,
+:root[data-ui='persona'] .g .tchip {
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+  font-weight: 800;
+  box-shadow: none;
+}
+:root[data-ui='persona'] .empty b {
+  font: 400 italic 38px / 1.1 var(--display);
+  text-transform: uppercase;
+}
+:root[data-ui='persona'] .skel div {
+  border-radius: 0;
+}
+
+/* ---------- /stream chrome (the video itself is never touched) ---------- */
+:root[data-ui='persona'] .stream .center,
+:root[data-ui='persona'] .stream .card {
+  transform: translate(-50%, -50%);
+  rotate: 0deg;
+  transition: none;
+}
+:root[data-ui='persona'] .stream[data-state='idle'],
+:root[data-ui='persona'] .stream[data-state='unsupported'] {
+  background:
+    linear-gradient(118deg, transparent 0 58%, #5a000b 58% 74%, transparent 74% 100%),
+    linear-gradient(118deg, #e60012 0 12%, transparent 12% 100%), #0b0b0b;
+}
+:root[data-ui='persona'] .stream h3 {
+  font-size: 34px;
+}
+:root[data-ui='persona'] .stream .bar {
+  border: 0;
+  border-bottom: 4px solid var(--pr-red);
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+  backdrop-filter: none;
+  clip-path: polygon(0 0, 100% 10%, 99% 100%, 1% 90%);
+}
+:root[data-ui='persona'] .stream .ic {
+  border-radius: 0;
+  transition:
+    scale 0.35s var(--pop),
+    background 0.12s;
+}
+:root[data-ui='persona'] .stream .ic:hover {
+  background: var(--pr-red);
+  scale: 1.2;
+  rotate: -4deg;
+}
+:root[data-ui='persona'] .stream .menu {
+  border: 0;
+  border-left: 8px solid var(--pr-red);
+  border-radius: 0;
+  background: #000;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-ui='persona'] .stream .chip {
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font-weight: 800;
+}
+:root[data-ui='persona'] .stream .ring b {
+  background: #000;
+}
+
+/* ---------- the calling-card veil: two jagged panels wipe away on every page change ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='persona'] main.page-in::before,
+  :root[data-ui='persona'] main.page-in::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    background: #000;
+    animation: pr-veil 0.62s cubic-bezier(0.7, 0, 0.3, 1) both;
+  }
+  :root[data-ui='persona'] main.page-in::after {
+    z-index: 49;
+    background: var(--pr-red);
+    animation-delay: 0.09s;
+    animation-duration: 0.7s;
+  }
+}
+@keyframes pr-veil {
+  0% {
+    clip-path: polygon(-10% 0, 100% 0, 100% 100%, -10% 100%, -10% 75%, -10% 50%, -10% 25%);
+  }
+  50% {
+    clip-path: polygon(62% 0, 100% 0, 100% 100%, 42% 100%, 66% 75%, 34% 50%, 60% 25%);
+  }
+  100% {
+    clip-path: polygon(112% 0, 100% 0, 100% 100%, 112% 100%, 112% 75%, 112% 50%, 112% 25%);
+  }
+}
