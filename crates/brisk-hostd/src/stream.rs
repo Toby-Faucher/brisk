@@ -16,6 +16,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{oneshot, watch};
 
+/// A named set of stream quality settings.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Preset {
@@ -43,6 +44,7 @@ impl Codec {
     }
 }
 
+/// What a client asks for when it starts a stream.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamReq {
@@ -105,6 +107,7 @@ impl StreamReq {
     }
 }
 
+/// Whether a stream is running.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum State {
@@ -113,6 +116,7 @@ pub enum State {
     Live,
 }
 
+/// A snapshot of the current stream for the API.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct StreamInfo {
     pub state: State,
@@ -170,6 +174,7 @@ struct Running {
     report: Arc<Mutex<Report>>,
 }
 
+/// Starts, watches and stops the bridge process that streams a game.
 pub struct Supervisor {
     bin: PathBuf,
     proc_dir: PathBuf,
@@ -222,7 +227,7 @@ impl Supervisor {
 
     /// The current stream state.
     pub fn info(&self) -> StreamInfo {
-        self.shared.lock().unwrap().view()
+        self.shared.lock().expect("lock poisoned").view()
     }
 
     /// `info` without blocking: `None` while the state lock is held (or poisoned).
@@ -266,7 +271,7 @@ impl Supervisor {
             self.sessions.close(r);
         }
         let epoch = {
-            let mut s = self.shared.lock().unwrap();
+            let mut s = self.shared.lock().expect("lock poisoned");
             s.info = StreamInfo {
                 state: State::Starting,
                 preset: Some(req.preset),
@@ -360,7 +365,7 @@ impl Supervisor {
                             {
                                 tokio::spawn(launch_and_focus(runner.clone(), proc.clone(), data.clone(), id, poll));
                             }
-                            rep.lock().unwrap().line(&l);
+                            rep.lock().expect("lock poisoned").line(&l);
                             forward(bridge_line(l, quiet, tok.as_deref()));
                         }
                         _ => eof = true,
@@ -372,7 +377,7 @@ impl Supervisor {
             // The exit report may still be in the pipe: read it before the session is handed over.
             let rest = async {
                 while let Ok(Some(l)) = lines.next_line().await {
-                    rep.lock().unwrap().line(&l);
+                    rep.lock().expect("lock poisoned").line(&l);
                     forward(bridge_line(l, quiet, tok.as_deref()));
                 }
             };
@@ -380,7 +385,7 @@ impl Supervisor {
                 let _ = tokio::time::timeout(Duration::from_secs(1), rest).await;
             }
             let rec = {
-                let mut s = shared.lock().unwrap();
+                let mut s = shared.lock().expect("lock poisoned");
                 if s.epoch != epoch {
                     None
                 } else {
@@ -390,7 +395,9 @@ impl Supervisor {
             };
             let _ = done_tx.send(true);
             if let Some(mut r) = rec {
-                r.add_stats(std::mem::take(&mut rep.lock().unwrap().stats));
+                r.add_stats(std::mem::take(
+                    &mut rep.lock().expect("lock poisoned").stats,
+                ));
                 sessions.close(r);
             }
         });
@@ -413,7 +420,7 @@ impl Supervisor {
         // The watcher may have seen the bridge exit after it sent the page line. It resets the state
         // under this lock, so a dead bridge shows as done or as a state that is no longer Starting.
         let gone = {
-            let s = self.shared.lock().unwrap();
+            let s = self.shared.lock().expect("lock poisoned");
             s.info.state != State::Starting || slot.as_ref().is_none_or(|r| *r.done.borrow())
         };
         if gone {
@@ -445,7 +452,7 @@ impl Supervisor {
                 r
             }
         };
-        let mut s = self.shared.lock().unwrap();
+        let mut s = self.shared.lock().expect("lock poisoned");
         s.info = StreamInfo {
             state: State::Live,
             preset: Some(req.preset),
@@ -487,7 +494,7 @@ impl Supervisor {
     }
 
     fn fail(&self, rec: Option<SessionRec>) {
-        self.shared.lock().unwrap().info = IDLE;
+        self.shared.lock().expect("lock poisoned").info = IDLE;
         if let Some(r) = rec {
             self.sessions.close(r);
         }
@@ -497,7 +504,7 @@ impl Supervisor {
     /// SIGKILL after `stop_wait`. Returns what was running.
     async fn stop_locked(&self, slot: &mut Option<Running>) -> (StreamInfo, Option<SessionRec>) {
         let mut prev = {
-            let mut s = self.shared.lock().unwrap();
+            let mut s = self.shared.lock().expect("lock poisoned");
             s.epoch += 1;
             (std::mem::replace(&mut s.info, IDLE), s.rec.take())
         };
@@ -519,7 +526,9 @@ impl Supervisor {
                 let _ = r.done.wait_for(|d| *d).await;
             }
             if let Some(rec) = &mut prev.1 {
-                rec.add_stats(std::mem::take(&mut r.report.lock().unwrap().stats));
+                rec.add_stats(std::mem::take(
+                    &mut r.report.lock().expect("lock poisoned").stats,
+                ));
             }
         }
         prev

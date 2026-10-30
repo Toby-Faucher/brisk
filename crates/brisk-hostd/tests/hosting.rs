@@ -504,12 +504,12 @@ fn bridge_lines_with_the_session_token_are_redacted_in_service_mode_only() {
 
 #[test]
 fn service_page_line_has_no_secret() {
-    use brisk_hostd::config::page_line;
+    use brisk_hostd::config::{RunMode, page_line};
     assert_eq!(
-        page_line(SECRET, false),
+        page_line(SECRET, RunMode::Terminal),
         format!("page\thttp://localhost:8443/?s={SECRET}")
     );
-    let l = page_line(SECRET, true);
+    let l = page_line(SECRET, RunMode::Service);
     assert!(!l.contains("?s=") && !l.contains(SECRET), "{l}");
     assert!(l.starts_with("page\thttp://localhost:8443/") && l.contains("brisk-service.sh link"));
 }

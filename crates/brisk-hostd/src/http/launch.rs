@@ -47,7 +47,8 @@ pub(super) fn steam_line(id: &GameId) -> Option<String> {
 
 pub(super) fn game_launch_view(d: &launchstore::Data, id: &GameId) -> serde_json::Value {
     let eff = d.effective(id.as_str());
-    let problems: Vec<String> = match crate::launch::validate(&eff, d.allow_custom_commands) {
+    let problems: Vec<String> = match crate::launch::validate(&eff, d.allow_custom_commands.into())
+    {
         Ok(_) => vec![],
         Err(p) => p.iter().map(launchstore::describe).collect(),
     };
@@ -106,7 +107,7 @@ pub(super) async fn launch_defaults_put(
     blocking(&s, move |s| {
         let r = launch_reply(
             s.launch
-                .put_defaults(p.rev.as_deref(), p.allow_custom_commands, p.options),
+                .put_defaults(p.rev.as_deref(), p.allow_custom_commands.into(), p.options),
             defaults_view,
         );
         with_current(r, defaults_view(&s.launch.all()))

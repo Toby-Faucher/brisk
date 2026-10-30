@@ -3,15 +3,17 @@
 use super::store::plain_text;
 use super::{Entry, cached_with_misses};
 use crate::config::Config;
-use crate::steam::steam_get;
+use crate::steam::{Refresh, steam_get};
 use serde::{Deserialize, Serialize};
 
+/// Recent news posts for one Steam game.
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct News {
     pub items: Vec<NewsItem>,
 }
 
+/// One Steam news post.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct NewsItem {
@@ -29,7 +31,7 @@ pub(super) const NEWS_TTL_S: u64 = 6 * 3600;
 const UPDATED_WINDOW_S: u64 = 30 * 86_400;
 
 /// The latest headlines. Failure is an empty list, kept for 10 minutes like `achievements`.
-pub async fn news(cfg: &Config, appid: u32, refresh: bool) -> News {
+pub async fn news(cfg: &Config, appid: u32, refresh: Refresh) -> News {
     cached_with_misses(
         cfg,
         &format!("news-{appid}"),

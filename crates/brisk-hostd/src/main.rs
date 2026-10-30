@@ -76,8 +76,8 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    println!("{}", page_line(&cfg.secret, cfg.service));
-    let hub = match machines::load(&cfg.machines_file, cfg.machines_explicit) {
+    println!("{}", page_line(&cfg.secret, cfg.service.into()));
+    let hub = match machines::load(&cfg.machines_file, cfg.machines_explicit.into()) {
         Ok(h) => h.map(Arc::new),
         Err(e) => {
             tracing::error!("machines file {e}");

@@ -37,7 +37,7 @@ impl Hosts {
 
     /// Asks tailscale for this machine's name (blocking on a worker thread, at most `timeout`).
     pub async fn refresh(&self) {
-        *self.checked.lock().unwrap() = Some(Instant::now());
+        *self.checked.lock().expect("lock poisoned") = Some(Instant::now());
         let r = self.runner.clone();
         let job = tokio::task::spawn_blocking(move || r.run("tailscale", &["status", "--json"]));
         let out = tokio::time::timeout(self.timeout, job)
@@ -46,12 +46,18 @@ impl Hosts {
             .and_then(Result::ok)
             .flatten();
         if let Some(names) = out.as_deref().and_then(tailnet_names) {
-            *self.tailnet.lock().unwrap() = names;
+            *self.tailnet.lock().expect("lock poisoned") = names;
         }
     }
 
     fn known(&self, h: &str) -> bool {
-        self.fixed.iter().any(|f| f == h) || self.tailnet.lock().unwrap().iter().any(|f| f == h)
+        self.fixed.iter().any(|f| f == h)
+            || self
+                .tailnet
+                .lock()
+                .expect("lock poisoned")
+                .iter()
+                .any(|f| f == h)
     }
 
     /// Exact match only. An unknown `*.ts.net` name (the tailnet came up after hostd, or was
@@ -66,7 +72,7 @@ impl Hosts {
             return false;
         }
         let due = {
-            let mut c = self.checked.lock().unwrap();
+            let mut c = self.checked.lock().expect("lock poisoned");
             let due = c.is_none_or(|t| t.elapsed() >= self.recheck);
             if due {
                 *c = Some(Instant::now());

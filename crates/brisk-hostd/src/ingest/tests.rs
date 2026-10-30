@@ -391,10 +391,24 @@ fn a_big_rescan_canonicalizes_each_path_once() {
     tombs_save(d.path(), tombs);
     let mut recs = vec![];
     let mut canon = Canon::new(&f);
-    let m = register_with(d.path(), &mut recs, mk(), "scan", true, &mut canon);
+    let m = register_with(
+        d.path(),
+        &mut recs,
+        mk(),
+        "scan",
+        RemovedGames::Skip,
+        &mut canon,
+    );
     assert_eq!(m.added.len(), n);
     // a second pass: every file is known now
-    let m = register_with(d.path(), &mut recs, mk(), "scan", true, &mut canon);
+    let m = register_with(
+        d.path(),
+        &mut recs,
+        mk(),
+        "scan",
+        RemovedGames::Skip,
+        &mut canon,
+    );
     assert_eq!((m.added.len(), m.duplicates), (0, n));
     assert!(calls.get() <= 2 * n, "{} canonicalize calls", calls.get());
 }
@@ -451,7 +465,14 @@ fn a_damaged_removed_list_is_set_aside_and_the_scan_refuses() {
     }));
     // an explicit "include removed" scan does not need the list
     std::fs::write(c.data_dir.join("removed.json"), "{oops").unwrap();
-    assert_eq!(scan_library_with(&c, true).unwrap().merged.added.len(), 1);
+    assert_eq!(
+        scan_library_with(&c, RemovedGames::Restore)
+            .unwrap()
+            .merged
+            .added
+            .len(),
+        1
+    );
 }
 
 fn non_utf8_record() -> emu::Record {

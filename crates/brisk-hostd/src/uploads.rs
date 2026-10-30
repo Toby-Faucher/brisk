@@ -54,10 +54,11 @@ struct Entry {
 struct Busy(Arc<Entry>);
 impl Drop for Busy {
     fn drop(&mut self) {
-        self.0.st.lock().unwrap().busy = false;
+        self.0.st.lock().expect("lock poisoned").busy = false;
     }
 }
 
+/// Game files being uploaded, written into the games folder.
 pub struct Uploads {
     games: PathBuf,
     /// `disk_free`; tests fake a full disk.
@@ -65,6 +66,7 @@ pub struct Uploads {
     open: Mutex<HashMap<String, Arc<Entry>>>,
 }
 
+/// The result of a completed upload.
 pub struct Finished {
     pub system: &'static str,
     /// A library record exists (new or already there).
@@ -133,7 +135,7 @@ impl Uploads {
     fn get(&self, id: &str) -> Result<Arc<Entry>, Fail> {
         self.open
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .get(id)
             .cloned()
             .ok_or_else(|| fail(StatusCode::NOT_FOUND, "unknown upload"))
@@ -160,10 +162,10 @@ impl Uploads {
         if self.short(size) {
             return Err(Self::no_space());
         }
-        let mut open = self.open.lock().unwrap();
+        let mut open = self.open.lock().expect("lock poisoned");
         // Uploads idle for a day are dropped, with their file.
         open.retain(|id, e| {
-            let keep = e.st.lock().unwrap().touched.elapsed() < DAY;
+            let keep = e.st.lock().expect("lock poisoned").touched.elapsed() < DAY;
             if !keep {
                 let _ = std::fs::remove_file(self.part(id));
             }
@@ -172,7 +174,7 @@ impl Uploads {
         if open.len() >= MAX_OPEN {
             // a failed finish keeps its file for a retry, but not at the price of a new upload
             open.retain(|id, e| {
-                let st = e.st.lock().unwrap();
+                let st = e.st.lock().expect("lock poisoned");
                 let keep = !st.failed || st.busy;
                 if !keep {
                     let _ = std::fs::remove_file(self.part(id));
@@ -218,7 +220,7 @@ impl Uploads {
     /// Where an upload stands.
     pub fn status(&self, id: &str) -> Result<Value, Fail> {
         let e = self.get(id)?;
-        let st = e.st.lock().unwrap();
+        let st = e.st.lock().expect("lock poisoned");
         Ok(json!({
             "id": id, "name": e.name, "offset": st.offset, "size": e.size,
             "state": if st.busy { "busy" } else { "open" },
@@ -243,7 +245,7 @@ impl Uploads {
                 )
             })?;
         let offset = {
-            let mut st = e.st.lock().unwrap();
+            let mut st = e.st.lock().expect("lock poisoned");
             if st.busy {
                 return Err(fail_at(
                     StatusCode::CONFLICT,
@@ -278,7 +280,7 @@ impl Uploads {
             .map_err(io_fail)?;
         let mut n = 0u64;
         while let Some(fr) = body.frame().await {
-            if e.st.lock().unwrap().aborted {
+            if e.st.lock().expect("lock poisoned").aborted {
                 return Err(fail(StatusCode::NOT_FOUND, "unknown upload"));
             }
             let fr = fr.map_err(|_| fail(StatusCode::BAD_REQUEST, "upload interrupted"))?;
@@ -293,7 +295,7 @@ impl Uploads {
             return Err(fail(StatusCode::BAD_REQUEST, "empty or interrupted chunk"));
         }
         f.flush().await.map_err(io_fail)?;
-        let mut st = e.st.lock().unwrap();
+        let mut st = e.st.lock().expect("lock poisoned");
         if st.aborted {
             return Err(fail(StatusCode::NOT_FOUND, "unknown upload"));
         }
@@ -304,8 +306,8 @@ impl Uploads {
 
     /// Drops an upload and its partial file.
     pub fn abort(&self, id: &str) {
-        if let Some(e) = self.open.lock().unwrap().remove(id) {
-            e.st.lock().unwrap().aborted = true;
+        if let Some(e) = self.open.lock().expect("lock poisoned").remove(id) {
+            e.st.lock().expect("lock poisoned").aborted = true;
             let _ = std::fs::remove_file(self.part(id));
         }
     }
@@ -314,7 +316,7 @@ impl Uploads {
     pub async fn finish(&self, data_dir: &Path, id: &str) -> Result<Finished, Fail> {
         let e = self.get(id)?;
         {
-            let mut st = e.st.lock().unwrap();
+            let mut st = e.st.lock().expect("lock poisoned");
             if st.busy {
                 return Err(fail_at(
                     StatusCode::CONFLICT,
@@ -349,7 +351,7 @@ impl Uploads {
         {
             self.abort(id);
         } else if r.is_err() {
-            e.st.lock().unwrap().failed = true;
+            e.st.lock().expect("lock poisoned").failed = true;
         }
         r
     }
@@ -384,7 +386,7 @@ fn place_and_register(
     };
     let f = vec![ingest::Found { path, id }];
     ingest::update(data_dir, |recs| {
-        let m = ingest::register(data_dir, recs, f, "upload", false);
+        let m = ingest::register(data_dir, recs, f, "upload", ingest::RemovedGames::Restore);
         let game = crate::emu::find(recs, &rec.id).map(|r| r.id.clone());
         (
             !m.added.is_empty() || m.aliased > 0,

@@ -11,6 +11,7 @@ pub struct Observed {
     pub updating: bool,
 }
 
+/// Tracks how long the machine has had nothing happening, to decide when to shut it down.
 pub struct IdleWatch {
     pub after: Duration,
     pub since: Option<Instant>,

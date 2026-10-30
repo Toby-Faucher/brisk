@@ -108,6 +108,7 @@ fn write_json<T: Serialize>(p: &Path, v: &T) -> Result<(), sg::Error> {
     )
 }
 
+/// Descriptive facts about a game saved next to its art.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Meta {
     #[serde(default)]
@@ -124,6 +125,7 @@ pub struct Meta {
     pub sources: Vec<String>,
 }
 
+/// A game waiting for the owner to pick a match.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct PendingItem {
     pub title: String,
@@ -132,6 +134,7 @@ pub struct PendingItem {
     pub candidates: Vec<Candidate>,
 }
 
+/// The queue of games waiting for a match, by game id.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Pending {
     #[serde(default)]
@@ -217,18 +220,30 @@ pub(crate) fn image_type(b: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// One cached image: (content type, etag, bytes). None for an unknown kind or a missing file.
-fn read_art(data_dir: &Path, id: &GameId, kind: &str) -> Option<(&'static str, String, Vec<u8>)> {
+/// One cached image with the headers it is served under.
+struct CachedImage {
+    content_type: &'static str,
+    etag: String,
+    body: Vec<u8>,
+}
+
+/// None for an unknown kind or a missing file.
+fn read_art(data_dir: &Path, id: &GameId, kind: &str) -> Option<CachedImage> {
     let (name, _) = KINDS.iter().find(|(k, _)| *k == kind)?;
     let p = find_img(&dir_of(data_dir, &key_of(id)?), name)?;
     let body = std::fs::read(&p).ok()?;
     let ct = image_type(&body)?;
     let mt = std::fs::metadata(&p).map_or(0, |m| stamp(&m));
-    Some((ct, format!("\"{}-{mt}\"", body.len()), body))
+    Some(CachedImage {
+        content_type: ct,
+        etag: format!("\"{}-{mt}\"", body.len()),
+        body,
+    })
 }
 
 // ---- the pipeline ----
 
+/// What a fetch for one game did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// Art fetched now (or details saved).
@@ -275,6 +290,7 @@ fn record_failure(data_dir: &Path, key: &str) {
 
 type KeyLoader = Box<dyn Fn(&Path) -> Option<SgdbConfig> + Send + Sync>;
 
+/// Fetches and caches artwork and details for games.
 pub struct Art {
     sgdb: KeyLoader,
     tdb: fn(&Config, &str) -> Option<gametdb::Entry>,
@@ -1116,7 +1132,12 @@ pub async fn serve(
     }
     let dd = s.cfg.data_dir.clone();
     let got = tokio::task::spawn_blocking(move || read_art(&dd, &id, &kind)).await;
-    let Ok(Some((ct, etag, body))) = got else {
+    let Ok(Some(CachedImage {
+        content_type: ct,
+        etag,
+        body,
+    })) = got
+    else {
         return err(StatusCode::NOT_FOUND, "no such art");
     };
     let cache = (

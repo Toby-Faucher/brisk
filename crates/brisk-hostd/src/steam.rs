@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const OWNED_TTL_S: u64 = 6 * 3600;
 
+/// The game list the API returns.
 #[derive(Clone, Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GamesResult {
@@ -27,6 +28,7 @@ impl GamesResult {
     }
 }
 
+/// One installed Steam game, read from its app manifest.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Installed {
     pub appid: u32,
@@ -406,14 +408,14 @@ pub(crate) fn steam_id(steam_dir: &Path) -> Option<String> {
         .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
 }
 
-async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
+async fn owned(cfg: &Config, refresh: Refresh) -> (Vec<Owned>, bool) {
     let path = cfg.data_dir.join("owned.json");
     let cache: Option<OwnedCache> = tokio::fs::read(&path)
         .await
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok());
     if let Some(c) = &cache
-        && !refresh
+        && refresh == Refresh::Cached
         && now().saturating_sub(c.fetched) < OWNED_TTL_S
     {
         return (c.games.clone(), true);
@@ -439,23 +441,44 @@ async fn owned(cfg: &Config, refresh: bool) -> (Vec<Owned>, bool) {
     }
 }
 
-/// `(cover, hero, logo)` URLs on Steam's CDN.
-fn steam_art(id: u32) -> (String, String, String) {
+/// Cover, hero and logo URLs on Steam's CDN.
+struct SteamArt {
+    cover: String,
+    hero: String,
+    logo: String,
+}
+
+fn steam_art(id: u32) -> SteamArt {
     let art = |file: &str| format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/{file}");
-    (
-        art("library_600x900.jpg"),
-        art("library_hero.jpg"),
-        art("logo.png"),
-    )
+    SteamArt {
+        cover: art("library_600x900.jpg"),
+        hero: art("library_hero.jpg"),
+        logo: art("logo.png"),
+    }
 }
 
 /// The games list, from cache where it can.
 pub(crate) async fn load_games(cfg: &Config) -> GamesResult {
-    load_games_with(cfg, false).await
+    load_games_with(cfg, Refresh::Cached).await
+}
+
+/// Whether a lookup may answer from its cache.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refresh {
+    /// Use the cache while it is fresh.
+    Cached,
+    /// Skip the cache and ask upstream.
+    Force,
+}
+
+impl From<bool> for Refresh {
+    fn from(force: bool) -> Self {
+        if force { Self::Force } else { Self::Cached }
+    }
 }
 
 /// The games list; `refresh` skips the owned games cache.
-pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult {
+pub(crate) async fn load_games_with(cfg: &Config, refresh: Refresh) -> GamesResult {
     let steam_dir = cfg.steam_dir.clone();
     let installed = tokio::task::spawn_blocking(move || installed_manifests(&steam_dir))
         .await
@@ -468,7 +491,11 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
         g.last_played = (o.rtime_last_played > 0).then_some(o.rtime_last_played);
         g.playtime_min = o.playtime_forever;
         g.playtime2wk_min = o.playtime_2weeks;
-        (g.cover, g.hero, g.logo) = steam_art(o.appid);
+        SteamArt {
+            cover: g.cover,
+            hero: g.hero,
+            logo: g.logo,
+        } = steam_art(o.appid);
         by_id.insert(o.appid, g);
     }
     for i in installed {
@@ -492,7 +519,11 @@ pub(crate) async fn load_games_with(cfg: &Config, refresh: bool) -> GamesResult 
         }
         let g = by_id.entry(i.appid).or_insert_with(|| {
             let mut g = Game::steam(i.appid, &i.name);
-            (g.cover, g.hero, g.logo) = steam_art(i.appid);
+            SteamArt {
+                cover: g.cover,
+                hero: g.hero,
+                logo: g.logo,
+            } = steam_art(i.appid);
             g
         });
         g.installed = i.state_flags & FULLY_INSTALLED != 0;

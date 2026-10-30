@@ -2,10 +2,11 @@
 
 use super::{Entry, cached_with_misses};
 use crate::config::Config;
-use crate::steam::{steam_get, steam_id};
+use crate::steam::{Refresh, steam_get, steam_id};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Achievement counts and the list for one Steam game.
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Achievements {
@@ -15,6 +16,7 @@ pub struct Achievements {
     pub list: Vec<Ach>,
 }
 
+/// One Steam achievement, locked or unlocked.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Ach {
@@ -32,7 +34,7 @@ pub(super) const HOUR_S: u64 = 3600;
 
 /// Merged schema (names, icons) and player flags. No stats for the game (HTTP 400) or a private
 /// profile (403) both give `available: false`, kept for 10 minutes like `info`.
-pub async fn achievements(cfg: &Config, appid: u32, refresh: bool) -> Achievements {
+pub async fn achievements(cfg: &Config, appid: u32, refresh: Refresh) -> Achievements {
     cached_with_misses(
         cfg,
         &format!("ach-{appid}"),

@@ -4,7 +4,7 @@
 //! `command_for` validates again at every use, and an invalid result launches with no options.
 
 use crate::game::GameId;
-use crate::launch::{self, Command, LaunchOptions, LaunchOverride, Problem};
+use crate::launch::{self, Command, CustomCommands, LaunchOptions, LaunchOverride, Problem};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -15,6 +15,7 @@ use std::sync::Mutex;
 const MAX_FILE: u64 = 256 << 10;
 pub(crate) const MAX_GAMES: usize = 500;
 
+/// Everything the launch store holds: the defaults and per-game overrides.
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Data {
@@ -70,7 +71,7 @@ impl Data {
 /// What to run for `id` around `base`, and a note when saved options were unusable and ignored.
 /// Never fails: invalid options (for example custom commands switched off later) mean no options.
 pub(crate) fn command_for(d: &Data, id: &str, base: &[String]) -> (Command, Option<String>) {
-    match launch::validate(&d.effective(id), d.allow_custom_commands) {
+    match launch::validate(&d.effective(id), d.allow_custom_commands.into()) {
         Ok(v) => (launch::build(&v, base), None),
         Err(p) => (
             plain(base),
@@ -113,6 +114,7 @@ fn describe_all(p: &[Problem]) -> String {
     p.iter().map(describe).collect::<Vec<_>>().join("; ")
 }
 
+/// Why a launch store change failed.
 #[derive(Debug)]
 pub enum StoreError {
     Bad(Vec<String>),
@@ -122,6 +124,7 @@ pub enum StoreError {
     Io,
 }
 
+/// Launch options saved on disk, with a revision to catch concurrent edits.
 pub struct LaunchStore {
     path: PathBuf,
     inner: Mutex<Data>,
@@ -156,7 +159,7 @@ impl LaunchStore {
 
     /// Everything stored.
     pub fn all(&self) -> Data {
-        self.inner.lock().unwrap().clone()
+        self.inner.lock().expect("lock poisoned").clone()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Data> {
@@ -167,7 +170,7 @@ impl LaunchStore {
     pub(crate) fn put_defaults(
         &self,
         rev: Option<&str>,
-        allow: bool,
+        allow: CustomCommands,
         o: LaunchOptions,
     ) -> Result<Data, StoreError> {
         let mut g = self.lock();
@@ -176,7 +179,7 @@ impl LaunchStore {
         }
         launch::validate(&o, allow).map_err(|p| bad(&p))?;
         let mut n = g.clone();
-        n.allow_custom_commands = allow;
+        n.allow_custom_commands = allow == CustomCommands::Allow;
         n.defaults = o;
         self.commit(&mut g, n)
     }
@@ -196,7 +199,7 @@ impl LaunchStore {
             return Err(StoreError::Full);
         }
         let eff = launch::effective(&g.defaults, Some(&o));
-        launch::validate(&eff, g.allow_custom_commands).map_err(|p| bad(&p))?;
+        launch::validate(&eff, g.allow_custom_commands.into()).map_err(|p| bad(&p))?;
         let mut n = g.clone();
         n.games.insert(id.into(), o);
         self.commit(&mut g, n)
@@ -248,7 +251,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("launch.json");
         let st = LaunchStore::load(p.clone());
-        st.put_defaults(None, false, mango()).unwrap();
+        st.put_defaults(None, CustomCommands::Deny, mango())
+            .unwrap();
         st.put_game(
             "steam:620",
             None,
@@ -329,17 +333,22 @@ mod tests {
             ..Default::default()
         };
         assert!(matches!(
-            st.put_defaults(None, false, custom.clone()),
+            st.put_defaults(None, CustomCommands::Deny, custom.clone()),
             Err(StoreError::Bad(p)) if p[0].contains("switched off")
         ));
-        st.put_defaults(None, true, custom).unwrap();
+        st.put_defaults(None, CustomCommands::Allow, custom)
+            .unwrap();
         // the override cannot keep the custom command once the switch is off
         let r1 = defaults_rev(&st.all());
         assert!(matches!(
-            st.put_defaults(Some("stale"), false, LaunchOptions::default()),
+            st.put_defaults(
+                Some("stale"),
+                CustomCommands::Deny,
+                LaunchOptions::default()
+            ),
             Err(StoreError::Changed)
         ));
-        st.put_defaults(Some(&r1), true, LaunchOptions::default())
+        st.put_defaults(Some(&r1), CustomCommands::Allow, LaunchOptions::default())
             .unwrap();
         let ov = LaunchOverride {
             env: Some([("LD_PRELOAD".to_string(), "x".to_string())].into()),

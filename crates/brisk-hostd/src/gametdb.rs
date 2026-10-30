@@ -25,6 +25,7 @@ const FAIL_COOLDOWN_S: u64 = 3600;
 /// The database is 20 MB or more; the shared helper's 15 s total limit cannot fetch it.
 const DB_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// Why a GameTDB lookup failed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     /// The id is not exactly 6 ASCII alphanumerics.
@@ -68,6 +69,7 @@ fn net(msg: String) -> Error {
     }
 }
 
+/// One game's record from GameTDB.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub id: String,

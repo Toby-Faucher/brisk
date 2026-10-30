@@ -31,6 +31,7 @@ const GS_NUM: &[(&str, u32)] = &[
 ];
 const GS_BOOL: &[&str] = &["-f", "-b", "--fsr"];
 
+/// A known program a game may be started through, such as MangoHud or gamescope.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Wrapper {
@@ -45,6 +46,7 @@ pub enum Wrapper {
     },
 }
 
+/// The launch settings for one game or for the defaults.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct LaunchOptions {
@@ -67,6 +69,7 @@ pub struct LaunchOverride {
     pub extra_args: Option<Vec<String>>,
 }
 
+/// Why a set of launch options was rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
     DuplicateWrapper(&'static str),
@@ -82,6 +85,7 @@ pub enum Problem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Validated(LaunchOptions);
 
+/// A finished command line: program, arguments and extra environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command {
     pub program: String,
@@ -162,8 +166,24 @@ fn custom_ok(c: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether a custom command may be set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CustomCommands {
+    Deny,
+    Allow,
+}
+
+impl From<bool> for CustomCommands {
+    fn from(allow: bool) -> Self {
+        if allow { Self::Allow } else { Self::Deny }
+    }
+}
+
 /// Checks the options; every problem found when they are not usable.
-pub(crate) fn validate(o: &LaunchOptions, allow_custom: bool) -> Result<Validated, Vec<Problem>> {
+pub(crate) fn validate(
+    o: &LaunchOptions,
+    custom: CustomCommands,
+) -> Result<Validated, Vec<Problem>> {
     let mut bad = Vec::new();
     let mut seen = [false; 3];
     for w in &o.wrappers {
@@ -191,9 +211,9 @@ pub(crate) fn validate(o: &LaunchOptions, allow_custom: bool) -> Result<Validate
     if let Some(e) = check_args(&o.extra_args, "extra_args") {
         bad.push(Problem::ExtraArgs(e));
     }
-    match (&o.custom, allow_custom) {
-        (Some(_), false) => bad.push(Problem::CustomNotAllowed),
-        (Some(c), true) => {
+    match (&o.custom, custom) {
+        (Some(_), CustomCommands::Deny) => bad.push(Problem::CustomNotAllowed),
+        (Some(c), CustomCommands::Allow) => {
             if let Err(e) = custom_ok(c) {
                 bad.push(Problem::Custom(e));
             }
@@ -301,7 +321,11 @@ mod tests {
             ("DXVK_HUD", &long, false),
         ];
         for (k, v, ok) in cases {
-            assert_eq!(validate(&env(k, v), false).is_ok(), ok, "{k:?}={v:?}");
+            assert_eq!(
+                validate(&env(k, v), CustomCommands::Deny).is_ok(),
+                ok,
+                "{k:?}={v:?}"
+            );
         }
     }
 
@@ -325,10 +349,10 @@ mod tests {
             ("too many", true, many, false),
         ];
         for (name, allow, c, ok) in cases {
-            assert_eq!(validate(&cust(&c), allow).is_ok(), ok, "{name}");
+            assert_eq!(validate(&cust(&c), allow.into()).is_ok(), ok, "{name}");
         }
         assert_eq!(
-            validate(&cust(&["foo"]), false),
+            validate(&cust(&["foo"]), CustomCommands::Deny),
             Err(vec![Problem::CustomNotAllowed])
         );
         let total = vec!["y".repeat(200); 25]; // each fine, 5000 bytes total
@@ -338,11 +362,11 @@ mod tests {
                     custom: Some(total),
                     ..Default::default()
                 },
-                true
+                CustomCommands::Allow
             )
             .is_err()
         );
-        assert!(validate(&LaunchOptions::default(), false).is_ok());
+        assert!(validate(&LaunchOptions::default(), CustomCommands::Deny).is_ok());
     }
 
     #[test]
@@ -353,7 +377,7 @@ mod tests {
                     wrappers: vec![gs(a)],
                     ..Default::default()
                 },
-                false,
+                CustomCommands::Deny,
             )
             .is_ok()
         };
@@ -378,7 +402,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            validate(&dup, false),
+            validate(&dup, CustomCommands::Deny),
             Err(vec![Problem::DuplicateWrapper("mangohud")])
         );
         let ea = |a: Vec<String>| {
@@ -387,7 +411,7 @@ mod tests {
                     extra_args: a,
                     ..Default::default()
                 },
-                false,
+                CustomCommands::Deny,
             )
             .is_ok()
         };
@@ -412,13 +436,13 @@ mod tests {
                 wrappers: w,
                 ..Default::default()
             };
-            let c = build(&validate(&o, false).unwrap(), &s(&["game"]));
+            let c = build(&validate(&o, CustomCommands::Deny).unwrap(), &s(&["game"]));
             let mut got = vec![c.program];
             got.extend(c.args);
             assert_eq!(got, want);
         }
         let c = build(
-            &validate(&LaunchOptions::default(), false).unwrap(),
+            &validate(&LaunchOptions::default(), CustomCommands::Deny).unwrap(),
             &s(&["game", "-x"]),
         );
         assert_eq!((c.program.as_str(), c.args), ("game", s(&["-x"])));
@@ -426,7 +450,7 @@ mod tests {
 
     #[test]
     fn final_argv_steam_and_dolphin() {
-        let v = validate(&full(), true).unwrap();
+        let v = validate(&full(), CustomCommands::Allow).unwrap();
         let want_env = vec![
             ("DXVK_HUD".to_string(), "fps".to_string()),
             ("MANGOHUD".to_string(), "1".to_string()),
@@ -482,7 +506,10 @@ mod tests {
             custom: Some(s(&["tool", "&& rm -rf /"])),
             ..Default::default()
         };
-        let c = build(&validate(&o, true).unwrap(), &s(&["g", "f with space.iso"]));
+        let c = build(
+            &validate(&o, CustomCommands::Allow).unwrap(),
+            &s(&["g", "f with space.iso"]),
+        );
         assert_eq!(c.program, "tool");
         assert_eq!(
             c.args,
@@ -498,7 +525,7 @@ mod tests {
             ])
         );
         // No wrapper or shell program is ever introduced.
-        let all = validate(&full(), true).unwrap();
+        let all = validate(&full(), CustomCommands::Allow).unwrap();
         let c = build(&all, &s(&["g"]));
         for sh in ["sh", "bash", "zsh", "env", "-c"] {
             assert!(c.program != sh && !c.args.iter().any(|a| a == sh), "{sh}");

@@ -10,6 +10,7 @@ pub struct System {
     pub folder: &'static str,
 }
 
+/// A supported emulator: how to find it and start games with it.
 pub struct Emulator {
     pub id: &'static str,
     pub name: &'static str,

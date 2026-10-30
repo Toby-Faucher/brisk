@@ -427,6 +427,7 @@ fn bind_ops(kind: Kind, id: &str, pad: &str) -> Vec<Op> {
 
 // ---- the API's data ----
 
+/// The controller settings as the API shows them.
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct View {
@@ -454,6 +455,7 @@ struct Put {
     dead_zone: BTreeMap<String, i64>,
 }
 
+/// Why a controller change failed.
 #[derive(Debug)]
 pub enum CtlError {
     Bad(&'static str),

@@ -17,8 +17,10 @@ pub(crate) const DEFAULT_BASE: &str = "https://retroachievements.org/API";
 /// shortcut: console ids from memory of the RA site, not confirmed by the official docs (the docs page
 /// lists no ids); check with API_GetConsoleIDs.php once a key exists.
 pub(crate) const CONSOLE_GAMECUBE: u32 = 16;
+/// RetroAchievements console id for the Wii.
 pub const CONSOLE_WII: u32 = 19;
 
+/// Where RetroAchievements data lives and how long to keep it.
 #[derive(Debug, Clone)]
 pub struct RaConfig {
     pub data_dir: PathBuf,
@@ -100,6 +102,7 @@ fn read_creds(cfg: &RaConfig) -> Result<Creds, RaError> {
 
 // ---- typed results ----
 
+/// One achievement of a game.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Achievement {
     pub id: u64,
@@ -114,6 +117,7 @@ pub struct Achievement {
     pub unlocked_hardcore: Option<String>,
 }
 
+/// A user's progress in one game.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameProgress {
     pub game_id: u64,
@@ -414,6 +418,7 @@ async fn resolve_title(cfg: &RaConfig, console: u32, names: &[String]) -> Result
     }
 }
 
+/// How a game was matched to RetroAchievements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Matched {
     Hash,

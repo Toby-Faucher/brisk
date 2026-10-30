@@ -13,6 +13,7 @@ const MAX_PER_GAME: usize = 200;
 const MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 const IEND: &[u8; 12] = b"\0\0\0\0IEND\xaeB`\x82";
 
+/// Why a screenshot could not be saved.
 #[derive(Debug, PartialEq)]
 pub enum Fail {
     Invalid(&'static str),
@@ -20,6 +21,7 @@ pub enum Fail {
     Io,
 }
 
+/// One saved screenshot.
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Shot {

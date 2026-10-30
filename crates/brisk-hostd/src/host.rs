@@ -307,7 +307,7 @@ impl Restarter {
     pub async fn restart(&self) -> Result<(), RestartError> {
         let now = self.clock.now_s();
         let prev = {
-            let mut last = self.last.lock().unwrap();
+            let mut last = self.last.lock().expect("lock poisoned");
             if let Some(l) = *last
                 && now < l + RESTART_GAP_S
             {
@@ -334,7 +334,7 @@ impl Restarter {
             Ok(Ok(Some(_))) => return Ok(()),
         };
         tracing::warn!("sunshine restart failed: {why}");
-        *self.last.lock().unwrap() = prev;
+        *self.last.lock().expect("lock poisoned") = prev;
         Err(RestartError::Failed)
     }
 }

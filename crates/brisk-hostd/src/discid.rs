@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 
+/// The console a game file belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum System {
     Wii,
@@ -23,6 +24,7 @@ pub enum System {
     Unknown,
 }
 
+/// How a game file is packed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Container {
     Iso,
@@ -34,6 +36,7 @@ pub enum Container {
     Unknown,
 }
 
+/// The region a game was released for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Region {
     Usa,
@@ -43,6 +46,7 @@ pub enum Region {
     Other,
 }
 
+/// What could be read from a game file's header.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
     pub system: System,
@@ -53,6 +57,7 @@ pub struct Identity {
     pub hash: Option<String>,
 }
 
+/// Why a game file could not be identified.
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
