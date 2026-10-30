@@ -1,3 +1,5 @@
+//! The client identity and saved server cert on disk.
+
 use brisk_client::identity::*;
 use std::os::unix::fs::PermissionsExt;
 

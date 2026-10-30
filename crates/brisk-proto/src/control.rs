@@ -242,8 +242,8 @@ impl ControlMsg {
             (PERIODIC_PING, _) => ControlMsg::Ping,
             (IDR_REQUEST, _) => ControlMsg::IdrRequest,
             (INVALIDATE_REF_FRAMES, n) if n >= 12 => ControlMsg::InvalidateRefFrames {
-                first: u32::from_le_bytes(p[..4].try_into().unwrap()),
-                last: u32::from_le_bytes(p[8..12].try_into().unwrap()),
+                first: u32::from_le_bytes(p[..4].try_into().expect("length checked: 4 bytes")),
+                last: u32::from_le_bytes(p[8..12].try_into().expect("length checked: 4 bytes")),
             },
             (LOSS_STATS, _) => ControlMsg::LossStats(p.to_vec()),
             (FRAME_STATS, _) => ControlMsg::FrameStats(p.to_vec()),
@@ -264,7 +264,9 @@ impl ControlMsg {
             },
             (HDR_MODE, n) if n >= 1 => ControlMsg::HdrMode { enabled: p[0] != 0 },
             (TERMINATION, n) if n >= 4 => {
-                ControlMsg::Termination(u32::from_be_bytes(p[..4].try_into().unwrap()))
+                ControlMsg::Termination(u32::from_be_bytes(
+                    p[..4].try_into().expect("length checked: 4 bytes"),
+                ))
             }
             (TERMINATION, n) if n >= 2 => ControlMsg::Termination(le(0) as u32),
             _ => ControlMsg::Unknown(t, p.to_vec()),
@@ -351,7 +353,7 @@ impl Control {
         if len < 4 + 16 + 4 || d.len() < 4 + len {
             return Err(ControlError::Truncated);
         }
-        let seq = u32::from_le_bytes(d[4..8].try_into().unwrap());
+        let seq = u32::from_le_bytes(d[4..8].try_into().expect("length checked: 4 bytes"));
         if self.rx.is_some_and(|r| seq <= r) {
             return Err(ControlError::Replay);
         }

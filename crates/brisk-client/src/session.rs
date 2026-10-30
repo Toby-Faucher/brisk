@@ -22,7 +22,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use x509_cert::der::{DecodePem, Encode};
 
+/// Default plain-HTTP port of the host.
 pub const HTTP_PORT: u16 = 47989;
+/// Default HTTPS port of the host.
 pub const HTTPS_PORT: u16 = 47984;
 /// Sunshine holds `getservercert` open until the PIN is entered, and expires the session after 5 min.
 const PIN_WAIT: Duration = Duration::from_secs(320);
@@ -30,15 +32,20 @@ const WAIT: Duration = Duration::from_secs(10);
 /// `/launch` returns only after Sunshine has started the app.
 const LAUNCH_WAIT: Duration = Duration::from_secs(120);
 
+/// One client's conversation with a host over HTTP(S): pairing, app list, launch and cancel.
 pub struct Session {
+    /// Host name or address.
     pub host: String,
+    /// Plain-HTTP port.
     pub http_port: u16,
     /// Updated from every plain-HTTP `serverinfo`.
     pub https_port: u16,
+    /// Where to log the traffic for fixtures, if anywhere.
     pub recorder: Option<Recorder>,
     /// Per-attempt timeout and base backoff for `cancel_retry` (fields so tests can shrink them).
     #[doc(hidden)]
     pub cancel_wait: Duration,
+    /// Base backoff between cancel attempts.
     #[doc(hidden)]
     pub cancel_backoff: Duration,
     launch_sent: bool,
@@ -52,6 +59,7 @@ const CANCEL_ATTEMPTS: u32 = 3;
 type Tls<'a> = Option<(&'a Identity, &'a ServerCert)>;
 
 impl Session {
+    /// A session for `host` on the default ports, with no recorder.
     pub fn new(host: &str) -> Self {
         Session {
             host: host.to_owned(),
@@ -96,6 +104,7 @@ impl Session {
         Ok(info)
     }
 
+    /// Fetches the host's app list over HTTPS. Fails if the host cannot be reached or the reply does not parse.
     pub async fn applist(
         &mut self,
         ident: &Identity,
@@ -121,7 +130,7 @@ impl Session {
     ) -> crate::Result<(LaunchReply, LaunchKey)> {
         let (mut rikey, mut id) = ([0u8; 16], [0u8; 4]);
         {
-            let mut rng = self.rng.lock().unwrap();
+            let mut rng = self.rng.lock().expect("rng lock is never poisoned");
             rng.fill(&mut rikey);
             rng.fill(&mut id);
         }
@@ -412,7 +421,7 @@ impl Session {
             .pair_inner(ident, pin, Box::new(Tap(self.rng.clone(), drawn.clone())))
             .await;
         if let Some(rec) = &mut self.recorder {
-            drawn.lock().unwrap().iter().for_each(|s| rec.add_secret(s));
+            drawn.lock().expect("draw log lock is never poisoned").iter().for_each(|s| rec.add_secret(s));
         }
         let server = r?;
         server.save(dir)?;
@@ -583,8 +592,8 @@ impl<F: std::future::Future> std::future::Future for CatchUnwind<F> {
 struct Tap(Arc<Mutex<dyn Rng + Send>>, Arc<Mutex<Vec<Vec<u8>>>>);
 impl Rng for Tap {
     fn fill(&mut self, buf: &mut [u8]) {
-        self.0.lock().unwrap().fill(buf);
-        self.1.lock().unwrap().push(buf.to_vec());
+        self.0.lock().expect("rng lock is never poisoned").fill(buf);
+        self.1.lock().expect("draw log lock is never poisoned").push(buf.to_vec());
     }
 }
 

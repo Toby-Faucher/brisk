@@ -73,6 +73,7 @@ impl ControlHandle {
         self.send(Cmd::Idr).await
     }
 
+    /// Sends one input event to the host. Fails if the event cannot be encoded or the session is gone.
     pub async fn send_input(&self, ev: InputEvent) -> crate::Result<()> {
         self.send(Cmd::Input(ControlMsg::input(&ev)?)).await
     }
@@ -115,18 +116,24 @@ const fn neutral_pad(active_mask: u16) -> InputEvent {
     }
 }
 
+/// Counters a control session keeps for the probe and its tests.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
+    /// Periodic pings sent to the host.
     pub pings_sent: u32,
+    /// Periodic pings the host answered.
     pub pings_acked: u32,
+    /// IDR requests sent.
     pub idr_sent: u32,
     /// Of `idr_sent`: requests made because the sink reported a lost frame.
     pub idr_on_loss: u32,
+    /// Input events sent.
     pub inputs_sent: u32,
     /// Decoded host messages by packet type.
     pub host_msgs: BTreeMap<u16, u32>,
     /// Host packets that failed to open (unencrypted, bad tag, replay, runt).
     pub bad_msgs: u32,
+    /// Reason code from the host's termination message, if one came.
     pub termination: Option<u32>,
     /// Last rumble seen: (controller, low, high).
     pub last_rumble: Option<(u16, u16, u16)>,
@@ -136,6 +143,7 @@ pub struct Stats {
     pub av_pings_sent: [u32; 2],
     /// Datagrams / bytes received on the [video, audio] sockets (not parsed).
     pub media_rx_packets: [u64; 2],
+    /// Bytes received on the same two sockets.
     pub media_rx_bytes: [u64; 2],
 }
 
@@ -240,6 +248,7 @@ enum Got {
     Timer,
 }
 
+/// The ENet control channel to the host: pings, IDR requests, input, and the host's feedback.
 pub struct ControlSession {
     sock: UdpSocket,
     peer: EnetPeer,
@@ -261,6 +270,7 @@ pub struct ControlSession {
     last_idr: Option<Instant>,
     /// Loss-triggered IDR requests are at most one per this (a field so tests can shrink it).
     pub idr_min_interval: Duration,
+    /// What this session has counted so far.
     pub stats: Stats,
     /// Gets every rumble / trigger-rumble message from the host ([`Self::on_feedback`]).
     feedback: Option<Feedback>,
@@ -354,10 +364,12 @@ impl ControlSession {
         ControlHandle(self.cmd_tx.clone())
     }
 
+    /// True while the ENet peer is connected.
     pub fn is_open(&self) -> bool {
         self.peer.state() == PeerState::Connected
     }
 
+    /// Sends one control message on its usual channel. Fails if it cannot be encoded or the socket write fails.
     pub async fn send(&mut self, m: &ControlMsg) -> crate::Result<()> {
         let (ch, reliable) = m.route();
         self.send_on(m, ch, reliable).await
@@ -370,6 +382,7 @@ impl ControlSession {
         Ok(())
     }
 
+    /// Asks the host for an IDR frame now and clears any owed request.
     pub async fn request_idr(&mut self) -> crate::Result<()> {
         self.send(&ControlMsg::IdrRequest).await?;
         self.stats.idr_sent += 1;
@@ -379,6 +392,7 @@ impl ControlSession {
         Ok(())
     }
 
+    /// Sends one input event. Fails if it cannot be encoded or the socket write fails.
     pub async fn send_input(&mut self, ev: &InputEvent) -> crate::Result<()> {
         self.send_msgs(ControlMsg::input(ev)?).await
     }
@@ -532,7 +546,7 @@ impl ControlSession {
                 let at = Instant::now();
                 self.stats.media_rx_packets[i] += 1;
                 self.stats.media_rx_bytes[i] += n as u64;
-                let d = &self.av.as_ref().unwrap().bufs[i][..n];
+                let d = &self.av.as_ref().expect("media arrives only once av is set up").bufs[i][..n];
                 match sink {
                     Some(f) => self.want_idr |= f(i, d, at),
                     None if !self.closing && self.early.len() < EARLY_MAX => {

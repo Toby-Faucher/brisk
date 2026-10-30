@@ -1,3 +1,5 @@
+//! The fixture scrubber blanks every secret and its encodings.
+
 use brisk_proto::scrub::{scrub, scrub_with_encodings};
 
 /// (buffer, secrets, scrubbed buffer)

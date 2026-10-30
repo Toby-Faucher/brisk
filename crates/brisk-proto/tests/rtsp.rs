@@ -1,3 +1,5 @@
+//! RTSP message and encrypted-frame handling.
+
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes128Gcm, Nonce};
 use brisk_proto::rtsp::*;

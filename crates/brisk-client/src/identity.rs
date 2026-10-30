@@ -25,19 +25,25 @@ const KEY: &str = "client.key";
 const UNIQUE_ID: &str = "uniqueid";
 const SERVER: &str = "server.pem";
 
+/// The client's pairing identity: certificate, key and the unique id the host knows it by.
 pub struct Identity {
+    /// Self-signed client certificate, PEM.
     pub cert_pem: String,
+    /// Private key for the certificate, PEM.
     pub key_pem: String,
+    /// Id sent as `uniqueid` on every request.
     pub unique_id: String,
 }
 
 /// The server cert received in pairing phase 1; the only cert later HTTPS calls accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerCert {
+    /// The certificate, PEM.
     pub pem: String,
 }
 
 impl ServerCert {
+    /// Reads the saved server cert from `dir`. Fails with a setup error if the client is not paired yet or the file is not a certificate.
     pub fn load(dir: &Path) -> crate::Result<ServerCert> {
         let pem = fs::read_to_string(dir.join(SERVER)).map_err(|e| {
             crate::Error::Setup(format!(
@@ -48,6 +54,7 @@ impl ServerCert {
         Certificate::from_pem(&pem).map_err(|e| crate::Error::Setup(format!("{SERVER}: {e}")))?;
         Ok(ServerCert { pem })
     }
+    /// Writes the server cert into `dir`. Fails if the file cannot be written.
     pub fn save(&self, dir: &Path) -> crate::Result<()> {
         write_secret(dir, SERVER, &self.pem)
     }

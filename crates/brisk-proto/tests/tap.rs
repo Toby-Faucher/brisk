@@ -1,3 +1,5 @@
+//! Tap frame header encoding and decoding.
+
 use brisk_proto::tap::*;
 
 /// One tap message laid out as the Sunshine patch's `brisk_tap_send` writes it (little-endian,

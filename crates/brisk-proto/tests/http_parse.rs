@@ -1,3 +1,5 @@
+//! HTTP response parsing, including malformed input.
+
 use brisk_proto::http::*;
 
 const SERVERINFO: &str = r#"<?xml version="1.0" encoding="utf-8"?><root status_code="200"><hostname>bawn</hostname><appversion>7.1.431.-1</appversion><GfeVersion>3.23.0.74</GfeVersion><uniqueid>0123456789ABCDEF</uniqueid><HttpsPort>47984</HttpsPort><ExternalPort>47989</ExternalPort><MaxLumaPixelsHEVC>1869449984</MaxLumaPixelsHEVC><mac>00:00:00:00:00:00</mac><LocalIP>192.168.1.5</LocalIP><ServerCodecModeSupport>259</ServerCodecModeSupport><PairStatus>PS</PairStatus><currentgame>0</currentgame><state>SUNSHINE_SERVER_FREE</state></root>"#;

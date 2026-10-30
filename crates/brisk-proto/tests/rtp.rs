@@ -1,3 +1,5 @@
+//! RTP video packet parsing, decryption and frame assembly.
+
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes128Gcm, Nonce};
 use brisk_proto::fec::rs_encode;

@@ -48,11 +48,16 @@ pub struct Decision {
     pub request_idr: bool,
 }
 
+/// Counters for the browser-leg drop policy.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct PacerStats {
+    /// Frames let through.
     pub sent: u64,
+    /// Frames dropped because the viewer fell behind.
     pub dropped: u64,
+    /// Times the pacer went back to waiting for a key frame.
     pub reset: u64,
+    /// IDRs requested because of drops.
     pub idr_requests: u64,
     /// IDRs requested for [`MSG_REFRESH_KEY`] (nothing dropped for them).
     pub refreshes: u64,
@@ -78,6 +83,7 @@ pub struct Pacer {
     /// A frame was acknowledged since the last IDR request.
     acked: bool,
     last_refresh_ns: Option<u64>,
+    /// What the pacer has counted so far.
     pub stats: PacerStats,
 }
 
@@ -88,6 +94,7 @@ impl Default for Pacer {
 }
 
 impl Pacer {
+    /// A pacer that waits for a key frame.
     pub fn new() -> Self {
         Self {
             in_flight: VecDeque::with_capacity(MAX_BEHIND + 1),
@@ -100,6 +107,7 @@ impl Pacer {
         }
     }
 
+    /// Decides what to do with frame `idx` arriving at `now_ns`.
     pub fn on_frame(&mut self, idx: u64, idr: bool, now_ns: u64) -> Decision {
         let mut d = Decision::default();
         if self.in_flight.len() > MAX_BEHIND {
@@ -149,6 +157,7 @@ impl Pacer {
         true
     }
 
+    /// Frames sent and not yet acknowledged.
     pub fn in_flight(&self) -> usize {
         self.in_flight.len()
     }
@@ -189,11 +198,13 @@ impl Default for Hist {
 }
 
 impl Hist {
+    /// Counts one sample of `ns` nanoseconds.
     pub fn add(&mut self, ns: u64) {
         self.buckets[((ns / BUCKET_NS) as usize).min(BUCKETS - 1)] += 1;
         self.n += 1;
     }
 
+    /// Number of samples counted.
     pub fn count(&self) -> u64 {
         self.n
     }
@@ -242,6 +253,7 @@ pub const AUDIO_HEADER_LEN: usize = 6;
 /// stream.cpp:1901); the page gets 48 kHz samples.
 const TS_48K_PER_RTP: u32 = 48;
 
+/// The datagram for one Opus frame: seq, 48 kHz timestamp, then the data.
 pub fn audio_datagram(f: &OpusFrame) -> Vec<u8> {
     let mut d = Vec::with_capacity(AUDIO_HEADER_LEN + f.data.len());
     d.extend_from_slice(&f.seq.to_le_bytes());
@@ -250,6 +262,7 @@ pub fn audio_datagram(f: &OpusFrame) -> Vec<u8> {
     d
 }
 
+/// Counters for the audio path.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct AudioStats {
     /// Opus packets out of FEC and decryption.
@@ -322,6 +335,7 @@ pub struct AudioRx {
     /// Held packets, in seq order, all in `next`'s block.
     held: Vec<OpusFrame>,
     held_since: Option<u64>,
+    /// What the audio queue has counted so far.
     pub stats: AudioStats,
 }
 
@@ -454,7 +468,9 @@ pub fn send_audio(s: &wt::Session, f: &OpusFrame, st: &mut AudioStats) {
 /// Counters over the whole run (all viewers).
 #[derive(Default)]
 pub struct Report {
+    /// Frames written to viewers.
     pub frames: u64,
+    /// Viewers that connected.
     pub viewers: u32,
     /// Browser-leg counters of the viewers that left.
     pub pacer: PacerStats,
@@ -466,7 +482,9 @@ pub struct Report {
     pub tap_capture: Hist,
     /// `bridge_ns - tap_ns` of every frame written: what the tap socket and the bridge add.
     pub bridge_tap: Hist,
+    /// Audio counters.
     pub audio: AudioStats,
+    /// Input counters.
     pub input: input::InputStats,
 }
 

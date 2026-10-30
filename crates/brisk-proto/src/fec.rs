@@ -196,7 +196,7 @@ fn decode_with(
     // rhs_k = parity_{rows[k]} - sum over present data of P[rows[k]][i] * d_i
     let mut rhs: Vec<Vec<u8>> = rows
         .iter()
-        .map(|&j| shards[data_shards + j].clone().unwrap())
+        .map(|&j| shards[data_shards + j].clone().expect("parity rows are chosen from present shards"))
         .collect();
     for (k, &j) in rows.iter().enumerate() {
         for (i, d) in shards[..data_shards].iter().enumerate() {

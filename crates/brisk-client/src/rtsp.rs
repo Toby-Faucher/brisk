@@ -20,6 +20,7 @@ const CONTROL: &str = "streamid=control/13/0";
 /// audio IV base. Fresh per launch (the GCM IVs are counters that restart every session).
 #[derive(Clone, PartialEq, Eq)]
 pub struct LaunchKey {
+    /// AES key for the whole stream.
     pub rikey: [u8; 16],
     /// Positive: Sunshine parses it as a signed int.
     pub rikeyid: u32,
@@ -35,11 +36,16 @@ impl std::fmt::Debug for LaunchKey {
     }
 }
 
+/// Ports and session id the host gave in its RTSP SETUP replies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamPorts {
+    /// UDP port for audio.
     pub audio: u16,
+    /// UDP port for video.
     pub video: u16,
+    /// UDP port for the ENet control channel.
     pub control: u16,
+    /// RTSP session id to send on later requests.
     pub session_id: String,
     /// `X-SS-Ping-Payload` from the audio and video SETUP replies (Sunshine sends one value for both).
     pub ping_payload: Option<String>,

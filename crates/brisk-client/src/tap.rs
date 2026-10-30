@@ -50,6 +50,7 @@ fn peer_uid(s: &Socket) -> io::Result<u32> {
     Ok(rustix::net::sockopt::socket_peercred(s)?.uid.as_raw())
 }
 
+/// Unix socket the bridge listens on for Sunshine's frame tap.
 pub struct TapListener {
     fd: AsyncFd<Socket>,
     path: PathBuf,
@@ -150,7 +151,9 @@ impl Drop for TapListener {
 /// One encoded frame as Sunshine sent it.
 #[derive(Debug, Clone)]
 pub struct TapFrame {
+    /// Frame index.
     pub idx: u64,
+    /// True for a key frame.
     pub idr: bool,
     /// CLOCK_MONOTONIC ns at capture, 0 if Sunshine had none (a duplicated frame).
     pub capture_ns: u64,
@@ -162,6 +165,7 @@ pub struct TapFrame {
     pub annexb: Bytes,
 }
 
+/// One accepted tap connection that yields frames.
 pub struct TapConn {
     fd: AsyncFd<Socket>,
     rec: Option<Record>,
@@ -336,14 +340,17 @@ pub struct TapRx {
 const MS: f64 = 1e6;
 
 impl TapRx {
+    /// An empty receiver.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Notes an IDR request at `at_ns` so the next key frame can be timed against it.
     pub fn idr_requested(&mut self, at_ns: u64) {
         self.idr_reqs.push((at_ns, None));
     }
 
+    /// Counts one received frame; `recv_ns` is the local receive time.
     pub fn on_frame(&mut self, f: &TapFrame, recv_ns: u64) {
         self.frames += 1;
         self.bytes += f.annexb.len() as u64;
@@ -437,15 +444,20 @@ impl TapRx {
     }
 }
 
+/// What a tap probe run measured, with the gate result in `failures`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TapSummary {
+    /// Length of the run.
     pub secs: f64,
+    /// Frames received.
     pub frames: u64,
+    /// Of those, key frames.
     pub idr_frames: u64,
     /// Frame indices skipped between received frames.
     pub idx_gaps: u64,
     /// Growth of the header's dropped_total over the run (frames the tap dropped itself).
     pub dropped: u64,
+    /// Frames that arrived with a lower index than one before.
     pub out_of_order: u64,
     /// p50, p99 in ms: bridge receive - capture.
     pub recv_capture_ms: Option<Vec<f64>>,
@@ -453,16 +465,22 @@ pub struct TapSummary {
     pub host_ms: Option<Vec<f64>>,
     /// p50, p99 in ms: bridge receive - tap send.
     pub transport_ms: Option<Vec<f64>>,
+    /// Per IDR request: ms to the next key frame, `None` if none came.
     pub idr_response_ms: Vec<Option<f64>>,
+    /// RTP video datagrams that reached the client.
     pub rtp_video_datagrams: u64,
+    /// Annex B video rate in Mbit/s.
     pub video_mbps: f64,
+    /// The first SPS NAL unit seen, if any.
     pub first_sps: Option<Vec<u8>>,
     /// Empty when the gate passes.
     pub failures: Vec<String>,
+    /// Control channel counters for the run.
     pub control: Stats,
 }
 
 impl TapSummary {
+    /// True when no gate failed.
     pub fn passed(&self) -> bool {
         self.failures.is_empty()
     }

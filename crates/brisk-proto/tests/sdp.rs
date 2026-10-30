@@ -1,3 +1,5 @@
+//! SDP building and parsing.
+
 use brisk_proto::sdp::*;
 
 fn cfg() -> StreamConfig {
