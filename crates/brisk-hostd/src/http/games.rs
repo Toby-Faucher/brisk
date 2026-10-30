@@ -1,6 +1,15 @@
 //! Game routes: the library, details, screenshots, launch, quit, scan and uploads.
 
-use super::*;
+use super::{AppState, ScanGate, blocking, err, need_game, parse, query_flag, raw_id};
+use crate::game::{Game, GameId};
+use crate::running::{Quit, QuitError};
+use crate::stream::RawId;
+use crate::{steam, steam_info};
+use axum::extract::{Path as UrlPath, Request, State};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use serde::Deserialize;
+use std::sync::{Arc, Mutex};
 
 /// The game a path names: 400 for text that is no id, 404 for a well-formed id (or a bare number)
 /// this machine does not have.

@@ -1,6 +1,13 @@
 //! Per-game stream quality and the layout prefs.
 
-use super::*;
+use super::{AppState, blocking, err, parse};
+use crate::prefs::Entry;
+use crate::stream::{Codec, Preset, StreamReq};
+use axum::extract::{Path as UrlPath, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use serde::Deserialize;
+use std::sync::Arc;
 
 pub(super) async fn prefs_get(State(s): State<Arc<AppState>>) -> Response {
     axum::Json(serde_json::json!({

@@ -13,40 +13,30 @@ mod prefs;
 mod stream;
 
 use crate::auth::{Hosts, tailnet_ok};
-use crate::clipboard::{self, Clip, Clipboard, Kind, WlBackend};
+use crate::clipboard::{Clipboard, WlBackend};
 use crate::config::Config;
-use crate::controls::{Controls, CtlError, Kind as PadKind};
+use crate::controls::Controls;
 use crate::files::Files;
 use crate::game::{Game, GameId};
-use crate::host::{Clock, RealRunner, RestartError, Restarter, Runner, SystemClock};
-use crate::launch::{LaunchOptions, LaunchOverride};
-use crate::launchstore::{self, LaunchStore, StoreError};
+use crate::host::{Clock, RealRunner, Restarter, Runner, SystemClock};
+use crate::launchstore::LaunchStore;
 use crate::machines::{self, Hub};
-use crate::notes::{GameNote, NotesError, NotesStore, Tag};
-use crate::prefs::{Entry, Prefs};
-use crate::running::{Quit, QuitError, Quitter};
-use crate::sessions::{MAX_POINTS, Point, SeriesError, valid_point};
+use crate::notes::NotesStore;
+use crate::prefs::Prefs;
+use crate::running::Quitter;
 use crate::site::Site;
 use crate::steam::{self, GamesResult};
 use crate::steam_info;
-use crate::stream::{Codec, Preset, RawId, StreamReq, Supervisor};
+use crate::stream::{RawId, Supervisor};
 use axum::Router;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path as UrlPath, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post, put};
-use controls::*;
-use games::*;
-use host::*;
-use launch::*;
-use notes::*;
-use prefs::*;
-use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
-use stream::*;
 
 /// State shared by every route.
 pub struct AppState {
@@ -235,36 +225,36 @@ async fn need_game(s: &AppState, raw: Option<String>) -> Result<Game, Response> 
 /// The guard wraps all.
 pub fn router(state: Arc<AppState>) -> Router {
     let api = Router::new()
-        .route("/games", get(games))
-        .route("/games/{id}", axum::routing::delete(game_remove))
-        .route("/games/{id}/info", get(game_info))
+        .route("/games", get(games::games))
+        .route("/games/{id}", axum::routing::delete(games::game_remove))
+        .route("/games/{id}/info", get(games::game_info))
         .route(
             "/games/{id}/launch",
-            get(game_launch_get)
-                .put(game_launch_put)
-                .delete(game_launch_delete)
+            get(launch::game_launch_get)
+                .put(launch::game_launch_put)
+                .delete(launch::game_launch_delete)
                 .layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route(
             "/launch/defaults",
-            get(launch_defaults_get)
-                .put(launch_defaults_put)
+            get(launch::launch_defaults_get)
+                .put(launch::launch_defaults_put)
                 .layer(DefaultBodyLimit::max(4 << 10)),
         )
-        .route("/games/{id}/achievements", get(game_achievements))
-        .route("/games/{id}/ra-hash", get(game_ra_hash))
-        .route("/games/{id}/news", get(game_news))
-        .route("/games/{id}/local", get(game_local))
-        .route("/games/{id}/saves", get(game_saves))
+        .route("/games/{id}/achievements", get(games::game_achievements))
+        .route("/games/{id}/ra-hash", get(games::game_ra_hash))
+        .route("/games/{id}/news", get(games::game_news))
+        .route("/games/{id}/local", get(games::game_local))
+        .route("/games/{id}/saves", get(games::game_saves))
         .route(
             "/games/{id}/screenshots",
-            get(shot_list)
-                .post(shot_post)
+            get(games::shot_list)
+                .post(games::shot_post)
                 .layer(DefaultBodyLimit::max(crate::shots::MAX_BYTES)),
         )
         .route(
             "/games/{id}/screenshots/{name}",
-            get(game_screenshot).delete(shot_delete),
+            get(games::game_screenshot).delete(games::shot_delete),
         )
         .route("/games/{id}/art/{kind}", get(crate::art::serve))
         .route("/art/pending", get(crate::art::pending))
@@ -281,70 +271,78 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/emulators/dolphin/controls/{kind}",
-            get(controls_get)
-                .put(controls_put)
+            get(controls::controls_get)
+                .put(controls::controls_put)
                 .layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route(
             "/emulators/dolphin/controls/{kind}/reset",
-            post(controls_reset).layer(DefaultBodyLimit::max(4 << 10)),
+            post(controls::controls_reset).layer(DefaultBodyLimit::max(4 << 10)),
         )
-        .route("/library/scan", post(library_scan))
+        .route("/library/scan", post(games::library_scan))
         .route(
             "/uploads",
-            post(upload_create).layer(DefaultBodyLimit::max(4 << 10)),
+            post(games::upload_create).layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route(
             "/uploads/{id}",
-            get(upload_status)
-                .delete(upload_abort)
+            get(games::upload_status)
+                .delete(games::upload_abort)
                 // the raw body is not limited by axum; Uploads::put counts the bytes (32 MiB)
-                .put(upload_put),
+                .put(games::upload_put),
         )
-        .route("/uploads/{id}/finish", post(upload_finish))
-        .route("/friends", get(friends))
-        .route("/host", get(host_status))
-        .route("/sunshine/restart", post(sunshine_restart))
+        .route("/uploads/{id}/finish", post(games::upload_finish))
+        .route("/friends", get(games::friends))
+        .route("/host", get(host::host_status))
+        .route("/sunshine/restart", post(host::sunshine_restart))
         .route(
             "/stream",
-            get(stream_get).post(stream_start).delete(stream_stop),
+            get(stream::stream_get)
+                .post(stream::stream_start)
+                .delete(stream::stream_stop),
         )
-        .route("/launch", post(launch))
-        .route("/install", post(install))
-        .route("/quit", post(quit))
-        .route("/sessions", get(sessions))
-        .route("/sessions/{started}", get(session_get))
+        .route("/launch", post(games::launch))
+        .route("/install", post(games::install))
+        .route("/quit", post(games::quit))
+        .route("/sessions", get(stream::sessions))
+        .route("/sessions/{started}", get(stream::session_get))
         .route(
             "/sessions/{started}/series",
-            put(series_put).layer(DefaultBodyLimit::max(1 << 20)),
+            put(stream::series_put).layer(DefaultBodyLimit::max(1 << 20)),
         )
-        .route("/prefs", get(prefs_get))
+        .route("/prefs", get(prefs::prefs_get))
         // static beats the {id} capture in axum's router
-        .route("/prefs/layout", put(layout_put).delete(layout_delete))
-        .route("/prefs/{id}", put(prefs_put).delete(prefs_delete))
+        .route(
+            "/prefs/layout",
+            put(prefs::layout_put).delete(prefs::layout_delete),
+        )
+        .route(
+            "/prefs/{id}",
+            put(prefs::prefs_put).delete(prefs::prefs_delete),
+        )
         .route(
             "/ids/remap",
-            post(ids_remap).layer(DefaultBodyLimit::max(256 << 10)),
+            post(notes::ids_remap).layer(DefaultBodyLimit::max(256 << 10)),
         )
-        .route("/notes", get(notes_get))
+        .route("/notes", get(notes::notes_get))
         .route(
             "/notes/tags/{id}",
-            put(tag_put)
-                .delete(tag_delete)
+            put(notes::tag_put)
+                .delete(notes::tag_delete)
                 .layer(DefaultBodyLimit::max(16 << 10)),
         )
         .route(
             "/notes/games/{id}",
-            put(game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
+            put(notes::game_note_put).layer(DefaultBodyLimit::max(64 << 10)),
         )
         .route("/machines", get(machines::list))
         .route("/machines/{id}/power", post(machines::power))
         .route("/m/{id}/{*path}", any(machines::proxy))
-        .route("/clipboard", get(clip_get).post(clip_post))
+        .route("/clipboard", get(host::clip_get).post(host::clip_post))
         // Uploads stream to disk with their own 8 GiB cap; only this route lifts the body limit.
         .route(
             "/files/{name}",
-            put(file_put).layer(DefaultBodyLimit::disable()),
+            put(host::file_put).layer(DefaultBodyLimit::disable()),
         );
     Router::new()
         .nest("/api", api.fallback(|| async { StatusCode::NOT_FOUND }))
