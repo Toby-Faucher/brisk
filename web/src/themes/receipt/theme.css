@@ -1,1 +1,806 @@
-/* receipt */
+/* UI style receipt ("Thermal receipt"). Every rule starts with :root[data-ui='receipt']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/courier-prime/400.css';
+@import '@fontsource/courier-prime/700.css';
+
+:root[data-ui='receipt'] {
+  --rc-paper: #f7f4ec;
+  --rc-ink: #1d1c1a;
+  --bg: #19181c;
+  --panel: #efebe0;
+  --panel2: #e5e0d1;
+  --line: #a9a392;
+  --line-hover: #4f4b43;
+  --fg: #1d1c1a;
+  --muted: #4b4740;
+  --dim: #58544b;
+  --ok: #17612f;
+  --warn: #8a4a08;
+  --bad: #a51d1d;
+  --font: 'Courier Prime', ui-monospace, monospace;
+  --mono: 'Courier Prime', ui-monospace, monospace;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --rc-tooth: 16px;
+  --rc-edge: 8px;
+  --rc-zig-top: conic-gradient(from 135deg at top, var(--rc-paper) 0 90deg, #0000 0) top / var(--rc-tooth) var(--rc-edge) repeat-x;
+  --rc-zig-bot: conic-gradient(from -45deg at bottom, var(--rc-paper) 0 90deg, #0000 0) bottom / var(--rc-tooth) var(--rc-edge) repeat-x;
+  --rc-fill: linear-gradient(var(--rc-paper), var(--rc-paper)) center / 100% calc(100% - 2 * var(--rc-edge) + 2px) no-repeat;
+  --rc-stamp: '2026-10-30 12:00';
+  --rc-order: '0001';
+  scroll-padding-top: 64px;
+  color-scheme: light;
+}
+/* the paper is light, so the accent has to carry dark text; a bright accent reads as a highlighter pen */
+:root[data-ui='receipt'] body {
+  font-size: 14.5px;
+  line-height: 1.5;
+  background:
+    radial-gradient(90% 70% at 50% 30%, #2a2830 0%, #19181c 70%, #101013 100%) fixed,
+    #19181c;
+  min-height: 100vh;
+}
+:root[data-ui='receipt'] .bg {
+  display: none;
+}
+:root[data-ui='receipt'] h1,
+:root[data-ui='receipt'] h2,
+:root[data-ui='receipt'] h3,
+:root[data-ui='receipt'] h4 {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+:root[data-ui='receipt'] :focus-visible {
+  outline: 2px dashed var(--rc-ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-ui='receipt'] .cm-in:focus-visible,
+:root[data-ui='receipt'] .search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-ui='receipt'] ::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* ---------- the desk: a sidebar strip and the receipt, side by side ---------- */
+:root[data-ui='receipt'] .app {
+  justify-content: center;
+  align-items: flex-start;
+  gap: 30px;
+  padding: 50px 24px 70px;
+}
+:root[data-ui='receipt'] .app:has(main:not(.page-in)) {
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+}
+:root[data-ui='receipt'] .side {
+  position: sticky;
+  top: 50px;
+  width: 210px;
+  height: auto;
+  max-height: calc(100vh - 62px);
+  flex: none;
+  padding: 30px 16px 32px;
+  gap: 3px;
+  border: 0;
+  backdrop-filter: none;
+  color: var(--fg);
+  background: var(--rc-zig-top), var(--rc-zig-bot), var(--rc-fill);
+  filter: drop-shadow(0 8px 10px #0008);
+}
+:root[data-ui='receipt'] .app:has(main:not(.page-in)) .side {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  max-height: none;
+  overflow: auto;
+}
+:root[data-ui='receipt'] .brand {
+  justify-content: center;
+  padding: 0 0 4px;
+}
+:root[data-ui='receipt'] .brand img {
+  filter: grayscale(1) contrast(1.5) brightness(0.55);
+  mix-blend-mode: multiply;
+}
+:root[data-ui='receipt'] .brand::after {
+  content: none;
+}
+:root[data-ui='receipt'] .side::before {
+  content: 'MENU';
+  border-bottom: 2px dashed var(--line);
+  padding-bottom: 6px;
+  display: block;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  font-size: 12.5px;
+  color: var(--muted);
+  order: -1;
+  margin-bottom: 6px;
+}
+:root[data-ui='receipt'] .side > .brand {
+  order: -2;
+}
+:root[data-ui='receipt'] .side > .wrap {
+  order: 9;
+}
+:root[data-ui='receipt'] .side {
+  counter-reset: rc-item;
+}
+:root[data-ui='receipt'] .nav {
+  position: relative;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 0;
+  color: var(--fg);
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transform: none;
+  transition: none;
+}
+:root[data-ui='receipt'] .nav svg {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  filter: grayscale(1) brightness(0.3) contrast(1.4);
+}
+/* dot leader then the line number */
+:root[data-ui='receipt'] a.nav::before {
+  content: '';
+  position: static;
+  order: 2;
+  flex: 1;
+  min-width: 8px;
+  height: 0.9em;
+  inset: auto;
+  z-index: auto;
+  border-radius: 0;
+  background: radial-gradient(circle at 50% 70%, var(--muted) 0.9px, #0000 1.3px) 0 0 / 6px 100% repeat-x;
+  box-shadow: none;
+  transform: none;
+}
+:root[data-ui='receipt'] a.nav::after {
+  counter-increment: rc-item;
+  content: counter(rc-item, decimal-leading-zero);
+  order: 3;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+:root[data-ui='receipt'] a.nav:hover {
+  background: var(--rc-ink);
+  color: var(--rc-paper);
+  transform: none;
+}
+:root[data-ui='receipt'] a.nav:hover::before {
+  background-image: radial-gradient(circle at 50% 70%, var(--rc-paper) 0.9px, #0000 1.3px);
+}
+:root[data-ui='receipt'] a.nav:hover::after {
+  color: var(--rc-paper);
+}
+:root[data-ui='receipt'] a.nav:hover svg {
+  filter: grayscale(1) invert(1) brightness(1.4);
+}
+:root[data-ui='receipt'] .nav[aria-current='page'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 0 0 0 1.5px var(--rc-ink);
+}
+:root[data-ui='receipt'] .nav[aria-current='page']::before {
+  position: static;
+  background: radial-gradient(circle at 50% 70%, var(--accent-fg) 0.9px, #0000 1.3px) 0 0 / 6px 100% repeat-x;
+  box-shadow: none;
+}
+:root[data-ui='receipt'] .nav[aria-current='page']::after {
+  color: var(--accent-fg);
+}
+:root[data-ui='receipt'] .nav.soon {
+  opacity: 1;
+  color: var(--muted);
+  font-weight: 400;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+:root[data-ui='receipt'] .nav.soon::before {
+  display: none;
+}
+:root[data-ui='receipt'] .nav.soon svg {
+  opacity: 0.55;
+}
+:root[data-ui='receipt'] .nav.soon .tag {
+  text-decoration: none;
+  display: inline-block;
+}
+:root[data-ui='receipt'] .side .sec {
+  padding: 12px 0 2px;
+  text-align: center;
+  font-size: 11.5px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+:root[data-ui='receipt'] .side .sec::before,
+:root[data-ui='receipt'] .side .sec::after {
+  content: ' - ';
+}
+
+/* host pill: the "terminal" line at the foot of the menu strip */
+:root[data-ui='receipt'] .side .wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 2px dashed var(--line);
+}
+:root[data-ui='receipt'] .pill {
+  width: 100%;
+  padding: 7px 8px;
+  gap: 8px;
+  border-radius: 0;
+  background: var(--panel2);
+  border: 1.5px solid var(--rc-ink);
+  color: var(--fg);
+  box-shadow: 3px 3px 0 var(--rc-ink);
+  font-weight: 700;
+}
+:root[data-ui='receipt'] .pill:hover {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+:root[data-ui='receipt'] .pill:active {
+  translate: 2px 2px;
+  box-shadow: 1px 1px 0 var(--rc-ink);
+}
+:root[data-ui='receipt'] .wrap .menu,
+:root[data-ui='receipt'] .menu {
+  background: var(--rc-paper);
+  border: 1.5px solid var(--rc-ink);
+  border-radius: 0;
+  box-shadow: 5px 5px 0 #0007;
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .it {
+  border-radius: 0;
+}
+:root[data-ui='receipt'] .it:hover,
+:root[data-ui='receipt'] .it:focus-visible {
+  background: var(--rc-ink);
+  color: var(--rc-paper);
+}
+
+/* ---------- the receipt: main is the paper ---------- */
+:root[data-ui='receipt'] main.page-in {
+  position: relative;
+  flex: 0 1 880px;
+  min-width: 0;
+  padding: calc(var(--rc-edge) + 18px) 36px calc(var(--rc-edge) + 18px);
+  color: var(--fg);
+  background:
+    var(--rc-zig-top),
+    var(--rc-zig-bot),
+    repeating-linear-gradient(0deg, #0000 0 3px, rgb(0 0 0 / 0.018) 3px 4px) center / 100% calc(100% - 2 * var(--rc-edge) + 2px) no-repeat,
+    var(--rc-fill);
+  filter: drop-shadow(0 10px 14px #000a);
+}
+:root[data-ui='receipt'] main.page-in::before {
+  content: 'B R I S K   M A R K E T\A   Games, hot off the printer\A TERM 01 / ORDER #' var(--rc-order) ' / ' var(--rc-stamp)
+    '\A- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -';
+  display: block;
+  white-space: pre;
+  overflow: hidden;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+:root[data-ui='receipt'] main.page-in::after {
+  content: '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\A\A  *** THANK YOU, COME AGAIN ***';
+  display: block;
+  white-space: pre;
+  overflow: hidden;
+  margin-top: 40px;
+  padding-bottom: 66px;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8f8a7d;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #8f8a7d 0 2px,
+      #0000 2px 5px,
+      #8f8a7d 5px 6px,
+      #0000 6px 8px,
+      #8f8a7d 8px 11px,
+      #0000 11px 12px,
+      #8f8a7d 12px 13px,
+      #0000 13px 16px,
+      #8f8a7d 16px 18px,
+      #0000 18px 21px,
+      #8f8a7d 21px 22px,
+      #0000 22px 23px
+    )
+    center bottom / min(300px, 80%) 46px no-repeat;
+}
+:root[data-ui='receipt'] main > .off {
+  border: 1.5px dashed var(--rc-ink);
+  border-radius: 0;
+  background: var(--panel2);
+  color: var(--fg);
+}
+:root[data-ui='receipt'] main > .off::before {
+  content: '!! ';
+  font-weight: 700;
+}
+:root[data-ui='receipt'] .denied {
+  border-radius: 0;
+  border: 2px dashed var(--rc-ink);
+  background: var(--rc-paper);
+  color: var(--fg);
+}
+
+/* ---------- surfaces ---------- */
+:root[data-ui='receipt'] .card {
+  background: var(--panel);
+  border: 1.5px dashed var(--line-hover);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .card:hover {
+  border-style: solid;
+  border-color: var(--rc-ink);
+  transform: none;
+  box-shadow: 4px 4px 0 var(--rc-ink);
+}
+:root[data-ui='receipt'] .card h4 {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .glass {
+  background: var(--rc-paper);
+  backdrop-filter: none;
+  border: 1.5px solid var(--rc-ink);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 #0008;
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .btn {
+  border: 2px solid var(--rc-ink);
+  border-radius: 0;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 13px;
+  box-shadow: 3px 3px 0 var(--rc-ink);
+  transition: none;
+}
+:root[data-ui='receipt'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: var(--rc-ink);
+  color: var(--rc-paper);
+}
+:root[data-ui='receipt'] .btn:active {
+  transform: none;
+  translate: 2px 2px;
+  box-shadow: 1px 1px 0 var(--rc-ink);
+}
+:root[data-ui='receipt'] .btn.ghost {
+  background: var(--rc-paper);
+  color: var(--fg);
+  border-style: dashed;
+  border-width: 1.5px;
+}
+:root[data-ui='receipt'] .btn.ghost:hover {
+  background: var(--rc-ink);
+  color: var(--rc-paper);
+}
+:root[data-ui='receipt'] .btn:disabled,
+:root[data-ui='receipt'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: var(--panel2);
+  color: var(--dim);
+  border-style: dotted;
+  box-shadow: none;
+  translate: none;
+}
+:root[data-ui='receipt'] .search {
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px dashed var(--rc-ink);
+  padding: 5px 4px;
+  color: var(--muted);
+}
+:root[data-ui='receipt'] .search:focus-within {
+  outline: 2px dashed var(--rc-ink);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+:root[data-ui='receipt'] .tag {
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid var(--muted);
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+:root[data-ui='receipt'] .fchip {
+  border-radius: 0;
+  border: 1.5px dashed var(--line-hover);
+  background: transparent;
+  color: var(--fg);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: none;
+}
+:root[data-ui='receipt'] .fchip:hover {
+  border-style: solid;
+  border-color: var(--rc-ink);
+  color: var(--fg);
+  background: var(--panel2);
+}
+:root[data-ui='receipt'] .fchip[aria-pressed='true'] {
+  color: var(--accent-fg);
+  border: 1.5px solid var(--rc-ink);
+}
+:root[data-ui='receipt'] .fchip[aria-pressed='true']::before {
+  background: var(--accent);
+  border-radius: 0;
+  box-shadow: none;
+  border: 0;
+}
+:root[data-ui='receipt'] kbd {
+  font-family: var(--mono);
+  border-radius: 0;
+  border: 1.5px solid var(--rc-ink);
+  background: var(--rc-paper);
+  color: var(--fg);
+  box-shadow: 2px 2px 0 var(--rc-ink);
+}
+:root[data-ui='receipt'] hr {
+  border: 0;
+  border-top: 2px dashed var(--line);
+}
+
+/* ---------- headers: *** TITLE *** over a dashed rule ---------- */
+:root[data-ui='receipt'] .top {
+  border-bottom: 2px dashed var(--rc-ink);
+  padding-bottom: 10px;
+}
+:root[data-ui='receipt'] .top h2 {
+  font-size: 24px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+:root[data-ui='receipt'] .top h2::before {
+  content: '*** ';
+}
+:root[data-ui='receipt'] .top h2::after {
+  content: ' ***';
+}
+
+/* ---------- covers: thermal prints (grey), colour comes back on hover ---------- */
+:root[data-ui='receipt'] .cover {
+  border-radius: 0;
+  filter: grayscale(1) contrast(1.25) brightness(1.02);
+  transition: filter 0.25s;
+}
+:root[data-ui='receipt'] .g:hover .cover,
+:root[data-ui='receipt'] .hero .cover,
+:root[data-ui='receipt'] .g:focus-visible .cover {
+  filter: none;
+}
+:root[data-ui='receipt'] .wrap[data-gid] .g {
+  border-radius: 0;
+}
+:root[data-ui='receipt'] .wrap[data-gid] .name {
+  font-weight: 700;
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .shelf h4 {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .shelf .chev,
+:root[data-ui='receipt'] .shelf .more {
+  border-radius: 0;
+  border: 1.5px solid var(--rc-ink);
+  background: var(--rc-paper);
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .shelf .chev:hover,
+:root[data-ui='receipt'] .shelf .more:hover {
+  background: var(--rc-ink);
+  color: var(--rc-paper);
+}
+:root[data-ui='receipt'] .hero {
+  border-radius: 0;
+  border: 2px solid var(--rc-ink);
+  box-shadow: 5px 5px 0 var(--rc-ink);
+}
+
+/* ---------- dialogs, command menu, tooltips, toasts: slips of paper ---------- */
+:root[data-ui='receipt'] .cm-dim {
+  background: rgb(10 9 12 / 0.7);
+  backdrop-filter: none;
+}
+:root[data-ui='receipt'] :is(.cm, .rs) {
+  --cm-r: 0px;
+  border: 0;
+  border-radius: 0;
+  color: var(--fg);
+  background: var(--rc-zig-top), var(--rc-zig-bot), var(--rc-fill);
+  filter: drop-shadow(0 14px 20px #000b);
+  padding-block: calc(var(--rc-edge) + 12px);
+}
+:root[data-ui='receipt'] .cm-in {
+  font-family: var(--mono);
+  border-bottom: 2px dashed var(--rc-ink);
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .cm-it {
+  border-radius: 0;
+  font-weight: 700;
+}
+:root[data-ui='receipt'] .cm-it[data-selected] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 0 0 0 1.5px var(--rc-ink) inset;
+}
+:root[data-ui='receipt'] .cm-it[data-selected] .k {
+  color: var(--accent-fg);
+}
+:root[data-ui='receipt'] .tip {
+  background: var(--rc-ink);
+  color: var(--rc-paper);
+  border-radius: 0;
+  font-weight: 700;
+  box-shadow: 3px 3px 0 #0008;
+}
+:root[data-ui='receipt'] .toast {
+  background: var(--rc-paper);
+  color: var(--fg);
+  border: 2px solid var(--rc-ink);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 #000a;
+}
+:root[data-ui='receipt'] .toast.error {
+  color: var(--bad);
+  border-style: dashed;
+}
+:root[data-ui='receipt'] .toast::before {
+  content: '> ';
+  font-weight: 700;
+}
+
+/* ---------- Settings ---------- */
+:root[data-ui='receipt'] .st .strip {
+  top: 38px;
+  background: var(--rc-paper);
+  border-bottom: 2px dashed var(--rc-ink);
+}
+:root[data-ui='receipt'] .st .tab {
+  border-radius: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+:root[data-ui='receipt'] .st .tab[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+:root[data-ui='receipt'] .st .ind {
+  display: none;
+}
+:root[data-ui='receipt'] input[type='checkbox'] {
+  appearance: none;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid var(--rc-ink);
+  border-radius: 0;
+  background: var(--rc-paper);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+:root[data-ui='receipt'] input[type='checkbox']::after {
+  content: 'X';
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent-fg);
+  transform: scale(0);
+}
+:root[data-ui='receipt'] input[type='checkbox']:checked {
+  background: var(--accent);
+}
+:root[data-ui='receipt'] input[type='checkbox']:checked::after {
+  transform: scale(1);
+}
+:root[data-ui='receipt'] input[type='file']::file-selector-button {
+  border: 2px solid var(--rc-ink);
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: 700 13px var(--mono);
+  text-transform: uppercase;
+  padding: 5px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+/* ---------- printing: the sheet feeds out of the slot, each block sweeps left to right ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='receipt'] main.page-in {
+    animation: rc-feed 0.85s steps(34, end) backwards;
+  }
+  :root[data-ui='receipt'] .reveal[data-enter],
+  :root[data-ui='receipt'] .enter[data-enter] {
+    animation: rc-line 0.3s steps(8, end) calc(var(--i, 0) * 50ms) backwards;
+  }
+  @keyframes rc-feed {
+    from {
+      clip-path: inset(0 0 100% 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes rc-line {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+  }
+}
+@media (max-width: 1000px) {
+  :root[data-ui='receipt'] .app {
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    padding-inline: 10px;
+  }
+  :root[data-ui='receipt'] .side {
+    position: static;
+    width: min(100%, 520px);
+    max-height: none;
+  }
+  :root[data-ui='receipt'] main.page-in {
+    flex: none;
+    width: 100%;
+    padding-inline: 18px;
+  }
+}
+
+/* text that sits on game art stays light */
+:root[data-ui='receipt'] .hero,
+:root[data-ui='receipt'] .rs.gd .head {
+  --fg: #f7f4ec;
+  --muted: #dcd7c9;
+  --dim: #d0cbbd;
+  color: #f7f4ec;
+}
+:root[data-ui='receipt'] .hero .lab,
+:root[data-ui='receipt'] .rs.gd .head .lab {
+  color: #e6e1d4;
+}
+:root[data-ui='receipt'] .hero h3 {
+  font-size: 30px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+:root[data-ui='receipt'] .chart figcaption {
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .chart {
+  background: var(--panel);
+  border: 1.5px dashed var(--line-hover);
+  border-radius: 0;
+}
+
+/* item lines: a label, a dot leader, a value (Machines, session reports) */
+:root[data-ui='receipt'] main dl {
+  column-gap: 0;
+}
+:root[data-ui='receipt'] main dt {
+  display: flex;
+  align-items: baseline;
+}
+:root[data-ui='receipt'] main dt::after {
+  content: '';
+  flex: 1;
+  min-width: 14px;
+  height: 0.85em;
+  margin: 0 4px 0 6px;
+  background: radial-gradient(circle at 50% 75%, var(--muted) 0.9px, #0000 1.3px) 0 0 / 6px 100% repeat-x;
+}
+:root[data-ui='receipt'] main dd {
+  text-align: right;
+  margin: 0;
+}
+
+/* History: a column of item lines, the play time is the quantity */
+:root[data-ui='receipt'] .grid:has(> .card > a.fill[data-session]) {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+:root[data-ui='receipt'] .grid > .card:has(> a.fill[data-session]) {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1.5px dashed var(--line);
+}
+:root[data-ui='receipt'] .grid > .card:has(> a.fill[data-session]):hover {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+:root[data-ui='receipt'] .grid > .card:has(> a.fill[data-session]):hover .lab,
+:root[data-ui='receipt'] .grid > .card:has(> a.fill[data-session]):hover .row {
+  color: var(--accent-fg);
+}
+:root[data-ui='receipt'] .card > .head {
+  flex: 1;
+  min-width: 0;
+}
+:root[data-ui='receipt'] .card > .row.mono {
+  flex: none;
+  gap: 16px;
+  white-space: nowrap;
+  margin: 0;
+}
+:root[data-ui='receipt'] .card > .row.mono > span:first-child::before {
+  content: 'QTY ';
+  color: var(--muted);
+}
+:root[data-ui='receipt'] .card > svg.spark {
+  flex: none;
+  width: 90px;
+  height: 22px;
+  margin: 0;
+}
+:root[data-ui='receipt'] .spark path {
+  stroke: var(--fg);
+}
+
+/* places that hard-code a pale grey for the dark original */
+:root[data-ui='receipt'] .ring b {
+  background: var(--rc-paper);
+  color: var(--fg);
+}
+:root[data-ui='receipt'] .nums b,
+:root[data-ui='receipt'] main h3 {
+  color: var(--fg);
+}
+
+:root[data-ui='receipt'] .hero .btn.ghost,
+:root[data-ui='receipt'] .rs.gd .head .btn.ghost {
+  color: var(--rc-ink);
+}
+:root[data-ui='receipt'] .hero .btn.ghost:hover,
+:root[data-ui='receipt'] .rs.gd .head .btn.ghost:hover {
+  color: var(--rc-paper);
+}
+:root[data-ui='receipt'] main dl {
+  grid-template-columns: 1fr auto;
+}
