@@ -1,1 +1,485 @@
-/* fps */
+/* UI style fps ("Boomer shooter"). Every rule starts with :root[data-ui='fps']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/teko/latin-400.css';
+@import '@fontsource/teko/latin-600.css';
+
+:root[data-ui='fps'] {
+  --bg: #1a0d07;
+  --panel: #3b2f22;
+  --panel2: #4d3e2c;
+  --line: #8a7550;
+  --line-hover: #ffb02e;
+  --fg: #f6ead0;
+  --muted: #dbc89f;
+  --dim: #c4b087;
+  --accent: #ff8a1a;
+  --accent-fg: #1a0d07;
+  --ok: #9bd13a;
+  --warn: #ffd21f;
+  --bad: #ff7a66;
+  --font: 'Teko', ui-sans-serif, sans-serif;
+  --mono: 'Teko', ui-monospace, monospace;
+  --r-card: 2px;
+  --r-ctl: 2px;
+  --ease: steps(4, end);
+  --fps-hi: #ffb02e;
+  --fps-brick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='48'%3E%3Crect width='96' height='48' fill='%23150a06'/%3E%3Crect x='2' y='2' width='44' height='20' fill='%23472015'/%3E%3Crect x='50' y='2' width='44' height='20' fill='%23501f12'/%3E%3Crect x='-22' y='26' width='44' height='20' fill='%2342201a'/%3E%3Crect x='26' y='26' width='44' height='20' fill='%234c2514'/%3E%3Crect x='74' y='26' width='44' height='20' fill='%23421d12'/%3E%3Cpath d='M4 4h40M52 4h40M28 28h40' stroke='%23ffffff10' stroke-width='2'/%3E%3C/svg%3E");
+  --fps-rivets:
+    radial-gradient(circle at 9px 9px, #e2c585 0 2px, #1a0e06 3px 4px, transparent 5px) no-repeat,
+    radial-gradient(circle at calc(100% - 9px) 9px, #e2c585 0 2px, #1a0e06 3px 4px, transparent 5px) no-repeat,
+    radial-gradient(circle at 9px calc(100% - 9px), #e2c585 0 2px, #1a0e06 3px 4px, transparent 5px) no-repeat,
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #e2c585 0 2px, #1a0e06 3px 4px, transparent 5px) no-repeat;
+  --fps-metal:
+    repeating-linear-gradient(90deg, #ffffff07 0 2px, transparent 2px 9px), linear-gradient(170deg, #5a4a36, #3b2f22 45%, #2c2217);
+  --fps-bevel: inset 2px 2px 0 #ffffff26, inset -2px -2px 0 #0008, 0 0 0 2px #130b05, 4px 5px 0 2px #0009;
+  scroll-padding-top: 76px;
+}
+/* an accent other than the default mint recolours the amber highlight */
+:root[data-ui='fps']:not([data-accent='mint']) {
+  --fps-hi: var(--accent);
+}
+
+/* ---------- the level: brick, and a crosshair for a mouse ---------- */
+:root[data-ui='fps'] body {
+  font-size: 20px;
+  font-size-adjust: 0.52; /* Teko has a small x-height; this lifts every size the components set */
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #0008, #0004 30%, #000a), var(--fps-brick);
+  background-attachment: fixed;
+  background-color: #1a0d07;
+  min-height: 100vh;
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M16 3v9M16 20v9M3 16h9M20 16h9' stroke='%23000' stroke-width='5'/%3E%3Cpath d='M16 4v8M16 20v8M4 16h8M20 16h8' stroke='%2300ff66' stroke-width='2'/%3E%3C/svg%3E")
+    16 16,
+    crosshair;
+}
+:root[data-ui='fps'] :is(a, button, summary, [role='button'], [role='tab'], [role='option'], label, select) {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M16 3v9M16 20v9M3 16h9M20 16h9' stroke='%23000' stroke-width='5'/%3E%3Cpath d='M16 4v8M16 20v8M4 16h8M20 16h8' stroke='%23ff3b2a' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='5' fill='none' stroke='%23ff3b2a' stroke-width='2'/%3E%3C/svg%3E")
+    16 16,
+    pointer;
+}
+:root[data-ui='fps'] :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea) {
+  cursor: text;
+}
+:root[data-ui='fps'] .bg {
+  display: none;
+}
+:root[data-ui='fps'] h1,
+:root[data-ui='fps'] h2,
+:root[data-ui='fps'] h3,
+:root[data-ui='fps'] h4 {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fps-hi);
+  text-shadow: 2px 2px 0 #000;
+}
+:root[data-ui='fps'] h1 {
+  font-size: 44px;
+}
+:root[data-ui='fps'] .muted,
+:root[data-ui='fps'] .lab {
+  color: var(--muted);
+}
+:root[data-ui='fps'] .lab {
+  font-size: 17px;
+}
+:root[data-ui='fps'] :focus-visible {
+  outline: 3px dashed #00ff66;
+  outline-offset: 2px;
+}
+:root[data-ui='fps'] main {
+  padding: 22px 26px 120px;
+}
+
+/* ---------- riveted metal panels ---------- */
+:root[data-ui='fps'] .card,
+:root[data-ui='fps'] .glass,
+:root[data-ui='fps'] .hero,
+:root[data-ui='fps'] .cm,
+:root[data-ui='fps'] .rs,
+:root[data-ui='fps'] .mp,
+:root[data-ui='fps'] .menu,
+:root[data-ui='fps'] .toast {
+  background: var(--fps-rivets), var(--fps-metal);
+  border: 0;
+  border-radius: 2px;
+  box-shadow: var(--fps-bevel);
+  backdrop-filter: none;
+  color: var(--fg);
+}
+:root[data-ui='fps'] .card {
+  padding: 20px 22px;
+}
+:root[data-ui='fps'] .card:hover {
+  transform: none;
+  box-shadow:
+    var(--fps-bevel),
+    0 0 0 4px var(--fps-hi);
+}
+:root[data-ui='fps'] .card h4 {
+  font-size: 22px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* a card slams in from slightly too big, like a door shutting */
+  @keyframes fps-slam {
+    from {
+      scale: 1.06;
+      opacity: 0;
+    }
+  }
+  :root[data-ui='fps'] :is(.card, .hero, .shelf) {
+    animation: fps-slam 0.24s steps(4, end) backwards;
+  }
+  :root[data-ui='fps'] :is(.cm, .rs)[data-state='open'] {
+    animation: fps-slam 0.2s steps(3, end) backwards;
+  }
+}
+
+/* ---------- the top bar: a row of weapon slots ---------- */
+:root[data-ui='fps'] .app {
+  flex-direction: column;
+}
+:root[data-ui='fps'] .side {
+  counter-reset: slot;
+  isolation: isolate;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: auto;
+  height: auto;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--fps-metal);
+  border: 0;
+  border-bottom: 4px solid #8a7550;
+  box-shadow:
+    0 4px 0 #130b05,
+    0 10px 24px #000a;
+  backdrop-filter: none;
+}
+:root[data-ui='fps'] .brand {
+  display: flex;
+  align-items: center;
+  padding: 0 14px 0 4px;
+  margin-right: 6px;
+  border-right: 3px solid #130b05;
+}
+:root[data-ui='fps'] .brand img {
+  width: 72px;
+  height: auto;
+  filter: drop-shadow(2px 2px 0 #000);
+}
+:root[data-ui='fps'] a.nav,
+:root[data-ui='fps'] .nav.soon {
+  counter-increment: slot;
+  position: relative;
+  min-width: 0;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 32px;
+  border-radius: 2px;
+  color: var(--fg);
+  font-size: 19px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #1a0e08, #2a1a0f);
+  box-shadow:
+    inset 2px 2px 0 #0009,
+    inset -1px -1px 0 #ffffff22,
+    0 0 0 2px #130b05;
+  transform: none;
+}
+/* the slot number */
+:root[data-ui='fps'] .nav::after {
+  content: counter(slot);
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  font-size: 28px;
+  font-weight: 600;
+  color: #ff5a45;
+  text-shadow: 2px 2px 0 #000;
+}
+:root[data-ui='fps'] .nav.soon {
+  opacity: 1;
+  color: var(--dim);
+}
+:root[data-ui='fps'] .nav.soon::after {
+  color: #a6463a;
+}
+:root[data-ui='fps'] .nav svg {
+  filter: drop-shadow(1px 1px 0 #000);
+}
+:root[data-ui='fps'] a.nav:hover {
+  background: linear-gradient(180deg, #2c1a0e, #3d250f);
+  color: var(--fps-hi);
+  transform: none;
+}
+:root[data-ui='fps'] a.nav[aria-current='page'] {
+  background: none;
+  box-shadow: none;
+  color: #1a0d07;
+  text-shadow: none;
+}
+:root[data-ui='fps'] a.nav[aria-current='page']::before {
+  inset: 0;
+  z-index: -1;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #ffd24a, var(--fps-hi) 55%, #c76a00);
+  box-shadow:
+    inset 2px 2px 0 #fff8,
+    inset -2px -2px 0 #0006,
+    0 0 0 2px #130b05;
+}
+:root[data-ui='fps'] a.nav[aria-current='page']::after {
+  color: #7a1408;
+  text-shadow: none;
+}
+:root[data-ui='fps'] .side .sec {
+  display: none;
+}
+:root[data-ui='fps'] .side .wrap {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+:root[data-ui='fps'] .pill {
+  background: #130b05;
+  border: 2px solid #8a7550;
+  border-radius: 2px;
+  color: var(--fg);
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='fps'] .pill:hover {
+  border-color: var(--fps-hi);
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='fps'] .btn {
+  position: relative;
+  padding: 4px 18px 2px;
+  font-size: 22px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #fff;
+  background: linear-gradient(180deg, #d4501a, #a93a10 50%, #7a2508);
+  border: 0;
+  border-radius: 2px;
+  text-shadow: 2px 2px 0 #000;
+  box-shadow:
+    inset 2px 2px 0 #ffb48a88,
+    inset -2px -2px 0 #0007,
+    0 0 0 2px #130b05,
+    0 4px 0 2px #130b05;
+  transform: none;
+  filter: none;
+}
+:root[data-ui='fps'] .btn:hover {
+  filter: brightness(1.18);
+  transform: translateY(-1px);
+}
+:root[data-ui='fps'] .btn:active {
+  transform: translateY(4px);
+  box-shadow:
+    inset 2px 2px 0 #ffb48a88,
+    inset -2px -2px 0 #0007,
+    0 0 0 2px #130b05,
+    0 0 0 2px #130b05;
+}
+:root[data-ui='fps'] .btn.ghost {
+  background: linear-gradient(180deg, #6b6a34, #4d4d24 50%, #34341a);
+  box-shadow:
+    inset 2px 2px 0 #e0e0a044,
+    inset -2px -2px 0 #0007,
+    0 0 0 2px #130b05,
+    0 4px 0 2px #130b05;
+}
+:root[data-ui='fps'] .btn.ghost:hover {
+  color: var(--fps-hi);
+}
+:root[data-ui='fps'] .btn:disabled,
+:root[data-ui='fps'] .btn[aria-disabled='true'] {
+  filter: grayscale(0.6);
+  opacity: 0.7;
+}
+:root[data-ui='fps'] .search,
+:root[data-ui='fps'] input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+:root[data-ui='fps'] textarea,
+:root[data-ui='fps'] select {
+  background: #0c0604;
+  border: 2px solid #8a7550;
+  border-radius: 2px;
+  color: #7dff9a;
+  font-size: 20px;
+  box-shadow: inset 2px 2px 0 #000;
+}
+:root[data-ui='fps'] .search input {
+  border: 0;
+  box-shadow: none;
+}
+:root[data-ui='fps'] .search:focus-within {
+  border-color: var(--fps-hi);
+}
+:root[data-ui='fps'] .tag,
+:root[data-ui='fps'] .fchip,
+:root[data-ui='fps'] kbd {
+  border: 2px solid #8a7550;
+  border-radius: 2px;
+  background: #130b05;
+  color: var(--fg);
+  font-size: 17px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='fps'] .fchip[aria-pressed='true'] {
+  background: var(--fps-hi);
+  border-color: #fff4;
+  color: #1a0d07;
+}
+:root[data-ui='fps'] .nav.soon .tag {
+  display: none;
+}
+
+/* ---------- Command menu, dialogs, toasts ---------- */
+:root[data-ui='fps'] .cm-dim {
+  background: #0009;
+  backdrop-filter: none;
+}
+:root[data-ui='fps'] .cm-it {
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='fps'] .cm-it[data-selected] {
+  background: var(--fps-hi);
+  color: #1a0d07;
+}
+:root[data-ui='fps'] .cm-in {
+  background: transparent;
+  border: 0;
+}
+:root[data-ui='fps'] .rs-t {
+  color: var(--fps-hi);
+}
+/* the status bar owns the bottom edge, so toasts sit above it */
+:root[data-ui='fps'] .toasts {
+  bottom: 100px;
+}
+
+/* ---------- Home: the gauges become ammo readouts ---------- */
+:root[data-ui='fps'] div.ring {
+  width: 104px;
+  height: 22px;
+  border-radius: 0;
+  border: 2px solid #8a7550;
+  background: linear-gradient(90deg, #c8321e calc(var(--p, 0) * 1%), #0c0604 0);
+  position: relative;
+  display: block;
+}
+:root[data-ui='fps'] div.ring b {
+  width: auto;
+  height: auto;
+  background: none;
+  display: block;
+  text-align: right;
+  padding-right: 6px;
+  font-size: 18px;
+  line-height: 18px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+}
+
+/* ---------- Library ---------- */
+:root[data-ui='fps'] .cover {
+  border-radius: 0;
+  border: 3px solid #130b05;
+  box-shadow: 0 0 0 2px #8a7550;
+}
+:root[data-ui='fps'] .wrap:hover,
+:root[data-ui='fps'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='fps'] .wrap[data-gid] .name {
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='fps'] .wrap[data-gid]:is(:hover, :has(:focus-visible)) .name {
+  color: var(--fps-hi);
+}
+:root[data-ui='fps'] .wrap[data-gid] .g {
+  border-radius: 0;
+}
+:root[data-ui='fps'] .wrap[data-gid] .sub {
+  color: var(--muted);
+}
+
+/* ---------- Settings tabs ---------- */
+:root[data-ui='fps'] .st .strip {
+  background: #130b05;
+  border-bottom: 3px solid #8a7550;
+  gap: 4px;
+}
+:root[data-ui='fps'] .st .tab {
+  border-radius: 0;
+  color: var(--fg);
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='fps'] .st .tab[aria-selected='true'] {
+  color: var(--fps-hi);
+}
+
+/* ---------- small delights ---------- */
+:root[data-ui='fps'] .hero::after {
+  content: 'Level start';
+  position: absolute;
+  right: 18px;
+  top: 14px;
+  padding: 0 10px;
+  background: #130b05cc;
+  border: 2px solid #8a7550;
+  color: #ffd21f;
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+:root[data-ui='fps'] .tbl {
+  font-size: 15px;
+}
+
+/* ---------- narrow screens: the slot row wraps ---------- */
+@media (max-width: 800px) {
+  :root[data-ui='fps'] .side {
+    flex-wrap: wrap;
+    padding: 6px 8px;
+  }
+  :root[data-ui='fps'] .brand,
+  :root[data-ui='fps'] .nav.soon {
+    display: none;
+  }
+  :root[data-ui='fps'] a.nav {
+    min-width: 0;
+    font-size: 19px;
+    padding-right: 8px;
+  }
+  :root[data-ui='fps'] main {
+    padding: 12px 12px 90px;
+  }
+}
