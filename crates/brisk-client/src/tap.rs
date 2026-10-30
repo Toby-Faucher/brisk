@@ -161,7 +161,7 @@ pub struct TapFrame {
     pub tap_ns: u64,
     /// Frames the tap dropped so far in this session (socket full).
     pub dropped: u32,
-    /// The access unit in Annex B form, without filler data NAL units (see [`strip_filler`]).
+    /// The access unit in Annex B form, without filler data NAL units.
     pub annexb: Bytes,
 }
 
