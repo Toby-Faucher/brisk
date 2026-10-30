@@ -41,6 +41,8 @@ export const UI_THEMES = [
   { id: 'bonfire', name: 'Bonfire', blurb: 'Ash, embers and a lonely flame' },
   { id: 'racer', name: 'Arcade racer', blurb: 'Speed stripes, checkered flags and a rev meter' },
   { id: 'versus', name: 'Versus', blurb: 'A fighter select screen with health bars' },
+  { id: 'bentodark', name: 'Dark bento', blurb: 'Dim tiles with a lit edge' },
+  { id: 'shader', name: 'Shader lab', blurb: 'A live GPU shader behind glass' },
 ] as const;
 
 export type UiTheme = (typeof UI_THEMES)[number]['id'];
