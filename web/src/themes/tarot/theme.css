@@ -1,1 +1,863 @@
-/* tarot */
+/* UI style tarot: every rule starts with :root[data-ui='tarot']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/cinzel/400.css';
+@import '@fontsource/cinzel/600.css';
+@import '@fontsource/cormorant-garamond/500.css';
+@import '@fontsource/cormorant-garamond/500-italic.css';
+@import '@fontsource/cormorant-garamond/600.css';
+
+/* ---------- tokens: indigo velvet, gold foil ---------- */
+:root[data-ui='tarot'] {
+  --bg: #0c0922;
+  --panel: #171238;
+  --panel2: #221b52;
+  --line: rgb(214 176 90 / 0.3);
+  --line-hover: rgb(236 204 130 / 0.7);
+  --fg: #f5ecd3;
+  --muted: #cbc0e2;
+  --dim: #b0a5cc;
+  --ok: #7ee0b0;
+  --warn: #f2cd6b;
+  --bad: #ff9aa8;
+  --font: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --display: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  --gold: #d9b45e;
+  --gold-hi: #f4dc9a;
+  --gold-lo: #9a7430;
+  --ink: #1a1238;
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --dur-page: 420ms;
+  --dur-enter: 620ms;
+  --foil: linear-gradient(115deg, var(--gold-lo), var(--gold-hi) 38%, var(--gold) 55%, var(--gold-hi) 78%, var(--gold-lo));
+  --velvet: radial-gradient(120% 90% at 50% 0%, #2a2068, transparent 70%), linear-gradient(180deg, #1b1544, #120e32);
+  --tr-shadow: 0 2px 4px rgb(0 0 0 / 0.4), 0 22px 44px -16px rgb(0 0 0 / 0.7);
+}
+:root[data-ui='tarot'] body {
+  background: var(--bg);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+:root[data-ui='tarot'] ::selection {
+  background: var(--gold);
+  color: var(--ink);
+}
+:root[data-ui='tarot'] :focus-visible {
+  outline: 2px solid var(--gold-hi);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+:root[data-ui='tarot'] h1,
+:root[data-ui='tarot'] h2,
+:root[data-ui='tarot'] h3,
+:root[data-ui='tarot'] h4,
+:root[data-ui='tarot'] h5 {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='tarot'] .lab,
+:root[data-ui='tarot'] .muted {
+  color: var(--muted);
+  font-size: 1em;
+}
+:root[data-ui='tarot'] .app {
+  display: block;
+}
+:root[data-ui='tarot'] main {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 128px 40px 110px;
+}
+:root[data-ui='tarot'] main .bg {
+  display: none;
+}
+
+/* ---------- page titles ---------- */
+:root[data-ui='tarot'] .top {
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent) 1;
+  padding: 0 4px 14px;
+  gap: 6px 18px;
+  align-items: baseline;
+}
+:root[data-ui='tarot'] .top h2 {
+  font-size: clamp(30px, 3.6vw, 46px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  background: var(--foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding-right: 0.1em;
+}
+:root[data-ui='tarot'] .top h2::before {
+  content: '\2726';
+  font-size: 0.5em;
+  margin-right: 0.7em;
+  vertical-align: 0.35em;
+  -webkit-text-fill-color: var(--gold);
+}
+:root[data-ui='tarot'] .top .lab {
+  font-style: italic;
+  font-size: 19px;
+}
+
+/* ---------- the medallion row (sidebar) ---------- */
+:root[data-ui='tarot'] .side {
+  position: fixed;
+  inset: 0 0 auto 0;
+  width: auto;
+  height: 104px;
+  z-index: 20; /* under the stream (30), dialogs (41) and toasts */
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 220px 0;
+  border: 0;
+  background: linear-gradient(180deg, rgb(8 6 28 / 0.97) 55%, rgb(8 6 28 / 0.75) 82%, transparent);
+  backdrop-filter: none;
+  counter-reset: arcana;
+}
+:root[data-ui='tarot'] .side::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-lo) 15%, var(--gold) 50%, var(--gold-lo) 85%, transparent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+:root[data-ui='tarot'] .brand {
+  position: absolute;
+  left: 32px;
+  top: 28px;
+  padding: 0;
+}
+:root[data-ui='tarot'] .brand img {
+  width: 84px;
+  height: auto;
+  filter: sepia(1) saturate(2.4) hue-rotate(2deg) brightness(1.15);
+}
+:root[data-ui='tarot'] .side nav {
+  display: contents;
+}
+:root[data-ui='tarot'] .side .nav {
+  position: relative;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 82px;
+  gap: 3px;
+  padding: 0 0 4px;
+  border-radius: 12px;
+  background: none;
+  color: var(--gold-hi);
+  font: 600 10.5px / 1.15 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  counter-increment: arcana;
+  transition: color 0.3s;
+}
+/* the numeral above each medallion */
+:root[data-ui='tarot'] .side .nav::after {
+  content: counter(arcana, upper-roman);
+  order: -1;
+  font: 600 10px / 1 var(--display);
+  letter-spacing: 0.2em;
+  color: var(--gold);
+  margin-bottom: 2px;
+}
+:root[data-ui='tarot'] .side .nav svg {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  padding: 13px;
+  margin: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold);
+  background: radial-gradient(circle at 35% 28%, #4a3b9a, #1b1446 70%);
+  box-shadow:
+    0 0 0 3px #0c0922,
+    0 0 0 4px rgb(217 180 94 / 0.5),
+    0 8px 18px -4px rgb(0 0 0 / 0.7);
+  transition:
+    transform 0.7s var(--spring-settle),
+    box-shadow 0.4s,
+    border-color 0.3s;
+}
+:root[data-ui='tarot'] .side a.nav:hover,
+:root[data-ui='tarot'] .side a.nav:focus-visible {
+  color: #fff;
+  transform: none;
+  background: none;
+}
+:root[data-ui='tarot'] .side a.nav:hover svg,
+:root[data-ui='tarot'] .side a.nav:focus-visible svg {
+  transform: perspective(300px) rotateY(360deg) scale(1.08);
+  border-color: var(--gold-hi);
+  box-shadow:
+    0 0 0 3px #0c0922,
+    0 0 0 4px var(--gold-hi),
+    0 0 26px 2px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+:root[data-ui='tarot'] .side .nav[aria-current='page'] {
+  color: #fff;
+}
+:root[data-ui='tarot'] .side .nav[aria-current='page'] svg {
+  border-color: var(--gold-hi);
+  box-shadow:
+    0 0 0 3px #0c0922,
+    0 0 0 4px var(--gold-hi),
+    0 0 22px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+:root[data-ui='tarot'] .side .nav[aria-current='page']::before {
+  inset: -4px -2px -2px;
+  border-radius: 14px;
+  background: radial-gradient(closest-side at 50% 52px, color-mix(in srgb, var(--accent) 34%, transparent), transparent 90%);
+  box-shadow: none;
+}
+:root[data-ui='tarot'] .side .sec {
+  font-size: 0;
+  width: 1px;
+  height: 58px;
+  margin: 8px 10px 0;
+  padding: 0;
+  flex: none;
+  background: linear-gradient(180deg, transparent, var(--gold), transparent);
+}
+:root[data-ui='tarot'] .side .soon {
+  opacity: 0.8;
+  cursor: default;
+}
+:root[data-ui='tarot'] .side .soon svg {
+  border-style: dashed;
+  filter: saturate(0.5);
+}
+:root[data-ui='tarot'] .side .soon .tag {
+  margin: 0;
+  padding: 1px 7px;
+  font: italic 500 13px / 1.2 var(--font);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--gold);
+}
+/* host pill: a small gold-trimmed plaque at the right end */
+:root[data-ui='tarot'] .side .wrap {
+  position: absolute;
+  right: 32px;
+  top: 28px;
+  margin: 0;
+}
+:root[data-ui='tarot'] .side > .pill {
+  position: absolute;
+  right: 32px;
+  top: 28px;
+  margin: 0;
+}
+:root[data-ui='tarot'] .side .pill {
+  height: 44px;
+  padding: 0 18px;
+  gap: 9px;
+  width: auto;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  color: var(--gold-hi);
+  background: var(--velvet);
+  box-shadow:
+    inset 0 0 0 3px #0c0922,
+    inset 0 0 0 4px rgb(217 180 94 / 0.4);
+  font: 600 12px / 1 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition:
+    box-shadow 0.4s,
+    color 0.3s;
+}
+:root[data-ui='tarot'] .side .pill:hover {
+  color: #fff;
+  box-shadow:
+    inset 0 0 0 3px #0c0922,
+    inset 0 0 0 4px var(--gold-hi),
+    0 0 24px -4px var(--accent);
+}
+:root[data-ui='tarot'] .side .pill .name {
+  flex: none;
+  max-width: 120px;
+}
+:root[data-ui='tarot'] .side .pill .st {
+  display: none;
+}
+:root[data-ui='tarot'] .side .menu {
+  left: auto;
+  right: 0;
+  bottom: auto;
+  top: calc(100% + 12px);
+  min-width: 260px;
+}
+:root[data-ui='tarot'] .side .menu .it:hover,
+:root[data-ui='tarot'] .side .menu .it:focus-visible {
+  background: rgb(217 180 94 / 0.16);
+}
+:root[data-ui='tarot'] .side .menu .st {
+  margin-left: auto;
+  font-style: italic;
+}
+
+/* ---------- ornate frames: cards, hero, panels ---------- */
+:root[data-ui='tarot'] .card,
+:root[data-ui='tarot'] .glass,
+:root[data-ui='tarot'] .hero,
+:root[data-ui='tarot'] main > .off,
+:root[data-ui='tarot'] .denied {
+  background: var(--velvet);
+  border: 1px solid var(--gold);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 4px #120e32,
+    inset 0 0 0 5px rgb(217 180 94 / 0.38),
+    var(--tr-shadow);
+}
+:root[data-ui='tarot'] .card {
+  transition:
+    transform 0.5s var(--spring-soft),
+    box-shadow 0.4s,
+    border-color 0.3s;
+}
+:root[data-ui='tarot'] .card:hover {
+  transform: translateY(-4px);
+  border-color: var(--gold-hi);
+  box-shadow:
+    inset 0 0 0 4px #120e32,
+    inset 0 0 0 5px rgb(244 220 154 / 0.6),
+    var(--tr-shadow),
+    0 0 40px -14px var(--accent);
+}
+/* corner brackets: four L-shapes drawn with gradients */
+:root[data-ui='tarot'] .card::before,
+:root[data-ui='tarot'] .hero::before,
+:root[data-ui='tarot'] .cm::before,
+:root[data-ui='tarot'] .rs::before {
+  --c: var(--gold-hi);
+  content: '';
+  position: absolute;
+  inset: 9px;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--c), var(--c)) 0 0 / 16px 1px,
+    linear-gradient(var(--c), var(--c)) 0 0 / 1px 16px,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 16px 1px,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 1px 16px,
+    linear-gradient(var(--c), var(--c)) 0 100% / 16px 1px,
+    linear-gradient(var(--c), var(--c)) 0 100% / 1px 16px,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 16px 1px,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 1px 16px;
+  background-repeat: no-repeat;
+  opacity: 0.8;
+}
+:root[data-ui='tarot'] .card h4 {
+  font-family: var(--display);
+  font-size: 12.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-hi);
+}
+:root[data-ui='tarot'] .card .big {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 40px;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+}
+:root[data-ui='tarot'] .grip {
+  border-radius: 6px;
+}
+
+/* ---------- buttons, tags, inputs ---------- */
+:root[data-ui='tarot'] .btn {
+  padding: 9px 22px;
+  border: 1px solid var(--gold-lo);
+  border-radius: 6px;
+  font: 600 12.5px / 1.3 var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--foil);
+  background-size: 200% 100%;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.5),
+    0 6px 16px -6px rgb(0 0 0 / 0.7);
+  transition:
+    background-position 0.8s var(--ease),
+    transform 0.4s var(--spring-snappy),
+    box-shadow 0.3s;
+}
+:root[data-ui='tarot'] .btn:hover {
+  background-position: 100% 0;
+  filter: none;
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    0 10px 22px -6px rgb(0 0 0 / 0.7),
+    0 0 22px -4px var(--gold);
+}
+:root[data-ui='tarot'] .btn:active {
+  transform: scale(0.97);
+}
+:root[data-ui='tarot'] .btn.ghost {
+  color: var(--gold-hi);
+  background: rgb(217 180 94 / 0.08);
+  border-color: var(--gold);
+  box-shadow: none;
+}
+:root[data-ui='tarot'] .btn.ghost:hover {
+  background: rgb(217 180 94 / 0.2);
+  color: #fff;
+}
+:root[data-ui='tarot'] .btn:disabled,
+:root[data-ui='tarot'] .btn[aria-disabled='true'] {
+  opacity: 0.55;
+  box-shadow: none;
+}
+:root[data-ui='tarot'] .tag {
+  background: rgb(217 180 94 / 0.18);
+  color: var(--gold-hi);
+  border-radius: 4px;
+  font-family: var(--display);
+  letter-spacing: 0.08em;
+}
+:root[data-ui='tarot'] .search {
+  border: 1px solid var(--gold-lo);
+  border-radius: 999px;
+  background: rgb(12 9 34 / 0.7);
+  padding: 8px 18px;
+}
+:root[data-ui='tarot'] .search:focus-within {
+  border-color: var(--gold-hi);
+  box-shadow: 0 0 24px -6px var(--accent);
+  outline: 0;
+}
+:root[data-ui='tarot'] .dot {
+  box-shadow: 0 0 10px var(--ok);
+}
+:root[data-ui='tarot'] input[type='text'],
+:root[data-ui='tarot'] input[type='search'],
+:root[data-ui='tarot'] input[type='number'],
+:root[data-ui='tarot'] input[type='password'],
+:root[data-ui='tarot'] textarea,
+:root[data-ui='tarot'] select,
+:root[data-ui='tarot'] .dd {
+  font-family: var(--font);
+  font-size: 18px;
+  background: rgb(12 9 34 / 0.75);
+  color: var(--fg);
+  border: 1px solid var(--gold-lo);
+  border-radius: 8px;
+}
+:root[data-ui='tarot'] input:focus-visible,
+:root[data-ui='tarot'] textarea:focus-visible,
+:root[data-ui='tarot'] select:focus-visible {
+  border-color: var(--gold-hi);
+  box-shadow: 0 0 20px -6px var(--accent);
+  outline: 0;
+}
+:root[data-ui='tarot'] .dd {
+  padding: 7px 14px;
+}
+:root[data-ui='tarot'] input[type='range'],
+:root[data-ui='tarot'] input[type='checkbox'] {
+  accent-color: var(--gold);
+}
+
+/* ---------- toasts, tooltips, menus ---------- */
+:root[data-ui='tarot'] .toast {
+  background: var(--velvet);
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 3px #120e32,
+    var(--tr-shadow),
+    0 0 34px -12px var(--accent);
+  font-size: 17px;
+}
+:root[data-ui='tarot'] .toast.error {
+  box-shadow:
+    inset 0 0 0 3px #120e32,
+    var(--tr-shadow),
+    0 0 34px -10px var(--bad);
+}
+:root[data-ui='tarot'] .tip {
+  background: #120e32;
+  border: 1px solid var(--gold-lo);
+  border-radius: 6px;
+  font-size: 15px;
+}
+:root[data-ui='tarot'] .dd-menu {
+  background: #150f3a;
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  padding: 6px;
+}
+:root[data-ui='tarot'] .dd-item {
+  border-radius: 6px;
+}
+:root[data-ui='tarot'] .dd-item[data-highlighted],
+:root[data-ui='tarot'] .dd-item:hover {
+  background: rgb(217 180 94 / 0.2);
+}
+
+/* ---------- command menu and dialogs ---------- */
+:root[data-ui='tarot'] .cm-dim {
+  background: radial-gradient(80% 60% at 50% 35%, rgb(60 40 140 / 0.25), rgb(4 3 16 / 0.82));
+}
+:root[data-ui='tarot'] .cm,
+:root[data-ui='tarot'] .rs {
+  border-radius: 16px;
+  background: var(--velvet);
+}
+:root[data-ui='tarot'] .cm-in {
+  font-family: var(--font);
+  font-style: italic;
+  font-size: 24px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+:root[data-ui='tarot'] .cm-in::placeholder {
+  color: var(--muted);
+}
+:root[data-ui='tarot'] .cm-it {
+  border-radius: 8px;
+}
+:root[data-ui='tarot'] .cm-it[data-selected],
+:root[data-ui='tarot'] .cm-it[aria-selected='true'] {
+  background: linear-gradient(90deg, rgb(217 180 94 / 0.26), rgb(217 180 94 / 0.06));
+}
+:root[data-ui='tarot'] kbd,
+:root[data-ui='tarot'] .k {
+  font-family: var(--display);
+  font-size: 11px;
+  border: 1px solid var(--gold-lo);
+  border-radius: 4px;
+  background: rgb(217 180 94 / 0.12);
+  color: var(--gold-hi);
+}
+:root[data-ui='tarot'] .search input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+:root[data-ui='tarot'] .rs-t,
+:root[data-ui='tarot'] .mm-h h3 {
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold-hi);
+}
+:root[data-ui='tarot'] .gd-t {
+  font-size: clamp(26px, 3vw, 38px);
+  letter-spacing: 0.06em;
+  line-height: 1.12;
+  background: var(--foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+:root[data-ui='tarot'] .gd-d,
+:root[data-ui='tarot'] .hero .lab {
+  color: var(--muted);
+  font-style: italic;
+}
+:root[data-ui='tarot'] .gd-main h3,
+:root[data-ui='tarot'] .sec h3,
+:root[data-ui='tarot'] h5 {
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold-hi);
+}
+
+/* ---------- Library: the deck ---------- */
+:root[data-ui='tarot'] .shelf {
+  counter-reset: tc;
+}
+:root[data-ui='tarot'] .shelf h4 {
+  font-size: 14px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--gold-hi);
+  padding-bottom: 8px;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, var(--gold), transparent 85%) 1;
+}
+:root[data-ui='tarot'] .shelf .row {
+  padding: 30px 28px 46px;
+  margin: -30px -28px -38px;
+  mask-image: linear-gradient(90deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent);
+}
+:root[data-ui='tarot'] .hero {
+  position: relative;
+  background: var(--velvet) !important;
+}
+:root[data-ui='tarot'] .hero h3 {
+  font-size: clamp(30px, 3.4vw, 46px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+:root[data-ui='tarot'] .g {
+  position: relative;
+  text-align: center;
+  counter-increment: tc;
+}
+/* the card face: gold border, inner hairline frame, Roman numeral on a dark ribbon at the foot */
+:root[data-ui='tarot'] .g .cover,
+:root[data-ui='tarot'] .hero .cover,
+:root[data-ui='tarot'] .resume .cover {
+  border-radius: 10px;
+  border: 2px solid var(--gold);
+  box-shadow:
+    0 0 0 2px #0c0922,
+    0 0 0 3px var(--gold-lo),
+    0 16px 28px -12px rgb(0 0 0 / 0.8);
+}
+:root[data-ui='tarot'] .g .cover::after,
+:root[data-ui='tarot'] .hero .cover::after,
+:root[data-ui='tarot'] .resume .cover::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: 1;
+  border: 1px solid var(--gold-hi);
+  border-radius: 6px;
+  opacity: 0.85;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: linear-gradient(0deg, rgb(8 6 28 / 0.9), transparent 26%);
+  color: var(--gold-hi);
+  font: 600 13px / 1 var(--display);
+  letter-spacing: 0.24em;
+  padding-bottom: 7px;
+  text-shadow: 0 1px 2px #000;
+}
+:root[data-ui='tarot'] .g .cover::after {
+  content: counter(tc, upper-roman);
+  transition: opacity 0.3s;
+}
+:root[data-ui='tarot'] .g:hover .cover::after,
+:root[data-ui='tarot'] .g:focus-visible .cover::after {
+  opacity: 0;
+}
+:root[data-ui='tarot'] .g:hover .cover,
+:root[data-ui='tarot'] .g:focus-visible .cover {
+  animation: tr-flip 0.75s var(--spring-settle);
+}
+:root[data-ui='tarot'] .g .badge,
+:root[data-ui='tarot'] .g .pchip,
+:root[data-ui='tarot'] .g .tchip {
+  background: rgb(8 6 28 / 0.85);
+  border: 1px solid var(--gold-lo);
+  border-radius: 4px;
+  color: var(--gold-hi);
+  font-family: var(--display);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='tarot'] .g .badge {
+  left: 14px;
+  top: 14px;
+}
+:root[data-ui='tarot'] .g .chips {
+  left: 14px;
+  top: 42px;
+}
+:root[data-ui='tarot'] .g .play {
+  background: var(--foil);
+  color: var(--ink);
+}
+:root[data-ui='tarot'] .wrap .name {
+  margin-top: 12px;
+  font: 600 12.5px / 1.25 var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+:root[data-ui='tarot'] .wrap .sub {
+  font: italic 500 16px / 1.3 var(--font);
+  color: var(--muted);
+}
+:root[data-ui='tarot'] .g .ach {
+  height: 4px;
+  border-radius: 0;
+  background: rgb(217 180 94 / 0.2);
+}
+:root[data-ui='tarot'] .g .ach i {
+  background: var(--foil);
+}
+:root[data-ui='tarot'] .wrap:hover .name {
+  color: var(--gold-hi);
+}
+:root[data-ui='tarot'] .empty b {
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+}
+:root[data-ui='tarot'] .skel div {
+  border-radius: 10px;
+}
+
+/* ---------- Settings tabs, chips, swatches ---------- */
+:root[data-ui='tarot'] .st .strip {
+  top: 104px;
+  margin-top: 8px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--gold-lo);
+  border-radius: 999px;
+  background: rgb(12 9 34 / 0.9);
+}
+:root[data-ui='tarot'] .st .tab {
+  border-radius: 999px;
+  padding: 8px 18px;
+  font: 600 12px / 1.2 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+:root[data-ui='tarot'] .st .tab:hover {
+  background: rgb(217 180 94 / 0.14);
+}
+:root[data-ui='tarot'] .st .ind {
+  top: 4px;
+  bottom: 4px;
+  height: auto;
+  z-index: -1;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(217 180 94 / 0.38), rgb(217 180 94 / 0.16));
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+:root[data-ui='tarot'] .fchip {
+  border: 1px solid var(--gold-lo);
+  border-radius: 999px;
+  font-size: 16px;
+  background: rgb(217 180 94 / 0.06);
+}
+:root[data-ui='tarot'] .fchip:hover {
+  background: rgb(217 180 94 / 0.16);
+}
+:root[data-ui='tarot'] .fchip[aria-pressed='true']::before {
+  background: linear-gradient(180deg, rgb(217 180 94 / 0.4), rgb(217 180 94 / 0.18));
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+:root[data-ui='tarot'] .sw {
+  box-shadow: 0 0 0 1px var(--gold-lo) inset;
+  transition: transform 0.45s var(--spring-snappy);
+}
+:root[data-ui='tarot'] .sw:hover {
+  transform: scale(1.18);
+}
+:root[data-ui='tarot'] .sw[aria-checked='true'] {
+  outline-color: var(--gold-hi);
+  outline-offset: 3px;
+}
+
+/* ---------- /stream chrome (the video itself is never touched) ---------- */
+:root[data-ui='tarot'] .stream .center,
+:root[data-ui='tarot'] .stream .card {
+  transform: translate(-50%, -50%);
+  transition: none;
+}
+:root[data-ui='tarot'] .stream[data-state='idle'],
+:root[data-ui='tarot'] .stream[data-state='unsupported'] {
+  background:
+    radial-gradient(60% 50% at 20% 10%, rgb(80 50 190 / 0.4), transparent 70%),
+    radial-gradient(50% 45% at 85% 100%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%), #0a0720;
+}
+:root[data-ui='tarot'] .stream h3 {
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root[data-ui='tarot'] .stream .bar {
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  background: #120e32;
+  padding: 6px 10px;
+  box-shadow:
+    inset 0 0 0 3px #0c0922,
+    0 20px 50px -10px rgb(0 0 0 / 0.7);
+}
+:root[data-ui='tarot'] .stream .ic {
+  border-radius: 999px;
+  transition:
+    background 0.3s,
+    transform 0.45s var(--spring-snappy);
+}
+:root[data-ui='tarot'] .stream .ic:hover {
+  transform: translateY(-2px) scale(1.12);
+  background: rgb(217 180 94 / 0.2);
+}
+:root[data-ui='tarot'] .stream .menu {
+  border: 1px solid var(--gold);
+  border-radius: 14px;
+  background: #150f3a;
+}
+:root[data-ui='tarot'] .stream .chip {
+  background: rgb(217 180 94 / 0.16);
+  font-family: var(--display);
+  letter-spacing: 0.06em;
+}
+:root[data-ui='tarot'] .stream .ring b {
+  background: #120e32;
+}
+
+@keyframes tr-flip {
+  from {
+    transform: perspective(700px) rotateY(88deg);
+    filter: brightness(1.5);
+  }
+  to {
+    transform: perspective(700px) rotateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='tarot'] .g:hover .cover,
+  :root[data-ui='tarot'] .g:focus-visible .cover {
+    animation: none;
+  }
+  :root[data-ui='tarot'] .card:hover,
+  :root[data-ui='tarot'] .side a.nav:hover svg {
+    transform: none;
+  }
+}
+@media (max-width: 1000px) {
+  :root[data-ui='tarot'] .side {
+    padding: 8px 8px 0;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+  :root[data-ui='tarot'] .brand {
+    display: none;
+  }
+  :root[data-ui='tarot'] .side .wrap,
+  :root[data-ui='tarot'] .side > .pill {
+    position: relative;
+    inset: auto;
+    flex: none;
+    margin-left: auto;
+  }
+}
