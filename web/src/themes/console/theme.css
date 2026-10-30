@@ -1,1 +1,721 @@
-/* UI style console: every rule starts with :root[data-ui='console']. Owner: this folder only. See ../README.md. */
+/* UI style console ("Console shelf"). Every rule starts with :root[data-ui='console']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/fredoka';
+@import '@fontsource-variable/nunito';
+
+:root[data-ui='console'] {
+  --bg: #0a0e2b;
+  --panel: #151b4a;
+  --panel2: #1e2662;
+  --line: #333e8c;
+  --line-hover: #6d79d6;
+  --fg: #f4f5ff;
+  --muted: #bcc2ee;
+  --dim: #a3abe0;
+  --font: 'Nunito Variable', system-ui, sans-serif;
+  --disp: 'Fredoka Variable', 'Nunito Variable', system-ui, sans-serif;
+  --r-card: 30px;
+  --r-ctl: 18px;
+  --cs-glow: color-mix(in srgb, var(--accent) 55%, transparent);
+  --cs-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  scroll-padding-top: 140px;
+}
+
+/* ---------- backdrop: navy to violet with soft bloom ---------- */
+:root[data-ui='console'] body {
+  font-size: 15px;
+  font-weight: 500;
+  background:
+    radial-gradient(60% 50% at 12% 0%, #4a2ba8aa, transparent 70%), radial-gradient(50% 45% at 92% 18%, #1f5fd466, transparent 70%),
+    radial-gradient(70% 50% at 50% 110%, #7a2fb455, transparent 70%), linear-gradient(170deg, #0a0e2b 0%, #14123f 55%, #231452 100%);
+  background-color: #0e1138;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+:root[data-ui='console'] h1,
+:root[data-ui='console'] h2,
+:root[data-ui='console'] h3,
+:root[data-ui='console'] h4 {
+  font-family: var(--disp);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+:root[data-ui='console'] .bg {
+  display: none;
+}
+
+/* ---------- focus: a fat ring with a glow, springs in ---------- */
+:root[data-ui='console'] :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 28px var(--cs-glow);
+}
+:root[data-ui='console'] .cm-in:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ---------- top shelf: nav tiles ---------- */
+:root[data-ui='console'] .app {
+  flex-direction: column;
+}
+:root[data-ui='console'] .side {
+  width: auto;
+  height: auto;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 18px;
+  padding: 14px 28px 26px;
+  background: linear-gradient(to bottom, #0a0e2b 0%, #0a0e2bfa 72%, #0a0e2b00 100%);
+  backdrop-filter: none;
+  border: 0;
+}
+:root[data-ui='console'] .brand {
+  position: absolute;
+  left: 28px;
+  top: 22px;
+  padding: 0;
+}
+:root[data-ui='console'] .brand img {
+  width: 72px;
+  height: auto;
+}
+:root[data-ui='console'] .side .sec,
+:root[data-ui='console'] .side .soon {
+  display: none;
+}
+:root[data-ui='console'] a.nav {
+  position: relative;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 92px;
+  padding: 4px 0 6px;
+  border-radius: 24px;
+  background: none;
+  font-family: var(--disp);
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--muted);
+  transform: none;
+  transition:
+    color 0.2s,
+    translate var(--spring-snappy-dur) var(--spring-snappy);
+}
+:root[data-ui='console'] a.nav svg {
+  box-sizing: border-box;
+  width: 60px;
+  height: 60px;
+  padding: 16px;
+  border-radius: 22px;
+  background: linear-gradient(150deg, #2a3490, #1a2058);
+  box-shadow:
+    inset 0 1px 0 #ffffff33,
+    0 6px 16px #04061c88;
+  transition:
+    scale var(--spring-snappy-dur) var(--spring-snappy),
+    box-shadow 0.3s,
+    background 0.3s;
+}
+:root[data-ui='console'] a.nav:hover {
+  background: none;
+  color: var(--fg);
+  translate: 0 -3px;
+}
+:root[data-ui='console'] a.nav:hover svg {
+  scale: 1.08;
+}
+:root[data-ui='console'] a.nav[aria-current='page'] {
+  color: #fff;
+}
+:root[data-ui='console'] a.nav[aria-current='page']::before {
+  display: none;
+}
+:root[data-ui='console'] a.nav[aria-current='page'] svg {
+  scale: 1.22;
+  margin-bottom: 4px;
+  background: linear-gradient(150deg, #5b6bff, #8a4dff);
+  box-shadow:
+    inset 0 1px 0 #ffffff66,
+    0 0 0 3px #ffffffcc,
+    0 0 34px var(--cs-glow),
+    0 10px 24px #04061caa;
+}
+:root[data-ui='console'] a.nav[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 22px;
+  height: 5px;
+  margin-left: -11px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+}
+:root[data-ui='console'] a.nav:focus-visible {
+  outline-offset: 2px;
+}
+
+/* host pill: a round status chip at the top right */
+:root[data-ui='console'] .side .wrap,
+:root[data-ui='console'] .side > .pill {
+  position: absolute;
+  right: 28px;
+  top: 22px;
+  margin: 0;
+  width: auto;
+}
+:root[data-ui='console'] .pill {
+  gap: 9px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #ffffff14;
+  box-shadow: 0 0 0 1px #ffffff24 inset;
+  color: var(--fg);
+  font-family: var(--disp);
+  font-weight: 500;
+  transition:
+    background 0.2s,
+    translate var(--spring-snappy-dur) var(--spring-snappy);
+}
+:root[data-ui='console'] .pill:hover {
+  background: #ffffff26;
+  translate: 0 -2px;
+}
+:root[data-ui='console'] .pill .name {
+  flex: none;
+  max-width: 150px;
+}
+:root[data-ui='console'] .wrap .menu {
+  bottom: auto;
+  top: calc(100% + 10px);
+  left: auto;
+  right: 0;
+  min-width: 240px;
+}
+:root[data-ui='console'] .it {
+  border-radius: 16px;
+  padding: 10px 14px;
+}
+:root[data-ui='console'] .it:hover,
+:root[data-ui='console'] .it:focus-visible {
+  background: #ffffff1c;
+}
+
+/* ---------- page ---------- */
+:root[data-ui='console'] main {
+  padding: 8px clamp(20px, 4.5vw, 72px) 110px;
+}
+:root[data-ui='console'] main > .off {
+  border-radius: 999px;
+  background: #ffffff14;
+  border-color: #ffffff2a;
+  color: var(--fg);
+}
+
+/* ---------- surfaces ---------- */
+:root[data-ui='console'] .card {
+  background: linear-gradient(160deg, #1f2770d9, #141a4ad9);
+  border: 1px solid #ffffff1f;
+  border-radius: var(--r-card);
+  box-shadow:
+    0 14px 34px #04061c77,
+    inset 0 1px 0 #ffffff1a;
+  padding: 20px;
+}
+:root[data-ui='console'] .card:hover {
+  border-color: #ffffff44;
+  transform: translateY(-4px) scale(1.012);
+  box-shadow:
+    0 22px 44px #04061caa,
+    0 0 34px color-mix(in srgb, var(--accent) 24%, transparent),
+    inset 0 1px 0 #ffffff26;
+}
+:root[data-ui='console'] .card h4 {
+  font-size: 15px;
+  color: var(--fg);
+}
+:root[data-ui='console'] .glass {
+  background: linear-gradient(160deg, #232c7bf2, #161c52f7);
+  backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid #ffffff2e;
+  border-radius: 28px;
+  box-shadow:
+    0 30px 80px #02031088,
+    0 0 60px #6a4cff33;
+}
+:root[data-ui='console'] .btn {
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-family: var(--disp);
+  font-weight: 500;
+  font-size: 15px;
+  box-shadow:
+    0 4px 0 color-mix(in srgb, var(--accent) 45%, #000),
+    0 0 22px color-mix(in srgb, var(--accent) 30%, transparent);
+  transition:
+    translate var(--spring-snappy-dur) var(--spring-snappy),
+    filter 0.18s,
+    box-shadow 0.2s;
+}
+:root[data-ui='console'] .btn:hover {
+  transform: none;
+  translate: 0 -2px;
+  filter: brightness(1.1);
+}
+:root[data-ui='console'] .btn:active {
+  transform: none;
+  translate: 0 3px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 45%, #000);
+}
+:root[data-ui='console'] .btn.ghost {
+  background: #ffffff1a;
+  color: var(--fg);
+  box-shadow:
+    0 0 0 1.5px #ffffff30 inset,
+    0 4px 0 #04061c66;
+}
+:root[data-ui='console'] .btn.ghost:hover {
+  background: #ffffff2e;
+}
+:root[data-ui='console'] .btn:disabled,
+:root[data-ui='console'] .btn[aria-disabled='true'] {
+  translate: none;
+}
+:root[data-ui='console'] .search {
+  border-radius: 999px;
+  background: #ffffff14;
+  border: 1.5px solid #ffffff2c;
+  padding: 9px 18px;
+  min-width: 260px;
+  color: var(--muted);
+}
+:root[data-ui='console'] .search:focus-within {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 0 28px var(--cs-glow);
+}
+:root[data-ui='console'] .tag {
+  background: #ffffff22;
+  color: var(--fg);
+}
+:root[data-ui='console'] .lab {
+  color: var(--muted);
+}
+
+/* chips (filters, Style picker) become glossy pills */
+:root[data-ui='console'] .fchip {
+  padding: 8px 18px;
+  font-family: var(--disp);
+  font-size: 14.5px;
+  font-weight: 500;
+  border-radius: 999px;
+  border: 1.5px solid #ffffff2a;
+  background: #ffffff10;
+  color: var(--muted);
+  transition:
+    color 0.2s,
+    background 0.2s,
+    translate var(--spring-snappy-dur) var(--spring-snappy);
+}
+:root[data-ui='console'] .fchip:hover {
+  color: var(--fg);
+  background: #ffffff22;
+  border-color: #ffffff55;
+  translate: 0 -2px;
+}
+:root[data-ui='console'] .fchip[aria-pressed='true'] {
+  color: #fff;
+  border-color: transparent;
+}
+:root[data-ui='console'] .fchip[aria-pressed='true']::before {
+  background: linear-gradient(135deg, #5b6bff, #8a4dff);
+  border: 0;
+  box-shadow:
+    0 0 22px #7a6bff99,
+    inset 0 1px 0 #ffffff55;
+}
+
+/* ---------- headers ---------- */
+:root[data-ui='console'] .top {
+  border-bottom: 0;
+  padding: 6px 2px 4px;
+  gap: 14px;
+}
+:root[data-ui='console'] .top h2 {
+  font-size: 36px;
+  line-height: 1.1;
+  margin-right: auto;
+  text-shadow: 0 0 30px #8a6bff88;
+}
+
+/* ---------- Library: a shelf of big covers ---------- */
+:root[data-ui='console'] .shelf {
+  margin-top: 30px;
+}
+:root[data-ui='console'] .shelf h4 {
+  font-family: var(--disp);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+  margin-bottom: 0;
+}
+:root[data-ui='console'] .shelf .row {
+  padding: 60px 28px 64px;
+  margin: -40px -28px 0;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 28px;
+}
+:root[data-ui='console'] .shelf .track {
+  gap: 30px;
+}
+:root[data-ui='console'] .shelf .slot {
+  flex-basis: 196px;
+  scroll-snap-align: start;
+}
+:root[data-ui='console'] .shelf .grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 38px 28px;
+  padding: 20px 10px 40px;
+}
+:root[data-ui='console'] .shelf .chev,
+:root[data-ui='console'] .shelf .more {
+  border-radius: 999px;
+  border: 1.5px solid #ffffff30;
+  background: #ffffff14;
+  color: var(--fg);
+  width: 36px;
+  height: 36px;
+}
+:root[data-ui='console'] .shelf .more {
+  width: auto;
+  padding: 0 16px;
+  font-family: var(--disp);
+  font-size: 14px;
+}
+:root[data-ui='console'] .shelf .chev:hover,
+:root[data-ui='console'] .shelf .more:hover {
+  background: #ffffff2e;
+}
+:root[data-ui='console'] .wrap[data-gid] {
+  transition:
+    transform var(--spring-snappy-dur) var(--cs-bounce),
+    opacity 0.3s;
+  transform-origin: 50% 70%;
+}
+:root[data-ui='console'] .wrap[data-gid]:hover,
+:root[data-ui='console'] .wrap[data-gid]:has(:focus-visible) {
+  transform: translateY(-12px) scale(1.16);
+  z-index: 6;
+}
+/* the others step back while one has focus */
+:root[data-ui='console'] .track:has(.wrap[data-gid]:hover) .wrap[data-gid]:not(:hover) .cover,
+:root[data-ui='console'] .track:has(.wrap[data-gid] :focus-visible) .wrap[data-gid]:not(:has(:focus-visible)) .cover {
+  filter: brightness(0.6) saturate(0.7);
+}
+:root[data-ui='console'] .wrap[data-gid] .cover {
+  border-radius: 26px;
+  box-shadow: 0 14px 30px #02031088;
+  transition:
+    box-shadow 0.3s,
+    filter 0.3s;
+}
+:root[data-ui='console'] .wrap[data-gid]:hover .cover,
+:root[data-ui='console'] .wrap[data-gid]:has(:focus-visible) .cover {
+  box-shadow:
+    0 0 0 4px #ffffffdd,
+    0 0 46px var(--cs-glow),
+    0 26px 40px #020310cc;
+}
+:root[data-ui='console'] .wrap[data-gid] .g {
+  border-radius: 26px;
+}
+:root[data-ui='console'] .wrap[data-gid] .g:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-ui='console'] .wrap[data-gid] .name {
+  margin-top: 14px;
+  font-family: var(--disp);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--fg);
+}
+:root[data-ui='console'] .wrap[data-gid] .sub {
+  text-align: center;
+  font-size: 13px;
+}
+:root[data-ui='console'] .wrap[data-gid] .ach {
+  height: 5px;
+  border-radius: 99px;
+  margin-inline: 14px;
+}
+:root[data-ui='console'] .wrap[data-gid] .play {
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 14px;
+  bottom: 16px;
+}
+:root[data-ui='console'] .wrap[data-gid] .badge {
+  background: #0a0e2bcc;
+  border-radius: 999px;
+}
+:root[data-ui='console'] .wrap[data-gid] .quit {
+  border-radius: 999px;
+}
+:root[data-ui='console'] .skel div {
+  flex-basis: 196px;
+  border-radius: 26px;
+}
+
+/* hero: a big stage card */
+:root[data-ui='console'] .hero {
+  border-radius: 40px;
+  padding: 18px 32px;
+  min-height: 0;
+  gap: 30px;
+  border: 1.5px solid #ffffff2e;
+  box-shadow:
+    0 30px 70px #02031099,
+    0 0 80px #6a4cff44;
+}
+:root[data-ui='console'] .hero .cover {
+  width: 120px !important;
+  border-radius: 28px;
+  box-shadow:
+    0 0 0 4px #ffffffdd,
+    0 0 50px var(--cs-glow),
+    0 24px 40px #020310cc;
+}
+:root[data-ui='console'] .hero h3 {
+  font-family: var(--disp);
+  font-size: 34px;
+  line-height: 1.05;
+}
+:root[data-ui='console'] .hero .acts {
+  margin-top: 14px;
+}
+:root[data-ui='console'] .hero .acts .btn:first-child {
+  padding: 12px 28px;
+  font-size: 17px;
+}
+
+/* ---------- dialogs, command menu, tooltips, toasts ---------- */
+:root[data-ui='console'] .cm-dim {
+  background: radial-gradient(70% 70% at 50% 40%, #1a1260aa, #04061ccc);
+  backdrop-filter: blur(8px);
+}
+:root[data-ui='console'] .cm {
+  --cm-r: 30px;
+  --cm-pad: 12px;
+  padding: 12px;
+  width: min(640px, calc(100vw - 32px));
+}
+:root[data-ui='console'] .cm-in {
+  font-family: var(--disp);
+  font-size: 20px;
+  padding: 16px 20px;
+  border-bottom-color: #ffffff22;
+}
+:root[data-ui='console'] .cm-it {
+  padding: 12px 16px;
+  font-weight: 600;
+}
+:root[data-ui='console'] .cm-it[data-selected] {
+  background: linear-gradient(135deg, #5b6bffcc, #8a4dffcc);
+  color: #fff;
+  box-shadow: 0 0 24px #7a6bff88;
+}
+:root[data-ui='console'] .cm-it[data-selected] .k {
+  color: #fff;
+}
+:root[data-ui='console'] .rs.gd {
+  border-radius: 40px;
+}
+:root[data-ui='console'] .tip {
+  background: #f4f5ff;
+  color: #0a0e2b;
+  font-family: var(--disp);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px #02031099;
+}
+:root[data-ui='console'] .toasts {
+  bottom: 74px;
+}
+:root[data-ui='console'] .toast {
+  padding: 12px 24px;
+  border-radius: 999px;
+  font-family: var(--disp);
+  font-size: 16px;
+}
+:root[data-ui='console'] .toast.error {
+  color: #ffb3c1;
+}
+
+/* ---------- Settings: tabs become a row of pills ---------- */
+:root[data-ui='console'] .st .strip {
+  top: 112px;
+  gap: 8px;
+  padding: 10px 4px;
+  background: transparent;
+  border-bottom: 0;
+}
+:root[data-ui='console'] .st .tab {
+  padding: 9px 20px;
+  font-family: var(--disp);
+  font-weight: 500;
+  font-size: 15px;
+  border-radius: 999px;
+  background: #ffffff10;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+:root[data-ui='console'] .st .tab:hover {
+  background: #ffffff22;
+}
+:root[data-ui='console'] .st .tab[aria-selected='true'] {
+  background: linear-gradient(135deg, #5b6bff, #8a4dff);
+  color: #fff;
+  box-shadow: 0 0 22px #7a6bff88;
+}
+:root[data-ui='console'] .st .ind {
+  display: none;
+}
+:root[data-ui='console'] .styles {
+  gap: 10px;
+}
+:root[data-ui='console'] kbd {
+  font-family: var(--disp);
+  border-radius: 999px;
+  padding: 2px 11px;
+  background: #e8ebff;
+  color: #0a0e2b;
+  box-shadow: 0 2px 0 #7f88c8;
+}
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='console'] .side {
+    animation: cs-drop 0.7s var(--spring-settle) backwards;
+  }
+  :root[data-ui='console'] a.nav {
+    animation: cs-pop 0.6s var(--cs-bounce) backwards;
+  }
+  :root[data-ui='console'] a.nav:nth-of-type(2) {
+    animation-delay: 60ms;
+  }
+  :root[data-ui='console'] a.nav:nth-of-type(3) {
+    animation-delay: 120ms;
+  }
+  :root[data-ui='console'] a.nav:nth-of-type(4) {
+    animation-delay: 180ms;
+  }
+  :root[data-ui='console'] a.nav:nth-of-type(5) {
+    animation-delay: 240ms;
+  }
+  :root[data-ui='console'] a.nav:nth-of-type(6) {
+    animation-delay: 300ms;
+  }
+  :root[data-ui='console'] :focus-visible {
+    animation: cs-ring 0.4s var(--cs-bounce);
+  }
+  @keyframes cs-drop {
+    from {
+      translate: 0 -40px;
+      opacity: 0;
+    }
+  }
+  @keyframes cs-pop {
+    from {
+      scale: 0.4;
+      opacity: 0;
+    }
+  }
+  @keyframes cs-ring {
+    from {
+      outline-offset: 14px;
+      outline-color: transparent;
+    }
+  }
+}
+@media (max-width: 760px) {
+  :root[data-ui='console'] .side {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 56px;
+  }
+  :root[data-ui='console'] a.nav {
+    width: 64px;
+    font-size: 12px;
+  }
+  :root[data-ui='console'] a.nav svg {
+    width: 46px;
+    height: 46px;
+    padding: 12px;
+  }
+}
+
+/* switches and file buttons */
+:root[data-ui='console'] input[type='checkbox'] {
+  appearance: none;
+  flex: none;
+  width: 52px;
+  height: 30px;
+  margin: 0;
+  border-radius: 999px;
+  background: #ffffff26;
+  box-shadow: inset 0 0 0 1.5px #ffffff40;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.25s;
+}
+:root[data-ui='console'] input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px #02031088;
+  transition: translate var(--spring-snappy-dur) var(--cs-bounce);
+}
+:root[data-ui='console'] input[type='checkbox']:checked {
+  background: linear-gradient(135deg, #5b6bff, #8a4dff);
+}
+:root[data-ui='console'] input[type='checkbox']:checked::after {
+  translate: 22px 0;
+}
+:root[data-ui='console'] input[type='file']::file-selector-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 16px;
+  margin-right: 10px;
+  font-family: var(--disp);
+  font-weight: 500;
+  color: var(--fg);
+  background: #ffffff22;
+  cursor: pointer;
+}
+:root[data-ui='console'] .fchip.tagf {
+  padding: 5px 14px;
+  font-size: 13.5px;
+}
+:root[data-ui='console'] input:not([type='checkbox'], [type='file'], [type='radio'], [type='range']) {
+  min-height: 28px;
+}
