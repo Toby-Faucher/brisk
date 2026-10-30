@@ -1,1 +1,294 @@
 /* UI style aqua: every rule starts with :root[data-ui='aqua']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/open-sans';
+@import './parts.css';
+
+:root[data-ui='aqua'] {
+  color-scheme: light;
+  --bg: #e4ebf3;
+  --panel: #f8fbfe;
+  --panel2: #e6eef7;
+  --line: #a9b9cc;
+  --line-hover: #5f86b5;
+  --fg: #16212f;
+  --muted: #455468;
+  --dim: #546377;
+  --accent: #1670d9;
+  --accent-fg: #ffffff;
+  --ok: #0a7a35;
+  --warn: #8a5600;
+  --bad: #c01d3a;
+  --c-lib: #e08a00;
+  --c-stream: #1f78e6;
+  --c-host: #00a0c8;
+  --c-set: #6f7f95;
+  --c-agent: #7b52d6;
+  --c-news: #d6395a;
+  --c-power: #2aa14a;
+  --c-hist: #e8641a;
+  --font: 'Open Sans Variable', 'Lucida Grande', 'Frutiger', 'Segoe UI', system-ui, sans-serif;
+  --r-card: 18px;
+  --r-ctl: 999px;
+  --gel-blue: linear-gradient(180deg, #7dbcff 0%, #3f98f2 48%, #1a74dc 52%, #3d9bf4 100%);
+  --gel-silver: linear-gradient(180deg, #ffffff 0%, #eef3f9 48%, #d3dde9 52%, #e9eff6 100%);
+  --glass: linear-gradient(180deg, rgb(255 255 255 / 0.94) 0%, rgb(244 249 254 / 0.8) 100%);
+  --lift:
+    0 1px 0 rgb(255 255 255 / 0.9) inset, 0 0 0 1px rgb(255 255 255 / 0.4) inset, 0 1px 2px rgb(20 40 70 / 0.25),
+    0 8px 22px rgb(30 60 100 / 0.16);
+}
+
+/* Backdrop: the classic Aqua pinstripe, with a soft blue wash from the top. */
+:root[data-ui='aqua'] body {
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgb(120 180 255 / 0.28), transparent 70%),
+    repeating-linear-gradient(0deg, #e9eff6 0 2px, #dde6f0 2px 4px);
+  background-attachment: fixed;
+  letter-spacing: 0.005em;
+}
+:root[data-ui='aqua'] h1,
+:root[data-ui='aqua'] h2,
+:root[data-ui='aqua'] h3 {
+  font-weight: 700;
+}
+:root[data-ui='aqua'] main {
+  padding: 56px 28px 128px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+:root[data-ui='aqua'] .app {
+  display: block;
+}
+:root[data-ui='aqua'] :focus-visible {
+  outline: 3px solid rgb(22 112 217 / 0.55);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ---- The dock: the sidebar becomes a magnifying dock at the bottom ---- */
+:root[data-ui='aqua'] .side {
+  position: fixed;
+  inset: auto 0 10px 0;
+  margin-inline: auto;
+  width: fit-content;
+  max-width: calc(100vw - 16px);
+  height: auto;
+  z-index: 30;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 10px 16px 8px;
+  background: none;
+  backdrop-filter: none;
+  border: 0;
+  border-radius: 24px;
+  isolation: isolate;
+}
+:root[data-ui='aqua'] .side::before {
+  content: '';
+  position: absolute;
+  inset: 22px 0 0 0;
+  z-index: -1;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.85), rgb(205 222 242 / 0.7));
+  backdrop-filter: blur(14px) saturate(1.5);
+  border: 1px solid rgb(120 145 180 / 0.65);
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 -8px 14px rgb(255 255 255 / 0.35) inset,
+    0 10px 30px rgb(25 50 90 / 0.3);
+}
+/* the wordmark sits in a menu bar across the top */
+:root[data-ui='aqua'] .brand {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  padding: 0 0 0 16px;
+  align-items: center;
+  z-index: 29;
+  background: linear-gradient(180deg, #fdfdfe 0%, #e9eef5 50%, #d6dfea 51%, #e4ebf3 100%);
+  border-bottom: 1px solid #8a9bb3;
+  box-shadow: 0 1px 6px rgb(30 50 80 / 0.25);
+}
+:root[data-ui='aqua'] .brand img {
+  width: 56px;
+  height: auto;
+}
+:root[data-ui='aqua'] .side nav {
+  display: contents;
+}
+:root[data-ui='aqua'] .side .nav {
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 4px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+  border-radius: 14px;
+  transform-origin: 50% 100%;
+  transition:
+    transform 0.32s var(--spring-snappy),
+    color 0.2s;
+}
+:root[data-ui='aqua'] .side .nav svg {
+  width: 46px;
+  height: 46px;
+  padding: 9px;
+  border-radius: 14px;
+  fill: #fff;
+  color: #fff;
+  background: radial-gradient(120% 90% at 50% 0%, rgb(255 255 255 / 0.55), transparent 55%), var(--ic, #5b7ea8);
+  border: 1px solid rgb(0 0 0 / 0.28);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.7) inset,
+    0 -6px 8px rgb(0 0 0 / 0.18) inset,
+    0 5px 8px rgb(20 40 70 / 0.35);
+  filter: none;
+}
+:root[data-ui='aqua'] .side .nav svg [style*='--bg'],
+:root[data-ui='aqua'] .side .nav svg [style] {
+  fill: var(--ic, #5b7ea8) !important;
+}
+:root[data-ui='aqua'] .side .nav:nth-of-type(1) {
+  --ic: #2c8ae8;
+}
+:root[data-ui='aqua'] .side .nav:nth-of-type(2) {
+  --ic: #d98200;
+}
+:root[data-ui='aqua'] .side .nav:nth-of-type(3) {
+  --ic: #2f77d8;
+}
+:root[data-ui='aqua'] .side .nav:nth-of-type(4) {
+  --ic: #0d9bbf;
+}
+:root[data-ui='aqua'] .side .nav:nth-of-type(5) {
+  --ic: #e0561a;
+}
+:root[data-ui='aqua'] .side .nav:nth-of-type(6) {
+  --ic: #6a7b92;
+}
+/* magnify: the item under the pointer grows most, its neighbours a little (CSS only) */
+:root[data-ui='aqua'] .side .nav svg {
+  transform-origin: 50% 100%;
+  transition: transform 0.35s var(--spring-snappy);
+}
+:root[data-ui='aqua'] .side a.nav:hover {
+  background: none;
+  transform: none;
+  z-index: 3;
+}
+:root[data-ui='aqua'] .side a.nav:hover svg {
+  transform: scale(1.42) translateY(-3px);
+}
+:root[data-ui='aqua'] .side .nav:has(+ .nav:hover) svg,
+:root[data-ui='aqua'] .side .nav:hover + .nav svg {
+  transform: scale(1.18);
+}
+:root[data-ui='aqua'] .side .nav:has(+ .nav + .nav:hover) svg,
+:root[data-ui='aqua'] .side .nav:hover + .nav + .nav svg {
+  transform: scale(1.05);
+}
+:root[data-ui='aqua'] .side .nav:hover {
+  color: var(--accent);
+}
+/* the active app gets the little dock "light" under it */
+:root[data-ui='aqua'] .side .nav[aria-current='page']::before {
+  inset: auto 0 -6px 0;
+  margin-inline: auto;
+  width: 6px;
+  height: 6px;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff, #3d9bf4 55%, #0f5bb5);
+  box-shadow: 0 0 6px rgb(61 155 244 / 0.9);
+}
+:root[data-ui='aqua'] .side .nav[aria-current='page'] {
+  color: var(--accent);
+}
+:root[data-ui='aqua'] .side .sec {
+  display: none;
+}
+:root[data-ui='aqua'] .side .soon {
+  display: none;
+}
+
+/* ---- Cards: glass panels with a specular band ---- */
+:root[data-ui='aqua'] .card {
+  background: var(--glass);
+  border: 1px solid rgb(110 135 170 / 0.55);
+  box-shadow: var(--lift);
+}
+:root[data-ui='aqua'] .card::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 55% 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.12));
+  border-radius: var(--r-card) var(--r-card) 60% 60% / var(--r-card) var(--r-card) 18% 18%;
+}
+:root[data-ui='aqua'] .card:hover {
+  border-color: var(--line-hover);
+}
+:root[data-ui='aqua'] .card h4 {
+  color: var(--muted);
+  text-shadow: 0 1px 0 #fff;
+}
+
+/* ---- Buttons: gel capsules ---- */
+:root[data-ui='aqua'] .btn {
+  border-radius: 999px;
+  padding: 7px 18px;
+  color: #fff;
+  background: var(--gel-blue);
+  border: 1px solid #0d57b0;
+  text-shadow: 0 -1px 0 rgb(0 30 90 / 0.5);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.65) inset,
+    0 -2px 4px rgb(0 40 110 / 0.25) inset,
+    0 2px 4px rgb(20 50 100 / 0.3);
+  transition:
+    transform 0.25s var(--spring-snappy),
+    box-shadow 0.2s,
+    filter 0.2s;
+}
+:root[data-ui='aqua'] .btn:hover {
+  filter: brightness(1.07) saturate(1.1);
+  transform: none;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.65) inset,
+    0 -2px 4px rgb(0 40 110 / 0.25) inset,
+    0 2px 4px rgb(20 50 100 / 0.3),
+    0 0 12px rgb(61 155 244 / 0.55);
+}
+:root[data-ui='aqua'] .btn:active {
+  transform: scale(0.97);
+  filter: brightness(0.92);
+  box-shadow: 0 2px 5px rgb(0 40 110 / 0.45) inset;
+}
+:root[data-ui='aqua'] .btn.ghost {
+  color: var(--fg);
+  background: var(--gel-silver);
+  border-color: #8397b0;
+  text-shadow: 0 1px 0 #fff;
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 1px 3px rgb(30 50 80 / 0.25);
+}
+:root[data-ui='aqua'] .tag {
+  background: rgb(22 112 217 / 0.12);
+  color: #214b7c;
+  border: 1px solid rgb(22 112 217 / 0.2);
+}
+:root[data-ui='aqua'] .search {
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e8eef5, #fff 40%);
+  border: 1px solid #8397b0;
+  box-shadow: 0 2px 3px rgb(30 50 80 / 0.22) inset;
+}
+:root[data-ui='aqua'] .glass {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(236 244 252 / 0.84));
+  border: 1px solid rgb(110 135 170 / 0.6);
+  box-shadow: var(--lift);
+  backdrop-filter: blur(16px) saturate(1.5);
+}
