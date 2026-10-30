@@ -8,6 +8,8 @@
   import { toastError } from './Toasts.svelte';
   import WakeOverlay from '../ui/WakeOverlay.svelte';
   import { bindAccent } from '../modules/settings/accent';
+  import { bindUi, nextUi } from '../themes/apply';
+  import ThemeLayer from '../themes/ThemeLayer.svelte';
   import Sidebar from './Sidebar.svelte';
   import Toasts from './Toasts.svelte';
   import CommandMenu from './CommandMenu.svelte';
@@ -15,6 +17,13 @@
 
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => bindAccent(settings, document.documentElement));
+  $effect(() => bindUi(settings, document.documentElement));
+  // Alt+U / Alt+Shift+U flips through the UI styles without opening Settings.
+  function cycleUi(e: KeyboardEvent) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyU') return;
+    e.preventDefault();
+    settings.update((s) => ({ ...s, ui: nextUi(s.ui, e.shiftKey ? -1 : 1) }));
+  }
   onMount(() => (enterWhenHydrated(), startMachines())); // startMachines returns its cleanup
   // A changed machine (Use, host pill, Ctrl+K) dips the page while its data reloads; the first selection and a remount don't.
   let main: HTMLElement | undefined = $state();
@@ -28,6 +37,7 @@
   const off = $derived($hub === true && $selectedMachine?.state === 'off' ? $selectedMachine : null);
 </script>
 
+<svelte:window onkeydown={cycleUi} />
 <div class="app">
   <Sidebar {path} />
   <main bind:this={main} class:page-in={!/^\/stream/.test(path)}>
@@ -54,6 +64,7 @@
 <CommandMenu />
 <QuitDialog />
 <WakeOverlay />
+<ThemeLayer {path} />
 
 <style>
   .app { display: flex; min-height: 100vh; }

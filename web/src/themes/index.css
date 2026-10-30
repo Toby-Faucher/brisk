@@ -1,0 +1,11 @@
+/* One import per style. Each file only styles its own :root[data-ui='<id>']. */
+@import './console/theme.css';
+@import './bento/theme.css';
+@import './aqua/theme.css';
+@import './poster/theme.css';
+@import './crt/theme.css';
+@import './panel/theme.css';
+@import './swiss/theme.css';
+@import './command/theme.css';
+@import './sticker/theme.css';
+@import './win95/theme.css';
