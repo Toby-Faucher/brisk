@@ -1,1 +1,675 @@
-/* bbs */
+/* UI style bbs ("Dial-up board"). Every rule starts with :root[data-ui='bbs']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-700.css';
+
+/* ---------- tokens: the 16 ANSI colours on black ---------- */
+:root[data-ui='bbs']:not(#_) {
+  --bg: #000000;
+  --panel: #000000;
+  --panel2: #00003f;
+  --line: #5555ff;
+  --line-hover: #55ffff;
+  --fg: #f2f2f2;
+  --muted: #b8b8b8;
+  --dim: #a0a0a0;
+  --ok: #55ff55;
+  --warn: #ffff55;
+  --bad: #ff6e6e;
+  --c-lib: #ffff55;
+  --c-stream: #55ffff;
+  --c-host: #55ff55;
+  --c-set: #ff55ff;
+  --c-agent: #ff55ff;
+  --c-news: #ff6e6e;
+  --c-power: #55ff55;
+  --c-hist: #ffff55;
+  --font: 'IBM Plex Mono', ui-monospace, 'DejaVu Sans Mono', monospace;
+  --mono: 'IBM Plex Mono', ui-monospace, 'DejaVu Sans Mono', monospace;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --ease: steps(4, end);
+  --b-blue: #5555ff;
+  --b-dblue: #0000aa;
+  --b-cy: #55ffff;
+  --b-mg: #ff55ff;
+  --b-yel: #ffff55;
+  --b-grn: #55ff55;
+  --b-gray: #aaaaaa;
+  --b-shadow: #262626;
+  --bbs-top: 34px;
+  --bbs-bot: 32px;
+}
+:root[data-ui='bbs'] {
+  scroll-padding-top: 60px;
+}
+:root[data-ui='bbs'] body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  background-color: #000;
+  background-image: radial-gradient(#1a1a66 1px, transparent 1.3px);
+  background-size: 4px 4px;
+  -webkit-font-smoothing: auto;
+}
+:root[data-ui='bbs'] .bg {
+  display: none;
+}
+:root[data-ui='bbs'] :is(button, input, select, textarea) {
+  font-family: var(--font);
+}
+:root[data-ui='bbs'] *,
+:root[data-ui='bbs'] *::before,
+:root[data-ui='bbs'] *::after {
+  border-radius: 0 !important;
+}
+:root[data-ui='bbs'] ::selection {
+  background: var(--b-cy);
+  color: #000;
+}
+:root[data-ui='bbs'] :focus-visible {
+  outline: 2px solid var(--b-yel);
+  outline-offset: 2px;
+}
+:root[data-ui='bbs'] .search:focus-within {
+  outline-color: var(--b-yel);
+}
+:root[data-ui='bbs'] .cm-in:focus-visible {
+  outline: none;
+}
+:root[data-ui='bbs'] h1,
+:root[data-ui='bbs'] h2,
+:root[data-ui='bbs'] h3,
+:root[data-ui='bbs'] h4 {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+:root[data-ui='bbs'] h1 {
+  color: var(--b-yel);
+  text-transform: uppercase;
+}
+:root[data-ui='bbs'] h2 {
+  color: var(--b-cy);
+}
+:root[data-ui='bbs'] :is(h3, h4) {
+  color: var(--b-mg);
+}
+:root[data-ui='bbs'] h1::before {
+  content: '\00bb ';
+  color: var(--b-mg);
+}
+:root[data-ui='bbs'] h2::before {
+  content: '\2022 ';
+  color: var(--b-yel);
+}
+:root[data-ui='bbs'] :is(h1, h2, h3, h4) :is(small, .lab) {
+  font-weight: 400;
+  text-transform: none;
+  color: var(--muted);
+}
+:root[data-ui='bbs'] .tag {
+  background: transparent;
+  border: 1px solid var(--b-gray);
+  color: var(--b-gray);
+  padding: 0 6px;
+}
+:root[data-ui='bbs'] .tag::before {
+  content: '<';
+}
+:root[data-ui='bbs'] .tag::after {
+  content: '>';
+}
+:root[data-ui='bbs'] .lab {
+  font-size: 13px;
+}
+:root[data-ui='bbs'] kbd {
+  font-family: var(--font);
+  border: 1px solid var(--b-gray);
+  background: var(--b-dblue);
+  color: #fff;
+  padding: 0 4px;
+}
+:root[data-ui='bbs'] input[type='file']::file-selector-button {
+  font-family: var(--font);
+  border: 1px solid var(--b-gray);
+  background: var(--b-gray);
+  color: #000;
+  padding: 4px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+/* ---------- frame: the sidebar is the menu box, main is the message area ---------- */
+:root[data-ui='bbs'] .app {
+  gap: 16px;
+  align-items: flex-start;
+}
+:root[data-ui='bbs'] .app:has(> main.page-in) {
+  padding: calc(var(--bbs-top) + 18px) 16px calc(var(--bbs-bot) + 14px);
+}
+:root[data-ui='bbs'] .side {
+  position: sticky;
+  isolation: isolate;
+  width: 236px;
+  background: #000;
+  backdrop-filter: none;
+  border: 3px double var(--b-blue);
+  box-shadow: 6px 6px 0 var(--b-shadow);
+  padding: 18px 10px 14px;
+  gap: 0;
+}
+:root[data-ui='bbs'] .app:has(> main.page-in) .side {
+  top: calc(var(--bbs-top) + 18px);
+  height: calc(100vh - var(--bbs-top) - var(--bbs-bot) - 38px);
+}
+:root[data-ui='bbs'] .side::before {
+  content: ' MAIN MENU ';
+  position: absolute;
+  top: -12px;
+  left: 14px;
+  background: #000;
+  color: var(--b-yel);
+  font-weight: 700;
+  line-height: 1.2;
+}
+:root[data-ui='bbs'] .side .brand {
+  padding: 4px 4px 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--b-blue);
+  flex-direction: column;
+  align-items: flex-start;
+}
+:root[data-ui='bbs'] .side .brand img {
+  display: none;
+}
+:root[data-ui='bbs'] .side .brand::before {
+  content: 'BRISK';
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: linear-gradient(to bottom, var(--b-yel) 0 33%, var(--b-grn) 33% 66%, var(--b-cy) 66%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+:root[data-ui='bbs'] .side .brand::after {
+  content: 'BBS v1.0  14400 baud';
+  color: var(--b-mg);
+  font-size: 12px;
+  margin-top: 4px;
+}
+:root[data-ui='bbs'] .side nav {
+  display: contents;
+}
+:root[data-ui='bbs'] .side .nav {
+  position: relative;
+  gap: 0;
+  padding: 3px 8px;
+  color: var(--fg);
+  transition: none;
+  font-weight: 400;
+  background: transparent;
+}
+:root[data-ui='bbs'] .side .nav svg,
+:root[data-ui='bbs'] .side .nav .icon {
+  display: none;
+}
+:root[data-ui='bbs'] .side .nav::after {
+  content: var(--key, '[?]');
+  order: -1;
+  margin-right: 10px;
+  color: var(--b-cy);
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .side a.nav:nth-of-type(1) {
+  --key: '[H]';
+}
+:root[data-ui='bbs'] .side a.nav:nth-of-type(2) {
+  --key: '[L]';
+}
+:root[data-ui='bbs'] .side a.nav:nth-of-type(3) {
+  --key: '[S]';
+}
+:root[data-ui='bbs'] .side a.nav:nth-of-type(4) {
+  --key: '[M]';
+}
+:root[data-ui='bbs'] .side a.nav:nth-of-type(5) {
+  --key: '[I]';
+}
+:root[data-ui='bbs'] .side a.nav:nth-of-type(6) {
+  --key: '[T]';
+}
+:root[data-ui='bbs'] .side a.nav:hover {
+  transform: none;
+  background: var(--b-dblue);
+  color: #fff;
+}
+:root[data-ui='bbs'] .side a.nav:hover::after {
+  color: var(--b-yel);
+}
+:root[data-ui='bbs'] .side .nav[aria-current='page'] {
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .side .nav[aria-current='page']::before {
+  background: var(--accent);
+  box-shadow: none;
+  z-index: -1;
+}
+:root[data-ui='bbs'] .side .nav[aria-current='page']::after {
+  color: var(--accent-fg);
+}
+:root[data-ui='bbs'] .side .sec {
+  font-size: 0;
+  padding: 16px 8px 4px;
+  color: var(--b-mg);
+}
+:root[data-ui='bbs'] .side .sec::before {
+  content: '-- Doors (locked) --';
+  font-size: 12px;
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+  padding: 2px 8px;
+}
+:root[data-ui='bbs'] .side .soon::after {
+  content: '[x]';
+  order: -1;
+  margin-right: 10px;
+  color: var(--dim);
+}
+:root[data-ui='bbs'] .side .soon .tag {
+  display: none;
+}
+:root[data-ui='bbs'] .side .wrap {
+  margin-top: auto;
+}
+
+/* host pill: the line you are connected to */
+:root[data-ui='bbs'] .pill {
+  border: 1px solid var(--b-grn);
+  background: #000;
+  color: var(--fg);
+  padding: 6px 8px;
+  margin-top: auto;
+  position: relative;
+}
+:root[data-ui='bbs'] .pill::before {
+  content: 'ONLINE:';
+  position: absolute;
+  top: -10px;
+  left: 6px;
+  background: #000;
+  color: var(--b-grn);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 4px;
+  line-height: 1.2;
+}
+:root[data-ui='bbs'] .pill:hover {
+  background: var(--b-dblue);
+  border-color: var(--b-cy);
+}
+:root[data-ui='bbs'] .side .pill svg {
+  display: none;
+}
+:root[data-ui='bbs'] .dot {
+  width: 9px;
+  height: 9px;
+  box-shadow: none;
+  animation: bbs-blink 1.2s steps(1) infinite;
+}
+:root[data-ui='bbs'] .glass,
+:root[data-ui='bbs'] .glass.card {
+  background: #000;
+  backdrop-filter: none;
+  border: 3px double var(--b-cy);
+  box-shadow: 6px 6px 0 var(--b-shadow);
+}
+:root[data-ui='bbs'] .menu .it {
+  color: var(--fg);
+}
+:root[data-ui='bbs'] .menu .it:hover,
+:root[data-ui='bbs'] .menu .it:focus-visible {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+:root[data-ui='bbs'] .menu .it:hover :is(.st, .name),
+:root[data-ui='bbs'] .menu .it:focus-visible :is(.st, .name) {
+  color: var(--accent-fg);
+}
+
+/* ---------- main: one big double-line frame with a title cut into the top edge ---------- */
+:root[data-ui='bbs'] main {
+  padding: 20px 24px 28px;
+}
+:root[data-ui='bbs'] main.page-in {
+  position: relative;
+  border: 3px double var(--b-blue);
+  background: #000;
+  box-shadow: 6px 6px 0 var(--b-shadow);
+  min-height: calc(100vh - var(--bbs-top) - var(--bbs-bot) - 38px);
+}
+:root[data-ui='bbs'] main.page-in::before {
+  content: ' MESSAGE BASE ';
+  position: absolute;
+  top: -12px;
+  left: 18px;
+  background: #000;
+  color: var(--b-yel);
+  font-weight: 700;
+  line-height: 1.2;
+}
+:root[data-ui='bbs'] .app:has(a.nav[href='/'][aria-current='page']) main.page-in::before {
+  content: ' WELCOME, SYSOP ';
+}
+:root[data-ui='bbs'] .app:has(a.nav[href='/library'][aria-current='page']) main.page-in::before {
+  content: ' FILE LIBRARY ';
+}
+:root[data-ui='bbs'] .app:has(a.nav[href='/machines'][aria-current='page']) main.page-in::before {
+  content: ' NODE LIST ';
+}
+:root[data-ui='bbs'] .app:has(a.nav[href='/history'][aria-current='page']) main.page-in::before {
+  content: ' CALLER LOG ';
+}
+:root[data-ui='bbs'] .app:has(a.nav[href='/settings'][aria-current='page']) main.page-in::before {
+  content: ' SYSOP CONFIG ';
+}
+:root[data-ui='bbs'] main > .off {
+  border: 1px solid var(--b-yel);
+  background: #000;
+  color: var(--b-yel);
+}
+:root[data-ui='bbs'] main > .off::before {
+  content: 'NO CARRIER ';
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .denied {
+  border: 3px double var(--bad);
+  background: #000;
+}
+
+/* ---------- controls: DOS dialog buttons ---------- */
+:root[data-ui='bbs'] .btn {
+  font-family: var(--font);
+  font-weight: 700;
+  padding: 4px 12px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 3px 3px 0 var(--b-shadow);
+  transition: none;
+}
+:root[data-ui='bbs'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: var(--b-yel);
+  color: #000;
+}
+:root[data-ui='bbs'] .btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+:root[data-ui='bbs'] .btn.ghost {
+  background: #000;
+  color: var(--b-cy);
+  border: 1px solid var(--b-blue);
+  box-shadow: 3px 3px 0 var(--b-shadow);
+}
+:root[data-ui='bbs'] .btn.ghost:hover {
+  background: var(--b-dblue);
+  color: #fff;
+  border-color: var(--b-cy);
+}
+:root[data-ui='bbs'] .btn:disabled,
+:root[data-ui='bbs'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: #000;
+  border: 1px dashed var(--dim);
+  color: var(--dim);
+  box-shadow: none;
+}
+:root[data-ui='bbs'] .search {
+  border: 1px solid var(--b-blue);
+  background: #000;
+}
+:root[data-ui='bbs'] .search:focus-within {
+  border-color: var(--b-cy);
+}
+:root[data-ui='bbs'] input {
+  caret-color: var(--b-yel);
+}
+:root[data-ui='bbs'] .search input::placeholder {
+  color: var(--dim);
+  opacity: 1;
+}
+:root[data-ui='bbs'] :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
+  background: #000;
+  border: 1px solid var(--b-blue);
+  color: var(--fg);
+}
+:root[data-ui='bbs'] *::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+:root[data-ui='bbs'] *::-webkit-scrollbar-track {
+  background: #000 radial-gradient(#3a3a99 1px, transparent 1.3px) 0 0 / 4px 4px;
+}
+:root[data-ui='bbs'] *::-webkit-scrollbar-thumb {
+  background: var(--b-blue);
+}
+:root[data-ui='bbs'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--b-cy);
+}
+
+/* ---------- surfaces inside main: single blue lines, hard shadows ---------- */
+:root[data-ui='bbs'] main :is(section, article, figure, aside, .card, .panel, .chart, .hd, dialog):not(.denied, .off) {
+  border-color: var(--b-blue);
+}
+
+/* ---------- covers: 16-colour poster with a dither ---------- */
+:root[data-ui='bbs'] :is(.cover, .hcover) {
+  filter: url(#bbs-ansi);
+  image-rendering: pixelated;
+}
+:root[data-ui='bbs'] main img:not(.thumb) {
+  image-rendering: pixelated;
+  filter: url(#bbs-ansi);
+}
+:root[data-ui='bbs'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(#000 35%, transparent 38%);
+  background-size: 3px 3px;
+  opacity: 0.3;
+}
+
+/* settings tabs and chips: the picked one is a lightbar */
+:root[data-ui='bbs'] .st .tab {
+  color: var(--b-cy);
+  font-family: var(--font);
+}
+:root[data-ui='bbs'] .st .tab[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .st .tab:hover:not([aria-selected='true']) {
+  background: var(--b-dblue);
+  color: #fff;
+}
+:root[data-ui='bbs'] .fchip {
+  background: #000;
+  border: 1px solid var(--b-blue);
+  color: var(--b-cy);
+}
+:root[data-ui='bbs'] .fchip:hover {
+  background: var(--b-dblue);
+  color: #fff;
+}
+:root[data-ui='bbs'] .fchip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .fchip[aria-pressed='true']::before {
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-ui='bbs'] .skel {
+  background: #000 radial-gradient(#3a3a99 1px, transparent 1.3px) 0 0 / 4px 4px;
+}
+
+/* ---------- command menu, dialogs, toasts, tips ---------- */
+:root[data-ui='bbs'] .cm-dim {
+  background: rgba(0, 0, 30, 0.82);
+}
+:root[data-ui='bbs'] .cm {
+  --cm-r: 0px;
+  border: 3px double var(--b-cy);
+  background: #000;
+  box-shadow: 8px 8px 0 var(--b-shadow);
+}
+:root[data-ui='bbs'] .cm-in {
+  font-family: var(--font);
+  font-size: 18px;
+  color: var(--b-yel);
+  border-bottom: 1px dashed var(--b-blue);
+}
+:root[data-ui='bbs'] .cm-it[data-selected] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+:root[data-ui='bbs'] .cm-it .k {
+  background: var(--b-dblue);
+  color: #fff;
+  padding: 0 6px;
+}
+:root[data-ui='bbs'] .cm-it[data-selected] .k {
+  background: #000;
+  color: var(--b-yel);
+}
+:root[data-ui='bbs'] .cm-it[data-selected]::before {
+  content: '>';
+  margin-right: -6px;
+}
+:root[data-ui='bbs'] .rs.glass,
+:root[data-ui='bbs'] .rs {
+  border: 3px double var(--b-mg);
+  background: #000;
+  box-shadow: 8px 8px 0 var(--b-shadow);
+}
+:root[data-ui='bbs'] :is(.rs-t, .mm-t) {
+  color: var(--b-yel);
+  font-weight: 700;
+}
+:root[data-ui='bbs'] .toast {
+  background: #000;
+  border: 3px double var(--b-grn);
+  box-shadow: 5px 5px 0 var(--b-shadow);
+}
+:root[data-ui='bbs'] .toast.error {
+  border-color: var(--bad);
+}
+:root[data-ui='bbs'] .tip {
+  background: var(--b-yel);
+  color: #000;
+  padding: 0 6px;
+}
+:root[data-ui='bbs']:not(#_) li.locked {
+  opacity: 1;
+}
+:root[data-ui='bbs'] li.locked :is(img, .ph) {
+  opacity: 0.5;
+}
+
+/* stream chrome: the ghost bar buttons light up like menu items */
+:root[data-ui='bbs'] .ic:hover,
+:root[data-ui='bbs'] .ic[aria-pressed='true'],
+:root[data-ui='bbs'] .ic[aria-expanded='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  transform: none;
+}
+:root[data-ui='bbs'] .chip {
+  background: #000;
+  border: 1px solid var(--b-blue);
+}
+:root[data-ui='bbs'] .chip[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* the page title ends in a blinking block cursor */
+:root[data-ui='bbs'] main h2:first-of-type::after {
+  content: '\2588';
+  margin-left: 8px;
+  color: var(--accent);
+  animation: bbs-blink 1s steps(1) infinite;
+}
+
+/* narrow screens: the menu box becomes a strip above the page */
+@media (max-width: 760px) {
+  :root[data-ui='bbs'] .app:has(> main.page-in) {
+    flex-direction: column;
+    padding: calc(var(--bbs-top) + 14px) 10px calc(var(--bbs-bot) + 12px);
+  }
+  :root[data-ui='bbs'] .app:has(> main.page-in) .side {
+    position: static;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px 6px;
+    align-items: center;
+  }
+  :root[data-ui='bbs'] .side .brand {
+    width: 100%;
+    flex-direction: row;
+    gap: 12px;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  :root[data-ui='bbs'] .side :is(.sec, .soon) {
+    display: none;
+  }
+  :root[data-ui='bbs'] .side .pill,
+  :root[data-ui='bbs'] .side .wrap {
+    margin-top: 12px;
+  }
+  :root[data-ui='bbs'] main.page-in {
+    width: 100%;
+    padding: 18px 12px 24px;
+    min-height: 0;
+  }
+}
+
+/* ---------- motion: hard steps, a cursor that blinks ---------- */
+@keyframes bbs-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes bbs-draw {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='bbs'] .page-in {
+    animation: bbs-draw 380ms steps(12, end) backwards;
+  }
+  :root[data-ui='bbs'] .reveal[data-enter],
+  :root[data-ui='bbs'] .enter[data-enter] {
+    animation: bbs-draw 300ms steps(6, end) calc(var(--i, 0) * var(--stagger)) backwards;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='bbs'] .dot {
+    animation: none;
+  }
+}
