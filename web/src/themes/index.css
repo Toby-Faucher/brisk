@@ -29,3 +29,13 @@
 @import './jrpg/theme.css';
 @import './sysmac/theme.css';
 @import './graffiti/theme.css';
+@import './blocky/theme.css';
+@import './overworld/theme.css';
+@import './platformer/theme.css';
+@import './maze/theme.css';
+@import './fps/theme.css';
+@import './dex/theme.css';
+@import './tetra/theme.css';
+@import './bonfire/theme.css';
+@import './racer/theme.css';
+@import './versus/theme.css';

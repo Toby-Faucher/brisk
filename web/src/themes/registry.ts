@@ -31,6 +31,16 @@ export const UI_THEMES = [
   { id: 'jrpg', name: 'Menu quest', blurb: 'Blue windows and a pointing hand' },
   { id: 'sysmac', name: 'Classic Mac', blurb: 'One bit, dithered and tidy' },
   { id: 'graffiti', name: 'Graffiti', blurb: 'Tags and spray on a brick wall' },
+  { id: 'blocky', name: 'Block world', blurb: 'Dirt, grass and a hotbar' },
+  { id: 'overworld', name: 'Overworld', blurb: 'Hearts, gems and a top-down map' },
+  { id: 'platformer', name: 'Platformer', blurb: 'Brick blocks, pipes and coins' },
+  { id: 'maze', name: 'Maze chase', blurb: 'Neon walls and a trail of dots' },
+  { id: 'fps', name: 'Boomer shooter', blurb: 'Rusted metal, a face and an ammo count' },
+  { id: 'dex', name: 'Creature dex', blurb: 'A red handheld with a screen and a D-pad' },
+  { id: 'tetra', name: 'Falling blocks', blurb: 'Tetromino stacks on a lit grid' },
+  { id: 'bonfire', name: 'Bonfire', blurb: 'Ash, embers and a lonely flame' },
+  { id: 'racer', name: 'Arcade racer', blurb: 'Speed stripes, checkered flags and a rev meter' },
+  { id: 'versus', name: 'Versus', blurb: 'A fighter select screen with health bars' },
 ] as const;
 
 export type UiTheme = (typeof UI_THEMES)[number]['id'];
