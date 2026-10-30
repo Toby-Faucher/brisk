@@ -1,1 +1,659 @@
-/* automata: filled in by its own branch */
+/* UI style automata: every rule starts with :root[data-ui='automata']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/share-tech-mono/400.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
+/* ---------- tokens: panels are dark boxes on khaki paper ---------- */
+:root[data-ui='automata'] {
+  --bg: #cdc2a3;
+  --panel: #2a2218;
+  --panel2: #3a3022;
+  --line: #8a7a58;
+  --line-hover: #e8dcc0;
+  --fg: #eadfc4;
+  --muted: #cbbd9b;
+  --dim: #bcae8c;
+  --ok: #a9c97a;
+  --warn: #e3b85c;
+  --bad: #e58a72;
+  --font: 'IBM Plex Mono', ui-monospace, monospace;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --display: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  --r-card: 0;
+  --r-ctl: 0;
+  --am-ink: #2a2218;
+  --am-ink2: #52452e;
+  --am-paper: #cdc2a3;
+  --am-box: #2a2218;
+  --am-text: #eadfc4;
+  --dur-enter: 300ms;
+  --rise-enter: 6px;
+  --stagger: 40ms;
+  --dur-page: 160ms;
+  --rise: 4px;
+  color-scheme: light;
+}
+:root[data-ui='automata'][data-accent='mint'] {
+  --accent: #c98a55;
+  --accent-fg: #1e170e;
+}
+:root[data-ui='automata'] body {
+  background: var(--am-paper);
+  color: var(--am-ink);
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+:root[data-ui='automata'] ::selection {
+  background: var(--am-ink);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] :focus-visible {
+  outline: 1px solid var(--am-ink);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 4px var(--am-paper),
+    0 0 0 5px var(--am-ink);
+  border-radius: 0;
+}
+:root[data-ui='automata'] :is(.card, .glass, .hero, .cm, .rs, .toast, .menu, .dd-menu, .stream) :focus-visible {
+  outline-color: var(--am-text);
+  box-shadow: none;
+}
+:root[data-ui='automata'] h1,
+:root[data-ui='automata'] h2,
+:root[data-ui='automata'] h3,
+:root[data-ui='automata'] h4,
+:root[data-ui='automata'] h5 {
+  font-family: var(--display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+:root[data-ui='automata'] .app {
+  display: block;
+}
+:root[data-ui='automata'] main {
+  margin-left: 264px;
+  max-width: 1240px;
+  padding: 34px 40px 80px 32px;
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] main .bg {
+  display: none;
+}
+:root[data-ui='automata'] main.page-in {
+  animation: none;
+}
+
+/* page-level text sits on paper, so it is dark */
+:root[data-ui='automata'] main .muted,
+:root[data-ui='automata'] .top .lab,
+:root[data-ui='automata'] main > .empty,
+:root[data-ui='automata'] main > .empty b {
+  color: var(--am-ink2);
+}
+:root[data-ui='automata'] .top {
+  border-bottom: 1px solid var(--am-ink);
+  padding: 0 0 12px;
+  margin-bottom: 18px;
+  gap: 8px 22px;
+  align-items: center;
+}
+:root[data-ui='automata'] .top h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .top h2::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  background: var(--am-ink);
+}
+:root[data-ui='automata'] .top .lab {
+  font: 400 12px / 1 var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+:root[data-ui='automata'] .tag {
+  border-radius: 0;
+  font: 400 11px / 1.3 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+  padding: 1px 6px;
+}
+
+/* ---------- menu: a narrow stack of text boxes with a square cursor ---------- */
+:root[data-ui='automata'] .side {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  width: 232px;
+  height: 100vh;
+  padding: 22px 16px;
+  gap: 6px;
+  border: 0;
+  border-right: 1px solid var(--am-ink);
+  background: rgb(205 194 163 / 0.82);
+  backdrop-filter: none;
+}
+:root[data-ui='automata'] .brand {
+  height: 44px;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--am-ink);
+}
+:root[data-ui='automata'] .brand img {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+:root[data-ui='automata'] .brand::before {
+  content: 'BRISK // LOG';
+  font: 400 19px / 44px var(--display);
+  letter-spacing: 0.16em;
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .side .nav {
+  position: relative;
+  gap: 10px;
+  padding: 9px 12px 9px 28px;
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  font: 400 13px / 1.2 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--am-text);
+  background: var(--am-box);
+  transition:
+    background 0.1s steps(2),
+    color 0.1s steps(2),
+    translate 0.15s;
+}
+:root[data-ui='automata'] .side .nav::before {
+  content: '';
+  position: absolute;
+  inset: auto auto auto 11px;
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+  background: var(--am-text);
+  box-shadow: none;
+  opacity: 0.45;
+}
+:root[data-ui='automata'] .side .nav svg {
+  display: none;
+}
+:root[data-ui='automata'] .side a.nav:hover,
+:root[data-ui='automata'] .side a.nav:focus-visible {
+  translate: 4px 0;
+}
+/* selecting inverts the box */
+:root[data-ui='automata'] .side .nav[aria-current='page'],
+:root[data-ui='automata'] .side a.nav:hover {
+  background: var(--am-paper);
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .side .nav[aria-current='page']::before,
+:root[data-ui='automata'] .side a.nav:hover::before {
+  background: var(--am-ink);
+  opacity: 1;
+}
+:root[data-ui='automata'] .side .nav[aria-current='page'] {
+  background: var(--am-ink);
+  color: var(--am-text);
+  outline: 1px solid var(--am-ink);
+  outline-offset: 2px;
+  background-image: none;
+}
+:root[data-ui='automata'] .side .nav[aria-current='page']::before {
+  background: var(--am-text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='automata'] .side .nav[aria-current='page']::before {
+    animation: am-cursor 1.1s steps(1, end) infinite;
+  }
+}
+@keyframes am-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+:root[data-ui='automata'] .side a.nav[aria-current='page']:hover {
+  background: var(--am-ink);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .side .sec {
+  margin: 14px 0 2px;
+  font: 400 11px / 1.2 var(--display);
+  letter-spacing: 0.2em;
+  color: var(--am-ink2);
+  text-transform: uppercase;
+}
+:root[data-ui='automata'] .side .soon {
+  opacity: 1;
+  background: transparent;
+  color: var(--am-ink2);
+  border-style: dashed;
+  cursor: default;
+}
+:root[data-ui='automata'] .side .soon::before {
+  background: var(--am-ink2);
+}
+:root[data-ui='automata'] .side .wrap {
+  margin-top: auto;
+}
+:root[data-ui='automata'] .side .pill {
+  margin-top: auto;
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  font: 400 12px / 1.2 var(--display);
+  letter-spacing: 0.1em;
+}
+:root[data-ui='automata'] .side .pill:hover {
+  background: var(--am-paper);
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .side .pill .st {
+  color: inherit;
+  opacity: 0.8;
+}
+:root[data-ui='automata'] .side .menu {
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  box-shadow: 4px 4px 0 rgb(42 34 24 / 0.35);
+  backdrop-filter: none;
+}
+:root[data-ui='automata'] .side .menu .it {
+  border-radius: 0;
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .side .menu .it:hover,
+:root[data-ui='automata'] .side .menu .it:focus-visible {
+  background: var(--am-text);
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .side .menu .st {
+  color: var(--muted);
+}
+:root[data-ui='automata'] .side .menu .it:hover .st {
+  color: var(--am-ink2);
+}
+
+/* ---------- panels: dark text boxes with a hairline frame ---------- */
+:root[data-ui='automata'] .card,
+:root[data-ui='automata'] .glass,
+:root[data-ui='automata'] .hero,
+:root[data-ui='automata'] main > .off,
+:root[data-ui='automata'] .denied {
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  backdrop-filter: none;
+  box-shadow:
+    0 0 0 3px var(--am-paper),
+    0 0 0 4px rgb(42 34 24 / 0.55);
+}
+:root[data-ui='automata'] .hero {
+  background: var(--am-box) !important;
+}
+:root[data-ui='automata'] .card:hover {
+  background: #342a1d;
+}
+:root[data-ui='automata'] .card h4,
+:root[data-ui='automata'] .sec h3,
+:root[data-ui='automata'] .gd-main h3,
+:root[data-ui='automata'] .shelf h4 {
+  font-size: 13px;
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .card h4::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--accent);
+}
+:root[data-ui='automata'] .card .big {
+  font: 400 40px / 1 var(--display);
+  letter-spacing: 0.02em;
+}
+:root[data-ui='automata'] .hero h3,
+:root[data-ui='automata'] .gd-t {
+  font-size: clamp(26px, 3.4vw, 42px);
+  line-height: 1.05;
+}
+:root[data-ui='automata'] .muted {
+  color: var(--muted);
+}
+:root[data-ui='automata'] .grip {
+  border-radius: 0;
+}
+
+/* ---------- buttons, search, inputs ---------- */
+:root[data-ui='automata'] .btn {
+  padding: 8px 16px;
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  font: 400 12px / 1.1 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--am-ink);
+  background: var(--am-paper);
+  box-shadow: none;
+  transition:
+    background 0.1s steps(2),
+    color 0.1s steps(2);
+}
+:root[data-ui='automata'] .btn:hover {
+  background: var(--am-ink);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] :is(.card, .glass, .hero, .cm, .rs, .toast) .btn {
+  border-color: var(--am-text);
+  color: var(--am-text);
+  background: transparent;
+}
+:root[data-ui='automata'] :is(.card, .glass, .hero, .cm, .rs, .toast) .btn:hover {
+  background: var(--am-text);
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .btn:disabled,
+:root[data-ui='automata'] .btn[aria-disabled='true'] {
+  opacity: 0.55;
+}
+:root[data-ui='automata'] .search {
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  box-shadow: none;
+}
+:root[data-ui='automata'] .search input[type] {
+  color: var(--am-text);
+  font-family: var(--font);
+}
+:root[data-ui='automata'] .search input::placeholder {
+  color: var(--muted);
+}
+:root[data-ui='automata'] input[type='text'],
+:root[data-ui='automata'] input[type='search'],
+:root[data-ui='automata'] input[type='number'],
+:root[data-ui='automata'] input[type='password'],
+:root[data-ui='automata'] textarea,
+:root[data-ui='automata'] select,
+:root[data-ui='automata'] .dd {
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  font-family: var(--font);
+}
+:root[data-ui='automata'] input[type='range'],
+:root[data-ui='automata'] input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+:root[data-ui='automata'] .dot {
+  border-radius: 0;
+}
+
+/* ---------- toasts, tips, menus ---------- */
+:root[data-ui='automata'] .toast,
+:root[data-ui='automata'] .tip,
+:root[data-ui='automata'] .dd-menu {
+  border: 1px solid var(--am-text);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  box-shadow: 0 0 0 2px var(--am-ink);
+  backdrop-filter: none;
+}
+:root[data-ui='automata'] .toast.error {
+  border-color: var(--bad);
+}
+:root[data-ui='automata'] .dd-item {
+  border-radius: 0;
+}
+:root[data-ui='automata'] .dd-item[data-highlighted],
+:root[data-ui='automata'] .dd-item:hover {
+  background: var(--am-text);
+  color: var(--am-ink);
+}
+
+/* ---------- command menu and dialogs ---------- */
+:root[data-ui='automata'] .cm-dim {
+  background: rgb(42 34 24 / 0.55);
+  backdrop-filter: none;
+}
+:root[data-ui='automata'] .cm,
+:root[data-ui='automata'] .rs {
+  border: 1px solid var(--am-text);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  box-shadow:
+    0 0 0 3px var(--am-ink),
+    8px 8px 0 rgb(42 34 24 / 0.4);
+  backdrop-filter: none;
+}
+:root[data-ui='automata'] .cm-in {
+  font-family: var(--font);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .cm-it {
+  border-radius: 0;
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .cm-it[data-selected],
+:root[data-ui='automata'] .cm-it[aria-selected='true'] {
+  background: var(--am-text);
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] kbd,
+:root[data-ui='automata'] .k {
+  border-radius: 0;
+  border: 1px solid currentColor;
+  background: transparent;
+  font-family: var(--display);
+}
+:root[data-ui='automata'] .rs-t,
+:root[data-ui='automata'] .mm-h h3 {
+  font-size: 16px;
+}
+
+/* ---------- Settings tabs, chips, swatches ---------- */
+:root[data-ui='automata'] .st .strip {
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--am-ink);
+  background: transparent;
+}
+:root[data-ui='automata'] .st .tab {
+  border-radius: 0;
+  font: 400 12px / 1 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--am-ink2);
+}
+:root[data-ui='automata'] .st .tab:hover,
+:root[data-ui='automata'] .st .tab[aria-selected='true'] {
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .st .ind {
+  border-radius: 0;
+  background: var(--am-ink);
+  height: 2px;
+}
+:root[data-ui='automata'] .fchip {
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--am-ink);
+  font: 400 12px / 1 var(--display);
+  letter-spacing: 0.1em;
+}
+:root[data-ui='automata'] .fchip:hover,
+:root[data-ui='automata'] .fchip[aria-pressed='true'] {
+  background: var(--am-ink);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .sw {
+  border-radius: 0;
+}
+:root[data-ui='automata'] .sw[aria-checked='true'] {
+  outline: 1px solid var(--am-ink);
+  outline-offset: 2px;
+}
+
+/* ---------- covers ---------- */
+:root[data-ui='automata'] .g {
+  border-radius: 0;
+}
+:root[data-ui='automata'] .cover {
+  border: 1px solid var(--am-ink);
+  border-radius: 0;
+  filter: sepia(0.35) saturate(0.8);
+}
+:root[data-ui='automata'] .g:hover .cover,
+:root[data-ui='automata'] .g:focus-visible .cover {
+  filter: none;
+}
+:root[data-ui='automata'] .wrap .name {
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .g .badge,
+:root[data-ui='automata'] .g .pchip,
+:root[data-ui='automata'] .g .tchip {
+  border-radius: 0;
+}
+:root[data-ui='automata'] .skel div {
+  border-radius: 0;
+  background: #b5a984;
+}
+
+/* ---------- /stream chrome only ---------- */
+:root[data-ui='automata'] .stream .center,
+:root[data-ui='automata'] .stream .card {
+  border: 1px solid var(--am-text);
+  border-radius: 0;
+  background: var(--am-box);
+  color: var(--am-text);
+  box-shadow: none;
+}
+:root[data-ui='automata'] .stream[data-state='idle'],
+:root[data-ui='automata'] .stream[data-state='unsupported'] {
+  background: var(--am-box);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] .stream .bar,
+:root[data-ui='automata'] .stream .menu {
+  border-radius: 0;
+}
+:root[data-ui='automata'] .stream .ic {
+  border-radius: 0;
+}
+
+/* page text sits on paper (dark); text inside the boxes is light again */
+:root[data-ui='automata'] main {
+  --fg: #2a2218;
+  --muted: #52452e;
+  --dim: #5b4e38;
+  --line: #5b4e38;
+}
+:root[data-ui='automata'] main :is(.card, .glass, .hero, .denied, .off, .stream, .toast, .tip) {
+  --fg: #eadfc4;
+  --muted: #cbbd9b;
+  --dim: #bcae8c;
+  --line: #8a7a58;
+}
+:root[data-ui='automata'] .bento .soon {
+  opacity: 1;
+  background: #3f3526;
+}
+
+/* ---------- fixes: chips inside dark boxes, selected rows, rounded leftovers ---------- */
+:root[data-ui='automata'] :is(.card, .glass, .hero, .cm, .rs) .fchip {
+  border-color: var(--am-text);
+  color: var(--am-text);
+}
+:root[data-ui='automata'] :is(.card, .glass, .hero, .cm, .rs) .fchip:hover,
+:root[data-ui='automata'] :is(.card, .glass, .hero, .cm, .rs) .fchip[aria-pressed='true'] {
+  background: var(--am-text);
+  color: var(--am-ink);
+}
+:root[data-ui='automata'] .cm-it[data-selected] kbd,
+:root[data-ui='automata'] .cm-it[aria-selected='true'] kbd,
+:root[data-ui='automata'] .cm-it[data-selected] .k,
+:root[data-ui='automata'] .cm-it[aria-selected='true'] .k {
+  color: var(--am-ink);
+  border-color: var(--am-ink);
+}
+:root[data-ui='automata'] :is(.card, .hero, .glass, .stream) :is(.chip, .pill, .seg, .seg button, [role='tab'], [role='radio']) {
+  border-radius: 0;
+}
+:root[data-ui='automata'] .side .nav[aria-current='page']::before {
+  background: var(--accent);
+  width: 8px;
+  height: 8px;
+  top: calc(50% - 4px);
+  left: 10px;
+}
+
+/* ---------- narrow screens: the menu becomes a strip of boxes across the top ---------- */
+@media (max-width: 760px) {
+  :root[data-ui='automata'] .side {
+    position: sticky;
+    width: auto;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--am-ink);
+  }
+  :root[data-ui='automata'] .side .nav {
+    padding: 6px 8px 6px 20px;
+    font-size: 11px;
+  }
+  :root[data-ui='automata'] .side .nav::before {
+    left: 7px;
+  }
+  :root[data-ui='automata'] .brand,
+  :root[data-ui='automata'] .side .sec,
+  :root[data-ui='automata'] .side .soon {
+    display: none;
+  }
+  :root[data-ui='automata'] .side .wrap {
+    margin: 0 0 0 auto;
+  }
+  :root[data-ui='automata'] .side .pill {
+    margin: 0;
+    padding: 6px 8px;
+  }
+  :root[data-ui='automata'] main {
+    margin-left: 0;
+    padding: 18px 14px 60px;
+  }
+  :root[data-ui='automata'] .top h2 {
+    font-size: 18px;
+  }
+}
