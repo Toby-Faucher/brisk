@@ -43,6 +43,10 @@ export const UI_THEMES = [
   { id: 'versus', name: 'Versus', blurb: 'A fighter select screen with health bars' },
   { id: 'bentodark', name: 'Dark bento', blurb: 'Dim tiles with a lit edge' },
   { id: 'shader', name: 'Shader lab', blurb: 'A live GPU shader behind glass' },
+  { id: 'sheikah', name: 'Slate', blurb: 'Glowing cyan runes on a worn stone tablet' },
+  { id: 'cyber', name: 'Cyber HUD', blurb: 'Yellow overlays, cut corners and glitch' },
+  { id: 'ink', name: 'Ink war', blurb: 'Neon splats, fat type and turf' },
+  { id: 'automata', name: 'Android log', blurb: 'Beige terminal boxes and a quiet hex grid' },
 ] as const;
 
 export type UiTheme = (typeof UI_THEMES)[number]['id'];
