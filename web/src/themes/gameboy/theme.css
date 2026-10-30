@@ -1,1 +1,1416 @@
-/* UI style gameboy: every rule starts with :root[data-ui='gameboy']. Owner: this folder only. See ../README.md. */
+/* UI style gameboy (Handheld): every rule starts with :root[data-ui='gameboy']. Owner: this folder only. See ../README.md.
+   The LCD has four colours: #0f380f #306230 #8bac0f #9bbc0f. Text is only ever #0f380f on #9bbc0f / #8bac0f, or the reverse. */
+@import '@fontsource/silkscreen/latin-400.css';
+@import '@fontsource/silkscreen/latin-700.css';
+@import '@fontsource/press-start-2p/latin-400.css';
+@import '@fontsource/pixelify-sans/latin-400.css';
+@import '@fontsource/pixelify-sans/latin-700.css';
+
+/* ---------- tokens ---------- */
+:root[data-ui='gameboy']:not(#_) {
+  --g0: #0f380f; /* darkest */
+  --g1: #306230;
+  --g2: #8bac0f;
+  --g3: #9bbc0f; /* lightest */
+  --bg: #9bbc0f;
+  --panel: #8bac0f;
+  --panel2: #9bbc0f;
+  --line: #306230;
+  --line-hover: #0f380f;
+  --fg: #0f380f;
+  --muted: #0f380f;
+  --dim: #0f380f;
+  --accent: #0f380f;
+  --accent-fg: #9bbc0f;
+  --ok: #0f380f;
+  --warn: #0f380f;
+  --bad: #0f380f;
+  --c-lib: #0f380f;
+  --c-stream: #0f380f;
+  --c-host: #0f380f;
+  --c-set: #0f380f;
+  --c-agent: #0f380f;
+  --c-news: #0f380f;
+  --c-power: #0f380f;
+  --c-hist: #0f380f;
+  --font: 'Pixelify Sans', 'Silkscreen', monospace;
+  --mono: 'Pixelify Sans', 'Silkscreen', monospace;
+  --pix: 'Silkscreen', 'Pixelify Sans', monospace;
+  --big: 'Press Start 2P', 'Silkscreen', monospace;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --ease: steps(2, end);
+  --dur-page: 160ms;
+  --dur-tab: 160ms;
+  --dur-enter: 320ms;
+  --rise: 0px;
+  --rise-scroll: 0px;
+  --rise-enter: 0px;
+  --stagger: 40ms;
+  /* the notched "pixel corner" outline: four offset shadows, so no corner pixel is drawn */
+  --notch: 0 -4px 0 0 var(--g0), 0 4px 0 0 var(--g0), -4px 0 0 0 var(--g0), 4px 0 0 0 var(--g0);
+  --notch2: 0 -2px 0 0 var(--g0), 0 2px 0 0 var(--g0), -2px 0 0 0 var(--g0), 2px 0 0 0 var(--g0);
+  /* shell geometry (all the framing is the desktop shell, see Layer.svelte) */
+  --gb-side: clamp(128px, 14vw, 216px);
+  --gb-u: clamp(34px, 3.6vw, 56px);
+  --gb-top: 16px;
+  --gb-bez-top: 40px;
+  --gb-bez-side: 24px;
+  --gb-bottom: 96px;
+  --gb-plastic: #c9c5b6;
+  --gb-plastic-d: #aaa699;
+  --gb-bezel: #5d5d6b;
+  --gb-magenta: #8f2260;
+  --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%23306230' d='M0 0h2v2H0zM2 2h2v2H2z'/%3E%3C/svg%3E");
+  --dither-lite: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%238bac0f' d='M0 0h2v2H0zM2 2h2v2H2z'/%3E%3C/svg%3E");
+  --dither-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%230f380f' d='M0 0h2v2H0zM2 2h2v2H2z'/%3E%3C/svg%3E");
+  color-scheme: light;
+  background: var(--g3);
+}
+:root[data-ui='gameboy'] body {
+  background: var(--g3);
+  color: var(--g0);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.3;
+  -webkit-font-smoothing: none;
+  font-synthesis: none;
+}
+:root[data-ui='gameboy'] :is(button, input, select, textarea) {
+  font-family: var(--font);
+}
+:root[data-ui='gameboy'] *,
+:root[data-ui='gameboy'] *::before,
+:root[data-ui='gameboy'] *::after {
+  border-radius: 0 !important;
+  -webkit-font-smoothing: none;
+}
+:root[data-ui='gameboy']:not(#_) :is(h1, h2, h3, h4) {
+  font-family: var(--big);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  line-height: 1.5;
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] h1 {
+  font-size: 18px;
+}
+:root[data-ui='gameboy'] h2 {
+  font-size: 14px;
+}
+:root[data-ui='gameboy'] :is(h3, h4) {
+  font-size: 11px;
+}
+:root[data-ui='gameboy'] :is(h1, h2, h3, h4) small,
+:root[data-ui='gameboy'] :is(h1, h2, h3, h4) .lab {
+  font-family: var(--font);
+  text-transform: none;
+  font-size: 15px;
+}
+:root[data-ui='gameboy'] .lab {
+  font-size: 15px;
+}
+:root[data-ui='gameboy'] .mono {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='gameboy'] ::selection {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] :focus-visible {
+  outline: 4px solid var(--g0);
+  outline-offset: 0;
+  animation: gb-flash 400ms steps(1) infinite;
+}
+@keyframes gb-flash {
+  50% {
+    outline-color: var(--g1);
+  }
+}
+:root[data-ui='gameboy'] a {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+:root[data-ui='gameboy'] :is(a.nav, a.pill, a.it, a.btn, a.g, a[class]) {
+  text-decoration: none;
+}
+:root[data-ui='gameboy'] .tag {
+  font-family: var(--pix);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .dot {
+  width: 10px;
+  height: 10px;
+  background: var(--g0);
+  box-shadow: none;
+  animation: gb-blink2 1s steps(1) infinite;
+}
+:root[data-ui='gameboy'] .dot.down,
+:root[data-ui='gameboy'] .dot.off {
+  background: transparent;
+  border: 2px solid var(--g0);
+  animation: none;
+}
+@keyframes gb-blink2 {
+  50% {
+    background: var(--g1);
+  }
+}
+:root[data-ui='gameboy'] kbd {
+  font-family: var(--pix);
+  font-size: 11px;
+  border: 2px solid var(--g0);
+  padding: 0 4px;
+  box-shadow: 2px 2px 0 var(--g1);
+  background: var(--g3);
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] svg text {
+  font-family: var(--font);
+}
+
+/* scrollbars: dithered rail, solid block thumb */
+:root[data-ui='gameboy'] *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+:root[data-ui='gameboy'] *::-webkit-scrollbar-track {
+  background: var(--g2) var(--dither);
+  border-left: 2px solid var(--g0);
+}
+:root[data-ui='gameboy'] *::-webkit-scrollbar-thumb {
+  background: var(--g0);
+  border: 2px solid var(--g2);
+  min-height: 32px;
+  min-width: 32px;
+}
+:root[data-ui='gameboy'] *::-webkit-scrollbar-thumb:hover,
+:root[data-ui='gameboy'] *::-webkit-scrollbar-thumb:active {
+  background: var(--g1);
+}
+:root[data-ui='gameboy'] *::-webkit-scrollbar-corner {
+  background: var(--g2);
+}
+
+/* ---------- the app is the screen ---------- */
+:root[data-ui='gameboy'] .app {
+  min-height: 100vh;
+  background: var(--g3);
+}
+/* every colour the app can produce is snapped to the four greens (filter lives in Layer.svelte's inline SVG) */
+:root[data-ui='gameboy'] .app:has(> main.page-in) {
+  filter: url(#gb-lcd);
+}
+:root[data-ui='gameboy'] main {
+  padding: 16px 20px 40px;
+  background: var(--g3);
+}
+:root[data-ui='gameboy'] main > .off {
+  border: 2px solid var(--g0);
+  background: var(--g2);
+  color: var(--g0);
+  box-shadow: 4px 4px 0 var(--g1);
+}
+:root[data-ui='gameboy'] main > .off::before {
+  content: '!';
+  font-family: var(--big);
+  font-size: 12px;
+  margin-right: 8px;
+  animation: gb-blink2t 800ms steps(1) infinite;
+}
+@keyframes gb-blink2t {
+  50% {
+    opacity: 0;
+  }
+}
+:root[data-ui='gameboy'] .denied {
+  border: 4px solid var(--g0);
+  background: var(--g2);
+  box-shadow: 6px 6px 0 var(--g1);
+}
+:root[data-ui='gameboy'] .denied h1::before {
+  content: 'ERROR 02 ';
+  font-size: 11px;
+}
+
+/* ---------- sidebar: the title menu ---------- */
+:root[data-ui='gameboy'] .side {
+  width: 184px;
+  background: var(--g2);
+  backdrop-filter: none;
+  border-right: 4px solid var(--g0);
+  padding: 12px 10px;
+  gap: 4px;
+  isolation: isolate;
+  box-shadow: inset -4px 0 0 var(--g3);
+}
+:root[data-ui='gameboy'] .side .brand {
+  padding: 0 0 8px;
+  margin-bottom: 4px;
+  border-bottom: 4px double var(--g0);
+}
+:root[data-ui='gameboy'] .side .brand img {
+  display: none;
+}
+:root[data-ui='gameboy'] .side .brand::before {
+  content: 'BRISK';
+  font-family: var(--big);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--g0);
+  text-shadow: 2px 2px 0 var(--g1);
+}
+:root[data-ui='gameboy'] .side .brand::after {
+  content: 'TM';
+  font-family: var(--pix);
+  font-size: 9px;
+  align-self: flex-start;
+  margin: 6px 0 0 2px;
+}
+:root[data-ui='gameboy'] .side .nav {
+  font-family: var(--pix);
+  font-size: 14px;
+  text-transform: uppercase;
+  gap: 8px;
+  padding: 7px 6px 7px 22px;
+  color: var(--g0);
+  position: relative;
+  transition: none;
+}
+:root[data-ui='gameboy'] .side .nav svg {
+  width: 16px;
+  height: 16px;
+}
+:root[data-ui='gameboy'] .side a.nav:hover {
+  background: var(--g3);
+  transform: none;
+  color: var(--g0);
+}
+/* the cursor: a right-pointing triangle that bobs by one pixel row, two frames */
+:root[data-ui='gameboy'] .side a.nav:hover::after,
+:root[data-ui='gameboy'] .side .nav[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  margin-top: -6px;
+  border: 6px solid transparent;
+  border-left: 10px solid var(--g0);
+  border-right: 0;
+  animation: gb-bob 600ms steps(1) infinite;
+}
+@keyframes gb-bob {
+  50% {
+    translate: 3px 0;
+  }
+}
+:root[data-ui='gameboy'] .side .nav[aria-current='page'] {
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .side .nav[aria-current='page']::before {
+  background: var(--g0);
+  box-shadow: var(--notch2);
+  z-index: -1;
+}
+:root[data-ui='gameboy'] .side .nav[aria-current='page']::after {
+  border-left-color: var(--g3);
+}
+:root[data-ui='gameboy'] .side .nav[aria-current='page'] svg {
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .side .soon {
+  padding-left: 6px;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+  opacity: 1;
+  color: var(--g0);
+  background: var(--dither-lite);
+  cursor: not-allowed;
+}
+:root[data-ui='gameboy'] .side .soon .tag {
+  font-size: 9px;
+  padding: 0 4px;
+}
+:root[data-ui='gameboy'] .side .sec {
+  font-family: var(--pix);
+  font-size: 11px;
+  color: var(--g0);
+  padding: 14px 6px 4px;
+  letter-spacing: 0.1em;
+  border-top: 4px double var(--g0);
+  margin-top: 6px;
+}
+:root[data-ui='gameboy'] .pill {
+  border: 2px solid var(--g0);
+  background: var(--g3);
+  color: var(--g0);
+  box-shadow: 3px 3px 0 var(--g1);
+  padding: 7px 8px;
+  font-family: var(--pix);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .pill:hover {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .pill:hover :is(.st, .name) {
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .pill:active {
+  translate: 3px 3px;
+  box-shadow: none;
+}
+:root[data-ui='gameboy'] .glass {
+  background: var(--g3);
+  backdrop-filter: none;
+  border: 4px solid var(--g0);
+  box-shadow: 6px 6px 0 var(--g1);
+}
+:root[data-ui='gameboy'] .menu .it {
+  font-family: var(--pix);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .menu .it:hover,
+:root[data-ui='gameboy'] .menu .it:focus-visible,
+:root[data-ui='gameboy'] .menu .it[aria-checked='true'] {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .menu .it:hover :is(.st, .name),
+:root[data-ui='gameboy'] .menu .it:focus-visible :is(.st, .name),
+:root[data-ui='gameboy'] .menu .it[aria-checked='true'] :is(.st, .name) {
+  color: var(--g3);
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='gameboy'] .btn {
+  font-family: var(--pix);
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 7px 14px;
+  background: var(--g0);
+  color: var(--g3);
+  border: 0;
+  box-shadow:
+    var(--notch),
+    6px 6px 0 -0px var(--g1);
+  margin: 4px;
+  transition: none;
+}
+:root[data-ui='gameboy'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: var(--g1);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .btn:active {
+  transform: none;
+  translate: 4px 4px;
+  box-shadow: var(--notch);
+}
+:root[data-ui='gameboy'] .btn.ghost {
+  background: var(--g3);
+  color: var(--g0);
+  box-shadow:
+    var(--notch),
+    6px 6px 0 -0px var(--g1);
+}
+:root[data-ui='gameboy'] .btn.ghost:hover {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .btn:disabled,
+:root[data-ui='gameboy'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: var(--g2) var(--dither);
+  color: var(--g0);
+  box-shadow: var(--notch2);
+  cursor: not-allowed;
+}
+:root[data-ui='gameboy'] .btn.sm {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+:root[data-ui='gameboy'] .search {
+  border: 4px solid var(--g0);
+  background: var(--g3);
+  padding: 4px 10px;
+  box-shadow: 4px 4px 0 var(--g1);
+}
+:root[data-ui='gameboy'] .search:focus-within {
+  border-color: var(--g0);
+  outline: 4px solid var(--g1);
+  outline-offset: 0;
+}
+:root[data-ui='gameboy'] .search input {
+  font-family: var(--font);
+  font-size: 16px;
+  caret-color: var(--g0);
+}
+:root[data-ui='gameboy'] .search input::placeholder,
+:root[data-ui='gameboy'] input::placeholder,
+:root[data-ui='gameboy'] textarea::placeholder {
+  color: var(--g0);
+  opacity: 1;
+}
+:root[data-ui='gameboy']
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='search']), select, textarea) {
+  background: var(--g3);
+  color: var(--g0);
+  border: 3px solid var(--g0);
+  font-size: 16px;
+  caret-color: var(--g0);
+}
+:root[data-ui='gameboy'] input[type='file']::file-selector-button {
+  font-family: var(--pix);
+  font-size: 12px;
+  text-transform: uppercase;
+  border: 3px solid var(--g0);
+  background: var(--g0);
+  color: var(--g3);
+  padding: 4px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+:root[data-ui='gameboy'] input[type='checkbox'],
+:root[data-ui='gameboy'] input[type='radio'] {
+  accent-color: var(--g0);
+}
+
+/* ---------- surfaces ---------- */
+:root[data-ui='gameboy'] .card {
+  background: var(--g2);
+  border: 4px solid var(--g0);
+  box-shadow: 6px 6px 0 var(--g1);
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .card:hover {
+  border-color: var(--g0);
+}
+
+/* hero banners sit on dark art, so they read light on dark */
+:root[data-ui='gameboy']:not(#_) .hero {
+  background: var(--g0);
+  border: 4px solid var(--g0);
+  box-shadow: 6px 6px 0 var(--g1);
+  color: var(--g3);
+}
+:root[data-ui='gameboy']:not(#_) .hero :is(h3, .lab, .sub, p) {
+  color: var(--g3);
+}
+:root[data-ui='gameboy']:not(#_) .hero .btn {
+  background: var(--g3);
+  color: var(--g0);
+  box-shadow:
+    0 -4px 0 0 var(--g3),
+    0 4px 0 0 var(--g3),
+    -4px 0 0 0 var(--g3),
+    4px 0 0 0 var(--g3),
+    8px 8px 0 -2px var(--g1);
+}
+:root[data-ui='gameboy']:not(#_) .hero .btn:hover {
+  background: var(--g2);
+}
+:root[data-ui='gameboy']:not(#_) .head:has(> .art),
+:root[data-ui='gameboy']:not(#_) .head:has(> img.art) {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy']:not(#_) :is(.gd-t, .gd-d) {
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .card > :is(h4, .head):first-of-type {
+  padding-right: 22px;
+}
+:root[data-ui='gameboy']:not(#_) :is(figcaption, .nums b, main h3) {
+  color: var(--g0);
+}
+/* round gauges keep their round shape: stepped pixels, not smooth */
+:root[data-ui='gameboy'] div.ring {
+  border-radius: 50% !important;
+  background: conic-gradient(var(--g0) calc(var(--p, 0) * 1%), var(--g3) 0);
+}
+:root[data-ui='gameboy'] circle.ring {
+  fill: var(--g3);
+  stroke: var(--g0);
+  stroke-width: 0.04;
+}
+:root[data-ui='gameboy'] .cross {
+  stroke: var(--g1);
+}
+:root[data-ui='gameboy'] .stick .dot {
+  fill: var(--g0);
+  animation: none;
+  width: auto;
+  height: auto;
+  border: 0;
+}
+:root[data-ui='gameboy']:not(#_) .hd,
+:root[data-ui='gameboy']:not(#_) .hd.idle {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy']:not(#_) .hd h4 {
+  color: inherit;
+}
+:root[data-ui='gameboy'] div.ring b {
+  border-radius: 50% !important;
+  background: var(--g3);
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .skel {
+  position: relative;
+}
+:root[data-ui='gameboy'] .skel::after {
+  content: 'NOW LOADING...';
+  position: absolute;
+  left: 0;
+  top: -22px;
+  font-family: var(--pix);
+  font-size: 12px;
+  animation: gb-blink2t 800ms steps(1) infinite;
+}
+:root[data-ui='gameboy'] .skel div {
+  background: var(--g2) var(--dither);
+  animation: gb-blink2t 800ms steps(1) infinite;
+}
+:root[data-ui='gameboy'] .empty::before {
+  content: 'GAME OVER';
+  display: block;
+  font-family: var(--big);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+:root[data-ui='gameboy'] .cm-empty::before {
+  content: 'NO CARTRIDGE. ';
+  font-weight: 700;
+}
+:root[data-ui='gameboy']:not(#_) .search input {
+  border: 0;
+  background: transparent;
+}
+:root[data-ui='gameboy']:not(#_) .card.dim > :not(.actions, .grip, .fill) {
+  opacity: 1 !important;
+  filter: none !important;
+}
+/* accent swatches: the setting is ignored here, so they become a row of dither tiles */
+:root[data-ui='gameboy'] .sw {
+  width: 30px;
+  height: 30px;
+  background: var(--g3) var(--dither) !important;
+  border: 3px solid var(--g0);
+}
+:root[data-ui='gameboy'] .sw[aria-checked='true'] {
+  background: var(--g0) !important;
+  border-color: var(--g0);
+  box-shadow: inset 0 0 0 3px var(--g3);
+}
+:root[data-ui='gameboy'] :has(> .sw)::after {
+  content: 'Handheld only has four greens, so Accent sits this one out.';
+  flex-basis: 100%;
+  font-size: 15px;
+}
+
+/* ---------- covers: four shades, dithered ---------- */
+:root[data-ui='gameboy'] :is(.cover, .hcover) {
+  filter: url(#gb-cover);
+  image-rendering: pixelated;
+}
+:root[data-ui='gameboy'] :is(main, .rs, .mp, .mm) img:not(.thumb, .logo) {
+  image-rendering: pixelated;
+  filter: url(#gb-cover);
+}
+:root[data-ui='gameboy'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--dither);
+  opacity: 0.55;
+}
+
+/* ---------- dialogs, command menu, toasts, tips (portalled, so they get their own snap-to-green filter) ---------- */
+:root[data-ui='gameboy'] .cm-dim {
+  background: var(--g0) var(--dither-dark);
+  opacity: 0.55;
+}
+:root[data-ui='gameboy'] :is(.cm, .rs, .mp, .mm, .toast) {
+  filter: url(#gb-lcd);
+  background: var(--g3);
+  border: 4px solid var(--g0);
+  box-shadow: 8px 8px 0 var(--g1);
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .cm-in {
+  font-family: var(--font);
+  font-size: 20px;
+  border-bottom: 4px double var(--g0);
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .cm-in::placeholder {
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .cm-it {
+  font-family: var(--pix);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .cm-it[data-selected] {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .cm-it[data-selected]::before {
+  content: '';
+  border: 6px solid transparent;
+  border-left: 10px solid var(--g3);
+  border-right: 0;
+  margin-right: -4px;
+  animation: gb-bob 600ms steps(1) infinite;
+}
+:root[data-ui='gameboy'] .cm-it .k {
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .cm-it[data-selected] .k {
+  background: var(--g0);
+  color: var(--g3);
+  border-color: var(--g3);
+}
+:root[data-ui='gameboy'] .cm-empty {
+  font-family: var(--pix);
+  text-transform: uppercase;
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .toast {
+  font-family: var(--pix);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .toast::before {
+  content: '!';
+  font-family: var(--big);
+  font-size: 12px;
+}
+:root[data-ui='gameboy'] .toast.error {
+  color: var(--g0);
+  border-style: double;
+}
+:root[data-ui='gameboy'] .tip {
+  background: var(--g0);
+  color: var(--g3);
+  font-family: var(--pix);
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  box-shadow: 3px 3px 0 var(--g1);
+}
+:root[data-ui='gameboy'] :is(.rs-t, .mm-t) {
+  font-family: var(--big);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+
+/* ---------- shell: grey plastic around the screen (desktop, not /stream; the buttons live in Layer.svelte) ---------- */
+:root[data-ui='gameboy'] .gb-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+:root[data-ui='gameboy'] .gb-shell {
+  display: none;
+}
+@media (min-width: 900px) and (min-height: 600px) {
+  :root[data-ui='gameboy']:has(main.page-in) body {
+    background: var(--gb-plastic);
+    overflow: hidden;
+    height: 100vh;
+  }
+  :root[data-ui='gameboy']:has(main.page-in) {
+    background: var(--gb-plastic);
+    overflow: hidden;
+  }
+  :root[data-ui='gameboy'] .app:has(> main.page-in) {
+    position: fixed;
+    z-index: 1;
+    left: calc(var(--gb-side) + var(--gb-bez-side));
+    right: calc(var(--gb-side) + var(--gb-bez-side));
+    top: calc(var(--gb-top) + var(--gb-bez-top));
+    bottom: calc(var(--gb-bottom) + 20px);
+    min-height: 0;
+    overflow: hidden;
+    contain: paint;
+  }
+  :root[data-ui='gameboy'] .app:has(> main.page-in) > .side {
+    position: relative;
+    height: 100%;
+    width: clamp(150px, 16vw, 184px);
+    overflow: visible;
+    z-index: 3;
+  }
+  :root[data-ui='gameboy'] .app:has(> main.page-in) > main {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 18px 40px;
+    scroll-padding-top: 16px;
+  }
+  :root[data-ui='gameboy']:has(main.page-in) {
+    --lcd-l: calc(var(--gb-side) + var(--gb-bez-side));
+    --lcd-t: calc(var(--gb-top) + var(--gb-bez-top));
+    --lcd-b: calc(var(--gb-bottom) + 20px);
+  }
+  /* the big panels open inside the screen instead of over the plastic */
+  :root[data-ui='gameboy']:has(main.page-in) :is(.rs.gd, .mm.mp) {
+    position: fixed;
+    left: var(--lcd-l);
+    right: var(--lcd-l);
+    top: var(--lcd-t);
+    bottom: var(--lcd-b);
+    width: auto;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    transform: none;
+    border-width: 4px;
+  }
+  :root[data-ui='gameboy']:has(main.page-in) .toasts {
+    bottom: calc(var(--gb-bottom) + 36px);
+  }
+}
+
+@media (min-width: 900px) and (min-height: 600px) {
+  :root[data-ui='gameboy'] .gb-shell {
+    display: contents;
+    --lcd-l: calc(var(--gb-side) + var(--gb-bez-side));
+    --lcd-t: calc(var(--gb-top) + var(--gb-bez-top));
+    --lcd-b: calc(var(--gb-bottom) + 20px);
+  }
+  /* plastic: a faint moulded sheen, a seam and a corner shadow */
+  :root[data-ui='gameboy'] .gb-shell::before {
+    content: '';
+    position: fixed;
+    z-index: 0;
+    pointer-events: none;
+    inset: 0;
+    background:
+      linear-gradient(
+        90deg,
+        transparent calc(var(--gb-side) - 3px),
+        rgba(0, 0, 0, 0.12) calc(var(--gb-side) - 3px),
+        transparent calc(var(--gb-side) + 1px)
+      ),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent 14%, transparent 86%, rgba(0, 0, 0, 0.12)),
+      repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.025) 0 1px, transparent 1px 4px);
+  }
+  :root[data-ui='gameboy'] .gb-bezel {
+    position: fixed;
+    z-index: 0;
+    pointer-events: none;
+    left: var(--gb-side);
+    right: var(--gb-side);
+    top: var(--gb-top);
+    bottom: var(--gb-bottom);
+    background: var(--gb-bezel);
+    border-radius: 14px 14px 64px 14px !important;
+    box-shadow:
+      inset 0 3px 0 rgba(255, 255, 255, 0.14),
+      0 4px 0 rgba(0, 0, 0, 0.22);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 12px;
+    font-family: var(--pix);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: #ececf6;
+    white-space: nowrap;
+  }
+  :root[data-ui='gameboy'] .gb-dm {
+    line-height: 14px;
+  }
+  :root[data-ui='gameboy'] .gb-rule {
+    flex: 0 1 12%;
+    margin-top: 3px;
+    border-top: 2px solid #b02a6f;
+    border-bottom: 2px solid #3a49c4;
+    box-sizing: border-box;
+    height: 8px;
+  }
+  :root[data-ui='gameboy'] .gb-led {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    width: 8px;
+    height: 8px;
+    background: #ff3b3b;
+    box-shadow:
+      0 0 0 2px #7a1414,
+      0 0 8px 2px rgba(255, 59, 59, 0.7);
+    border-radius: 50% !important;
+    animation: gb-led 5s steps(1) infinite;
+  }
+  @keyframes gb-led {
+    92% {
+      background: #a02424;
+      box-shadow:
+        0 0 0 2px #7a1414,
+        0 0 3px 0 rgba(255, 59, 59, 0.4);
+    }
+  }
+  :root[data-ui='gameboy'] .gb-bat {
+    position: absolute;
+    left: 28px;
+    top: 12px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: #ececf6;
+  }
+  :root[data-ui='gameboy'] .gb-glass {
+    position: fixed;
+    z-index: 2;
+    pointer-events: none;
+    left: var(--lcd-l);
+    right: var(--lcd-l);
+    top: var(--lcd-t);
+    bottom: var(--lcd-b);
+    box-shadow:
+      inset 8px 8px 0 rgba(15, 56, 15, 0.2),
+      0 0 0 4px #2b2b36;
+    background:
+      linear-gradient(90deg, rgba(15, 56, 15, 0.07) 1px, transparent 1px) 0 0 / 3px 3px,
+      linear-gradient(180deg, rgba(15, 56, 15, 0.07) 1px, transparent 1px) 0 0 / 3px 3px;
+  }
+  :root[data-ui='gameboy'] .gb-name {
+    position: fixed;
+    z-index: 0;
+    pointer-events: none;
+    left: calc(var(--gb-side) + 12px);
+    bottom: 38px;
+    font-family: var(--font);
+    font-weight: 700;
+    font-size: 26px;
+    font-style: italic;
+    font-synthesis: style;
+    color: #2a3a8f;
+    letter-spacing: 0.02em;
+    transform-origin: left bottom;
+    white-space: nowrap;
+  }
+  :root[data-ui='gameboy'] .gb-name b {
+    font-family: var(--font);
+    font-weight: 700;
+    -webkit-text-stroke: 1px #2a3a8f;
+    color: transparent;
+  }
+  :root[data-ui='gameboy'] .gb-name i {
+    font-family: var(--big);
+    font-size: 17px;
+    font-style: italic;
+    font-synthesis: style;
+  }
+  :root[data-ui='gameboy'] .gb-name sup {
+    font-family: var(--pix);
+    font-size: 8px;
+    font-style: normal;
+  }
+  :root[data-ui='gameboy'] .gb-grille {
+    position: fixed;
+    z-index: 0;
+    pointer-events: none;
+    right: calc(var(--gb-side) + 22px);
+    bottom: 14px;
+    display: flex;
+    gap: 7px;
+  }
+  :root[data-ui='gameboy'] .gb-grille i {
+    width: 6px;
+    height: 46px;
+    background: #6f6c61;
+    box-shadow: 2px 0 0 rgba(255, 255, 255, 0.45);
+    transform: rotate(28deg);
+    border-radius: 3px !important;
+  }
+
+  /* ---- the real buttons ---- */
+  :root[data-ui='gameboy'] .gb-pad {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+  :root[data-ui='gameboy'] .gb-pad button {
+    pointer-events: auto;
+    cursor: pointer;
+    padding: 0;
+    border: 0;
+    appearance: none;
+    transition: none;
+  }
+  :root[data-ui='gameboy'] .gb-dpad {
+    position: fixed;
+    left: calc(var(--gb-side) / 2 - var(--gb-u) * 1.5);
+    top: calc(var(--gb-top) + (100vh - var(--gb-top) - var(--gb-bottom)) * 0.55 - var(--gb-u) * 1.5);
+    width: calc(var(--gb-u) * 3);
+    height: calc(var(--gb-u) * 3);
+    display: grid;
+    grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr;
+    filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35));
+  }
+  :root[data-ui='gameboy'] .gb-dpad button {
+    background: #2d2d36;
+    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.18);
+  }
+  :root[data-ui='gameboy'] .gb-dpad .up {
+    grid-area: 1 / 2;
+    border-radius: 6px 6px 0 0 !important;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .down {
+    grid-area: 3 / 2;
+    border-radius: 0 0 6px 6px !important;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .left {
+    grid-area: 2 / 1;
+    border-radius: 6px 0 0 6px !important;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .right {
+    grid-area: 2 / 3;
+    border-radius: 0 6px 6px 0 !important;
+  }
+  :root[data-ui='gameboy'] .gb-dpad::before {
+    content: '';
+    grid-area: 2 / 2;
+    background: #2d2d36;
+    z-index: 0;
+  }
+  :root[data-ui='gameboy'] .gb-dpad::after {
+    content: '';
+    grid-area: 2 / 2;
+    width: 40%;
+    height: 40%;
+    margin: auto;
+    background: #1b1b22;
+    border-radius: 50% !important;
+    z-index: 1;
+  }
+  /* arrow dents */
+  :root[data-ui='gameboy'] .gb-dpad button::after {
+    content: '';
+    display: block;
+    margin: auto;
+    border: 5px solid transparent;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .up::after {
+    border-bottom: 7px solid #55556a;
+    border-top: 0;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .down::after {
+    border-top: 7px solid #55556a;
+    border-bottom: 0;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .left::after {
+    border-right: 7px solid #55556a;
+    border-left: 0;
+  }
+  :root[data-ui='gameboy'] .gb-dpad .right::after {
+    border-left: 7px solid #55556a;
+    border-right: 0;
+  }
+  :root[data-ui='gameboy'] .gb-dpad button:hover {
+    background: #3a3a46;
+  }
+  :root[data-ui='gameboy'] .gb-dpad button:active,
+  :root[data-ui='gameboy'] .gb-dpad button[data-down] {
+    background: #14141a;
+    box-shadow: none;
+    translate: 0 2px;
+  }
+
+  :root[data-ui='gameboy'] .gb-ab {
+    position: fixed;
+    right: calc(var(--gb-side) / 2 - var(--gb-u) * 1.55);
+    top: calc(var(--gb-top) + (100vh - var(--gb-top) - var(--gb-bottom)) * 0.55 - var(--gb-u) * 1.2);
+    width: calc(var(--gb-u) * 3.1);
+    height: calc(var(--gb-u) * 2.4);
+    transform: rotate(-24deg);
+    background: var(--gb-plastic-d);
+    border-radius: 999px !important;
+    box-shadow: inset 0 3px 3px rgba(0, 0, 0, 0.18);
+  }
+  :root[data-ui='gameboy'] .gb-ab button {
+    position: absolute;
+    width: calc(var(--gb-u) * 1.1);
+    height: calc(var(--gb-u) * 1.1);
+    top: calc(var(--gb-u) * 0.65);
+    background: var(--gb-magenta);
+    border-radius: 50% !important;
+    box-shadow:
+      inset 0 3px 0 rgba(255, 255, 255, 0.28),
+      0 4px 0 #4e1034;
+  }
+  :root[data-ui='gameboy'] .gb-ab .b {
+    left: calc(var(--gb-u) * 0.3);
+  }
+  :root[data-ui='gameboy'] .gb-ab .a {
+    right: calc(var(--gb-u) * 0.3);
+  }
+  :root[data-ui='gameboy'] .gb-ab button:hover {
+    background: #a42b70;
+  }
+  :root[data-ui='gameboy'] .gb-ab button:active,
+  :root[data-ui='gameboy'] .gb-ab button[data-down] {
+    translate: 0 3px;
+    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.1);
+  }
+  :root[data-ui='gameboy'] .gb-ab span {
+    position: absolute;
+    bottom: -22px;
+    font-family: var(--big);
+    font-size: 11px;
+    color: #2a3a8f;
+  }
+  :root[data-ui='gameboy'] .gb-ab .lb {
+    left: calc(var(--gb-u) * 0.75);
+  }
+  :root[data-ui='gameboy'] .gb-ab .la {
+    right: calc(var(--gb-u) * 0.75);
+  }
+
+  :root[data-ui='gameboy'] .gb-ss {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    width: 190px;
+    margin-left: -95px;
+    height: 40px;
+    transform: rotate(-24deg);
+  }
+  :root[data-ui='gameboy'] .gb-ss button {
+    position: absolute;
+    top: 0;
+    width: 62px;
+    height: 16px;
+    background: #77746a;
+    border-radius: 999px !important;
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.3),
+      0 3px 0 #4a483f;
+  }
+  :root[data-ui='gameboy'] .gb-ss .sel {
+    left: 6px;
+  }
+  :root[data-ui='gameboy'] .gb-ss .sta {
+    right: 6px;
+  }
+  :root[data-ui='gameboy'] .gb-ss button:hover {
+    background: #8a877c;
+  }
+  :root[data-ui='gameboy'] .gb-ss button:active,
+  :root[data-ui='gameboy'] .gb-ss button[data-down] {
+    translate: 0 2px;
+    box-shadow: none;
+  }
+  :root[data-ui='gameboy'] .gb-ss span {
+    position: absolute;
+    top: 20px;
+    font-family: var(--pix);
+    font-size: 10px;
+    color: #2a3a8f;
+    letter-spacing: 0.08em;
+  }
+  :root[data-ui='gameboy'] .gb-ss .ls {
+    left: 8px;
+  }
+  :root[data-ui='gameboy'] .gb-ss .lt {
+    right: 8px;
+  }
+
+  :root[data-ui='gameboy'] .gb-cheat {
+    position: fixed;
+    z-index: 2;
+    left: var(--lcd-l);
+    right: var(--lcd-l);
+    top: var(--lcd-t);
+    bottom: var(--lcd-b);
+    pointer-events: none;
+    background: var(--g0);
+    color: var(--g3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    animation: gb-bootout 2.6s steps(1) forwards;
+  }
+  :root[data-ui='gameboy'] .gb-cheat b {
+    font-family: var(--big);
+    font-size: clamp(22px, 3vw, 36px);
+    font-weight: 400;
+    animation: gb-invert 400ms steps(1) infinite;
+  }
+  :root[data-ui='gameboy'] .gb-cheat i {
+    font-family: var(--pix);
+    font-style: normal;
+    font-size: 14px;
+    letter-spacing: 0.2em;
+  }
+  @keyframes gb-invert {
+    50% {
+      color: var(--g2);
+    }
+  }
+  /* ---- power-on: the logo drops to the middle in 2-frame-style steps, then the LCD clears ---- */
+  :root[data-ui='gameboy'] .gb-boot {
+    position: fixed;
+    z-index: 2;
+    left: var(--lcd-l);
+    right: var(--lcd-l);
+    top: var(--lcd-t);
+    bottom: var(--lcd-b);
+    pointer-events: none;
+    background: var(--g3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    overflow: hidden;
+    animation: gb-bootout 2.6s steps(1) forwards;
+  }
+  :root[data-ui='gameboy'] .gb-boot b {
+    font-family: var(--big);
+    font-size: clamp(28px, 4vw, 48px);
+    color: var(--g0);
+    text-shadow: 4px 4px 0 var(--g1);
+    font-weight: 400;
+    animation: gb-drop 1.3s steps(13) backwards;
+  }
+  :root[data-ui='gameboy'] .gb-boot i {
+    font-family: var(--pix);
+    font-size: 12px;
+    font-style: normal;
+    color: var(--g0);
+    animation: gb-fadein 2s steps(1) backwards;
+  }
+  @keyframes gb-drop {
+    from {
+      translate: 0 -40vh;
+    }
+  }
+  @keyframes gb-fadein {
+    0%,
+    60% {
+      opacity: 0;
+    }
+  }
+  @keyframes gb-bootout {
+    0%,
+    88% {
+      opacity: 1;
+      visibility: visible;
+    }
+    100% {
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='gameboy'] .gb-led {
+    animation: none;
+  }
+}
+
+/* ---------- /stream: no shell, the chrome keeps the four greens (the video itself is never touched) ---------- */
+:root[data-ui='gameboy'] .stream :is(.bar, .stats, .center, .sound, .esc, .drop .card) {
+  filter: url(#gb-lcd);
+}
+:root[data-ui='gameboy'] .stream .stats {
+  top: 76px;
+}
+:root[data-ui='gameboy'] .bar {
+  border: 4px solid var(--g0);
+  background: var(--g3);
+  padding: 4px 6px;
+}
+:root[data-ui='gameboy'] .bar .ic {
+  color: var(--g0);
+  border: 2px solid transparent;
+  transition: none;
+}
+:root[data-ui='gameboy'] .bar .ic:hover,
+:root[data-ui='gameboy'] .bar .ic:focus-visible,
+:root[data-ui='gameboy'] .bar .ic[aria-pressed='true'],
+:root[data-ui='gameboy'] .bar .ic[aria-expanded='true'] {
+  background: var(--g0);
+  color: var(--g3);
+  transform: none;
+}
+:root[data-ui='gameboy'] .bar .ic:disabled {
+  opacity: 1;
+  color: var(--g0);
+  background: var(--g2) var(--dither);
+}
+:root[data-ui='gameboy'] .bar .ic .tip,
+:root[data-ui='gameboy'] .bar .padchip .tip {
+  background: var(--g0);
+  color: var(--g3);
+  border: 0;
+}
+:root[data-ui='gameboy'] .bar .sep {
+  background: var(--g0);
+  width: 2px;
+}
+:root[data-ui='gameboy'] .bar .hostchip {
+  font-family: var(--pix);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .bar .chip {
+  background: var(--g3);
+  color: var(--g0);
+  border: 2px solid var(--g0);
+  font-family: var(--pix);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .bar .chip:hover {
+  background: var(--g2);
+}
+:root[data-ui='gameboy'] .bar .chip[aria-pressed='true'] {
+  background: var(--g0);
+  color: var(--g3);
+  box-shadow: none;
+}
+:root[data-ui='gameboy'] .bar .menu {
+  background: var(--g3);
+  border: 4px solid var(--g0);
+  box-shadow: 6px 6px 0 var(--g1);
+}
+:root[data-ui='gameboy'] .bar .adv :is(select, input) {
+  background: var(--g3);
+  color: var(--g0);
+  border: 2px solid var(--g0);
+}
+:root[data-ui='gameboy'] .bar .forget {
+  color: var(--g0);
+}
+:root[data-ui='gameboy'] .bar .warn {
+  color: var(--g0);
+  font-weight: 700;
+}
+:root[data-ui='gameboy'] .bar .vol {
+  accent-color: var(--g0);
+}
+:root[data-ui='gameboy'] .stream .center :is(.spin) {
+  border-color: var(--g0);
+  border-top-color: transparent;
+  animation: none;
+}
+:root[data-ui='gameboy'] .stream .center.pill {
+  font-family: var(--pix);
+  text-transform: uppercase;
+}
+:root[data-ui='gameboy'] .stream .center.pill::after {
+  content: '...';
+  animation: gb-dots 900ms steps(1) infinite;
+}
+@keyframes gb-dots {
+  33% {
+    content: '.';
+  }
+  66% {
+    content: '..';
+  }
+}
+
+/* ---------- extras ---------- */
+:root[data-ui='gameboy'] .side::after {
+  content: 'PRESS START';
+  order: 98;
+  margin: auto 0 8px;
+  text-align: center;
+  font-family: var(--pix);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  animation: gb-blink2t 1s steps(1) infinite;
+}
+:root[data-ui='gameboy'] .side > :is(.wrap, a.pill) {
+  order: 99;
+  margin-top: 0;
+}
+:root[data-ui='gameboy'] main :is(h1, h2):first-child,
+:root[data-ui='gameboy'] main :is(h1, h2) {
+  text-shadow: 2px 2px 0 var(--g2);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='gameboy'] :is(.cm, .rs) {
+    transition: opacity 120ms steps(2, end);
+  }
+  @starting-style {
+    :root[data-ui='gameboy'] .cm[data-state='open'],
+    :root[data-ui='gameboy'] .rs[data-state='open'] {
+      translate: 0 0;
+      scale: 1;
+    }
+  }
+  :root[data-ui='gameboy'] .page-in {
+    animation: gb-wipe 320ms steps(6, end) backwards;
+  }
+  :root[data-ui='gameboy'] .reveal {
+    animation-timing-function: steps(3, end);
+  }
+}
+@keyframes gb-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+/* dimmed things stay at full opacity (contrast), and say it with a dither instead */
+:root[data-ui='gameboy']:not(#_) :is(.soon, .card.soon, li.locked) {
+  opacity: 1;
+}
+:root[data-ui='gameboy'] .card.soon {
+  background: var(--g2) var(--dither-lite);
+  border-style: dashed;
+}
+:root[data-ui='gameboy'] li.locked :is(img, .ph) {
+  opacity: 0.5;
+}
+:root[data-ui='gameboy']:not(#_) .tc {
+  background: var(--g3);
+  color: var(--g0);
+  border-color: var(--g0);
+}
+:root[data-ui='gameboy'] .tc svg {
+  color: var(--g0);
+}
+/* chips on covers sit inside the cover filter, so give them the darkest green outright */
+:root[data-ui='gameboy']:not(#_) :is(.uchip, .uchip.need, .pchip, .tchip, .badge) {
+  background: var(--g0);
+  color: var(--g3);
+}
+:root[data-ui='gameboy'] .card h4 {
+  padding-right: 22px;
+}
+:root[data-ui='gameboy'] .chip {
+  padding-inline: 7px;
+}
