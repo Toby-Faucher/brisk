@@ -1,1 +1,1235 @@
 /* UI style outrun: every rule starts with :root[data-ui='outrun']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/orbitron/index.css';
+
+/* ---------- tokens: night purple, neon magenta, the accent stays the main tube colour ---------- */
+:root[data-ui='outrun']:not(#_) {
+  --bg: #0a0118;
+  --panel: #150431;
+  --panel2: #230a4e;
+  --line: #5a2a9c;
+  --line-hover: #ff4fae;
+  --fg: #f7eeff;
+  --muted: #cdb8f2;
+  --dim: #b8a0e6;
+  --ok: #3dffb0;
+  --warn: #ffd23f;
+  --bad: #ff6b8e;
+  --c-lib: #ffd23f;
+  --c-stream: #38e8ff;
+  --c-host: #38e8ff;
+  --c-set: #c9b3ff;
+  --c-agent: #c58bff;
+  --c-news: #ff6fb5;
+  --c-power: #3dffb0;
+  --c-hist: #ff9a3c;
+  --font: 'Geist Variable', system-ui, sans-serif;
+  --disp: 'Orbitron Variable', 'Geist Variable', system-ui, sans-serif;
+  --r-card: 8px;
+  --r-ctl: 4px;
+  --mag: #ff2e97;
+  --vio: #8b3dff;
+  --sun1: #ffe14d;
+  --sun2: #ff9a3c;
+  --ink: #12002b;
+  --chrome: linear-gradient(180deg, #ffffff 0%, #e9dcff 42%, #8d7bd6 50%, #ff8fd6 52%, #ffd9f3 100%);
+  --glow-a: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+  --glow-m: 0 0 12px color-mix(in srgb, var(--mag) 55%, transparent);
+}
+:root[data-ui='outrun'] {
+  background: var(--bg);
+  accent-color: var(--accent);
+}
+:root[data-ui='outrun'] body {
+  background: transparent;
+  color: var(--fg);
+  letter-spacing: 0.005em;
+}
+:root[data-ui='outrun'] ::selection {
+  background: var(--mag);
+  color: #fff;
+}
+:root[data-ui='outrun'] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 14px 1px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-ui='outrun'] :is(input, textarea, select):focus-visible,
+:root[data-ui='outrun'] .search:focus-within {
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ---------- type: Orbitron italics, chrome on the big ones, tubes on the small ones ---------- */
+:root[data-ui='outrun'] :is(h1, h2, h3, h4) {
+  font-family: var(--disp);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+:root[data-ui='outrun'] :is(h1, h2) {
+  font-weight: 900;
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--mag) 65%, transparent));
+  padding-right: 0.1em;
+}
+:root[data-ui='outrun'] h1 {
+  font-size: 1.55rem;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='outrun'] h3 {
+  font-weight: 800;
+  color: #fff;
+  text-shadow:
+    0 0 6px color-mix(in srgb, var(--mag) 80%, transparent),
+    0 0 18px color-mix(in srgb, var(--mag) 60%, transparent);
+}
+:root[data-ui='outrun'] h4 {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+:root[data-ui='outrun'] .card h4 {
+  color: var(--accent);
+}
+:root[data-ui='outrun'] :is(h1, h2, h3, h4) :is(small, .lab, .n, .tag) {
+  font-family: var(--font);
+  font-style: normal;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:root[data-ui='outrun'] :is(.lab, .muted) {
+  color: var(--muted);
+}
+:root[data-ui='outrun'] .lab {
+  font-size: 13px;
+}
+:root[data-ui='outrun'] .mono {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='outrun'] kbd {
+  font-family: var(--disp);
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-hover);
+  border-radius: 3px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--mag) 14%, transparent);
+}
+:root[data-ui='outrun'] .tag {
+  border: 1px solid color-mix(in srgb, var(--vio) 70%, transparent);
+  background: color-mix(in srgb, var(--vio) 18%, transparent);
+  color: var(--muted);
+  border-radius: 3px;
+  font-family: var(--disp);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root[data-ui='outrun'] .dot {
+  box-shadow: 0 0 10px var(--ok);
+}
+
+/* ---------- motion vocabulary ---------- */
+@keyframes ox-flicker {
+  0% {
+    opacity: 0.06;
+  }
+  6% {
+    opacity: 1;
+  }
+  10% {
+    opacity: 0.1;
+  }
+  16% {
+    opacity: 0.9;
+  }
+  19% {
+    opacity: 0.2;
+  }
+  28% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes ox-run {
+  to {
+    transform: translateY(60px);
+  }
+}
+@keyframes ox-twinkle {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes ox-ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes ox-drive {
+  from {
+    transform: translateX(-90px);
+  }
+  to {
+    transform: translateX(100vw);
+  }
+}
+@keyframes ox-pulse {
+  50% {
+    box-shadow:
+      0 0 22px color-mix(in srgb, var(--accent) 80%, transparent),
+      inset 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+@keyframes ox-sheen {
+  from {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+@keyframes ox-drop {
+  from {
+    opacity: 0;
+    translate: 0 -10px;
+    filter: brightness(2.2);
+  }
+}
+@keyframes ox-sunrise {
+  from {
+    translate: 0 40px;
+    opacity: 0;
+  }
+}
+
+/* ---------- Layer: sky, stars, sun, scrolling grid, palms, ticker ---------- */
+:root[data-ui='outrun'] .ox {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    #060012 0%,
+    #1b0643 28%,
+    #4a0f7c 48%,
+    #a3187a 60%,
+    #ff4d7a 66%,
+    #ff9a3c 69%,
+    #0c0222 69.2%
+  );
+}
+:root[data-ui='outrun'] .ox-stars {
+  position: absolute;
+  inset: 0 0 38% 0;
+  background:
+    radial-gradient(1px 1px at 12% 18%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 34% 8%, #cfe, transparent),
+    radial-gradient(1px 1px at 58% 22%, #fff, transparent),
+    radial-gradient(1px 1px at 77% 12%, #fdf, transparent),
+    radial-gradient(1.5px 1.5px at 91% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 22% 36%, #fff, transparent),
+    radial-gradient(1px 1px at 66% 40%, #fdf, transparent);
+  background-size: 420px 300px;
+  mask-image: linear-gradient(#000 30%, transparent 90%);
+  animation: ox-twinkle 5s ease-in-out infinite;
+}
+:root[data-ui='outrun'] .ox-stars.b {
+  background-size: 530px 360px;
+  background-position: 130px 60px;
+  animation-duration: 7s;
+  animation-delay: -2s;
+}
+:root[data-ui='outrun'] .ox-sun {
+  position: absolute;
+  left: calc(50% + 109px);
+  top: -16vh;
+  width: min(58vh, 620px);
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--sun1) 8%, var(--sun2) 42%, var(--mag) 76%, #9b2cff 100%);
+  mask-image: linear-gradient(
+    180deg,
+    #000 0 50%,
+    transparent 50% 53%,
+    #000 53% 59%,
+    transparent 59% 63%,
+    #000 63% 68%,
+    transparent 68% 73%,
+    #000 73% 77%,
+    transparent 77% 83%,
+    #000 83% 86%,
+    transparent 86% 93%,
+    #000 93% 95%,
+    transparent 95%
+  );
+  box-shadow: 0 0 120px 20px color-mix(in srgb, var(--mag) 45%, transparent);
+  opacity: 0.88;
+  mix-blend-mode: normal;
+}
+:root[data-ui='outrun'] .ox-floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 31%;
+  overflow: hidden;
+  perspective: 300px;
+  perspective-origin: 50% 0;
+  background: linear-gradient(#2a0758 0%, #12032e 45%, #0a0118 100%);
+}
+:root[data-ui='outrun'] .ox-plane {
+  position: absolute;
+  left: -80%;
+  right: -80%;
+  top: 0;
+  height: 300%;
+  transform-origin: 50% 0;
+  transform: rotateX(74deg);
+  mask-image: linear-gradient(transparent 0, #000 12%);
+}
+:root[data-ui='outrun'] .ox-lines {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -60px;
+  bottom: 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--mag) 90%, #fff) 0 3px, transparent 3px) 50% 0 / 100px 100%,
+    linear-gradient(0deg, color-mix(in srgb, var(--accent) 90%, #fff) 0 3px, transparent 3px) 0 0 / 100% 60px;
+  filter: drop-shadow(0 0 3px var(--mag));
+  animation: ox-run 1.3s linear infinite;
+}
+:root[data-ui='outrun'] .ox-hz {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #ffd2f0 20%, #fff 50%, #ffd2f0 80%, transparent);
+  box-shadow:
+    0 0 18px 4px var(--mag),
+    0 0 60px 12px color-mix(in srgb, var(--sun2) 55%, transparent);
+}
+:root[data-ui='outrun'] .ox-palm {
+  position: absolute;
+  bottom: 24px;
+  height: min(34vh, 300px);
+  width: auto;
+  fill: none;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--mag) 70%, transparent));
+}
+:root[data-ui='outrun'] .ox-palm.l {
+  left: 240px;
+}
+:root[data-ui='outrun'] .ox-palm.r {
+  right: 2.5vw;
+  transform: scaleX(-1);
+}
+:root[data-ui='outrun'] .ox-palm .trunk {
+  stroke: #07010f;
+  stroke-width: 7;
+}
+:root[data-ui='outrun'] .ox-palm .frond {
+  stroke: #07010f;
+  stroke-width: 4;
+}
+:root[data-ui='outrun'] .ox-palm .leaf {
+  stroke: #07010f;
+  stroke-width: 15;
+  stroke-dasharray: 1.6 3.2;
+}
+:root[data-ui='outrun'] .ox-strip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  z-index: 20;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  background: linear-gradient(90deg, #12032e, #2a0758 50%, #12032e);
+  border-top: 1px solid var(--mag);
+  box-shadow: 0 -6px 22px color-mix(in srgb, var(--mag) 40%, transparent);
+}
+:root[data-ui='outrun'] .ox-ticker {
+  display: flex;
+  width: max-content;
+  font-family: var(--disp);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+  white-space: nowrap;
+  animation: ox-ticker 70s linear infinite;
+}
+:root[data-ui='outrun'] .ox-run {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding-right: 22px;
+}
+:root[data-ui='outrun'] .ox-run i {
+  font-style: normal;
+  color: var(--mag);
+  font-size: 9px;
+}
+:root[data-ui='outrun'] .ox-car {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: -1px;
+  animation: ox-drive 26s linear infinite;
+  filter: drop-shadow(0 0 4px var(--mag));
+}
+:root[data-ui='outrun'] .ox-car .body {
+  fill: #07010f;
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+:root[data-ui='outrun'] .ox-car .glass {
+  fill: color-mix(in srgb, var(--accent) 55%, #07010f);
+}
+:root[data-ui='outrun'] .ox-car .wheel {
+  fill: #07010f;
+  stroke: var(--mag);
+  stroke-width: 1.5;
+}
+:root[data-ui='outrun'] .ox-car .tail {
+  fill: #ff2e4d;
+  filter: drop-shadow(-6px 0 4px #ff2e4d);
+}
+@media (max-height: 520px) {
+  :root[data-ui='outrun'] .ox-palm {
+    display: none;
+  }
+}
+
+/* ---------- sidebar: a glass strip with neon tubes ---------- */
+:root[data-ui='outrun'] .side {
+  width: 236px;
+  height: calc(100vh - 28px);
+  background: linear-gradient(180deg, rgba(10, 1, 28, 0.9), rgba(30, 6, 64, 0.82));
+  backdrop-filter: blur(8px);
+  border-right: 1px solid color-mix(in srgb, var(--mag) 60%, transparent);
+  box-shadow: 6px 0 30px -8px color-mix(in srgb, var(--mag) 50%, transparent);
+  padding: 16px 14px;
+  gap: 7px;
+}
+:root[data-ui='outrun'] .side .brand {
+  padding: 0 4px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vio) 70%, transparent);
+  position: relative;
+}
+:root[data-ui='outrun'] .side .brand img {
+  display: none;
+}
+:root[data-ui='outrun'] .side .brand::before {
+  content: 'Brisk';
+  font-family: var(--disp);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 34px;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  padding-right: 0.15em;
+  text-transform: uppercase;
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px var(--mag)) drop-shadow(2px 2px 0 color-mix(in srgb, var(--accent) 70%, transparent));
+}
+:root[data-ui='outrun'] .side .nav {
+  --tube: var(--accent);
+  font-family: var(--disp);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--tube) 35%, #fff);
+  padding: 8px 12px;
+  border: 1.5px solid color-mix(in srgb, var(--tube) 65%, transparent);
+  border-radius: 999px;
+  box-shadow:
+    0 0 9px color-mix(in srgb, var(--tube) 35%, transparent),
+    inset 0 0 9px color-mix(in srgb, var(--tube) 18%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--tube) 70%, transparent);
+  transition:
+    box-shadow 0.2s,
+    color 0.2s,
+    border-color 0.2s,
+    transform 0.18s var(--ease);
+}
+:root[data-ui='outrun'] .side a.nav:nth-of-type(6n + 2) {
+  --tube: var(--mag);
+}
+:root[data-ui='outrun'] .side a.nav:nth-of-type(6n + 3) {
+  --tube: var(--sun2);
+}
+:root[data-ui='outrun'] .side a.nav:nth-of-type(6n + 4) {
+  --tube: #b57dff;
+}
+:root[data-ui='outrun'] .side a.nav:nth-of-type(6n + 5) {
+  --tube: var(--sun1);
+}
+:root[data-ui='outrun'] .side a.nav:nth-of-type(6n + 6) {
+  --tube: #4dffd0;
+}
+:root[data-ui='outrun'] .side a.nav:hover {
+  background: color-mix(in srgb, var(--tube) 14%, transparent);
+  color: #fff;
+  transform: translateX(4px);
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--tube) 65%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--tube) 30%, transparent);
+}
+:root[data-ui='outrun'] .side .nav[aria-current='page'] {
+  color: #fff;
+  border-color: var(--tube);
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--tube) 75%, transparent),
+    inset 0 0 14px color-mix(in srgb, var(--tube) 35%, transparent);
+  animation: ox-pulse 3.2s ease-in-out infinite;
+}
+:root[data-ui='outrun'] .side .nav[aria-current='page']::before {
+  background: color-mix(in srgb, var(--tube) 22%, transparent);
+  box-shadow: none;
+}
+:root[data-ui='outrun'] .side .nav svg {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+:root[data-ui='outrun'] .side .sec {
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--dim);
+  padding: 14px 6px 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:root[data-ui='outrun'] .side .sec::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--vio), transparent);
+}
+:root[data-ui='outrun'] .side .soon {
+  opacity: 1;
+  --tube: #7d62b8;
+  color: var(--dim);
+  border-style: dashed;
+  box-shadow: none;
+  text-shadow: none;
+}
+:root[data-ui='outrun'] .side .soon .tag {
+  border: 0;
+  background: transparent;
+  font-size: 9px;
+  color: var(--dim);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='outrun'] .side .nav {
+    animation: ox-flicker 1.1s linear backwards;
+  }
+  :root[data-ui='outrun'] .side .nav[aria-current='page'] {
+    animation:
+      ox-flicker 1.1s linear backwards,
+      ox-pulse 3.2s ease-in-out 1.2s infinite;
+  }
+  :root[data-ui='outrun'] .side a.nav:nth-of-type(1) {
+    animation-delay: 0.1s;
+  }
+  :root[data-ui='outrun'] .side a.nav:nth-of-type(2) {
+    animation-delay: 0.35s;
+  }
+  :root[data-ui='outrun'] .side a.nav:nth-of-type(3) {
+    animation-delay: 0.2s;
+  }
+  :root[data-ui='outrun'] .side a.nav:nth-of-type(4) {
+    animation-delay: 0.5s;
+  }
+  :root[data-ui='outrun'] .side a.nav:nth-of-type(5) {
+    animation-delay: 0.3s;
+  }
+  :root[data-ui='outrun'] .side a.nav:nth-of-type(6) {
+    animation-delay: 0.65s;
+  }
+  :root[data-ui='outrun'] .side .soon {
+    animation-delay: 0.8s;
+  }
+}
+
+/* host pill */
+:root[data-ui='outrun'] .pill {
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 80%, transparent);
+  box-shadow: var(--glow-a);
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root[data-ui='outrun'] .pill:hover {
+  border-color: var(--mag);
+  box-shadow: var(--glow-m);
+}
+:root[data-ui='outrun'] .pill .name {
+  color: #fff;
+}
+
+/* ---------- page frame ---------- */
+:root[data-ui='outrun'] main {
+  padding: 20px 26px 54px;
+}
+:root[data-ui='outrun'] main > .off {
+  border: 1px dashed var(--sun2);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 85%, transparent);
+  color: var(--fg);
+}
+:root[data-ui='outrun'] .denied {
+  border: 1.5px solid var(--mag);
+  box-shadow: var(--glow-m);
+  background: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+
+/* ---------- controls: tubes ---------- */
+:root[data-ui='outrun'] .btn {
+  font-family: var(--disp);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: linear-gradient(100deg, var(--accent), color-mix(in srgb, var(--mag) 85%, var(--accent)));
+  border-radius: 2px 12px 2px 12px;
+  padding: 9px 18px;
+  box-shadow:
+    0 0 14px color-mix(in srgb, var(--accent) 50%, transparent),
+    0 0 22px -4px var(--mag);
+}
+:root[data-ui='outrun'] .btn:not(.play, .quit) {
+  position: relative;
+  overflow: hidden;
+}
+:root[data-ui='outrun'] .btn:hover {
+  filter: brightness(1.15) saturate(1.1);
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--accent) 80%, transparent),
+    0 0 34px -2px var(--mag);
+}
+:root[data-ui='outrun'] .btn:not(.play)::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: translateX(-130%) skewX(-20deg);
+  pointer-events: none;
+}
+:root[data-ui='outrun'] .btn.ghost {
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+  color: color-mix(in srgb, var(--accent) 40%, #fff);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent) inset,
+    0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-ui='outrun'] .btn.ghost:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--ink));
+  color: #fff;
+  box-shadow:
+    0 0 0 1.5px var(--accent) inset,
+    0 0 20px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+:root[data-ui='outrun'] .btn:disabled,
+:root[data-ui='outrun'] .btn[aria-disabled='true'] {
+  opacity: 0.55;
+  box-shadow: none;
+  filter: saturate(0.5);
+}
+:root[data-ui='outrun'] .btn.sm {
+  padding: 5px 12px;
+}
+:root[data-ui='outrun'] .search {
+  border: 1.5px solid color-mix(in srgb, var(--vio) 80%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 80%, transparent);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--vio) 25%, transparent);
+  color: var(--muted);
+}
+:root[data-ui='outrun'] .search:focus-within {
+  border-color: var(--accent);
+}
+:root[data-ui='outrun'] .search input::placeholder,
+:root[data-ui='outrun'] :is(input, textarea)::placeholder {
+  color: var(--dim);
+}
+:root[data-ui='outrun']
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='search']), select, textarea) {
+  background: color-mix(in srgb, var(--ink) 85%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--vio) 80%, transparent);
+  border-radius: 4px;
+  color: var(--fg);
+  box-shadow: inset 0 0 10px color-mix(in srgb, var(--vio) 20%, transparent);
+}
+:root[data-ui='outrun'] input[type='file']::file-selector-button {
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 2px 10px 2px 10px;
+  padding: 6px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+:root[data-ui='outrun'] *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-ui='outrun'] *::-webkit-scrollbar-track {
+  background: #0a0118;
+}
+:root[data-ui='outrun'] *::-webkit-scrollbar-thumb {
+  background: linear-gradient(var(--mag), var(--vio));
+  border-radius: 6px;
+  border: 2px solid #0a0118;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='outrun'] .btn:not(.play):hover::after {
+    animation: ox-sheen 0.7s ease-out;
+  }
+}
+
+/* ---------- surfaces: dark glass with a neon edge ---------- */
+:root[data-ui='outrun'] main :is(.card, .panel, .chart, .hd, .well, .block, .ctcard, .elcard, .emcard, .ltcard):not(.center) {
+  border: 1px solid color-mix(in srgb, var(--vio) 80%, var(--accent));
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(5px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px color-mix(in srgb, var(--mag) 12%, transparent),
+    0 10px 30px -12px color-mix(in srgb, var(--mag) 55%, transparent);
+}
+:root[data-ui='outrun'] main .card:hover {
+  border-color: var(--mag);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 18px -2px color-mix(in srgb, var(--mag) 65%, transparent);
+}
+:root[data-ui='outrun'] main .card::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--mag), transparent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+:root[data-ui='outrun'] .glass {
+  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 8px;
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 0 40px -6px color-mix(in srgb, var(--mag) 50%, transparent);
+}
+:root[data-ui='outrun'] .grip {
+  color: var(--accent);
+}
+
+/* chips, filters, segmented bits */
+:root[data-ui='outrun'] :is(.fchip, .chip, .opt, .seg button, .segb) {
+  font-family: var(--font);
+  border-radius: 999px;
+}
+:root[data-ui='outrun'] .fchip {
+  border: 1.5px solid color-mix(in srgb, var(--vio) 85%, transparent);
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+  color: var(--muted);
+}
+:root[data-ui='outrun'] .fchip:hover {
+  border-color: var(--mag);
+  color: #fff;
+  box-shadow: var(--glow-m);
+}
+:root[data-ui='outrun'] :is(.fchip.on, .fchip[aria-pressed='true'], .chip.on, .opt.on, .segb.on, .segb[aria-checked='true']) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--ink));
+  color: #fff;
+  box-shadow: var(--glow-a);
+}
+
+/* settings tabs: sign letters with a neon underline */
+:root[data-ui='outrun'] .st .strip {
+  background: color-mix(in srgb, var(--ink) 78%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--vio);
+}
+:root[data-ui='outrun'] .st .tab {
+  font-family: var(--disp);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root[data-ui='outrun'] .st .tab:hover,
+:root[data-ui='outrun'] .st .tab[aria-selected='true'] {
+  color: #fff;
+  text-shadow: 0 0 10px var(--accent);
+}
+:root[data-ui='outrun'] .st .ind {
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--mag));
+  box-shadow: 0 0 12px var(--mag);
+}
+:root[data-ui='outrun'] .sw {
+  box-shadow: 0 0 12px currentColor;
+}
+:root[data-ui='outrun'] .sw[aria-checked='true'] {
+  outline: 2px solid #fff;
+  box-shadow: 0 0 18px 2px var(--mag);
+}
+/* locked achievements: dim the picture, not the text (contrast) */
+:root[data-ui='outrun']:not(#_) li.locked {
+  opacity: 1;
+}
+:root[data-ui='outrun'] li.locked :is(img, .ph) {
+  opacity: 0.5;
+}
+
+/* ---------- covers: a glowing frame and a sunset grade ---------- */
+:root[data-ui='outrun'] .cover {
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--accent) 85%, transparent),
+    0 0 10px 1px color-mix(in srgb, var(--mag) 50%, transparent);
+}
+:root[data-ui='outrun'] :is(.g, .hero, .gd-side) .cover {
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 85%, transparent),
+    0 0 0 5px #0a0118,
+    0 0 0 6.5px color-mix(in srgb, var(--mag) 80%, transparent),
+    0 0 26px 4px color-mix(in srgb, var(--mag) 40%, transparent);
+  transition: box-shadow 0.3s;
+}
+:root[data-ui='outrun'] :is(.g, .hero, .gd-side) .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 50%, color-mix(in srgb, var(--mag) 38%, transparent)),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+:root[data-ui='outrun'] .cover img {
+  filter: saturate(1.25) contrast(1.06);
+}
+:root[data-ui='outrun'] .wrap:hover .cover,
+:root[data-ui='outrun'] .wrap:has(:focus-visible) .cover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 5px #0a0118,
+    0 0 0 6.5px var(--mag),
+    0 0 36px 8px color-mix(in srgb, var(--mag) 60%, transparent),
+    0 0 20px 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+:root[data-ui='outrun'] .wrap {
+  margin: 8px;
+}
+:root[data-ui='outrun'] .g {
+  border-radius: 8px;
+}
+:root[data-ui='outrun'] .g:focus-visible {
+  box-shadow: none;
+  outline-offset: 7px;
+}
+:root[data-ui='outrun'] .g .name {
+  font-family: var(--disp);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin-top: 14px;
+}
+:root[data-ui='outrun'] .g .sub {
+  color: var(--muted);
+}
+:root[data-ui='outrun'] .cover .name {
+  font-family: var(--font);
+  margin-top: 0;
+}
+:root[data-ui='outrun'] .g .badge,
+:root[data-ui='outrun'] .pchip,
+:root[data-ui='outrun'] .uchip,
+:root[data-ui='outrun'] .tchip {
+  border-radius: 3px;
+  font-family: var(--disp);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  backdrop-filter: none;
+  background: rgba(10, 1, 28, 0.88);
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  color: #fff;
+}
+:root[data-ui='outrun'] .g .badge {
+  padding: 3px 6px;
+  gap: 4px;
+}
+:root[data-ui='outrun'] .g .badge.run {
+  border-color: var(--mag);
+  box-shadow: var(--glow-m);
+}
+:root[data-ui='outrun'] .uchip.need {
+  background: #5a1a00;
+  border-color: var(--sun2);
+}
+:root[data-ui='outrun'] .ach {
+  background: #2a0a4e;
+}
+:root[data-ui='outrun'] .ach i {
+  background: linear-gradient(90deg, var(--accent), var(--mag));
+  box-shadow: 0 0 8px var(--mag);
+}
+:root[data-ui='outrun'] .g .play {
+  font-size: 11px;
+}
+:root[data-ui='outrun'] .quit {
+  border-radius: 4px;
+}
+
+/* shelf headings and rows */
+:root[data-ui='outrun'] .shelf h4 {
+  font-size: 13px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vio) 70%, transparent);
+  box-shadow: 0 1px 12px -6px var(--mag);
+}
+:root[data-ui='outrun'] .shelf h4 .n {
+  color: var(--mag);
+  text-shadow: var(--glow-m);
+  margin-left: 6px;
+}
+:root[data-ui='outrun'] .shelf .more {
+  color: var(--accent);
+}
+:root[data-ui='outrun'] .chev {
+  border: 1.5px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 50%;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--ink) 75%, transparent);
+}
+
+/* hero (library) */
+:root[data-ui='outrun'] .hero {
+  border: 1.5px solid var(--mag);
+  border-radius: 8px;
+  box-shadow:
+    0 0 28px -4px color-mix(in srgb, var(--mag) 65%, transparent),
+    inset 0 0 40px color-mix(in srgb, var(--vio) 28%, transparent);
+}
+:root[data-ui='outrun'] .hero h3 {
+  font-size: 1.9rem;
+  font-weight: 900;
+}
+
+/* skeletons and empty states */
+:root[data-ui='outrun'] .skel {
+  background: linear-gradient(110deg, #150431 30%, #3a0f6e 50%, #150431 70%);
+  background-size: 220% 100%;
+  border: 1px dashed color-mix(in srgb, var(--vio) 70%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='outrun'] .skel {
+    animation: ox-bgslide 1.6s linear infinite;
+  }
+}
+@keyframes ox-bgslide {
+  to {
+    background-position: -220% 0;
+  }
+}
+:root[data-ui='outrun'] .empty {
+  border: 1.5px dashed color-mix(in srgb, var(--vio) 80%, transparent);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+/* ---------- dialogs, menus, command menu, toasts, tips ---------- */
+:root[data-ui='outrun'] :is(.cm-dim, [data-dialog-overlay]) {
+  background: radial-gradient(70% 60% at 50% 40%, rgba(60, 10, 100, 0.55), rgba(6, 0, 18, 0.86));
+}
+:root[data-ui='outrun'] :is(.cm, .rs) {
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(30, 6, 64, 0.97), rgba(12, 2, 34, 0.97));
+  box-shadow:
+    0 0 30px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 0 70px -6px color-mix(in srgb, var(--mag) 60%, transparent);
+}
+:root[data-ui='outrun'] :is(.rs-t, .mm-t) {
+  font-family: var(--disp);
+  font-style: italic;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fff;
+  text-shadow:
+    0 0 6px var(--mag),
+    0 0 18px var(--mag);
+}
+:root[data-ui='outrun'] .cm-in {
+  font-family: var(--disp);
+  font-style: italic;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border-bottom: 1.5px solid var(--vio);
+}
+:root[data-ui='outrun'] .cm-it {
+  border-radius: 4px;
+}
+:root[data-ui='outrun'] .cm-it[data-selected] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mag) 40%, transparent), color-mix(in srgb, var(--accent) 18%, transparent));
+  color: #fff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+:root[data-ui='outrun'] :is(.menu, .dd-menu) {
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(14, 3, 36, 0.97);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 12px 40px rgba(0, 0, 0, 0.6);
+}
+:root[data-ui='outrun'] :is(.menu .it, .dd-item):is(:hover, :focus-visible, [data-selected], [aria-selected='true']) {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mag) 35%, transparent), transparent);
+  color: #fff;
+}
+:root[data-ui='outrun'] .toasts .toast {
+  border-radius: 4px 14px 4px 14px;
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  border-color: var(--accent);
+}
+:root[data-ui='outrun'] .toast.error {
+  border-color: var(--bad);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--bad) 55%, transparent),
+    0 0 50px -6px var(--mag);
+}
+:root[data-ui='outrun'] .tip {
+  background: var(--ink);
+  border: 1px solid var(--mag);
+  color: #fff;
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  box-shadow: var(--glow-m);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='outrun'] .page-in {
+    animation: ox-drop 380ms var(--ease) backwards;
+  }
+  :root[data-ui='outrun'] .ox-sun {
+    animation: ox-sunrise 1.6s var(--ease) backwards;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='outrun'] :is(.ox-lines, .ox-stars, .ox-ticker, .ox-car, .side .nav) {
+    animation: none;
+  }
+  :root[data-ui='outrun'] .ox-car {
+    left: auto;
+    right: 40px;
+  }
+}
+
+/* ---------- Stream (chrome only): the idle screen gets its own sunset, the live picture is left alone ---------- */
+:root[data-ui='outrun'] .stream[data-state='idle'],
+:root[data-ui='outrun'] .stream[data-state='unsupported'] {
+  background: linear-gradient(180deg, #060012, #1b0643 38%, #a3187a 62%, #ff9a3c 69%, #0c0222 69.2%);
+}
+:root[data-ui='outrun'] .stream .bg {
+  opacity: 1;
+}
+:root[data-ui='outrun'] .stream .bg > * {
+  display: none;
+}
+:root[data-ui='outrun'] .stream .bg::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  width: min(46vh, 460px);
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--sun1) 8%, var(--sun2) 42%, var(--mag) 76%, #9b2cff 100%);
+  mask-image: linear-gradient(180deg, #000 0 52%, transparent 52% 56%, #000 56% 63%, transparent 63% 68%, #000 68% 75%, transparent 75% 81%, #000 81% 86%, transparent 86%);
+  box-shadow: 0 0 100px 10px color-mix(in srgb, var(--mag) 45%, transparent);
+}
+:root[data-ui='outrun'] .stream .bg::after {
+  content: '';
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  top: 69%;
+  bottom: -60%;
+  transform-origin: 50% 0;
+  transform: perspective(260px) rotateX(70deg);
+  background:
+    linear-gradient(90deg, var(--mag) 0 3px, transparent 3px) 50% 0 / 100px 100%,
+    linear-gradient(0deg, var(--accent) 0 3px, transparent 3px) 0 0 / 100% 60px;
+  mask-image: linear-gradient(transparent 0, #000 14%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='outrun'] .stream .bg::after {
+    animation: ox-floor 1.3s linear infinite;
+  }
+}
+@keyframes ox-floor {
+  to {
+    background-position:
+      50% 0,
+      0 60px;
+  }
+}
+:root[data-ui='outrun'] .stream .center.card {
+  padding: 24px 28px;
+  text-align: center;
+}
+:root[data-ui='outrun'] .stream .center.card .row {
+  justify-content: center;
+}
+
+/* HUD: the ghost bar is a neon tube strip; the rest of the glass stays a panel */
+:root[data-ui='outrun'] .stream .bar.glass {
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  border-color: var(--mag);
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--mag) 55%, transparent),
+    0 0 40px -8px var(--accent),
+    inset 0 0 12px color-mix(in srgb, var(--vio) 35%, transparent);
+}
+:root[data-ui='outrun'] .stream .bar .hostchip {
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root[data-ui='outrun'] .stream .bar .ic {
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, currentColor 55%, transparent);
+  width: 34px;
+  height: 34px;
+  margin: 0 2px;
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 35%, transparent);
+}
+:root[data-ui='outrun'] .stream .bar .ic:hover {
+  background: color-mix(in srgb, currentColor 22%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, currentColor 70%, transparent);
+}
+:root[data-ui='outrun'] .stream .bar .ic[aria-pressed='true'],
+:root[data-ui='outrun'] .stream .bar .ic[aria-expanded='true'] {
+  background: color-mix(in srgb, currentColor 28%, transparent);
+  border-color: currentColor;
+}
+:root[data-ui='outrun'] .stream .bar .sep {
+  background: var(--vio);
+}
+:root[data-ui='outrun'] .stream .bar .tip {
+  background: var(--ink);
+  border: 1px solid var(--mag);
+  font-family: var(--disp);
+  font-style: italic;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  color: #fff;
+}
+:root[data-ui='outrun'] .stream .bar .menu.glass {
+  border-radius: 8px;
+}
+:root[data-ui='outrun'] .stream .bar .chip {
+  border: 1.5px solid color-mix(in srgb, var(--vio) 85%, transparent);
+  background: transparent;
+  color: var(--muted);
+}
+:root[data-ui='outrun'] .stream .bar .chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--ink));
+  color: #fff;
+  box-shadow: var(--glow-a);
+}
+:root[data-ui='outrun'] .stream :is(.sound, .esc, .up) {
+  border-radius: 999px;
+  font-family: var(--disp);
+  font-style: italic;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='outrun'] .stream .esc {
+  border-radius: 12px;
+}
+:root[data-ui='outrun'] .gd-t {
+  font-family: var(--disp);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 12px var(--mag);
+}
+
+/* the sun sinks as the page scrolls (CSS scroll timeline, no script) */
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes ox-sink {
+      to {
+        transform: translateY(22vh);
+      }
+    }
+    :root[data-ui='outrun'] .ox-sun {
+      animation: ox-sink linear both;
+      animation-timeline: scroll(root);
+    }
+  }
+}
