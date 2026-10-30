@@ -3,7 +3,9 @@
 
 use brisk_client::identity::{Identity, ServerCert, load_or_create_identity};
 use brisk_client::recorder::Recorder;
+use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
+use brisk_client::stop::Stop;
 use brisk_proto::pair::*;
 use brisk_proto::rtsp::{RtspCipher, parse_request};
 use brisk_proto::sdp::{Codec, SS_ENC_AUDIO, SS_ENC_CONTROL_V2, StreamConfig};
@@ -39,6 +41,8 @@ fn ecb(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
 }
 
 const EMPTY_400: &str = "<<empty-400>>";
+/// A `/launch` that never answers; the app already shows as running.
+const HOLD: &str = "<<hold>>";
 const SERVER_SECRET: [u8; 16] = *b"FAKE-SRV-SECRET!";
 const SERVER_CHALLENGE: [u8; 16] = *b"FAKE-SRV-CHALNGE";
 
@@ -81,6 +85,8 @@ struct Fake {
     /// Pretend something else is running (`currentgame`/`state`); cleared by a `/cancel`.
     game: std::sync::atomic::AtomicU32,
     launches: AtomicUsize,
+    /// RTSP connections accepted so far.
+    rtsp_hits: AtomicUsize,
     /// Every `/cancel` request received, and how many of them to swallow without a reply.
     cancel_reqs: AtomicUsize,
     cancel_drop: AtomicUsize,
@@ -144,6 +150,11 @@ impl Fake {
                         .game
                         .store(q["appid"].parse().unwrap(), Ordering::SeqCst),
                     "launch-drop-other" => self.game.store(77, Ordering::SeqCst),
+                    "launch-hold" => {
+                        self.game
+                            .store(q["appid"].parse().unwrap(), Ordering::SeqCst);
+                        return HOLD.into();
+                    }
                     _ => {}
                 }
                 if mode.starts_with("launch-drop") {
@@ -292,6 +303,9 @@ async fn serve_conn<S: AsyncRead + AsyncWrite + Unpin>(
     } else {
         format!("Content-Length: {}\r\n", body.len())
     };
+    if body == HOLD {
+        std::future::pending::<()>().await;
+    }
     if body == EMPTY_400 {
         s.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             .await
@@ -323,6 +337,11 @@ const SUNSHINE_REQUIRED: [&str; 10] = [
 /// One RTSP request per connection, as rtsp.cpp: encrypted = 24-byte header then payload, bounded by
 /// the 2048-byte buffer; plain = header to CRLFCRLF plus `Content-length`. Reply, then close.
 async fn serve_rtsp(mut s: TcpStream, f: &Fake) {
+    f.rtsp_hits.fetch_add(1, Ordering::SeqCst);
+    let hold = *f.mode.lock().unwrap() == "rtsp-hold";
+    if hold {
+        std::future::pending::<()>().await; // never answers, so the handshake stalls
+    }
     let enc = f.rtsp.lock().unwrap().cipher.is_some();
     let plain = if enc {
         let mut h = [0u8; 24];
@@ -493,6 +512,7 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
         omit_len: Default::default(),
         game: Default::default(),
         launches: Default::default(),
+        rtsp_hits: Default::default(),
         cancel_reqs: Default::default(),
         cancel_drop: Default::default(),
         st: Mutex::default(),
@@ -526,7 +546,9 @@ async fn start(pin: &str, which: usize) -> (Session, Arc<Fake>) {
                 continue;
             };
             let peer = tls.get_ref().1.peer_certificates().map(|c| c[0].to_vec());
-            serve_conn(tls, &f, peer).await;
+            // Own task: a held launch must not block the cancel that follows it.
+            let f = f.clone();
+            tokio::spawn(async move { serve_conn(tls, &f, peer).await });
         }
     });
     let f = fake.clone();
@@ -1098,6 +1120,155 @@ async fn launch_session_runs_during_before_cancel() {
         .unwrap_err();
     assert!(err.to_string().contains("panicked"), "{err}");
     assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+}
+
+async fn session_until<T, Fut>(
+    s: &mut Session,
+    stop: &mut Stop,
+    ident: &Identity,
+    server: &ServerCert,
+    during: impl FnOnce(StreamPorts, Stop) -> Fut,
+) -> brisk_client::Result<T>
+where
+    Fut: std::future::Future<Output = brisk_client::Result<T>>,
+{
+    let cfg = stream_cfg();
+    let call = s.launch_session_until(stop, ident, server, 1, "7.1.431.-1", &cfg, false, during);
+    tokio::time::timeout(std::time::Duration::from_secs(20), call)
+        .await
+        .expect("returns without waiting for the host")
+}
+
+/// Polls until `cond` holds. The calls above are bounded by their own timeout.
+async fn wait_for(cond: impl Fn() -> bool) {
+    while !cond() {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
+fn never(_: StreamPorts, _: Stop) -> std::future::Ready<brisk_client::Result<()>> {
+    unreachable!("the stop came before `during`")
+}
+
+#[tokio::test]
+async fn without_a_stop_launch_session_until_is_launch_session() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let (mut stop, _handle) = Stop::manual();
+    let got = session_until(&mut s, &mut stop, &ident, &server, |p, _| async move {
+        Ok(p.connect_data)
+    })
+    .await
+    .unwrap();
+    assert_eq!(got, Some(0x12345678));
+    assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
+}
+
+#[tokio::test]
+async fn stop_before_launch_sends_nothing() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let (mut stop, handle) = Stop::manual();
+    handle.request("SIGTERM");
+    let err = session_until(&mut s, &mut stop, &ident, &server, never)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("before launch; nothing cancelled"),
+        "{err}"
+    );
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0);
+}
+
+/// `/launch` has no answer yet: the app is cancelled because the host runs it.
+#[tokio::test]
+async fn stop_while_launch_is_pending_cancels_our_app() {
+    let (mut s, fake, ident, server, _t) = paired("launch-hold").await;
+    let (mut stop, handle) = Stop::manual();
+    let driver = async {
+        wait_for(|| fake.launches.load(Ordering::SeqCst) == 1).await;
+        handle.request("SIGTERM");
+    };
+    let (got, ()) = tokio::join!(
+        session_until(&mut s, &mut stop, &ident, &server, never),
+        driver
+    );
+    let err = got.unwrap_err().to_string();
+    assert!(
+        err.contains("interrupted (SIGTERM); session cancelled"),
+        "{err}"
+    );
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 1);
+    assert_eq!(fake.game.load(Ordering::SeqCst), 0, "host is free again");
+}
+
+/// The RTSP handshake stalls after a confirmed launch: the session is cancelled.
+#[tokio::test]
+async fn stop_during_the_rtsp_handshake_cancels_the_session() {
+    let (mut s, fake, ident, server, _t) = paired("rtsp-hold").await;
+    let (mut stop, handle) = Stop::manual();
+    let driver = async {
+        wait_for(|| fake.rtsp_hits.load(Ordering::SeqCst) == 1).await;
+        handle.request("SIGINT");
+    };
+    let (got, ()) = tokio::join!(
+        session_until(&mut s, &mut stop, &ident, &server, never),
+        driver
+    );
+    let err = got.unwrap_err().to_string();
+    assert!(
+        err.contains("interrupted (SIGINT); session cancelled"),
+        "{err}"
+    );
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 1);
+}
+
+/// Once `during` runs it owns the stop: it winds down, then the usual cancel runs.
+#[tokio::test]
+async fn stop_inside_during_lets_it_wind_down_then_cancels() {
+    let (mut s, fake, ident, server, _t) = paired("ok").await;
+    let (mut stop, handle) = Stop::manual();
+    let driver = async {
+        wait_for(|| {
+            let st = fake.rtsp.lock().unwrap();
+            st.seen.iter().any(|r| r.0 == "PLAY")
+        })
+        .await;
+        handle.request("SIGHUP");
+    };
+    let during = |_, mut stop: Stop| async move {
+        let ended = stop.unless(std::future::pending::<()>()).await;
+        assert!(ended.is_none());
+        Err::<(), _>(brisk_client::Error::Session("wound down".into()))
+    };
+    let (got, ()) = tokio::join!(
+        session_until(&mut s, &mut stop, &ident, &server, during),
+        driver
+    );
+    assert_eq!(got.unwrap_err().to_string(), "wound down");
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 1);
+}
+
+/// The cancel keeps failing and would back off for an hour; a second stop does not wait for it.
+#[tokio::test]
+async fn second_stop_returns_without_waiting_for_the_cancel() {
+    let (mut s, fake, ident, server, _t) = paired("rtsp-hold").await;
+    s.cancel_wait = std::time::Duration::from_secs(2);
+    s.cancel_backoff = std::time::Duration::from_secs(3600);
+    fake.cancel_drop.store(3, Ordering::SeqCst);
+    let (mut stop, handle) = Stop::manual();
+    let driver = async {
+        wait_for(|| fake.rtsp_hits.load(Ordering::SeqCst) == 1).await;
+        handle.request("SIGTERM");
+        wait_for(|| fake.cancel_reqs.load(Ordering::SeqCst) == 1).await;
+        handle.request("SIGTERM");
+    };
+    let (got, ()) = tokio::join!(
+        session_until(&mut s, &mut stop, &ident, &server, never),
+        driver
+    );
+    let err = got.unwrap_err();
+    assert!(matches!(err, brisk_client::Error::Abandoned(_)), "{err}");
+    assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 1);
 }
 
 /// `brisk-probe stream` end to end against the fakes: launch, RTSP (ports pointing at the media

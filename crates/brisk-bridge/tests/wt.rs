@@ -191,3 +191,28 @@ async fn a_cancelled_frame_is_reset_and_not_acked() {
         "{read:?}"
     );
 }
+
+/// What the bridge does on its way out: the viewer sees an application close with a reason at
+/// once, not an idle timeout, and `shut_down` returns promptly.
+#[tokio::test]
+async fn shut_down_closes_the_viewer_with_a_reason() {
+    let (ep, _d) = server();
+    let (_session, c, _cep) = session_pair(&ep).await;
+    timeout(SECS2, wt::shut_down(&ep))
+        .await
+        .expect("shut_down is bounded");
+    let closed = timeout(SECS2, c.closed()).await.expect("viewer sees it");
+    assert!(
+        matches!(&closed, quinn::ConnectionError::ApplicationClosed(a)
+            if a.error_code == wt::STOPPING.into() && a.reason.as_ref() == b"bridge stopping"),
+        "{closed:?}"
+    );
+}
+
+#[tokio::test]
+async fn shut_down_without_a_viewer_returns_at_once() {
+    let (ep, _d) = server();
+    timeout(SECS2, wt::shut_down(&ep))
+        .await
+        .expect("nothing to wait for");
+}

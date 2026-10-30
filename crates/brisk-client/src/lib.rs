@@ -6,6 +6,7 @@ pub mod identity;
 pub mod recorder;
 pub mod rtsp;
 pub mod session;
+pub mod stop;
 pub mod stream;
 pub mod tap;
 
@@ -43,6 +44,8 @@ pub enum Error {
     Busy(String),
     /// Launch, cancel or session lifecycle: rejected, outcome unknown, ended by the host, cancel failed.
     Session(String),
+    /// A second stop request cut the cleanup short: a session may still run on the host.
+    Abandoned(String),
     /// Local state: not paired, no identity, bad local files or arguments.
     Setup(String),
     /// The other end went away (tap EOF in the tap layer, control session dropped in the control layer).
@@ -87,6 +90,7 @@ impl std::fmt::Display for Error {
             | Error::Timeout(s)
             | Error::Busy(s)
             | Error::Session(s)
+            | Error::Abandoned(s)
             | Error::Setup(s) => f.write_str(s),
             Error::Closed(s) => write!(f, "{s} closed"),
             Error::Gate(v) => write!(f, "stream gate FAILED: {}", v.join("; ")),

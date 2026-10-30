@@ -28,6 +28,7 @@ use brisk_client::identity::{
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
 use brisk_client::session::Session;
+use brisk_client::stop::Stop;
 use brisk_client::stream::{Outcome, media_setup, stream, stream_tap};
 use brisk_client::tap::{TapListener, tap_path};
 use brisk_client::{Error, StderrLog, SystemRng};
@@ -194,69 +195,64 @@ async fn run(a: Args) -> brisk_client::Result<()> {
                     false => None,
                 };
                 let listener = listener.as_ref();
-                let app = a.app.ok_or(Error::Setup("need --app ID (see `apps`)".into()))?;
+                let app = a
+                    .app
+                    .ok_or(Error::Setup("need --app ID (see `apps`)".into()))?;
                 let (host, secs, cmd, demo) = (a.host.clone(), a.secs, a.cmd.clone(), a.input_demo);
                 let samples = a.samples.clone();
-                let during = |p: StreamPorts| async move {
-                    let stats = match cmd.as_str() {
-                        "control" => Some(run_control(&host, &p, secs, demo).await?),
-                        "stream" => {
-                            let mut id = [0u8; 4];
-                            SystemRng.fill(&mut id);
-                            let secs = std::time::Duration::from_secs(secs);
-                            let id = u32::from_le_bytes(id);
-                            Some(match listener {
-                                Some(l) => match stream_tap(&host, &p, id, secs, samples.as_deref(), l).await? {
-                                    Outcome::Tap(s) => s.control,
-                                    Outcome::Rtp(s) => s.control,
-                                },
-                                None => stream(&host, &p, id, secs, samples.as_deref(), demo).await?.control,
-                            })
-                        }
-                        _ => None,
+                let during = |p: StreamPorts, mut stop: Stop| async move {
+                    let work = async {
+                        let stats = match cmd.as_str() {
+                            "control" => Some(run_control(&host, &p, secs, demo).await?),
+                            "stream" => {
+                                let mut id = [0u8; 4];
+                                SystemRng.fill(&mut id);
+                                let secs = std::time::Duration::from_secs(secs);
+                                let id = u32::from_le_bytes(id);
+                                Some(match listener {
+                                    Some(l) => {
+                                        match stream_tap(&host, &p, id, secs, samples.as_deref(), l)
+                                            .await?
+                                        {
+                                            Outcome::Tap(s) => s.control,
+                                            Outcome::Rtp(s) => s.control,
+                                        }
+                                    }
+                                    None => {
+                                        stream(&host, &p, id, secs, samples.as_deref(), demo)
+                                            .await?
+                                            .control
+                                    }
+                                })
+                            }
+                            _ => None,
+                        };
+                        Ok((p, stats))
                     };
-                    Ok((p, stats))
+                    stop.unless(work).await.unwrap_or_else(|| {
+                        Err(Error::Session(format!(
+                            "interrupted ({}); session cancelled",
+                            stop.first().unwrap_or("stop")
+                        )))
+                    })
                 };
-                let stop = interrupted()?;
-                let r = tokio::select! {
-                    r = s.launch_session(&ident, &server, app, &info.app_version, &cfg, a.take_over, during) => Ok(r),
-                    sig = stop => Err(sig),
-                };
-                let r = match r {
-                    Ok(r) => r,
-                    Err(sig) => {
-                    eprintln!("{sig}: stopping");
-                    if !s.launch_sent() {
-                        return Err(Error::Session(if a.take_over {
-                            "interrupted before launch; take-over cancel may have been processed".into()
-                        } else {
-                            "interrupted before launch; nothing cancelled".into()
-                        }));
-                    }
-                    // The handlers stay installed, so a second signal would be swallowed while the
-                    // cancel retries (45 s and more): let it exit at once instead.
-                    let second = interrupted()?;
-                    let confirmed = s.launch_confirmed();
-                    let cancel = async {
-                        if confirmed {
-                            s.cancel_retry(&ident, &server).await
-                        } else {
-                            s.cancel_if_ours(&ident, &server, app).await
-                        }
-                    };
-                    match unless_signalled(second, cancel).await {
-                        Some(c) => c?,
-                        None => {
-                            eprintln!(
-                                "second signal: exiting without waiting for cancel; run `brisk-probe cancel --host {}`",
-                                a.host
-                            );
-                            std::process::exit(130);
-                        }
-                    }
-                    return Err(Error::Session(format!("interrupted ({sig}); session cancelled")));
-                    }
-                };
+                let mut stop = Stop::on_signals()?;
+                let r = s
+                    .launch_session_until(
+                        &mut stop,
+                        &ident,
+                        &server,
+                        app,
+                        &info.app_version,
+                        &cfg,
+                        a.take_over,
+                        during,
+                    )
+                    .await;
+                if let Err(e @ Error::Abandoned(_)) = &r {
+                    eprintln!("{e}");
+                    std::process::exit(130);
+                }
                 let (p, stats) = r?;
                 if let Some(st) = stats {
                     print_stats(&st);
@@ -375,33 +371,6 @@ async fn run_control(
     c.disconnect().await
 }
 
-/// Resolves on Ctrl-C, SIGTERM or SIGHUP with the signal's name. The handlers are installed
-/// before this returns, so a signal right after cannot kill the process before the cancel.
-fn interrupted() -> std::io::Result<impl std::future::Future<Output = &'static str>> {
-    use tokio::signal::unix::{SignalKind, signal};
-    let mut term = signal(SignalKind::terminate())?;
-    let mut hup = signal(SignalKind::hangup())?;
-    let mut int = signal(SignalKind::interrupt())?;
-    Ok(async move {
-        tokio::select! {
-            _ = int.recv() => "SIGINT",
-            _ = term.recv() => "SIGTERM",
-            _ = hup.recv() => "SIGHUP",
-        }
-    })
-}
-
-/// `f`'s output, or `None` if `stop` fires first.
-async fn unless_signalled<T>(
-    stop: impl std::future::Future<Output = &'static str>,
-    f: impl std::future::Future<Output = T>,
-) -> Option<T> {
-    tokio::select! {
-        v = f => Some(v),
-        _ = stop => None,
-    }
-}
-
 fn print_stats(st: &Stats) {
     println!("pings\tsent {} acked {}", st.pings_sent, st.pings_acked);
     println!(
@@ -447,51 +416,7 @@ async fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_secs, interrupted, unless_signalled};
-
-    /// A signal during the (slow) cancel wins over it; without one the cancel's result comes back.
-    #[tokio::test]
-    async fn second_signal_cuts_the_cancel_short() {
-        let stop = interrupted().unwrap();
-        let pid = std::process::id().to_string();
-        let hung_cancel = std::future::pending::<()>();
-        let killer = async {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            std::process::Command::new("kill")
-                .args(["-TERM", &pid])
-                .status()
-                .unwrap();
-            std::future::pending::<()>().await
-        };
-        let got = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            tokio::select! {
-                r = unless_signalled(stop, hung_cancel) => r,
-                _ = killer => unreachable!(),
-            }
-        })
-        .await;
-        assert_eq!(got, Ok(None));
-        let quiet = interrupted().unwrap();
-        assert_eq!(unless_signalled(quiet, async { 7 }).await, Some(7));
-    }
-
-    /// SIGTERM and SIGHUP stop the run like Ctrl-C (and no longer kill the process outright).
-    #[tokio::test]
-    async fn sigterm_and_sighup_are_caught() {
-        for (flag, name) in [("-TERM", "SIGTERM"), ("-HUP", "SIGHUP")] {
-            let stop = interrupted().unwrap();
-            let pid = std::process::id().to_string();
-            assert!(
-                std::process::Command::new("kill")
-                    .args([flag, &pid])
-                    .status()
-                    .unwrap()
-                    .success()
-            );
-            let got = tokio::time::timeout(std::time::Duration::from_secs(5), stop).await;
-            assert_eq!(got, Ok(name));
-        }
-    }
+    use super::check_secs;
 
     #[test]
     fn stream_needs_at_least_10_secs() {
