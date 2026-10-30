@@ -377,7 +377,9 @@ impl AudioFec {
                     out.push(AudioPayload {
                         seq: b.base.wrapping_add(i as u16),
                         ts: b.base_ts.wrapping_add(i as u32 * self.duration),
-                        payload: b.shards[i].clone().expect("a successful decode fills every data shard"),
+                        payload: b.shards[i]
+                            .clone()
+                            .expect("a successful decode fills every data shard"),
                     });
                 }
             }

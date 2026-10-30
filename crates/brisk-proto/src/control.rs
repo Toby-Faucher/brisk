@@ -263,11 +263,9 @@ impl ControlMsg {
                 right: le(4),
             },
             (HDR_MODE, n) if n >= 1 => ControlMsg::HdrMode { enabled: p[0] != 0 },
-            (TERMINATION, n) if n >= 4 => {
-                ControlMsg::Termination(u32::from_be_bytes(
-                    p[..4].try_into().expect("length checked: 4 bytes"),
-                ))
-            }
+            (TERMINATION, n) if n >= 4 => ControlMsg::Termination(u32::from_be_bytes(
+                p[..4].try_into().expect("length checked: 4 bytes"),
+            )),
             (TERMINATION, n) if n >= 2 => ControlMsg::Termination(le(0) as u32),
             _ => ControlMsg::Unknown(t, p.to_vec()),
         }

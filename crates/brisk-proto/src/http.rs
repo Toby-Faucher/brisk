@@ -73,10 +73,19 @@ pub(crate) fn header_end(raw: &[u8]) -> Option<usize> {
     raw.windows(4).position(|w| w == b"\r\n\r\n")
 }
 
-/// Body of a raw HTTP/1.1 response; enforces Content-Length (required when `need_len`, i.e. over
-/// TLS where a close without close_notify is tolerated), rejects chunked. A non-200 reply with an
-/// empty body is [`HttpError::Status`]; one with a body is returned for the XML parser to report.
-pub fn response_body(raw: &[u8], need_len: bool) -> Result<String, HttpError> {
+/// Whether a response must carry a `Content-Length` header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LengthHeader {
+    /// A missing header is fine: the body runs to the end of the bytes.
+    Optional,
+    /// A missing header is an error (over TLS, where a close without close_notify is tolerated).
+    Required,
+}
+
+/// Body of a raw HTTP/1.1 response; enforces Content-Length (see [`LengthHeader`]), rejects
+/// chunked. A non-200 reply with an empty body is [`HttpError::Status`]; one with a body is
+/// returned for the XML parser to report.
+pub fn response_body(raw: &[u8], length: LengthHeader) -> Result<String, HttpError> {
     use HttpError::Malformed as bad;
     let end = header_end(raw).ok_or(bad("truncated http response (no header end)"))?;
     let head = std::str::from_utf8(&raw[..end]).map_err(|_| bad("non-utf8 http header"))?;
@@ -102,7 +111,7 @@ pub fn response_body(raw: &[u8], need_len: bool) -> Result<String, HttpError> {
             _ => {}
         }
     }
-    if need_len && !has_len {
+    if length == LengthHeader::Required && !has_len {
         return Err(bad("https response without content-length"));
     }
     let body = String::from_utf8(body.to_vec()).map_err(|_| bad("non-utf8 http body"))?;
@@ -405,22 +414,30 @@ mod tests {
     #[test]
     fn response_body_checks_length_and_status() {
         let ok = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello trailing";
-        assert_eq!(response_body(ok, false).unwrap(), "hello");
+        assert_eq!(response_body(ok, LengthHeader::Optional).unwrap(), "hello");
         assert!(
-            response_body(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort", false).is_err()
+            response_body(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nshort",
+                LengthHeader::Optional
+            )
+            .is_err()
         );
         assert!(
             response_body(
                 b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello",
-                false
+                LengthHeader::Optional
             )
             .is_err()
         );
-        assert!(response_body(b"HTTP/1.1 404 Not Found\r\n\r\n", false).is_err());
-        assert!(response_body(b"HTTP/1.1 200 OK\r\nContent", false).is_err());
-        assert!(response_body(b"HTTP/1.1 200 OK\r\n\r\nhi", true).is_err());
+        assert!(response_body(b"HTTP/1.1 404 Not Found\r\n\r\n", LengthHeader::Optional).is_err());
+        assert!(response_body(b"HTTP/1.1 200 OK\r\nContent", LengthHeader::Optional).is_err());
+        assert!(response_body(b"HTTP/1.1 200 OK\r\n\r\nhi", LengthHeader::Required).is_err());
         assert_eq!(
-            response_body(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", true).unwrap(),
+            response_body(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi",
+                LengthHeader::Required
+            )
+            .unwrap(),
             "hi"
         );
     }
@@ -436,8 +453,8 @@ mod tests {
         ) {
             let shaped = format!("HTTP/1.1 200 OK\r\nContent-Length: {n}\r\n\r\n{tail}");
             for r in [&raw[..], shaped.as_bytes()] {
-                for need_len in [false, true] {
-                    if let Ok(b) = response_body(r, need_len) {
+                for length in [LengthHeader::Optional, LengthHeader::Required] {
+                    if let Ok(b) = response_body(r, length) {
                         proptest::prop_assert!(b.len() <= r.len());
                     }
                 }

@@ -21,7 +21,7 @@ use brisk_bridge::{input, wt};
 use brisk_client::control::ControlSession;
 use brisk_client::identity::{ServerCert, default_config_dir, load_identity};
 use brisk_client::rtsp::StreamPorts;
-use brisk_client::session::Session;
+use brisk_client::session::{Session, TakeOver};
 use brisk_client::stop::Stop;
 use brisk_client::stream::{StreamRx, media_setup, race};
 use brisk_client::tap::{TapListener, tap_path};
@@ -275,7 +275,11 @@ async fn run(a: Args) -> brisk_client::Result<()> {
             a.app,
             &info.app_version,
             &cfg,
-            a.take_over,
+            if a.take_over {
+                TakeOver::Replace
+            } else {
+                TakeOver::Refuse
+            },
             during,
         )
         .await;

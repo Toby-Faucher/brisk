@@ -116,6 +116,17 @@ const fn neutral_pad(active_mask: u16) -> InputEvent {
     }
 }
 
+/// One rumble message from the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RumbleSeen {
+    /// Which pad.
+    pub controller: u16,
+    /// Low-frequency motor strength.
+    pub low: u16,
+    /// High-frequency motor strength.
+    pub high: u16,
+}
+
 /// Counters a control session keeps for the probe and its tests.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Stats {
@@ -135,8 +146,8 @@ pub struct Stats {
     pub bad_msgs: u32,
     /// Reason code from the host's termination message, if one came.
     pub termination: Option<u32>,
-    /// Last rumble seen: (controller, low, high).
-    pub last_rumble: Option<(u16, u16, u16)>,
+    /// Last rumble seen.
+    pub last_rumble: Option<RumbleSeen>,
     /// The host closed the ENet connection (or it timed out).
     pub host_disconnected: bool,
     /// SS_PING datagrams sent to [video, audio].
@@ -546,7 +557,11 @@ impl ControlSession {
                 let at = Instant::now();
                 self.stats.media_rx_packets[i] += 1;
                 self.stats.media_rx_bytes[i] += n as u64;
-                let d = &self.av.as_ref().expect("media arrives only once av is set up").bufs[i][..n];
+                let d = &self
+                    .av
+                    .as_ref()
+                    .expect("media arrives only once av is set up")
+                    .bufs[i][..n];
                 match sink {
                     Some(f) => self.want_idr |= f(i, d, at),
                     None if !self.closing && self.early.len() < EARLY_MAX => {
@@ -585,7 +600,13 @@ impl ControlSession {
                                 controller,
                                 low,
                                 high,
-                            } => self.stats.last_rumble = Some((controller, low, high)),
+                            } => {
+                                self.stats.last_rumble = Some(RumbleSeen {
+                                    controller,
+                                    low,
+                                    high,
+                                })
+                            }
                             _ => {}
                         }
                         if let (

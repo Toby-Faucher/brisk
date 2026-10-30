@@ -3,7 +3,7 @@
 
 mod common;
 
-use brisk_client::control::{ControlSession, IDR_MIN_INTERVAL, INPUT_DEMO_GAP};
+use brisk_client::control::{ControlSession, IDR_MIN_INTERVAL, INPUT_DEMO_GAP, RumbleSeen};
 use brisk_proto::input::{InputEvent, encode_input};
 use common::fake_host::*;
 use std::net::UdpSocket;
@@ -53,7 +53,14 @@ async fn control_session_against_fake_sunshine() {
     }))
     .unwrap();
     settle(&mut c, 200).await;
-    assert_eq!(c.stats.last_rumble, Some((1, 0x1234, 0xFFFF)));
+    assert_eq!(
+        c.stats.last_rumble,
+        Some(RumbleSeen {
+            controller: 1,
+            low: 0x1234,
+            high: 0xFFFF
+        })
+    );
     // The bridge's hook gets every rumble and nothing else (pings, IDR replies).
     assert_eq!(
         *fb.lock().unwrap(),

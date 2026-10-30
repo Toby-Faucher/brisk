@@ -4,7 +4,7 @@
 use brisk_client::identity::{Identity, ServerCert, load_or_create_identity};
 use brisk_client::recorder::Recorder;
 use brisk_client::rtsp::StreamPorts;
-use brisk_client::session::Session;
+use brisk_client::session::{Session, TakeOver};
 use brisk_client::stop::Stop;
 use brisk_proto::pair::*;
 use brisk_proto::rtsp::{RtspCipher, parse_request};
@@ -804,7 +804,14 @@ const RTSP_SEQUENCE: [(&str, &str); 7] = [
 async fn launch_ok(mode: &'static str, scheme: &str) {
     let (mut s, fake, ident, server, _t) = paired(mode).await;
     let ports = s
-        .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg(), false)
+        .launch_probe(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &stream_cfg(),
+            TakeOver::Refuse,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -859,7 +866,14 @@ async fn failures_still_cancel() {
     ] {
         let (mut s, fake, ident, server, _t) = paired(mode).await;
         let err = s
-            .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg(), false)
+            .launch_probe(
+                &ident,
+                &server,
+                1,
+                "7.1.431.-1",
+                &stream_cfg(),
+                TakeOver::Refuse,
+            )
             .await
             .unwrap_err();
         assert!(err.to_string().contains(needle), "{mode}: {err}");
@@ -873,7 +887,14 @@ async fn launch_recording_scrubs_rikey() {
     let dir = t.path().join("rec");
     s.recorder = Some(Recorder::new(&dir));
     let key = s
-        .launch_probe(&ident, &server, 1, "7.1.431.-1", &stream_cfg(), false)
+        .launch_probe(
+            &ident,
+            &server,
+            1,
+            "7.1.431.-1",
+            &stream_cfg(),
+            TakeOver::Refuse,
+        )
         .await
         .unwrap()
         .key;
@@ -901,12 +922,12 @@ async fn relaunch_with_same_config_draws_a_fresh_rikey() {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
     let cfg = stream_cfg();
     let a = s
-        .launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, false)
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, TakeOver::Refuse)
         .await
         .unwrap()
         .key;
     let b = s
-        .launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, false)
+        .launch_probe(&ident, &server, 1, "7.1.431.-1", &cfg, TakeOver::Refuse)
         .await
         .unwrap()
         .key;
@@ -944,7 +965,7 @@ async fn probe(
     s: &mut Session,
     i: &Identity,
     c: &ServerCert,
-    take_over: bool,
+    take_over: TakeOver,
 ) -> brisk_client::Result<brisk_client::rtsp::StreamPorts> {
     s.launch_probe(i, c, 1, "7.1.431.-1", &stream_cfg(), take_over)
         .await
@@ -958,7 +979,9 @@ async fn rejected_launch_never_cancels() {
         ("launch-fail", "fake launch failure", false),
     ] {
         let (mut s, fake, ident, server, _t) = paired(mode).await;
-        let e = probe(&mut s, &ident, &server, false).await.unwrap_err();
+        let e = probe(&mut s, &ident, &server, TakeOver::Refuse)
+            .await
+            .unwrap_err();
         // Typed: a busy host is `Busy`, another refusal is a `Session` error.
         assert_eq!(
             matches!(e, brisk_client::Error::Busy(_)),
@@ -981,7 +1004,7 @@ async fn rejected_launch_never_cancels() {
 async fn busy_host_refused_without_launch_unless_take_over() {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
     fake.game.store(5, Ordering::SeqCst);
-    let err = probe(&mut s, &ident, &server, false)
+    let err = probe(&mut s, &ident, &server, TakeOver::Refuse)
         .await
         .unwrap_err()
         .to_string();
@@ -992,7 +1015,9 @@ async fn busy_host_refused_without_launch_unless_take_over() {
     assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 0);
     assert!(!s.launch_sent());
-    probe(&mut s, &ident, &server, true).await.unwrap();
+    probe(&mut s, &ident, &server, TakeOver::Replace)
+        .await
+        .unwrap();
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 2); // take-over cancel, then our own
 }
@@ -1002,7 +1027,9 @@ async fn cancel_retries_after_a_lost_reply() {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
     fast(&mut s);
     fake.cancel_drop.store(1, Ordering::SeqCst);
-    probe(&mut s, &ident, &server, false).await.unwrap();
+    probe(&mut s, &ident, &server, TakeOver::Refuse)
+        .await
+        .unwrap();
     assert_eq!(fake.cancel_reqs.load(Ordering::SeqCst), 2);
     assert_eq!(fake.rtsp.lock().unwrap().cancels, 1);
 }
@@ -1012,7 +1039,7 @@ async fn cancel_failing_three_times_is_a_loud_error() {
     let (mut s, fake, ident, server, _t) = paired("ok").await;
     fast(&mut s);
     fake.cancel_drop.store(3, Ordering::SeqCst);
-    let err = probe(&mut s, &ident, &server, false)
+    let err = probe(&mut s, &ident, &server, TakeOver::Refuse)
         .await
         .unwrap_err()
         .to_string();
@@ -1049,7 +1076,7 @@ async fn dropped_launch_cancels_only_if_host_runs_our_app() {
     ] {
         let (mut s, fake, ident, server, _t) = paired(mode).await;
         fast(&mut s);
-        let err = probe(&mut s, &ident, &server, false)
+        let err = probe(&mut s, &ident, &server, TakeOver::Refuse)
             .await
             .unwrap_err()
             .to_string();
@@ -1070,7 +1097,7 @@ async fn launch_session_runs_during_before_cancel() {
             1,
             "7.1.431.-1",
             &stream_cfg(),
-            false,
+            TakeOver::Refuse,
             |p| async move {
                 let st = f.rtsp.lock().unwrap();
                 assert_eq!(st.cancels, 0, "not cancelled yet");
@@ -1091,7 +1118,7 @@ async fn launch_session_runs_during_before_cancel() {
             1,
             "7.1.431.-1",
             &stream_cfg(),
-            false,
+            TakeOver::Refuse,
             |_| async { Err::<(), _>(brisk_client::Error::Session("control failed".into())) },
         )
         .await
@@ -1108,7 +1135,7 @@ async fn launch_session_runs_during_before_cancel() {
             1,
             "7.1.431.-1",
             &stream_cfg(),
-            false,
+            TakeOver::Refuse,
             |_| async {
                 tokio::task::yield_now().await;
                 panic!("boom in during");
@@ -1133,7 +1160,16 @@ where
     Fut: std::future::Future<Output = brisk_client::Result<T>>,
 {
     let cfg = stream_cfg();
-    let call = s.launch_session_until(stop, ident, server, 1, "7.1.431.-1", &cfg, false, during);
+    let call = s.launch_session_until(
+        stop,
+        ident,
+        server,
+        1,
+        "7.1.431.-1",
+        &cfg,
+        TakeOver::Refuse,
+        during,
+    );
     tokio::time::timeout(std::time::Duration::from_secs(20), call)
         .await
         .expect("returns without waiting for the host")
@@ -1311,7 +1347,7 @@ async fn stream_run(
             1,
             "7.1.431.-1",
             &cfg,
-            false,
+            TakeOver::Refuse,
             |p| async move {
                 assert_eq!(f.rtsp.lock().unwrap().cancels, 0, "not cancelled yet");
                 // DESCRIBE: supported 5, requested 1; we want audio.
@@ -1416,7 +1452,7 @@ async fn stream_refuses_busy_host_without_launch() {
             1,
             "7.1.431.-1",
             &stream_cfg(),
-            false,
+            TakeOver::Refuse,
             |p| {
                 ran.store(true, Ordering::SeqCst);
                 async move {
