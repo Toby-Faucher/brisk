@@ -1,1 +1,95 @@
-/* shader */
+/* UI style shader: every rule starts with :root[data-ui='shader']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/700.css';
+@import '@fontsource-variable/geist-mono';
+
+/* Panels are 90% opaque near-black over the shader, so text stays above AA on even the brightest frame. */
+:root[data-ui='shader'] {
+  --bg: #120a26;
+  --panel: rgb(14 9 30 / 0.9);
+  --panel2: rgb(26 18 52 / 0.92);
+  --line: rgb(255 255 255 / 0.16);
+  --line-hover: rgb(255 255 255 / 0.4);
+  --fg: #f6f2ff;
+  --muted: #c4bce0;
+  --dim: #b0a6d2;
+  --ok: #5ef0a8;
+  --warn: #fcd34d;
+  --bad: #ff8fa3;
+  --font: 'Space Grotesk', system-ui, sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --r-card: 20px;
+  --r-ctl: 12px;
+}
+:root[data-ui='shader'] body {
+  background: #120a26;
+  letter-spacing: 0.005em;
+}
+:root[data-ui='shader'] main .bg {
+  display: none;
+}
+:root[data-ui='shader'] h1,
+:root[data-ui='shader'] h2,
+:root[data-ui='shader'] h3 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+:root[data-ui='shader'] .top h2 {
+  font-size: clamp(30px, 3.4vw, 44px);
+  background: linear-gradient(95deg, #fff 30%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding-bottom: 0.08em;
+}
+:root[data-ui='shader'] .side,
+:root[data-ui='shader'] .card,
+:root[data-ui='shader'] .toast,
+:root[data-ui='shader'] .tip,
+:root[data-ui='shader'] .dd-menu,
+:root[data-ui='shader'] .search {
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+}
+:root[data-ui='shader'] .side {
+  background: rgb(10 6 22 / 0.92);
+  border-radius: 0;
+  border-width: 0 1px 0 0;
+}
+:root[data-ui='shader'] .card {
+  box-shadow:
+    0 10px 30px -12px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.12);
+  transition:
+    border-color 0.2s,
+    translate 0.2s;
+}
+:root[data-ui='shader'] .card:hover {
+  border-color: var(--accent);
+  translate: 0 -2px;
+}
+:root[data-ui='shader'] .btn {
+  font-weight: 500;
+  border-radius: 999px;
+}
+:root[data-ui='shader'] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+:root[data-ui='shader'] .cm-in,
+:root[data-ui='shader'] .cm-dim + * {
+  backdrop-filter: blur(10px);
+}
+:root[data-ui='shader'] .tag,
+:root[data-ui='shader'] .k {
+  font-family: var(--mono);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='shader'] .card {
+    transition: none;
+  }
+  :root[data-ui='shader'] .card:hover {
+    translate: none;
+  }
+}
