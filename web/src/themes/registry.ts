@@ -21,6 +21,16 @@ export const UI_THEMES = [
   { id: 'geocities', name: 'Web 1.0', blurb: 'Under construction since 1997' },
   { id: 'aurora', name: 'Aurora', blurb: 'Frosted layers over northern lights' },
   { id: 'comic', name: 'Comic book', blurb: 'Halftone, panels and sound effects' },
+  { id: 'persona', name: 'Persona', blurb: 'Red, black and slashed paper' },
+  { id: 'bbs', name: 'BBS', blurb: 'Box-drawing on a dial-up board' },
+  { id: 'broadsheet', name: 'Broadsheet', blurb: 'Front page, columns and rules' },
+  { id: 'memphis', name: 'Memphis', blurb: 'Squiggles, confetti and primary shapes' },
+  { id: 'tarot', name: 'Tarot', blurb: 'Gilded cards and star charts' },
+  { id: 'transit', name: 'Transit', blurb: 'Line colours and station signs' },
+  { id: 'receipt', name: 'Receipt', blurb: 'A long strip off a thermal printer' },
+  { id: 'jrpg', name: 'Menu quest', blurb: 'Blue windows and a pointing hand' },
+  { id: 'sysmac', name: 'Classic Mac', blurb: 'One bit, dithered and tidy' },
+  { id: 'graffiti', name: 'Graffiti', blurb: 'Tags and spray on a brick wall' },
 ] as const;
 
 export type UiTheme = (typeof UI_THEMES)[number]['id'];
