@@ -1,1 +1,1171 @@
-/* memphis */
+/* UI style memphis: every rule starts with :root[data-ui='memphis']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/rubik-mono-one';
+@import '@fontsource/rubik/400.css';
+@import '@fontsource/rubik/500.css';
+@import '@fontsource/rubik/700.css';
+
+:root[data-ui='memphis'] {
+  --ink: #1f1147;
+  --cream: #fff4d6;
+  --cream2: #fffbee;
+  --pk: #ff5fa8;
+  --te: #19c2b0;
+  --ye: #ffd23f;
+  --pu: #6c3df0;
+  --or: #ff8a3d;
+  --bg: var(--cream);
+  --panel: var(--cream2);
+  --panel2: #ffe9a8;
+  --line: var(--ink);
+  --line-hover: var(--ink);
+  --fg: var(--ink);
+  --muted: #4a3d78;
+  --dim: #54478a;
+  --accent: #c2185b;
+  --accent-fg: #fff;
+  --ok: #0b7a4a;
+  --warn: #8a4b00;
+  --bad: #c4103a;
+  --c-lib: #b36b00;
+  --c-stream: #1f46c0;
+  --c-host: #0a6ea8;
+  --c-set: #3f4a5c;
+  --c-agent: #7c3aed;
+  --c-news: #c4103a;
+  --c-power: #11883f;
+  --c-hist: #c24a08;
+  --font: 'Rubik', system-ui, sans-serif;
+  --mono: 'Rubik', ui-monospace, monospace;
+  --display: 'Rubik Mono One', 'Rubik', system-ui, sans-serif;
+  --r-card: 26px;
+  --r-ctl: 999px;
+  --bw: 2.5px;
+  --boing: cubic-bezier(0.34, 1.8, 0.5, 1);
+  --leaf: 26px 8px 26px 8px;
+  --sh: var(--pk);
+  --squig: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' fill='none' stroke='%23ff5fa8' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 8 L9 3 L16 9 L23 3 L26 6'/%3E%3C/svg%3E");
+  --confetti: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' fill='none' stroke-width='5' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='.4'%3E%3Cpath d='M20 40 q10 -16 20 0 t20 0 t20 0' stroke='%23ff5fa8'/%3E%3Cpath d='M170 190 l13 -22 l13 22 z' stroke='%2319c2b0'/%3E%3Ccircle cx='205' cy='56' r='9' stroke='%236c3df0'/%3E%3Cpath d='M70 205 v16 M62 213 h16' stroke='%23ff8a3d'/%3E%3Cpath d='M120 110 l8 -10 l8 10 l8 -10 l8 10' stroke='%23ffd23f'/%3E%3Ccircle cx='40' cy='150' r='5' stroke='%2319c2b0'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+:root[data-ui='memphis'][data-accent='teal'] {
+  --accent: #00796b;
+}
+:root[data-ui='memphis'][data-accent='indigo'] {
+  --accent: #4a40d8;
+}
+:root[data-ui='memphis'][data-accent='pink'] {
+  --accent: #c2185b;
+}
+:root[data-ui='memphis'][data-accent='orange'] {
+  --accent: #b8440a;
+}
+:root[data-ui='memphis'][data-accent='lime'] {
+  --accent: #3f7208;
+}
+:root[data-ui='memphis'][data-accent='sky'] {
+  --accent: #0560a0;
+}
+
+/* ---------- the cream, dotted and confettied ---------- */
+:root[data-ui='memphis'] {
+  background-color: var(--cream);
+  background-image: var(--confetti), radial-gradient(circle, rgb(31 17 71 / 0.13) 1.6px, transparent 2.2px);
+  background-size:
+    260px 260px,
+    22px 22px;
+  background-attachment: fixed;
+}
+:root[data-ui='memphis'] body {
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+:root[data-ui='memphis'] ::selection {
+  background: var(--ye);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--cream2);
+}
+:root[data-ui='memphis'] :is(h1, h2, h3, h4, h5, .big, .word) {
+  font-family: var(--display);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] h3 {
+  font-size: 18px;
+}
+:root[data-ui='memphis'] h4 {
+  font-size: 14px;
+}
+/* page titles: big mono, a zigzag underline in pink */
+:root[data-ui='memphis'] main h2 {
+  display: inline-block;
+  font-size: 30px;
+  line-height: 1.15;
+  text-transform: uppercase;
+  padding: 0 0 12px;
+  background: var(--squig) 0 100% / 28px 12px repeat-x;
+  rotate: -1.2deg;
+  transition: rotate 0.4s var(--boing);
+}
+:root[data-ui='memphis'] main h2:hover {
+  rotate: 1deg;
+}
+:root[data-ui='memphis'] :is(.lab, .muted) {
+  color: var(--muted);
+}
+:root[data-ui='memphis'] .mono {
+  font-weight: 500;
+}
+:root[data-ui='memphis'] .big {
+  font-size: 40px;
+  line-height: 1;
+  text-shadow: 3px 3px 0 var(--ye);
+}
+
+/* ---------- the rail: purple, dotted, a zigzag edge ---------- */
+:root[data-ui='memphis'] .side {
+  width: 232px;
+  gap: 9px;
+  padding: 16px 14px 18px;
+  background-color: var(--pu);
+  background-image: radial-gradient(circle, rgb(255 255 255 / 0.2) 2px, transparent 2.6px);
+  background-size: 14px 14px;
+  backdrop-filter: none;
+  border: 0;
+  position: sticky;
+  z-index: 5;
+}
+:root[data-ui='memphis'] .side::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -14px;
+  width: 14px;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, var(--pu) 50%, transparent 50%) 0 0 / 14px 14px,
+    linear-gradient(45deg, var(--pu) 50%, transparent 50%) 0 7px / 14px 14px;
+  background-repeat: repeat-y;
+  filter: drop-shadow(3px 0 0 var(--ink));
+}
+:root[data-ui='memphis'] .brand {
+  padding: 8px 12px;
+  margin: 2px 4px 12px;
+  background: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 18px 6px 18px 6px;
+  box-shadow: 4px 4px 0 var(--ye);
+  rotate: -3deg;
+  transition: rotate 0.4s var(--boing);
+}
+:root[data-ui='memphis'] .brand:hover {
+  rotate: 3deg;
+}
+:root[data-ui='memphis'] .brand img {
+  width: 86px;
+  height: 41px;
+}
+:root[data-ui='memphis'] .side .nav {
+  position: relative;
+  padding: 8px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--cream2);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: none;
+  transition:
+    translate 0.3s var(--boing),
+    rotate 0.3s var(--boing),
+    box-shadow 0.3s var(--boing),
+    background 0.12s;
+}
+:root[data-ui='memphis'] .side nav .nav:nth-of-type(odd) {
+  rotate: -1.5deg;
+}
+:root[data-ui='memphis'] .side nav .nav:nth-of-type(even) {
+  rotate: 1.2deg;
+}
+:root[data-ui='memphis'] .side a.nav:hover {
+  transform: none;
+  background: var(--ye);
+  color: var(--ink);
+  translate: 3px -2px;
+  rotate: 2deg;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+:root[data-ui='memphis'] .side nav a.nav:nth-of-type(3n + 2):hover {
+  background: var(--te);
+}
+:root[data-ui='memphis'] .side nav a.nav:nth-of-type(3n):hover {
+  background: var(--pk);
+}
+:root[data-ui='memphis'] .side a.nav:active {
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+  transition-duration: 0.06s;
+}
+:root[data-ui='memphis'] .side .nav[aria-current='page'] {
+  background: var(--pk);
+  color: var(--ink);
+  translate: 8px 0;
+  rotate: 0deg;
+  box-shadow: 4px 4px 0 var(--ye);
+}
+:root[data-ui='memphis'] .side .nav[aria-current='page']::before {
+  display: none;
+}
+:root[data-ui='memphis'] .side .nav[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: -22px;
+  top: 50%;
+  margin-top: -10px;
+  width: 18px;
+  height: 20px;
+  background: var(--ye);
+  border: 0;
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+:root[data-ui='memphis'] .side .sec {
+  align-self: flex-start;
+  margin: 12px 0 0;
+  padding: 3px 12px;
+  background: var(--ye);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  font: 400 12px / 1.4 var(--display);
+  letter-spacing: 0.08em;
+  rotate: -2deg;
+}
+:root[data-ui='memphis'] .side .nav.soon {
+  opacity: 1;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--cream2);
+  box-shadow: none;
+  color: var(--cream2);
+  font-size: 14px;
+  padding: 5px 12px;
+  rotate: 0deg;
+}
+:root[data-ui='memphis'] .side .nav.soon .tag {
+  margin-left: auto;
+  padding: 0 8px;
+  font: 700 11px / 1.6 var(--font);
+  background: var(--ye);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] .side .wrap {
+  margin-top: auto;
+  padding-bottom: 14px;
+}
+:root[data-ui='memphis'] .side .pill {
+  gap: 8px;
+  padding: 8px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--te);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition:
+    translate 0.3s var(--boing),
+    box-shadow 0.3s var(--boing);
+}
+:root[data-ui='memphis'] .side .pill:hover {
+  background: var(--ye);
+  color: var(--ink);
+  translate: 0 -3px;
+  box-shadow: 5px 6px 0 var(--ink);
+}
+:root[data-ui='memphis'] .side .pill .st {
+  color: var(--ink);
+  margin-left: auto;
+}
+:root[data-ui='memphis'] .side .menu {
+  background: var(--cream2);
+  border: var(--bw) solid var(--ink);
+  border-radius: 20px 6px 20px 6px;
+  box-shadow: 5px 5px 0 var(--pk);
+  backdrop-filter: none;
+  bottom: calc(100% + 12px);
+  left: 0;
+  right: auto;
+  width: 250px;
+  padding: 8px;
+}
+:root[data-ui='memphis'] .side .it {
+  border-radius: 999px;
+  font-weight: 500;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .side .it:is(:hover, :focus-visible) {
+  background: var(--ye);
+}
+
+/* ---------- the page: leaf-shaped cards that tilt and bounce ---------- */
+:root[data-ui='memphis'] main {
+  position: relative;
+  padding: 52px 40px 80px 36px;
+  max-width: 1480px;
+}
+:root[data-ui='memphis'] main > .off {
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--pk);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+:root[data-ui='memphis'] .denied {
+  border: 3px solid var(--ink);
+  border-radius: var(--leaf);
+  background: var(--cream2);
+  box-shadow: 8px 8px 0 var(--pk);
+}
+:root[data-ui='memphis'] .denied code {
+  color: var(--ink);
+}
+:root[data-ui='memphis'] :is(.card, .glass) {
+  background-color: var(--cream2);
+  backdrop-filter: none;
+  border: 3px solid var(--ink);
+  border-radius: var(--leaf);
+  box-shadow: 6px 6px 0 var(--sh);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .card {
+  position: relative;
+  background-image:
+    radial-gradient(circle at 100% 0, rgb(25 194 176 / 0.38) 0 38px, transparent 39px),
+    radial-gradient(circle, rgb(31 17 71 / 0.12) 1.4px, transparent 2px);
+  background-size:
+    100% 100%,
+    10px 10px;
+  transform: none;
+  translate: 0 0;
+  transition:
+    translate 0.35s var(--boing),
+    rotate 0.35s var(--boing),
+    box-shadow 0.35s var(--boing);
+}
+:root[data-ui='memphis'] .card:nth-child(4n + 2) {
+  --sh: var(--te);
+  border-radius: 8px 26px 8px 26px;
+  rotate: 0.5deg;
+  background-image:
+    radial-gradient(circle at 0 100%, rgb(255 95 168 / 0.3) 0 38px, transparent 39px),
+    radial-gradient(circle, rgb(31 17 71 / 0.12) 1.4px, transparent 2px);
+}
+:root[data-ui='memphis'] .card:nth-child(4n + 3) {
+  --sh: var(--ye);
+  rotate: -0.5deg;
+  background-image:
+    radial-gradient(circle at 100% 100%, rgb(108 61 240 / 0.25) 0 38px, transparent 39px),
+    radial-gradient(circle, rgb(31 17 71 / 0.12) 1.4px, transparent 2px);
+}
+:root[data-ui='memphis'] .card:nth-child(4n) {
+  --sh: var(--pu);
+  border-radius: 8px 26px 8px 26px;
+  rotate: 0.4deg;
+  background-image:
+    radial-gradient(circle at 0 0, rgb(255 210 63 / 0.55) 0 38px, transparent 39px),
+    radial-gradient(circle, rgb(31 17 71 / 0.12) 1.4px, transparent 2px);
+}
+:root[data-ui='memphis'] .card:nth-child(4n + 1) {
+  rotate: -0.4deg;
+}
+:root[data-ui='memphis'] .card:hover {
+  rotate: 0deg;
+  translate: -3px -5px;
+  box-shadow: 10px 11px 0 var(--sh);
+  border-color: var(--ink);
+}
+:root[data-ui='memphis'] .card:has(.fill:active) {
+  translate: 3px 3px;
+}
+:root[data-ui='memphis'] .card h4 {
+  white-space: nowrap;
+  color: var(--ink);
+  display: inline-block;
+  padding: 4px 12px 3px;
+  margin-left: -8px;
+  background: var(--ye);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+:root[data-ui='memphis'] .card:nth-child(4n + 2) h4 {
+  background: var(--te);
+}
+:root[data-ui='memphis'] .card:nth-child(4n + 3) h4 {
+  background: var(--pk);
+}
+:root[data-ui='memphis'] .card:nth-child(4n) h4 {
+  background: var(--or);
+}
+:root[data-ui='memphis'] :is(.card .note, .card .lab) {
+  color: var(--muted);
+}
+:root[data-ui='memphis'] .grip {
+  color: var(--ink);
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] :is(.grip:hover, .grip:focus-visible) {
+  background: var(--ye);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] [data-lifted] {
+  box-shadow: 12px 14px 0 var(--ink) !important;
+  rotate: 3deg !important;
+  background: var(--cream2) !important;
+  border-color: var(--ink) !important;
+}
+:root[data-ui='memphis'] .ring {
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .ring b {
+  background: var(--ye);
+  color: var(--ink);
+  font-family: var(--display);
+  font-weight: 400;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+}
+
+/* ---------- buttons: fat pills that boing ---------- */
+:root[data-ui='memphis'] .btn {
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 7px 20px;
+  box-shadow: 4px 4px 0 var(--ink);
+  transform: none;
+  transition:
+    translate 0.3s var(--boing),
+    box-shadow 0.3s var(--boing),
+    rotate 0.3s var(--boing);
+}
+:root[data-ui='memphis'] .btn:hover {
+  filter: none;
+  transform: none;
+  translate: -2px -4px;
+  rotate: -2.5deg;
+  box-shadow: 7px 8px 0 var(--ink);
+}
+:root[data-ui='memphis'] .btn:active {
+  transform: none;
+  translate: 4px 4px;
+  rotate: 0deg;
+  box-shadow: 0 0 0 var(--ink);
+  transition-duration: 0.05s;
+}
+:root[data-ui='memphis'] .btn.ghost {
+  background: var(--cream2);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] :is(.btn:disabled, .btn[aria-disabled='true']) {
+  opacity: 1;
+  background: #e7dcc0;
+  color: #4a4330;
+  box-shadow: none;
+  translate: 4px 4px;
+  border-style: dashed;
+}
+:root[data-ui='memphis'] .btn.sm {
+  padding: 3px 14px;
+  font-size: 13px;
+}
+:root[data-ui='memphis'] .tag {
+  background: var(--ye);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .dot {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+/* ---------- inputs ---------- */
+:root[data-ui='memphis'] .search {
+  background: #fff;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  color: var(--ink);
+  box-shadow: 4px 4px 0 var(--te);
+  padding: 5px 16px;
+  transition:
+    translate 0.3s var(--boing),
+    box-shadow 0.3s var(--boing);
+}
+:root[data-ui='memphis'] .search:focus-within {
+  border-color: var(--ink);
+  outline: 3px solid var(--accent);
+  translate: -1px -2px;
+  box-shadow: 6px 6px 0 var(--te);
+}
+:root[data-ui='memphis'] .search input[type] {
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  font-weight: 500;
+}
+:root[data-ui='memphis'] input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-ui='memphis']
+  :is(input[type='text'], input[type='search'], input[type='number'], input[type='password'], input:not([type]), textarea, select) {
+  background: #fff;
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 14px;
+  font-weight: 500;
+}
+:root[data-ui='memphis'] input::file-selector-button {
+  font: inherit;
+  font-weight: 700;
+  margin-right: 10px;
+  padding: 3px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--ye);
+  color: var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+}
+:root[data-ui='memphis'] :is(input[type='checkbox'], input[type='radio'], input[type='range']) {
+  accent-color: var(--accent);
+}
+
+/* ---------- chips, filters, tabs ---------- */
+:root[data-ui='memphis'] :is(.fchip, .chip, .seg button, .strip .tab) {
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--cream2);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition:
+    translate 0.3s var(--boing),
+    box-shadow 0.3s var(--boing),
+    background 0.12s;
+}
+:root[data-ui='memphis'] :is(.fchip:hover, .chip:hover, .strip .tab:hover) {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--ye);
+  translate: -1px -3px;
+  rotate: -1.5deg;
+  box-shadow: 5px 6px 0 var(--ink);
+}
+:root[data-ui='memphis'] .fchip:active {
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='memphis'] .fchip .cnt {
+  color: var(--muted);
+}
+:root[data-ui='memphis'] :is(.fchip, .chip, .seg button)[aria-pressed='true'],
+:root[data-ui='memphis'] .seg button[aria-checked='true'] {
+  border-color: var(--ink);
+  color: #fff;
+  background: var(--accent);
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='memphis'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='memphis'] .fchip[aria-pressed='true'] .cnt {
+  color: #fff;
+}
+:root[data-ui='memphis'] .strip {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  gap: 10px !important;
+  padding: 6px 4px 14px;
+  background-image: var(--squig) !important;
+  background-position: 0 100% !important;
+  background-size: 28px 12px !important;
+  background-repeat: repeat-x !important;
+}
+:root[data-ui='memphis'] .strip .tab {
+  padding: 6px 20px;
+  font-size: 15px;
+}
+:root[data-ui='memphis'] .strip .tab[aria-selected='true'] {
+  background: var(--accent);
+  color: #fff;
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='memphis'] .ind {
+  display: none;
+}
+:root[data-ui='memphis'] .top {
+  border-bottom: 0 !important;
+  padding-bottom: 18px !important;
+}
+:root[data-ui='memphis'] .sw {
+  border: var(--bw) solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+:root[data-ui='memphis'] .sw[aria-checked='true'] {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+:root[data-ui='memphis'] :is(kbd, .k) {
+  background: var(--ye);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  font-weight: 700;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+:root[data-ui='memphis'] code {
+  color: var(--ink);
+  background: var(--panel2);
+  padding: 0 6px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+:root[data-ui='memphis'] .banner {
+  color: var(--ink);
+  background: var(--ye);
+  border: var(--bw) solid var(--ink);
+  border-radius: 20px 6px 20px 6px;
+  font-weight: 700;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+:root[data-ui='memphis'] .skel div {
+  border-radius: 14px;
+  background:
+    radial-gradient(circle, rgb(31 17 71 / 0.15) 1.4px, transparent 2px) 0 0 / 9px 9px,
+    #f2e6c4;
+  border: var(--bw) solid var(--ink);
+}
+
+/* ---------- library hero, shelves ---------- */
+:root[data-ui='memphis'] .hero {
+  background-color: var(--ye) !important;
+  background-image: radial-gradient(circle, rgb(255 95 168 / 0.55) 3px, transparent 3.6px) !important;
+  background-size: 16px 16px !important;
+  border: 4px solid var(--ink);
+  border-radius: 40px 10px 40px 10px;
+  box-shadow: 9px 9px 0 var(--pu);
+  color: var(--ink);
+  clip-path: none;
+}
+:root[data-ui='memphis'] .hero .art {
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+}
+:root[data-ui='memphis'] .hero .lab {
+  color: var(--ink);
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .hero h3 {
+  font-size: 38px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  text-shadow: 3px 3px 0 var(--cream2);
+}
+:root[data-ui='memphis'] .hero .pchip {
+  background: #fff;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] :is(figcaption, .nums b, .st h3) {
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .st .top {
+  padding-bottom: 6px !important;
+}
+:root[data-ui='memphis'] .shelf h4 {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+  text-transform: none;
+}
+:root[data-ui='memphis'] .shelf h4 > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--te);
+  color: var(--ink);
+  font: 400 15px / 1.2 var(--display);
+  text-transform: uppercase;
+  padding: 7px 8px 5px 16px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 3px 3px 0 var(--ink);
+  rotate: -1.5deg;
+}
+:root[data-ui='memphis'] .shelf .n {
+  color: #fff;
+  background: var(--ink);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .chev {
+  border: var(--bw) solid var(--ink);
+  background: var(--cream2);
+  color: var(--ink);
+  border-radius: 50%;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+:root[data-ui='memphis'] .chev[aria-disabled='true'] {
+  opacity: 1;
+  background: #e7dcc0;
+  color: #4a4330;
+  box-shadow: none;
+  border-style: dashed;
+}
+:root[data-ui='memphis'] .shelf .more {
+  color: var(--ink);
+  font-weight: 700;
+  font-family: var(--font);
+  font-size: 14px;
+  text-transform: none;
+  text-decoration: underline wavy var(--pk) 2px;
+  text-underline-offset: 4px;
+}
+:root[data-ui='memphis'] .tc {
+  background: #fff;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* covers: taped-up posters, each a different tilt and shadow colour */
+:root[data-ui='memphis'] main .wrap {
+  transition:
+    translate 0.35s var(--boing),
+    rotate 0.35s var(--boing);
+  transform: none;
+  --sh: var(--pk);
+}
+:root[data-ui='memphis'] main .wrap:nth-child(4n + 1) {
+  rotate: -0.8deg;
+}
+:root[data-ui='memphis'] main .wrap:nth-child(4n + 2) {
+  --sh: var(--te);
+}
+:root[data-ui='memphis'] main .wrap:nth-child(4n + 3) {
+  rotate: 0.7deg;
+  translate: 0 3px;
+  --sh: var(--ye);
+}
+:root[data-ui='memphis'] main .wrap:nth-child(4n) {
+  --sh: var(--pu);
+}
+:root[data-ui='memphis'] main .wrap:is(:hover, :has(:focus-visible)) {
+  transform: none;
+  rotate: 0deg;
+  translate: 0 -8px;
+  z-index: 3;
+}
+:root[data-ui='memphis'] main .wrap :is(.cover, .g > div:first-child) {
+  border: 3px solid var(--ink);
+  border-radius: 22px 6px 22px 6px;
+  box-shadow: 5px 5px 0 var(--sh);
+  position: relative;
+  transition: box-shadow 0.35s var(--boing);
+}
+:root[data-ui='memphis'] main .wrap:hover .cover {
+  box-shadow: 9px 9px 0 var(--sh);
+}
+:root[data-ui='memphis'] .g {
+  border-radius: 22px 6px 22px 6px;
+}
+:root[data-ui='memphis'] :is(.badge, .pchip, .tchip) {
+  background: #fff;
+  color: var(--ink);
+  backdrop-filter: none;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .uchip {
+  background: var(--te);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .uchip.need {
+  background: var(--pk);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .badge.run {
+  background: var(--ye);
+  rotate: -4deg;
+}
+:root[data-ui='memphis'] .wrap .ach {
+  height: 10px;
+  border: 2px solid var(--ink);
+  background: #fff;
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] .wrap .ach i {
+  background: var(--pk);
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] .wrap .name {
+  font-weight: 700;
+  font-size: 15px;
+}
+:root[data-ui='memphis'] .wrap .sub {
+  color: var(--muted);
+  font-weight: 500;
+}
+:root[data-ui='memphis'] .glow {
+  background: radial-gradient(circle, rgb(255 95 168 / 0.7) 2.5px, transparent 3px) 0 0 / 10px 10px !important;
+}
+:root[data-ui='memphis'] .play {
+  border-radius: 50%;
+}
+:root[data-ui='memphis'] .quit {
+  border-radius: 50%;
+}
+
+/* ---------- dialogs, menus, command menu ---------- */
+:root[data-ui='memphis'] :is(.cm, .rs, .mp) {
+  background: var(--cream2);
+  border: 4px solid var(--ink);
+  border-radius: 34px 10px 34px 10px;
+  box-shadow: 10px 10px 0 var(--pk);
+  color: var(--ink);
+  backdrop-filter: none;
+}
+:root[data-ui='memphis'] .rs.gd {
+  border-radius: 0;
+}
+:root[data-ui='memphis'] .cm-dim {
+  background-color: rgb(31 17 71 / 0.6);
+  background-image: radial-gradient(circle, rgb(255 95 168 / 0.6) 2.4px, transparent 3px);
+  background-size: 14px 14px;
+  backdrop-filter: none;
+}
+:root[data-ui='memphis'] :is(.cm-it[data-selected], .cm-it[aria-selected='true']) {
+  background: var(--ye);
+  color: var(--ink);
+  border-radius: 999px;
+  outline: 2.5px solid var(--ink);
+  outline-offset: -2.5px;
+}
+:root[data-ui='memphis'] .cm-in {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .cm-empty {
+  color: var(--muted);
+}
+:root[data-ui='memphis'] .dd {
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--cream2);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+:root[data-ui='memphis'] :is(.dd:hover, .dd[data-state='open']) {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--ye);
+}
+:root[data-ui='memphis'] .dd-item {
+  border-radius: 999px;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .dd-item[data-highlighted] {
+  background: var(--ye);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .dd-menu {
+  background: var(--cream2);
+  border: var(--bw) solid var(--ink);
+  border-radius: 20px 6px 20px 6px;
+  box-shadow: 5px 5px 0 var(--te);
+  backdrop-filter: none;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] :is(.dd-menu [role='option']:hover, .dd-menu [data-highlighted]) {
+  background: var(--ye);
+  color: var(--ink);
+}
+:root[data-ui='memphis'] :is(.soon, .card.soon) {
+  opacity: 1;
+}
+:root[data-ui='memphis'] .card.soon {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+/* ---------- game detail ---------- */
+:root[data-ui='memphis'] .gd-side .head {
+  background-color: var(--ye) !important;
+  background-image: radial-gradient(circle, rgb(255 95 168 / 0.55) 3px, transparent 3.6px) !important;
+  background-size: 16px 16px !important;
+  border-bottom: 4px solid var(--ink);
+}
+:root[data-ui='memphis'] .gd-side .head .art {
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+:root[data-ui='memphis'] .gd-t {
+  color: var(--ink);
+  font: 400 28px / 1.1 var(--display);
+  overflow-wrap: anywhere;
+  text-shadow: 3px 3px 0 var(--cream2);
+}
+:root[data-ui='memphis'] .gd-d {
+  color: var(--ink);
+  font-weight: 500;
+}
+:root[data-ui='memphis'] .gd-side {
+  border-right: 4px solid var(--ink);
+  background: var(--cream);
+}
+:root[data-ui='memphis'] .gd-x {
+  background: var(--pk);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: rotate 0.3s var(--boing);
+}
+:root[data-ui='memphis'] :is(.gd-x:hover, .gd-x:focus-visible) {
+  background: var(--ye);
+  color: var(--ink);
+  rotate: 90deg;
+}
+:root[data-ui='memphis'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='memphis'] .alist li.locked :is(img, .ph) {
+  filter: grayscale(1);
+}
+:root[data-ui='memphis'] :is(.alist small, .gd-main .lab) {
+  color: var(--muted);
+}
+:root[data-ui='memphis'] :is(.pb, .chips li) {
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .bar:not(.glass) {
+  height: 14px;
+  border: 2px solid var(--ink);
+  background: #fff;
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] .bar:not(.glass) i {
+  background: var(--pk);
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] :is(.shot img, .shot .ph) {
+  border: 3px solid var(--ink);
+  border-radius: 18px 6px 18px 6px;
+  box-shadow: 4px 4px 0 var(--te);
+}
+:root[data-ui='memphis'] .hc {
+  color: var(--ink);
+}
+
+/* ---------- toasts, tooltips, scrollbars ---------- */
+:root[data-ui='memphis'] .toast {
+  background: var(--cream2);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 5px 5px 0 var(--te);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 10px 22px;
+}
+:root[data-ui='memphis'] .toast.error {
+  background: var(--pk);
+  color: var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+}
+:root[data-ui='memphis'] .tip {
+  background: var(--ink);
+  color: var(--cream2);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 3px 3px 0 var(--pk);
+}
+:root[data-ui='memphis'] *::-webkit-scrollbar-thumb {
+  background: var(--pu);
+  border: 3px solid var(--cream);
+  border-radius: 999px;
+}
+:root[data-ui='memphis'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--pk);
+  background-clip: padding-box;
+}
+
+/* ---------- history charts, controller pad ---------- */
+:root[data-ui='memphis'] .chart {
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 24px 8px 24px 8px;
+  box-shadow: 6px 6px 0 var(--ye);
+}
+:root[data-ui='memphis'] .chart figcaption {
+  font-family: var(--display);
+  font-size: 13px;
+}
+:root[data-ui='memphis'] figcaption .mono {
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .plot .lc-root-container {
+  --color-surface-300: rgb(31 17 71 / 0.25);
+}
+:root[data-ui='memphis'] .plot .lc-axis-tick-label {
+  fill: var(--ink);
+  font-weight: 700;
+}
+:root[data-ui='memphis'] .stick .ring {
+  fill: var(--cream2);
+  stroke: var(--ink);
+  stroke-width: 0.04;
+  clip-path: none;
+}
+:root[data-ui='memphis'] .pad .body {
+  fill: var(--cream2);
+  stroke: var(--ink);
+}
+:root[data-ui='memphis'] :is(.pad .key :is(path, circle), .pad .stick .well, .pad .stick .travel) {
+  stroke: var(--ink);
+}
+:root[data-ui='memphis'] .pad .stick .cap {
+  fill: var(--pk);
+  stroke: var(--ink);
+}
+:root[data-ui='memphis'] :is(.pad .key.on :is(path, circle), .pad .stick.on .cap) {
+  fill: var(--accent);
+  stroke: var(--ink);
+}
+:root[data-ui='memphis'] .pad text {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+/* ---------- motion: cards pop in, pages bounce ---------- */
+@keyframes mp-pop {
+  from {
+    opacity: 0;
+    scale: 0.88;
+    translate: 0 14px;
+  }
+  40% {
+    opacity: 1;
+    scale: 1.03;
+  }
+}
+@keyframes mp-slide {
+  from {
+    opacity: 0;
+    translate: 40px 0;
+  }
+  60% {
+    translate: -6px 0;
+  }
+}
+@keyframes mp-wobble {
+  50% {
+    rotate: 6deg;
+    scale: 1.15;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='memphis'] :is(.reveal[data-enter], .enter[data-enter]) {
+    animation: mp-pop 0.45s var(--boing) calc(var(--i, 0) * 40ms) backwards;
+  }
+  :root[data-ui='memphis'] .page-in {
+    animation: mp-slide 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+  }
+  :root[data-ui='memphis'] .brand {
+    animation: mp-pop 0.6s var(--boing) backwards;
+  }
+  :root[data-ui='memphis'] .side .nav[aria-current='page']::after {
+    animation: mp-wobble 1.4s ease-in-out infinite;
+  }
+}
+
+/* the stream's centred cards keep their own centring transform */
+:root[data-ui='memphis'] .stream .center.card {
+  transform: translate(-50%, -50%);
+  translate: none;
+  rotate: 0deg;
+}
+/* ---------- stream chrome (main is never transformed there) ---------- */
+:root[data-ui='memphis'] .stream .glass {
+  background: var(--cream2);
+  border: 3px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--pk);
+  border-radius: 24px 8px 24px 8px;
+}
+:root[data-ui='memphis'] .bar.glass {
+  border-radius: 999px;
+  box-shadow: 6px 6px 0 var(--pk);
+}
+:root[data-ui='memphis'] .ic {
+  border-radius: 50%;
+  color: var(--ink);
+}
+:root[data-ui='memphis'] .ic:hover {
+  background: var(--ye);
+}
+:root[data-ui='memphis'] :is(.ic[aria-pressed='true'], .ic[aria-expanded='true']) {
+  background: var(--accent);
+  color: #fff;
+}
+:root[data-ui='memphis'] .sep {
+  background: var(--ink);
+  width: 3px;
+}
+:root[data-ui='memphis'] :is(.ic .tip, .padchip .tip) {
+  background: var(--ink);
+  color: var(--cream2);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='memphis'] * {
+    transition-duration: 0.01ms !important;
+  }
+}
