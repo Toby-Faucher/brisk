@@ -1,1 +1,721 @@
-/* broadsheet */
+/* UI style broadsheet: every rule starts with :root[data-ui='broadsheet']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/playfair-display/400.css';
+@import '@fontsource/playfair-display/400-italic.css';
+@import '@fontsource/playfair-display/700.css';
+@import '@fontsource/playfair-display/700-italic.css';
+@import '@fontsource/playfair-display/900.css';
+@import '@fontsource/old-standard-tt/400.css';
+@import '@fontsource/old-standard-tt/400-italic.css';
+@import '@fontsource/old-standard-tt/700.css';
+
+/* ---------- tokens: yellowed newsprint, black ink, one red ink ---------- */
+:root[data-ui='broadsheet'] {
+  color-scheme: light;
+  --bg: #e6d9b8;
+  --panel: #eee3c6;
+  --panel2: #ddcfa8;
+  --line: #2a2217;
+  --line-hover: #000;
+  --fg: #1a150d;
+  --muted: #4d4230;
+  --dim: #5a4d38;
+  --ok: #1f5e2b;
+  --warn: #7a4a00;
+  --bad: #8c1616;
+  --accent-fg: #f3e9cf;
+  --font: 'Old Standard TT', 'Iowan Old Style', Georgia, serif;
+  --mono: 'Old Standard TT', Georgia, serif;
+  --head: 'Playfair Display', 'Didot', 'Bodoni 72', Georgia, serif;
+  --r-card: 0;
+  --r-ctl: 0;
+  --bs-ink: #1a150d;
+  --bs-paper: #f3e9cf;
+  --bs-red: color-mix(in srgb, var(--accent) 18%, #7d1111);
+  --bs-rule: 3px double var(--bs-ink);
+  --dur-enter: 520ms;
+  --rise-enter: 10px;
+  --stagger: 60ms;
+}
+:root[data-ui='broadsheet'] body {
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--fg);
+  background-color: var(--bg);
+  /* newsprint: fibre grain from SVG noise, plus a warm tide mark at the corners */
+  background-image:
+    radial-gradient(130% 90% at 50% 40%, transparent 55%, rgb(120 80 20 / 0.28) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 .25 0 0 0 0 .17 0 0 0 0 .05 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed, scroll;
+  font-variant-numeric: lining-nums;
+  hyphens: auto;
+}
+:root[data-ui='broadsheet'] ::selection {
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+}
+:root[data-ui='broadsheet'] :focus-visible {
+  outline: 2px solid var(--bs-ink);
+  outline-offset: 2px;
+  border-radius: 0;
+  box-shadow: 0 0 0 5px var(--bs-paper);
+}
+:root[data-ui='broadsheet'] h1,
+:root[data-ui='broadsheet'] h2,
+:root[data-ui='broadsheet'] h3,
+:root[data-ui='broadsheet'] h4,
+:root[data-ui='broadsheet'] h5 {
+  font-family: var(--head);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] a {
+  color: inherit;
+}
+:root[data-ui='broadsheet'] .muted,
+:root[data-ui='broadsheet'] .lab {
+  color: var(--muted);
+}
+:root[data-ui='broadsheet'] .lab {
+  font-style: italic;
+}
+:root[data-ui='broadsheet'] kbd {
+  font-family: var(--font);
+  background: var(--bs-paper);
+  border: 1px solid var(--bs-ink);
+  border-bottom-width: 2px;
+  border-radius: 0;
+  color: var(--fg);
+}
+
+/* ---------- layout: masthead on top, then the page ---------- */
+:root[data-ui='broadsheet'] .app {
+  display: block;
+}
+:root[data-ui='broadsheet'] main {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 18px 24px 80px;
+}
+:root[data-ui='broadsheet'] main .bg {
+  display: none;
+}
+
+/* ---------- the masthead ---------- */
+:root[data-ui='broadsheet'] .side {
+  position: relative;
+  z-index: 20;
+  width: auto;
+  max-width: 1240px;
+  height: auto;
+  margin: 0 auto;
+  padding: 18px 24px 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  background: none;
+  backdrop-filter: none;
+  border: 0;
+}
+:root[data-ui='broadsheet'] .brand {
+  order: 1;
+  flex: 0 0 100%;
+  display: block;
+  text-align: center;
+  padding: 0;
+  position: relative;
+}
+:root[data-ui='broadsheet'] .brand img {
+  /* the real logo stays for assistive tech; the masthead type is drawn in CSS */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+:root[data-ui='broadsheet'] .brand::before {
+  content: 'The Daily Brisk';
+  display: block;
+  font: 900 clamp(48px, 8.4vw, 104px) / 1 var(--head);
+  letter-spacing: -0.02em;
+  padding: 6px 0 10px;
+  text-shadow: 1px 1px 0 rgb(0 0 0 / 0.18);
+}
+:root[data-ui='broadsheet'] .brand::after {
+  content: var(--bs-date, 'Today') ' \2022  Vol. CXXVI \2022  No. ' var(--bs-no, '302') ' \2022  Price: one frame per second, always';
+  display: block;
+  margin-top: 4px;
+  padding: 5px 0 4px;
+  border-top: 3px solid var(--bs-ink);
+  border-bottom: 1px solid var(--bs-ink);
+  font: 700 12px / 1.2 var(--font);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+:root[data-ui='broadsheet'] .side nav {
+  order: 2;
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+:root[data-ui='broadsheet'] .side .nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 7px 18px;
+  border-radius: 0;
+  border-right: 1px solid var(--bs-ink);
+  font: 700 13px / 1.2 var(--head);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg);
+  position: relative;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+:root[data-ui='broadsheet'] .side .nav:first-child {
+  border-left: 1px solid var(--bs-ink);
+}
+:root[data-ui='broadsheet'] .side .nav svg {
+  display: none;
+}
+:root[data-ui='broadsheet'] .side a.nav:hover {
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+  transform: none;
+}
+:root[data-ui='broadsheet'] .side .nav[aria-current='page'] {
+  background: var(--panel2);
+  box-shadow: inset 0 -3px 0 var(--bs-red);
+}
+:root[data-ui='broadsheet'] .side .nav[aria-current='page']::before {
+  display: none;
+}
+:root[data-ui='broadsheet'] .side .sec {
+  order: 3;
+  font-size: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  align-items: center;
+}
+:root[data-ui='broadsheet'] .side .sec::before {
+  content: 'Coming soon:';
+  font: italic 400 13px var(--font);
+  color: var(--muted);
+}
+:root[data-ui='broadsheet'] .side .soon {
+  order: 3;
+  opacity: 1;
+  color: var(--muted);
+  border-right: 0;
+  border-left: 0;
+  padding: 7px 0 7px 10px;
+  font-weight: 400;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 13px;
+}
+:root[data-ui='broadsheet'] .side .soon .tag {
+  display: none;
+}
+:root[data-ui='broadsheet'] .side .soon + .soon::before {
+  content: '\2022';
+  margin-right: 10px;
+}
+:root[data-ui='broadsheet'] .side > .pill,
+:root[data-ui='broadsheet'] .side .wrap {
+  order: 4;
+  margin-left: auto;
+  display: flex;
+  align-items: stretch;
+}
+:root[data-ui='broadsheet'] .side .pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 0;
+  border: 0;
+  border-left: 1px solid var(--bs-ink);
+  background: none;
+  color: var(--fg);
+  font: 700 13px var(--head);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root[data-ui='broadsheet'] .side .pill::before {
+  content: 'Wire: ';
+  font-weight: 400;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
+:root[data-ui='broadsheet'] .side .pill:hover {
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+}
+:root[data-ui='broadsheet'] .side .menu {
+  left: auto;
+  right: 0;
+  bottom: auto;
+  top: 100%;
+  min-width: 250px;
+}
+/* the strip's lower rule closes the masthead */
+:root[data-ui='broadsheet'] .side::after {
+  content: '';
+  order: 5;
+  flex: 0 0 100%;
+  height: 0;
+  border-top: 3px double var(--bs-ink);
+}
+:root[data-ui='broadsheet'] .side nav,
+:root[data-ui='broadsheet'] .side .wrap,
+:root[data-ui='broadsheet'] .side .soon,
+:root[data-ui='broadsheet'] .side .sec {
+  border-bottom: 1px solid var(--bs-ink);
+}
+
+/* ---------- page headlines ---------- */
+:root[data-ui='broadsheet'] .top {
+  padding: 10px 0 8px;
+  margin-bottom: 16px;
+  align-items: baseline;
+  gap: 6px 18px;
+  border-bottom: 4px double var(--bs-ink);
+}
+:root[data-ui='broadsheet'] .top h2 {
+  font: 900 clamp(34px, 4.6vw, 58px) / 1 var(--head);
+  letter-spacing: -0.015em;
+  text-transform: none;
+}
+:root[data-ui='broadsheet'] .top .lab {
+  font-style: italic;
+  font-size: 15px;
+}
+
+/* ---------- cards: boxed columns with ruled heads ---------- */
+:root[data-ui='broadsheet'] .card,
+:root[data-ui='broadsheet'] .glass,
+:root[data-ui='broadsheet'] .denied,
+:root[data-ui='broadsheet'] main > .off {
+  background: transparent;
+  border: 1px solid var(--bs-ink);
+  border-top: 4px solid var(--bs-ink);
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+:root[data-ui='broadsheet'] .card h4 {
+  font: 700 13px var(--head);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--bs-ink);
+  padding-bottom: 4px;
+}
+:root[data-ui='broadsheet'] .card:hover {
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  border-color: var(--bs-ink);
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='broadsheet'] .btn {
+  border-radius: 0;
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+  border: 1px solid var(--bs-ink);
+  font: 700 13px var(--head);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 2px 2px 0 var(--bs-red);
+  transition:
+    translate 0.12s,
+    box-shadow 0.12s,
+    background 0.15s;
+}
+:root[data-ui='broadsheet'] .btn:hover {
+  background: color-mix(in srgb, var(--bs-ink) 80%, var(--accent));
+  translate: -1px -1px;
+  box-shadow: 3px 3px 0 var(--bs-red);
+}
+:root[data-ui='broadsheet'] .btn:active {
+  translate: 2px 2px;
+  box-shadow: none;
+}
+:root[data-ui='broadsheet'] .btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  box-shadow: none;
+}
+:root[data-ui='broadsheet'] .btn.ghost:hover {
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+  translate: 0 0;
+}
+:root[data-ui='broadsheet'] .btn:disabled,
+:root[data-ui='broadsheet'] .btn[aria-disabled='true'] {
+  background: var(--panel2);
+  color: var(--muted);
+  box-shadow: none;
+  border-style: dashed;
+}
+:root[data-ui='broadsheet'] input,
+:root[data-ui='broadsheet'] select,
+:root[data-ui='broadsheet'] textarea {
+  font-family: var(--font);
+  background: var(--bs-paper);
+  color: var(--fg);
+  border: 1px solid var(--bs-ink);
+  border-radius: 0;
+}
+:root[data-ui='broadsheet'] input::placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ---------- game covers: halftone engravings ---------- */
+:root[data-ui='broadsheet'] .cover {
+  position: relative;
+  filter: grayscale(1) contrast(1.45) brightness(0.98) sepia(0.35);
+  border-radius: 0;
+  transition: filter 0.4s;
+}
+:root[data-ui='broadsheet'] .g:hover .cover,
+:root[data-ui='broadsheet'] .g:focus-visible .cover {
+  filter: grayscale(0.2) contrast(1.1) sepia(0.15);
+}
+
+:root[data-ui='broadsheet'] .card h4,
+:root[data-ui='broadsheet'] .card h4 span {
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] .side > .pill {
+  border-bottom: 1px solid var(--bs-ink);
+}
+
+:root[data-ui='broadsheet'] figcaption,
+:root[data-ui='broadsheet'] .nums b,
+:root[data-ui='broadsheet'] main h3 {
+  color: var(--fg);
+}
+
+/* ---------- Library: the lead story ---------- */
+:root[data-ui='broadsheet'] .hero {
+  background: var(--panel) !important;
+  border: 1px solid var(--bs-ink);
+  border-top: 5px solid var(--bs-ink);
+  border-radius: 0;
+  box-shadow:
+    6px 6px 0 -1px var(--panel2),
+    6px 6px 0 0 var(--bs-ink);
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] .hero .art {
+  opacity: 0.3;
+  filter: grayscale(1) contrast(1.5);
+  mix-blend-mode: multiply;
+}
+:root[data-ui='broadsheet'] .hero .lab {
+  color: var(--muted);
+}
+:root[data-ui='broadsheet'] .hero .lab:first-of-type {
+  font: 700 11px var(--head);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bs-red);
+}
+:root[data-ui='broadsheet'] .hero h3 {
+  font: 900 clamp(34px, 4vw, 52px) / 1 var(--head);
+  letter-spacing: -0.02em;
+  margin: 4px 0 8px;
+}
+:root[data-ui='broadsheet'] .pchip,
+:root[data-ui='broadsheet'] .tchip,
+:root[data-ui='broadsheet'] .uchip,
+:root[data-ui='broadsheet'] .badge {
+  border-radius: 0;
+  backdrop-filter: none;
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+  font-family: var(--head);
+}
+:root[data-ui='broadsheet'] .fchip,
+:root[data-ui='broadsheet'] .chip {
+  border-radius: 0;
+  border: 1px solid var(--bs-ink);
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font);
+}
+:root[data-ui='broadsheet'] .fchip[aria-pressed='true'],
+:root[data-ui='broadsheet'] .fchip.on {
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+}
+:root[data-ui='broadsheet'] .search {
+  background: var(--bs-paper);
+  border: 1px solid var(--bs-ink);
+  border-radius: 0;
+}
+:root[data-ui='broadsheet'] .search input {
+  border: 0;
+  background: none;
+  outline: 0;
+}
+:root[data-ui='broadsheet'] .g .name {
+  font: 700 15px var(--head);
+}
+:root[data-ui='broadsheet'] .g .sub {
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* ---------- opaque surfaces: dialogs, menus, panels ---------- */
+:root[data-ui='broadsheet'] .glass,
+:root[data-ui='broadsheet'] .rs,
+:root[data-ui='broadsheet'] .cm,
+:root[data-ui='broadsheet'] .dd-menu,
+:root[data-ui='broadsheet'] .toast,
+:root[data-ui='broadsheet'] .tip {
+  background: var(--panel);
+  border: 1px solid var(--bs-ink);
+  border-top: 4px solid var(--bs-ink);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 var(--bs-ink);
+  backdrop-filter: none;
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] .cm-dim {
+  background: rgb(60 45 20 / 0.55);
+  backdrop-filter: none;
+}
+:root[data-ui='broadsheet'] .gd-x {
+  border-radius: 0;
+  border: 1px solid var(--bs-ink);
+  background: var(--bs-paper);
+}
+:root[data-ui='broadsheet'] .card h4 {
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] .ring b {
+  background: var(--bs-paper);
+  color: var(--fg);
+}
+
+/* ---------- /stream: a night edition, the same type on black ---------- */
+:root[data-ui='broadsheet'] .stream {
+  --bg: #0d0b07;
+  --panel: #1a160e;
+  --panel2: #2a2417;
+  --line: rgb(243 233 207 / 0.5);
+  --line-hover: #f3e9cf;
+  --fg: #f3e9cf;
+  --muted: #cfc3a3;
+  --dim: #b9ad8d;
+  --ok: #7fd18b;
+  --warn: #f0c060;
+  --bad: #ff9a9a;
+  --bs-ink: #f3e9cf;
+  --bs-paper: #1a160e;
+  --bs-red: #d86a5a;
+  color: var(--fg);
+}
+
+/* ---------- square corners everywhere; dots and gauges stay round ---------- */
+:root[data-ui='broadsheet']
+:is(
+  .av,
+  .badge,
+  .badge i,
+  .bar,
+  .chip,
+  .chips li,
+  .chips span,
+  .dd,
+  .ptab,
+  .esc,
+  .fchip,
+  .gate,
+  .gd-x,
+  .hd .sel,
+  .ic-s,
+  .nav,
+  .pb,
+  .pchip,
+  .pill,
+  .play,
+  .seg,
+  .segb,
+  .shape,
+  .sound,
+  .tab,
+  .tb,
+  .tc,
+  .tchip,
+  .tip,
+  .uchip,
+  .up,
+  .use,
+  .vchip,
+  .shot,
+  .shot img,
+  .shot .ph,
+  .alist img,
+  .alist .ph,
+  .sw,
+  .sw i,
+  .gd,
+  .rs,
+  .cm,
+  .tsw,
+  .cover,
+  input,
+  select,
+  textarea,
+  button,
+  summary,
+  dialog,
+  figure,
+  img
+) {
+  border-radius: 0;
+}
+:root[data-ui='broadsheet'] .tab {
+  font-family: var(--head);
+}
+
+/* ---------- game detail: the feature article ---------- */
+:root[data-ui='broadsheet'] .gd .head {
+  background: var(--panel2) !important;
+  color: var(--fg);
+  border-bottom: 4px double var(--bs-ink);
+}
+:root[data-ui='broadsheet'] .gd .head * {
+  text-shadow: none;
+}
+:root[data-ui='broadsheet'] .gd-t {
+  font: 900 34px / 1.05 var(--head);
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] .gd-d {
+  color: var(--muted);
+  font-style: italic;
+}
+:root[data-ui='broadsheet'] .gd-main .desc {
+  text-align: justify;
+}
+:root[data-ui='broadsheet'] .gd-main .desc::first-letter {
+  float: left;
+  font: 900 3.6em / 0.82 var(--head);
+  padding: 0.06em 0.08em 0 0;
+}
+:root[data-ui='broadsheet'] .shot img,
+:root[data-ui='broadsheet'] .alist img {
+  filter: grayscale(1) contrast(1.3) sepia(0.3);
+  border: 1px solid var(--bs-ink);
+}
+:root[data-ui='broadsheet'] .shot:hover img {
+  filter: none;
+}
+:root[data-ui='broadsheet'] .gd-main h3,
+:root[data-ui='broadsheet'] .gd-side h3 {
+  font: 700 12px var(--head);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--bs-ink);
+  padding-bottom: 3px;
+}
+:root[data-ui='broadsheet'] .bento .soon {
+  opacity: 1;
+  border-style: dashed;
+  border-top-style: solid;
+}
+:root[data-ui='broadsheet'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='broadsheet'] .alist li.locked img {
+  opacity: 0.55;
+}
+:root[data-ui='broadsheet'] .alist li.locked b {
+  color: var(--muted);
+}
+
+/* ---------- halftone engraving on every cover ---------- */
+:root[data-ui='broadsheet'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(26 21 13 / 0.42) 0.9px, transparent 1.5px) 0 0 / 4px 4px,
+    linear-gradient(0deg, rgb(230 217 184 / 0.18), transparent 40%);
+  mix-blend-mode: multiply;
+  transition: opacity 0.4s;
+}
+:root[data-ui='broadsheet'] .g:hover .cover::after,
+:root[data-ui='broadsheet'] .g:focus-visible .cover::after {
+  opacity: 0.35;
+}
+
+/* ---------- headlines: a kicker above each page title, and a press-in ---------- */
+:root[data-ui='broadsheet'] .top {
+  position: relative;
+  padding-top: 26px;
+}
+:root[data-ui='broadsheet'] .top::before {
+  content: 'Full report inside \2022  Late edition';
+  position: absolute;
+  top: 8px;
+  left: 0;
+  font: 700 10px var(--head);
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--bs-red);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='broadsheet'] .top h2 {
+    animation: bs-press 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  :root[data-ui='broadsheet'] .side .nav[aria-current='page'] {
+    animation: bs-ink 0.5s ease-out backwards;
+  }
+}
+@keyframes bs-press {
+  from {
+    opacity: 0;
+    letter-spacing: 0.06em;
+    filter: blur(2px);
+  }
+}
+@keyframes bs-ink {
+  from {
+    box-shadow: inset 0 -3px 0 transparent;
+  }
+}
+
+/* ---------- Settings tabs ---------- */
+:root[data-ui='broadsheet'] .st .strip {
+  background: var(--panel);
+  border: 1px solid var(--bs-ink);
+  border-bottom: 3px double var(--bs-ink);
+}
+:root[data-ui='broadsheet'] .st .tab {
+  font: 700 13px var(--head);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+:root[data-ui='broadsheet'] .st .tab:hover {
+  background: var(--bs-ink);
+  color: var(--bs-paper);
+}
+:root[data-ui='broadsheet'] .st .ind {
+  background: var(--bs-red);
+}
