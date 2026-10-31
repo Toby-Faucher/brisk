@@ -1,0 +1,567 @@
+/* UI style crt: every rule starts with :root[data-ui='crt']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/press-start-2p/latin-400.css';
+@import '@fontsource/vt323/latin-400.css';
+
+/* ---------- tokens: phosphor green on black, one hue, committed ---------- */
+:root[data-ui='crt']:not(#_) {
+  --bg: #010401;
+  --panel: #031207;
+  --panel2: #072a10;
+  --line: #1fa83d;
+  --line-hover: #5dff7a;
+  --fg: #7dff94;
+  --muted: #4fd96b;
+  --dim: #3fbf5a;
+  --accent: #39ff66;
+  --accent-fg: #010401;
+  --ok: #39ff66;
+  --warn: #ffc233;
+  --bad: #ff6b5e;
+  --c-lib: #7dff94;
+  --c-stream: #7dff94;
+  --c-host: #7dff94;
+  --c-set: #7dff94;
+  --c-agent: #7dff94;
+  --c-news: #7dff94;
+  --c-power: #7dff94;
+  --c-hist: #7dff94;
+  --font: 'VT323', ui-monospace, monospace;
+  --mono: 'VT323', ui-monospace, monospace;
+  --pixel: 'Press Start 2P', 'VT323', monospace;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --ease: steps(6, end);
+  --glow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-ui='crt'] {
+  font-size: 18px;
+}
+:root[data-ui='crt'] body {
+  font-family: var(--font);
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  background: var(--bg);
+  text-shadow: 0 0 5px color-mix(in srgb, var(--fg) 45%, transparent);
+  -webkit-font-smoothing: none;
+  font-synthesis: none;
+  font-size-adjust: 0.56;
+}
+:root[data-ui='crt'] :is(button, input, select, textarea) {
+  font-family: var(--font);
+}
+:root[data-ui='crt'] :is(h1, h2, h3, h4) small,
+:root[data-ui='crt'] :is(h1, h2, h3, h4) .lab {
+  font-family: var(--font);
+  font-size: 18px;
+  text-transform: none;
+  color: var(--muted);
+  text-shadow: none;
+  margin-left: 6px;
+}
+:root[data-ui='crt'] input[type='file']::file-selector-button {
+  font-family: var(--pixel);
+  font-size: 10px;
+  text-transform: uppercase;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 6px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+:root[data-ui='crt'] input[type='file']::file-selector-button:hover {
+  background: var(--accent);
+  color: #000;
+}
+:root[data-ui='crt'] ::selection {
+  background: var(--accent);
+  color: #000;
+  text-shadow: none;
+}
+:root[data-ui='crt'] *,
+:root[data-ui='crt'] *::before,
+:root[data-ui='crt'] *::after {
+  border-radius: 0 !important;
+}
+:root[data-ui='crt'] :is(.dot, .ring, .rnode, .node, .sw, .tsw) {
+  border-radius: 0 !important;
+}
+:root[data-ui='crt'] :is(h1, h2, h3, h4) {
+  font-family: var(--pixel);
+  font-weight: 400;
+  font-size-adjust: none;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  line-height: 1.5;
+  color: var(--accent);
+  text-shadow: 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+:root[data-ui='crt'] h1 {
+  font-size: 18px;
+}
+:root[data-ui='crt'] h2 {
+  font-size: 13px;
+}
+:root[data-ui='crt'] h3,
+:root[data-ui='crt'] h4 {
+  font-size: 11px;
+}
+:root[data-ui='crt'] :focus-visible {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+:root[data-ui='crt'] .lab {
+  font-size: 18px;
+}
+:root[data-ui='crt'] .mono {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='crt'] .tag {
+  font-size: 16px;
+  font-weight: 400;
+  padding: 0 6px;
+  background: transparent;
+  border: 2px solid var(--line);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* blinking block cursor and the rest of the motion: hard steps, no easing */
+@keyframes crt-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes crt-on {
+  0% {
+    opacity: 0;
+    filter: brightness(3);
+  }
+  30% {
+    opacity: 1;
+    filter: brightness(2);
+  }
+  100% {
+    filter: none;
+  }
+}
+@keyframes crt-boot {
+  0% {
+    opacity: 0;
+    clip-path: inset(48% 0 48% 0);
+  }
+  50% {
+    opacity: 1;
+    clip-path: inset(48% 0 48% 0);
+  }
+  100% {
+    clip-path: inset(0);
+  }
+}
+@keyframes crt-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96, 0.02);
+  }
+  60% {
+    transform: scale(1, 0.4);
+  }
+}
+
+/* ---------- sidebar: a numbered menu with a selection bar ---------- */
+:root[data-ui='crt'] .side {
+  width: 260px;
+  background: var(--bg);
+  backdrop-filter: none;
+  border-right: 2px solid var(--line);
+  padding: 18px 14px 44px;
+  gap: 4px;
+  counter-reset: crt-nav;
+}
+:root[data-ui='crt'] .side .brand {
+  padding: 0 4px 6px;
+  border-bottom: 2px dashed var(--line);
+  margin-bottom: 10px;
+  min-height: 52px;
+}
+:root[data-ui='crt'] .side .brand img {
+  display: none;
+}
+:root[data-ui='crt'] .side .brand::before {
+  content: 'BRISK';
+  font-family: var(--pixel);
+  font-size: 22px;
+  font-size-adjust: none;
+  color: var(--accent);
+  text-shadow: var(--glow);
+}
+:root[data-ui='crt'] .side .brand::after {
+  content: '';
+  width: 14px;
+  height: 22px;
+  margin-left: 8px;
+  background: var(--accent);
+  animation: crt-blink 1s steps(1) infinite;
+}
+:root[data-ui='crt'] .side .nav {
+  position: relative;
+  gap: 0;
+  padding: 7px 8px;
+  font-family: var(--pixel);
+  font-size: 12px;
+  line-height: 1.6;
+  text-transform: uppercase;
+  font-size-adjust: none;
+  color: var(--fg);
+  transition: none;
+  counter-increment: crt-nav;
+}
+:root[data-ui='crt'] .side .nav svg,
+:root[data-ui='crt'] .side .nav .icon {
+  display: none;
+}
+:root[data-ui='crt'] .side .nav::after {
+  content: counter(crt-nav, decimal-leading-zero) '.';
+  order: -1;
+  margin-right: 10px;
+  color: var(--muted);
+}
+:root[data-ui='crt'] .side a.nav:hover {
+  background: transparent;
+  transform: none;
+  color: var(--accent);
+}
+:root[data-ui='crt'] .side a.nav:hover::after {
+  content: '>' counter(crt-nav, decimal-leading-zero);
+  color: var(--accent);
+}
+:root[data-ui='crt'] .side .nav[aria-current='page'] {
+  color: #000;
+  text-shadow: none;
+}
+:root[data-ui='crt'] .side .nav[aria-current='page']::before {
+  background: var(--accent);
+  box-shadow: none;
+  z-index: -1;
+}
+:root[data-ui='crt'] .side .nav[aria-current='page']::after {
+  content: '>' counter(crt-nav, decimal-leading-zero);
+  color: #000;
+}
+:root[data-ui='crt'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+}
+:root[data-ui='crt'] .side .sec {
+  font-family: var(--pixel);
+  font-size: 9px;
+  font-size-adjust: none;
+  color: var(--muted);
+  padding: 18px 8px 4px;
+  letter-spacing: 0.1em;
+}
+:root[data-ui='crt'] .side .sec::before {
+  content: '-- ';
+}
+:root[data-ui='crt'] .side .sec::after {
+  content: ' --';
+}
+:root[data-ui='crt'] .side .soon .tag {
+  font-family: var(--pixel);
+  font-size: 8px;
+  font-size-adjust: none;
+  padding: 2px 4px;
+  margin-left: auto;
+  border-width: 1px;
+}
+
+/* host pill: a "player 1" badge */
+:root[data-ui='crt'] .pill {
+  border: 2px solid var(--line);
+  padding: 8px 10px;
+  color: var(--fg);
+  background: var(--panel);
+  text-transform: uppercase;
+  font-size: 19px;
+}
+:root[data-ui='crt'] .pill:hover {
+  background: var(--accent);
+  color: #000;
+  text-shadow: none;
+}
+:root[data-ui='crt'] .pill:hover :is(.st, .name) {
+  color: #000;
+}
+:root[data-ui='crt'] .pill .st {
+  font-size: 17px;
+}
+:root[data-ui='crt'] .glass {
+  background: var(--bg);
+  backdrop-filter: none;
+  border: 2px solid var(--accent);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}
+:root[data-ui='crt'] .menu.glass {
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}
+:root[data-ui='crt'] .menu .it {
+  text-transform: uppercase;
+  font-size: 19px;
+}
+:root[data-ui='crt'] .menu .it:hover,
+:root[data-ui='crt'] .menu .it:focus-visible {
+  background: var(--accent);
+  color: #000;
+  text-shadow: none;
+}
+:root[data-ui='crt'] .menu .it:hover :is(.st, .name),
+:root[data-ui='crt'] .menu .it:focus-visible :is(.st, .name) {
+  color: #000;
+}
+
+/* ---------- main ---------- */
+:root[data-ui='crt'] main {
+  padding: 22px 28px 56px;
+}
+:root[data-ui='crt'] main > .off {
+  border: 2px solid var(--warn);
+  background: var(--bg);
+  color: var(--warn);
+  text-transform: uppercase;
+}
+:root[data-ui='crt'] main > .off::before {
+  content: 'WARNING ';
+}
+:root[data-ui='crt'] .denied {
+  border: 2px solid var(--bad);
+  background: var(--bg);
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='crt'] .btn {
+  font-family: var(--pixel);
+  font-size-adjust: none;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  color: #000;
+  text-shadow: none;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: none;
+}
+:root[data-ui='crt'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: var(--bg);
+  color: var(--accent);
+  text-shadow: var(--glow);
+}
+:root[data-ui='crt'] .btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+:root[data-ui='crt'] .btn.ghost {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--line);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--line) 35%, transparent);
+}
+:root[data-ui='crt'] .btn.ghost:hover {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  text-shadow: none;
+}
+:root[data-ui='crt'] .btn:disabled,
+:root[data-ui='crt'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  border-style: dashed;
+  background: transparent;
+  color: var(--dim);
+  box-shadow: none;
+}
+:root[data-ui='crt'] .search {
+  border: 2px solid var(--line);
+  background: var(--bg);
+  text-transform: uppercase;
+}
+:root[data-ui='crt'] .search:focus-within {
+  border-color: var(--accent);
+  outline: 2px dashed var(--accent);
+}
+:root[data-ui='crt'] .search input::placeholder {
+  color: var(--dim);
+  opacity: 1;
+}
+:root[data-ui='crt'] .search input {
+  caret-color: var(--accent);
+}
+:root[data-ui='crt'] input,
+:root[data-ui='crt'] select,
+:root[data-ui='crt'] textarea {
+  font-family: var(--font);
+  font-size: 20px;
+  caret-color: var(--accent);
+}
+:root[data-ui='crt'] :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
+  background: var(--bg);
+  border: 2px solid var(--line);
+  color: var(--fg);
+}
+
+/* scrollbars: chunky blocks */
+:root[data-ui='crt'] *::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+:root[data-ui='crt'] *::-webkit-scrollbar-track {
+  background: var(--bg);
+  border-left: 2px solid var(--line);
+}
+:root[data-ui='crt'] *::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 0;
+  min-height: 28px;
+}
+:root[data-ui='crt'] *::-webkit-scrollbar-thumb:hover,
+:root[data-ui='crt'] *::-webkit-scrollbar-thumb:active {
+  background: var(--accent);
+}
+
+/* ---------- surfaces: anything with a panel background becomes a hard-bordered box ---------- */
+:root[data-ui='crt'] main :is(section, article, figure, aside, .card, .panel, .chart, .hd, dialog):not(.denied, .off) {
+  border-color: var(--line);
+}
+
+/* ---------- covers: pixelated, duotone green, dithered ---------- */
+:root[data-ui='crt'] :is(.cover, .hcover) {
+  filter: url(#crt-duo);
+  image-rendering: pixelated;
+}
+:root[data-ui='crt'] main img:not(.thumb) {
+  image-rendering: pixelated;
+  filter: url(#crt-duo);
+}
+:root[data-ui='crt'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(#000 38%, transparent 40%);
+  background-size: 4px 4px;
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+}
+
+/* ---------- dialogs, command menu, toasts, tooltips ---------- */
+:root[data-ui='crt'] .cm-dim {
+  background: rgba(0, 0, 0, 0.82);
+}
+:root[data-ui='crt'] .cm {
+  border-radius: 0;
+  --cm-r: 0px;
+}
+:root[data-ui='crt'] .cm-in {
+  font-family: var(--font);
+  font-size: 24px;
+  text-transform: uppercase;
+  border-bottom: 2px dashed var(--line);
+}
+:root[data-ui='crt'] .cm-it {
+  text-transform: uppercase;
+  font-size: 20px;
+}
+:root[data-ui='crt'] .cm-it[data-selected] {
+  background: var(--accent);
+  color: #000;
+  text-shadow: none;
+}
+:root[data-ui='crt'] .cm-it[data-selected] .k {
+  color: #000;
+}
+:root[data-ui='crt'] .cm-it[data-selected]::before {
+  content: '>';
+  margin-right: -6px;
+}
+:root[data-ui='crt'] .toast {
+  text-transform: uppercase;
+  font-size: 20px;
+}
+:root[data-ui='crt'] .toast.error {
+  border-color: var(--bad);
+}
+:root[data-ui='crt'] .tip {
+  background: var(--accent);
+  color: #000;
+  font-family: var(--font);
+  font-size: 17px;
+  padding: 0 6px;
+  text-transform: uppercase;
+  text-shadow: none;
+}
+:root[data-ui='crt'] kbd {
+  font-family: var(--font);
+  border: 2px solid var(--line);
+  padding: 0 4px;
+}
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='crt'] .page-in {
+    animation: crt-boot 360ms steps(8, end) backwards;
+  }
+  :root[data-ui='crt'] .reveal[data-enter],
+  :root[data-ui='crt'] .enter[data-enter] {
+    animation: crt-on 420ms steps(5, end) calc(var(--i, 0) * var(--stagger)) backwards;
+  }
+  :root[data-ui='crt'] :is(.cm, .rs) {
+    transition: opacity 120ms steps(3, end);
+  }
+  @starting-style {
+    :root[data-ui='crt'] .cm[data-state='open'],
+    :root[data-ui='crt'] .rs[data-state='open'] {
+      translate: 0 0;
+      scale: 1;
+    }
+  }
+  :root[data-ui='crt'] :is(.cm, .rs) {
+    animation: crt-pop 200ms steps(5, end);
+  }
+}
+:root[data-ui='crt'] svg text {
+  font-size-adjust: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='crt'] .side .brand::after {
+    animation: none;
+  }
+}
+/* locked achievements: dim through the image, not the text (contrast) */
+:root[data-ui='crt']:not(#_) li.locked {
+  opacity: 1;
+}
+:root[data-ui='crt'] li.locked :is(img, .ph) {
+  opacity: 0.5;
+}
+:root[data-ui='crt'] :is(.rs-t, .mm-t) {
+  font-family: var(--pixel);
+  font-size: 12px;
+  font-size-adjust: none;
+  font-weight: 400;
+  line-height: 1.6;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+:root[data-ui='crt'] :is(.rs-t, .mm-t)::before {
+  content: '> ';
+}
+:root[data-ui='crt'] .rs {
+  border: 2px solid var(--accent);
+  background: var(--bg);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}

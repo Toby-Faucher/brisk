@@ -33,6 +33,11 @@ h4 {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* Pad navigation focuses programmatically, so the browser may not call it focus-visible. */
+[data-pad] :focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 [hidden] {
   display: none !important;
 }

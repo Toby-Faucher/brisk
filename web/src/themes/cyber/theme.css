@@ -1,0 +1,969 @@
+/* UI style cyber: every rule starts with :root[data-ui='cyber']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/chakra-petch/400.css';
+@import '@fontsource/chakra-petch/600.css';
+@import '@fontsource/chakra-petch/700.css';
+@import '@fontsource/rajdhani/500.css';
+@import '@fontsource/rajdhani/700.css';
+@import '@fontsource/teko/500.css';
+@import '@fontsource/teko/700.css';
+@import '@fontsource/share-tech-mono/400.css';
+
+/* ---------- tokens: hot yellow on near-black, cyan and red for alerts ---------- */
+:root[data-ui='cyber'] {
+  --bg: #08080a;
+  --panel: #101013;
+  --panel2: #1a1a1f;
+  --line: #5e5a1c;
+  --line-hover: #fcee09;
+  --fg: #f3f1da;
+  --muted: #c4c1a0;
+  --dim: #a7a487;
+  --ok: #3dffb0;
+  --warn: #fcee09;
+  --bad: #ff5470;
+  --font: 'Rajdhani', 'Chakra Petch', system-ui, sans-serif;
+  --display: 'Teko', 'Chakra Petch', Impact, sans-serif;
+  --mono: 'Share Tech Mono', ui-monospace, monospace;
+  --r-card: 0;
+  --r-ctl: 0;
+  --cy-y: #fcee09;
+  --cy-c: #00f0ff;
+  --cy-r: #ff2a4d;
+  --cut: 14px;
+  --chamfer: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  --chamfer-s: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  --stripe: repeating-linear-gradient(-45deg, var(--cy-y) 0 7px, #0a0a0a 7px 14px);
+  --dur-enter: 320ms;
+  --rise-enter: 14px;
+  --stagger: 40ms;
+  --dur-page: 160ms;
+  --rise: 6px;
+}
+:root[data-ui='cyber'][data-accent='mint'] {
+  --accent: #fcee09;
+  --accent-fg: #000;
+}
+:root[data-ui='cyber'] body {
+  background: #08080a;
+  font-size: 16px;
+  font-weight: 500;
+}
+:root[data-ui='cyber'] ::selection {
+  background: var(--cy-y);
+  color: #000;
+}
+:root[data-ui='cyber'] :focus-visible {
+  outline: 2px solid var(--cy-c);
+  outline-offset: 3px;
+  border-radius: 0;
+}
+:root[data-ui='cyber'] h1,
+:root[data-ui='cyber'] h2,
+:root[data-ui='cyber'] h3,
+:root[data-ui='cyber'] h4,
+:root[data-ui='cyber'] h5 {
+  font-family: var(--display);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='cyber'] .muted,
+:root[data-ui='cyber'] .lab {
+  color: var(--muted);
+}
+:root[data-ui='cyber'] .app {
+  display: block;
+}
+:root[data-ui='cyber'] main {
+  margin-left: 250px;
+  max-width: 1280px;
+  padding: 30px 40px 90px 24px;
+}
+:root[data-ui='cyber'] main .bg {
+  display: none;
+}
+
+/* ---------- page titles: a yellow tab with a readout beside it ---------- */
+:root[data-ui='cyber'] .top {
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 10px;
+  gap: 8px 20px;
+  align-items: center;
+  background: linear-gradient(90deg, var(--cy-y) 0 60px, transparent 60px) bottom / 100% 2px no-repeat;
+}
+:root[data-ui='cyber'] .top h2 {
+  position: relative;
+  font-size: clamp(40px, 4.6vw, 58px);
+  line-height: 1;
+  width: fit-content;
+  padding: 2px 30px 0 14px;
+  margin: 0 0 6px;
+  color: #000;
+  background: var(--cy-y);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+}
+:root[data-ui='cyber'] .top .lab {
+  font: 400 13px / 1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--cy-c);
+}
+:root[data-ui='cyber'] .top .lab::before {
+  content: '// ';
+  color: var(--cy-y);
+}
+:root[data-ui='cyber'] .tag {
+  border-radius: 0;
+  font: 400 12px / 1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--cy-c);
+  border: 1px solid var(--cy-c);
+  padding: 0 7px;
+}
+
+/* ---------- the tabbed rail ---------- */
+:root[data-ui='cyber'] .side {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20; /* under the stream (30), dialogs (41) and toasts */
+  width: 236px;
+  height: 100vh;
+  padding: 18px 0 18px 14px;
+  gap: 8px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background:
+    linear-gradient(var(--cy-y), var(--cy-y)) right / 3px 72px no-repeat,
+    linear-gradient(180deg, #0d0d10, #08080a);
+  backdrop-filter: none;
+  counter-reset: hex;
+}
+:root[data-ui='cyber'] .side::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  height: 8px;
+  background: var(--stripe);
+  opacity: 0.8;
+}
+/* tick marks down the right edge */
+:root[data-ui='cyber'] .side::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 90px;
+  bottom: 90px;
+  width: 8px;
+  background: repeating-linear-gradient(180deg, var(--line) 0 1px, transparent 1px 10px);
+  pointer-events: none;
+}
+:root[data-ui='cyber'] .brand {
+  position: relative;
+  height: 54px;
+  margin: 10px 0 14px;
+}
+:root[data-ui='cyber'] .brand img {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+:root[data-ui='cyber'] .brand::before {
+  content: 'BRISK';
+  display: block;
+  width: fit-content;
+  font: 700 46px / 1 var(--display);
+  letter-spacing: 0.1em;
+  color: var(--cy-y);
+  text-shadow:
+    2px 0 var(--cy-c),
+    -2px 0 var(--cy-r);
+}
+:root[data-ui='cyber'] .brand::after {
+  content: 'NET.LINK v5 // 0xB215';
+  display: block;
+  margin-top: 4px;
+  font: 400 10px / 1 var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--dim);
+}
+:root[data-ui='cyber'] .side .nav {
+  position: relative;
+  gap: 10px;
+  padding: 10px 40px 8px 12px;
+  margin-right: 14px;
+  border-radius: 0;
+  font: 700 22px / 1 var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: var(--panel);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  border-left: 3px solid var(--line);
+  counter-increment: hex;
+  transition:
+    translate 0.18s steps(3),
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
+}
+/* the hex id sits on the right of each tab */
+:root[data-ui='cyber'] .side .nav::after {
+  content: '0x0' counter(hex, upper-hex);
+  position: absolute;
+  right: 20px;
+  bottom: 6px;
+  font: 400 10px / 1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--dim);
+}
+:root[data-ui='cyber'] .side .nav svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+:root[data-ui='cyber'] .side .nav::before {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+:root[data-ui='cyber'] .side .nav[aria-current='page'] {
+  color: #000;
+  background: var(--cy-y);
+  border-left-color: var(--cy-c);
+  translate: 12px 0;
+  margin-right: 26px;
+}
+:root[data-ui='cyber'] .side .nav[aria-current='page']::before {
+  background: transparent;
+}
+:root[data-ui='cyber'] .side .nav[aria-current='page']::after {
+  color: #000;
+}
+:root[data-ui='cyber'] .side a.nav:hover,
+:root[data-ui='cyber'] .side a.nav:focus-visible {
+  color: #000;
+  background: var(--cy-c);
+  border-left-color: var(--cy-y);
+  translate: 8px 0;
+  transform: none;
+}
+:root[data-ui='cyber'] .side a.nav:hover::after {
+  color: #000;
+}
+:root[data-ui='cyber'] .side a.nav:hover {
+  animation: cy-glitch 0.28s steps(2) 1;
+}
+:root[data-ui='cyber'] .side a.nav[aria-current='page']:hover {
+  background: var(--cy-y);
+}
+:root[data-ui='cyber'] .side .sec {
+  margin: 14px 0 0 3px;
+  padding: 2px 8px;
+  width: fit-content;
+  font: 400 11px / 1.3 var(--mono);
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  border-bottom: 1px dashed var(--line);
+}
+:root[data-ui='cyber'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+  font-size: 19px;
+  padding-top: 7px;
+  padding-bottom: 6px;
+  background: transparent;
+  border-left-style: dashed;
+}
+:root[data-ui='cyber'] .side .soon::after {
+  content: none;
+}
+:root[data-ui='cyber'] .side .soon .tag {
+  margin-left: auto;
+  font-size: 10px;
+  margin-right: 6px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='cyber'] .side .nav,
+  :root[data-ui='cyber'] .brand {
+    animation: cy-boot 0.45s steps(5) backwards;
+    animation-delay: calc(var(--n, 0) * 60ms + 80ms);
+  }
+  :root[data-ui='cyber'] .side nav .nav:nth-child(2) {
+    --n: 1;
+  }
+  :root[data-ui='cyber'] .side nav .nav:nth-child(3) {
+    --n: 2;
+  }
+  :root[data-ui='cyber'] .side nav .nav:nth-child(4) {
+    --n: 3;
+  }
+  :root[data-ui='cyber'] .side nav .nav:nth-child(5) {
+    --n: 4;
+  }
+  :root[data-ui='cyber'] .side nav .nav:nth-child(6) {
+    --n: 5;
+  }
+  :root[data-ui='cyber'] .side .soon {
+    --n: 6;
+  }
+}
+@keyframes cy-boot {
+  from {
+    opacity: 0;
+    translate: -60px 0;
+    filter: hue-rotate(120deg);
+  }
+}
+@keyframes cy-glitch {
+  0% {
+    text-shadow:
+      3px 0 var(--cy-r),
+      -3px 0 #fff;
+  }
+  50% {
+    text-shadow:
+      -3px 0 var(--cy-r),
+      3px 0 #fff;
+    translate: 11px 0;
+  }
+  100% {
+    text-shadow: none;
+  }
+}
+
+/* host pill: a data tag at the foot */
+:root[data-ui='cyber'] .side .wrap {
+  margin-top: auto;
+  margin-right: 14px;
+}
+:root[data-ui='cyber'] .side .pill {
+  margin-top: auto;
+  padding: 10px 14px;
+  color: var(--fg);
+  background: var(--panel2);
+  border: 0;
+  border-left: 3px solid var(--cy-c);
+  border-radius: 0;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  clip-path: var(--chamfer-s);
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+:root[data-ui='cyber'] .side .pill:hover {
+  background: var(--cy-c);
+  color: #000;
+}
+:root[data-ui='cyber'] .side .pill .st {
+  color: var(--muted);
+  font-family: var(--mono);
+}
+:root[data-ui='cyber'] .side .pill:hover .st {
+  color: #000;
+}
+:root[data-ui='cyber'] .side .menu {
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  padding: 10px 12px;
+  gap: 3px;
+  border: 0;
+  border-top: 3px solid var(--cy-y);
+  border-radius: 0;
+  color: var(--fg);
+  background: #0c0c0f;
+  clip-path: var(--chamfer);
+  box-shadow: none;
+  backdrop-filter: none;
+  animation: cy-boot 0.3s steps(4) backwards;
+}
+:root[data-ui='cyber'] .side .menu .it {
+  border-radius: 0;
+  font-weight: 700;
+  color: var(--fg);
+}
+:root[data-ui='cyber'] .side .menu .it:hover,
+:root[data-ui='cyber'] .side .menu .it:focus-visible {
+  background: var(--cy-y);
+  color: #000;
+}
+:root[data-ui='cyber'] .side .menu .st {
+  color: var(--muted);
+  margin-left: auto;
+}
+:root[data-ui='cyber'] .side .menu .it:hover .st {
+  color: #000;
+}
+
+/* ---------- panels: chamfered, yellow edge, a tick strip on top ---------- */
+:root[data-ui='cyber'] .card,
+:root[data-ui='cyber'] .glass,
+:root[data-ui='cyber'] .hero,
+:root[data-ui='cyber'] main > .off,
+:root[data-ui='cyber'] .denied {
+  border: 0;
+  border-left: 3px solid var(--cy-y);
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 8px) top right / 64px 5px no-repeat,
+    linear-gradient(160deg, #15151a, #0e0e11);
+  backdrop-filter: none;
+  box-shadow: none;
+  clip-path: var(--chamfer);
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+:root[data-ui='cyber'] .card:hover {
+  border-left-color: var(--cy-c);
+  background:
+    repeating-linear-gradient(90deg, var(--cy-c) 0 1px, transparent 1px 8px) top right / 64px 5px no-repeat,
+    linear-gradient(160deg, #181821, #0f1013);
+}
+:root[data-ui='cyber'] .card h4,
+:root[data-ui='cyber'] .sec h3,
+:root[data-ui='cyber'] .gd-main h3,
+:root[data-ui='cyber'] .shelf h4 {
+  font-size: 22px;
+  color: var(--cy-y);
+}
+:root[data-ui='cyber'] .card .big {
+  font: 500 52px / 1 var(--display);
+  letter-spacing: 0.03em;
+}
+:root[data-ui='cyber'] .hero {
+  border-left-width: 6px;
+  background:
+    var(--stripe) bottom / 100% 6px no-repeat,
+    linear-gradient(110deg, #17170c, #0e0e11 60%) !important;
+}
+:root[data-ui='cyber'] .hero h3,
+:root[data-ui='cyber'] .gd-t {
+  font-size: clamp(38px, 4.6vw, 60px);
+  line-height: 1;
+  color: var(--cy-y);
+  text-shadow:
+    2px 0 rgb(0 240 255 / 0.7),
+    -2px 0 rgb(255 42 77 / 0.7);
+}
+:root[data-ui='cyber'] .grip {
+  border-radius: 0;
+}
+
+/* ---------- buttons, search ---------- */
+:root[data-ui='cyber'] .btn {
+  position: relative;
+  padding: 9px 22px 7px;
+  border: 0;
+  border-radius: 0;
+  font: 700 17px / 1.1 var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #000;
+  background: var(--cy-y);
+  box-shadow: none;
+  clip-path: var(--chamfer-s);
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+:root[data-ui='cyber'] .btn:hover {
+  background: var(--cy-c);
+  color: #000;
+  filter: none;
+  animation: cy-btn 0.25s steps(2) 1;
+}
+@keyframes cy-btn {
+  0% {
+    translate: 2px 0;
+    box-shadow: -3px 0 var(--cy-r);
+  }
+  50% {
+    translate: -2px 0;
+  }
+  100% {
+    translate: 0;
+  }
+}
+:root[data-ui='cyber'] .btn:active {
+  background: var(--cy-r);
+  color: #000;
+}
+:root[data-ui='cyber'] .btn.ghost {
+  color: var(--cy-y);
+  background: #15150a;
+  box-shadow: inset 0 0 0 1px var(--cy-y);
+}
+:root[data-ui='cyber'] .btn.ghost:hover {
+  background: var(--cy-y);
+  color: #000;
+}
+:root[data-ui='cyber'] .btn:disabled,
+:root[data-ui='cyber'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  color: #aaa;
+  background: #26262b;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .search {
+  border: 0;
+  border-bottom: 2px solid var(--cy-y);
+  border-radius: 0;
+  background: #121216;
+  color: var(--fg);
+  padding: 8px 16px;
+  clip-path: var(--chamfer-s);
+}
+:root[data-ui='cyber'] .search:focus-within {
+  border-bottom-color: var(--cy-c);
+  outline: 0;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .search input[type] {
+  clip-path: none;
+  color: var(--fg);
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--mono);
+}
+:root[data-ui='cyber'] .search input::placeholder {
+  color: var(--dim);
+}
+:root[data-ui='cyber'] .dot {
+  border-radius: 0;
+  rotate: 45deg;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 30%, transparent);
+}
+
+/* ---------- controls inside screens ---------- */
+:root[data-ui='cyber'] input[type='text'],
+:root[data-ui='cyber'] input[type='search'],
+:root[data-ui='cyber'] input[type='number'],
+:root[data-ui='cyber'] input[type='password'],
+:root[data-ui='cyber'] textarea,
+:root[data-ui='cyber'] select,
+:root[data-ui='cyber'] .dd {
+  color: var(--fg);
+  background: #121216;
+  border: 0;
+  border-bottom: 2px solid var(--line);
+  border-left: 3px solid var(--cy-y);
+  border-radius: 0;
+  font-family: var(--mono);
+  clip-path: var(--chamfer-s);
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+:root[data-ui='cyber'] input:focus-visible,
+:root[data-ui='cyber'] textarea:focus-visible,
+:root[data-ui='cyber'] select:focus-visible {
+  border-bottom-color: var(--cy-c);
+  background: #0f1a1c;
+  outline: 0;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .dd {
+  padding: 7px 14px;
+  font-weight: 700;
+}
+:root[data-ui='cyber'] input[type='range'],
+:root[data-ui='cyber'] input[type='checkbox'] {
+  accent-color: var(--cy-y);
+}
+
+/* ---------- toasts, tooltips, menus ---------- */
+:root[data-ui='cyber'] .toast {
+  border: 0;
+  border-left: 6px solid var(--cy-c);
+  border-radius: 0;
+  padding: 12px 22px;
+  font-weight: 700;
+  color: var(--fg);
+  background: #0c0c0f;
+  box-shadow: none;
+  clip-path: var(--chamfer);
+  animation: cy-boot 0.3s steps(4) backwards;
+}
+:root[data-ui='cyber'] .toast.error {
+  border-left-color: var(--cy-r);
+  background: #1c0910;
+}
+:root[data-ui='cyber'] .toast .thumb {
+  border-radius: 0;
+}
+:root[data-ui='cyber'] .tip {
+  border-radius: 0;
+  background: var(--cy-y);
+  color: #000;
+  font: 400 12px / 1.3 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  box-shadow: none;
+  clip-path: var(--chamfer-s);
+}
+:root[data-ui='cyber'] .dd-menu {
+  border: 0;
+  border-left: 3px solid var(--cy-y);
+  border-radius: 0;
+  background: #0c0c0f;
+  padding: 6px;
+  box-shadow: none;
+  clip-path: var(--chamfer-s);
+}
+:root[data-ui='cyber'] .dd-item {
+  border-radius: 0;
+  font-weight: 700;
+}
+:root[data-ui='cyber'] .dd-item[data-highlighted],
+:root[data-ui='cyber'] .dd-item:hover {
+  background: var(--cy-y);
+  color: #000;
+}
+
+/* ---------- command menu and dialogs: they snap in with a scan cut ---------- */
+:root[data-ui='cyber'] .cm-dim {
+  background: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.1) 0 2px, transparent 2px 4px), rgb(4 4 6 / 0.85);
+  backdrop-filter: none;
+}
+:root[data-ui='cyber'] .cm,
+:root[data-ui='cyber'] .rs {
+  border: 0;
+  border-top: 4px solid var(--cy-y);
+  border-radius: 0;
+  background: linear-gradient(160deg, #15151a, #0b0b0e);
+  box-shadow: none;
+  backdrop-filter: none;
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 24px));
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='cyber'] :is(.cm, .rs) {
+    transition:
+      opacity var(--dur-page) var(--ease),
+      translate 0.2s steps(4),
+      scale 0.2s steps(4);
+  }
+  @starting-style {
+    :root[data-ui='cyber'] :is(.cm, .rs) {
+      translate: 14px 0;
+      scale: 1.03 0.9;
+    }
+  }
+}
+:root[data-ui='cyber'] .cm-in {
+  font: 400 20px / 1.3 var(--mono);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--cy-y);
+  clip-path: none;
+}
+:root[data-ui='cyber'] .cm-in::placeholder {
+  color: var(--dim);
+}
+:root[data-ui='cyber'] .cm-it {
+  border-radius: 0;
+  font-weight: 700;
+}
+:root[data-ui='cyber'] .cm-it[data-selected],
+:root[data-ui='cyber'] .cm-it[aria-selected='true'] {
+  background: var(--cy-y);
+  color: #000;
+  clip-path: var(--chamfer-s);
+}
+:root[data-ui='cyber'] kbd,
+:root[data-ui='cyber'] .k {
+  border: 1px solid var(--cy-c);
+  border-radius: 0;
+  background: transparent;
+  color: var(--cy-c);
+  font: 400 11px / 1.3 var(--mono);
+  padding: 1px 6px;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .cm-it[aria-selected='true'] kbd,
+:root[data-ui='cyber'] .cm-it[aria-selected='true'] .k {
+  color: #000;
+  border-color: #000;
+}
+:root[data-ui='cyber'] .rs-t,
+:root[data-ui='cyber'] .mm-h h3 {
+  font-size: 32px;
+  color: var(--cy-y);
+}
+
+/* ---------- Settings tabs ---------- */
+:root[data-ui='cyber'] .st .strip {
+  top: 0;
+  isolation: isolate;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  gap: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: #0c0c0f;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .st .tab {
+  border-radius: 0;
+  padding: 6px 18px 4px;
+  font: 700 20px / 1.1 var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+:root[data-ui='cyber'] .st .tab:hover {
+  color: var(--cy-c);
+}
+:root[data-ui='cyber'] .st .tab[aria-selected='true'] {
+  color: #000;
+}
+:root[data-ui='cyber'] .st .ind {
+  top: 4px;
+  bottom: 4px;
+  height: auto;
+  z-index: -1;
+  border-radius: 0;
+  background: var(--cy-y);
+  box-shadow: none;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+
+/* ---------- chips, swatches ---------- */
+:root[data-ui='cyber'] .fchip {
+  border: 0;
+  border-radius: 0;
+  background: #1a1a1f;
+  color: var(--fg);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  clip-path: var(--chamfer-s);
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+:root[data-ui='cyber'] .fchip:hover {
+  background: var(--cy-c);
+  color: #000;
+}
+:root[data-ui='cyber'] .fchip[aria-pressed='true'] {
+  background: var(--cy-y);
+  color: #000;
+}
+:root[data-ui='cyber'] .fchip[aria-pressed='true']::before {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+:root[data-ui='cyber'] .sw {
+  border-radius: 0;
+  rotate: 45deg;
+}
+:root[data-ui='cyber'] .sw[aria-checked='true'] {
+  outline: 2px solid var(--cy-y);
+  outline-offset: 3px;
+}
+
+/* ---------- covers ---------- */
+:root[data-ui='cyber'] .g {
+  position: relative;
+}
+:root[data-ui='cyber'] .g:hover,
+:root[data-ui='cyber'] .g:focus-visible {
+  animation: cy-btn 0.25s steps(2) 1;
+}
+:root[data-ui='cyber'] .cover {
+  border-radius: 0;
+  box-shadow: none;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+:root[data-ui='cyber'] .g:hover .cover {
+  outline: 2px solid var(--cy-y);
+  outline-offset: -2px;
+}
+:root[data-ui='cyber'] .wrap .name {
+  font-weight: 700;
+}
+:root[data-ui='cyber'] .g .badge,
+:root[data-ui='cyber'] .g .pchip,
+:root[data-ui='cyber'] .g .tchip {
+  border-radius: 0;
+  background: #000;
+  color: var(--cy-y);
+  font-family: var(--mono);
+  font-weight: 400;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .empty b {
+  font: 500 40px / 1.1 var(--display);
+  text-transform: uppercase;
+  color: var(--cy-y);
+}
+:root[data-ui='cyber'] .skel div {
+  border-radius: 0;
+}
+
+/* ---------- /stream chrome (the video itself is never touched) ---------- */
+:root[data-ui='cyber'] .stream[data-state='idle'],
+:root[data-ui='cyber'] .stream[data-state='unsupported'] {
+  background:
+    linear-gradient(rgb(252 238 9 / 0.05) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgb(252 238 9 / 0.05) 1px, transparent 1px) 0 0 / 48px 48px,
+    #08080a;
+}
+:root[data-ui='cyber'] .stream h3 {
+  font-size: 34px;
+}
+:root[data-ui='cyber'] .stream .bar {
+  border: 0;
+  border-bottom: 2px solid var(--cy-y);
+  border-radius: 0;
+  background: #08080a;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+:root[data-ui='cyber'] .stream .ic {
+  border-radius: 0;
+  transition: background 0.1s;
+}
+:root[data-ui='cyber'] .stream .ic:hover {
+  background: var(--cy-y);
+  color: #000;
+}
+:root[data-ui='cyber'] .stream .menu {
+  border: 0;
+  border-left: 3px solid var(--cy-y);
+  border-radius: 0;
+  background: #0c0c0f;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-ui='cyber'] .stream .chip {
+  border-radius: 0;
+  background: var(--cy-y);
+  color: #000;
+  font-weight: 700;
+}
+:root[data-ui='cyber'] .stream .ring b {
+  background: #000;
+}
+
+/* ---------- page change: an RGB-split glitch plays on the new page ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='cyber'] main.page-in {
+    animation: cy-page 0.5s steps(1, end) backwards; /* backwards: a held transform or filter would trap fixed dialogs inside main */
+  }
+}
+@keyframes cy-page {
+  0% {
+    opacity: 0;
+    translate: 0;
+  }
+  10% {
+    opacity: 1;
+    translate: -14px 0;
+    filter: drop-shadow(8px 0 var(--cy-r)) drop-shadow(-8px 0 var(--cy-c));
+    clip-path: inset(10% 0 55% 0);
+  }
+  22% {
+    translate: 12px 0;
+    filter: drop-shadow(-6px 0 var(--cy-r)) drop-shadow(6px 0 var(--cy-c));
+    clip-path: inset(50% 0 8% 0);
+  }
+  36% {
+    translate: -6px 0;
+    filter: drop-shadow(4px 0 var(--cy-r)) drop-shadow(-4px 0 var(--cy-c));
+    clip-path: inset(0);
+  }
+  50% {
+    translate: 4px 0;
+    filter: drop-shadow(-3px 0 var(--cy-c));
+  }
+  66% {
+    translate: -2px 0;
+    filter: drop-shadow(2px 0 var(--cy-r));
+  }
+  80% {
+    translate: 0;
+    filter: none;
+  }
+  100% {
+    opacity: 1;
+    translate: 0;
+    filter: none;
+    clip-path: none;
+  }
+}
+
+/* ---------- phones: the rail becomes a strip across the top ---------- */
+@media (max-width: 760px) {
+  :root[data-ui='cyber'] .side {
+    position: sticky;
+    width: auto;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 10px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: #0a0a0d;
+  }
+  :root[data-ui='cyber'] .side::after,
+  :root[data-ui='cyber'] .brand::after,
+  :root[data-ui='cyber'] .side .sec,
+  :root[data-ui='cyber'] .side .soon {
+    display: none;
+  }
+  :root[data-ui='cyber'] .brand {
+    height: auto;
+    margin: 0 8px 0 0;
+  }
+  :root[data-ui='cyber'] .brand::before {
+    font-size: 34px;
+  }
+  :root[data-ui='cyber'] .side nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    order: 3;
+    width: 100%;
+  }
+  :root[data-ui='cyber'] .side .nav {
+    margin-right: 0;
+    padding: 8px 26px 6px 10px;
+    font-size: 18px;
+  }
+  :root[data-ui='cyber'] .side .nav::after {
+    right: 14px;
+    bottom: 4px;
+  }
+  :root[data-ui='cyber'] .side .nav[aria-current='page'] {
+    translate: 0;
+    margin-right: 0;
+  }
+  :root[data-ui='cyber'] .side .wrap {
+    margin: 0 0 0 auto;
+  }
+  :root[data-ui='cyber'] main {
+    margin-left: 0;
+    padding: 18px 14px 80px;
+  }
+}

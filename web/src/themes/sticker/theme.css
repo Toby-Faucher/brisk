@@ -1,0 +1,1029 @@
+/* UI style sticker: every rule starts with :root[data-ui='sticker']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/fredoka';
+@import '@fontsource-variable/nunito';
+
+:root[data-ui='sticker'] {
+  --ink: #141210;
+  --yellow: #ffd83d;
+  --pink: #ff5fa2;
+  --blue: #2f5bff;
+  --green: #35d07f;
+  --orange: #ff9442;
+  --purple: #b79bff;
+  --cyan: #4fd8ff;
+  --paper: #fffdf4;
+  --bg: var(--yellow);
+  --panel: var(--paper);
+  --panel2: #fff0b0;
+  --line: var(--ink);
+  --line-hover: var(--ink);
+  --fg: var(--ink);
+  --muted: #4a4126;
+  --dim: #5a5030;
+  --accent: #1f46e0;
+  --accent-fg: #fff;
+  --ok: #0b7a37;
+  --warn: #8a4b00;
+  --bad: #c4103a;
+  --c-lib: #e08600;
+  --c-stream: #2f5bff;
+  --c-host: #0a7fc2;
+  --c-set: #3f4a5c;
+  --c-agent: #7c3aed;
+  --c-news: #e0124a;
+  --c-power: #11883f;
+  --c-hist: #e5560a;
+  --font: 'Nunito Variable', ui-rounded, system-ui, sans-serif;
+  --display: 'Fredoka Variable', 'Nunito Variable', ui-rounded, sans-serif;
+  --r-card: 20px;
+  --r-ctl: 999px;
+  --bw: 3px;
+  --sh: 6px 6px 0 var(--ink);
+  --sh-s: 3px 3px 0 var(--ink);
+  --pop: cubic-bezier(0.34, 1.9, 0.5, 1); /* overshoot: presses bounce back */
+  color-scheme: light;
+}
+:root[data-ui='sticker'][data-accent='indigo'] {
+  --accent: #4a40d8;
+}
+:root[data-ui='sticker'][data-accent='pink'] {
+  --accent: #d11f6c;
+}
+:root[data-ui='sticker'][data-accent='orange'] {
+  --accent: #bd3f08;
+}
+:root[data-ui='sticker'][data-accent='lime'] {
+  --accent: #3f7208;
+}
+:root[data-ui='sticker'][data-accent='sky'] {
+  --accent: #0560a0;
+}
+:root[data-ui='sticker'][data-accent='teal'] {
+  --accent: #0c6e64;
+}
+
+:root[data-ui='sticker'] {
+  background-color: var(--yellow);
+  background-image: radial-gradient(rgba(20, 18, 16, 0.16) 2px, transparent 2.5px);
+  background-size: 26px 26px;
+}
+:root[data-ui='sticker'] body {
+  background: transparent;
+  font-weight: 600;
+  font-size: 15px;
+}
+:root[data-ui='sticker'] ::selection {
+  background: var(--pink);
+  color: var(--ink);
+}
+:root[data-ui='sticker'] :focus-visible {
+  outline: 4px solid var(--blue);
+  outline-offset: 3px;
+}
+:root[data-ui='sticker'] h1,
+:root[data-ui='sticker'] h2,
+:root[data-ui='sticker'] h3,
+:root[data-ui='sticker'] h4,
+:root[data-ui='sticker'] h5,
+:root[data-ui='sticker'] .big,
+:root[data-ui='sticker'] .word {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+:root[data-ui='sticker'] h2 {
+  font-size: 34px;
+  line-height: 1;
+  text-shadow: 2px 2px 0 var(--paper);
+}
+:root[data-ui='sticker'] .lab,
+:root[data-ui='sticker'] .muted {
+  color: var(--muted);
+}
+:root[data-ui='sticker'] .mono {
+  font-weight: 700;
+}
+
+/* ---------- top bar: brand + fat pill nav + host pill ---------- */
+:root[data-ui='sticker'] .app {
+  flex-direction: column;
+}
+:root[data-ui='sticker'] .side {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  width: 100%;
+  height: auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px 12px;
+  background: var(--yellow);
+  background-image: radial-gradient(rgba(20, 18, 16, 0.16) 2px, transparent 2.5px);
+  background-size: 26px 26px;
+  backdrop-filter: none;
+  border: 0;
+  border-bottom: var(--bw) solid var(--ink);
+}
+:root[data-ui='sticker'] .brand {
+  padding: 5px 14px;
+  background: var(--ink);
+  border-radius: 999px;
+  rotate: -3deg;
+  box-shadow: var(--sh-s);
+  margin-right: 6px;
+  transition: rotate 0.4s var(--pop);
+}
+:root[data-ui='sticker'] .brand:hover {
+  rotate: 3deg;
+}
+:root[data-ui='sticker'] .brand img {
+  width: 72px;
+  height: 35px;
+}
+:root[data-ui='sticker'] .side .nav {
+  position: relative;
+  padding: 6px 15px 6px 11px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 4px 4px 0 var(--ink);
+  transition:
+    translate 0.35s var(--pop),
+    box-shadow 0.35s var(--pop),
+    rotate 0.35s var(--pop);
+}
+:root[data-ui='sticker'] .side nav .nav:nth-of-type(1) {
+  background: var(--pink);
+}
+:root[data-ui='sticker'] .side nav .nav:nth-of-type(2) {
+  background: var(--cyan);
+}
+:root[data-ui='sticker'] .side nav .nav:nth-of-type(3) {
+  background: var(--green);
+}
+:root[data-ui='sticker'] .side nav .nav:nth-of-type(4) {
+  background: var(--orange);
+}
+:root[data-ui='sticker'] .side nav .nav:nth-of-type(5) {
+  background: var(--purple);
+}
+:root[data-ui='sticker'] .side nav .nav:nth-of-type(6) {
+  background: var(--paper);
+}
+:root[data-ui='sticker'] .side a.nav:hover {
+  transform: none;
+  background: inherit;
+  color: var(--ink);
+  translate: -1px -3px;
+  rotate: -2deg;
+  box-shadow: 6px 7px 0 var(--ink);
+}
+:root[data-ui='sticker'] .side a.nav:active {
+  translate: 4px 4px;
+  rotate: 0deg;
+  box-shadow: 0 0 0 var(--ink);
+  transition-duration: 0.08s;
+}
+:root[data-ui='sticker'] .side .nav[aria-current='page'] {
+  translate: 3px 3px;
+  box-shadow:
+    1px 1px 0 var(--ink),
+    0 0 0 3px var(--paper),
+    0 0 0 6px var(--ink);
+}
+:root[data-ui='sticker'] .side .nav[aria-current='page']::before {
+  display: none;
+}
+:root[data-ui='sticker'] .side .nav[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  top: -9px;
+  width: 14px;
+  height: 14px;
+  background: var(--ink);
+  clip-path: polygon(50% 0, 62% 36%, 100% 38%, 70% 60%, 80% 100%, 50% 76%, 20% 100%, 30% 60%, 0 38%, 38% 36%);
+}
+:root[data-ui='sticker'] .side .nav.soon {
+  opacity: 1;
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 3px 9px 3px 7px;
+  gap: 5px;
+  border-width: 2px;
+}
+:root[data-ui='sticker'] .side .nav.soon .tag {
+  display: none;
+}
+:root[data-ui='sticker'] .side .nav.soon .tag-x {
+  margin-left: 2px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  font-size: 10px;
+  padding: 0 6px;
+}
+:root[data-ui='sticker'] .side .sec {
+  display: none;
+}
+:root[data-ui='sticker'] .side .pill,
+:root[data-ui='sticker'] .side .wrap {
+  margin-left: auto;
+  margin-top: 0;
+}
+:root[data-ui='sticker'] .side .wrap {
+  width: auto;
+}
+:root[data-ui='sticker'] .side .pill {
+  width: auto;
+  gap: 8px;
+  padding: 6px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--sh-s);
+  font-weight: 800;
+  transition:
+    translate 0.35s var(--pop),
+    box-shadow 0.35s var(--pop);
+}
+:root[data-ui='sticker'] .side .pill:hover {
+  background: var(--paper);
+  color: var(--ink);
+  translate: -1px -2px;
+  box-shadow: 5px 5px 0 var(--ink);
+}
+:root[data-ui='sticker'] .side .pill:active {
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='sticker'] .side .pill .st {
+  color: var(--muted);
+  font-weight: 700;
+}
+:root[data-ui='sticker'] .side .menu {
+  bottom: auto;
+  top: calc(100% + 10px);
+  left: auto;
+  right: 0;
+  width: 260px;
+}
+:root[data-ui='sticker'] .side .it {
+  border-radius: 14px;
+  font-weight: 700;
+}
+:root[data-ui='sticker'] .side .it:hover,
+:root[data-ui='sticker'] .side .it:focus-visible {
+  background: var(--yellow);
+}
+
+/* ---------- page ---------- */
+:root[data-ui='sticker'] main {
+  padding: 26px 32px 70px;
+  max-width: 1560px;
+  width: 100%;
+  margin: 0 auto;
+}
+:root[data-ui='sticker'] main > .off {
+  border: var(--bw) solid var(--ink);
+  border-radius: 18px;
+  background: var(--pink);
+  color: var(--ink);
+  font-weight: 800;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='sticker'] .denied {
+  border: var(--bw) solid var(--ink);
+  background: var(--paper);
+  box-shadow: var(--sh);
+}
+:root[data-ui='sticker'] .denied p {
+  color: var(--muted);
+}
+
+/* ---------- stickers: cards ---------- */
+:root[data-ui='sticker'] .card,
+:root[data-ui='sticker'] .glass {
+  background: var(--paper);
+  backdrop-filter: none;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh);
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .card {
+  rotate: -1.2deg;
+  transform: none;
+  transition:
+    rotate 0.45s var(--pop),
+    translate 0.45s var(--pop),
+    box-shadow 0.45s var(--pop),
+    scale 0.45s var(--pop);
+}
+:root[data-ui='sticker'] .card:nth-child(even) {
+  rotate: 0.9deg;
+}
+:root[data-ui='sticker'] .card:nth-child(3n) {
+  rotate: -0.5deg;
+}
+:root[data-ui='sticker'] .card:hover {
+  transform: none;
+  rotate: 0deg;
+  translate: -2px -4px;
+  box-shadow: 9px 10px 0 var(--ink);
+  border-color: var(--ink);
+}
+:root[data-ui='sticker'] .card:has(.fill:active) {
+  transform: none;
+  translate: 4px 4px;
+  box-shadow: 1px 1px 0 var(--ink);
+}
+:root[data-ui='sticker'] .card h4 {
+  color: var(--ink);
+  font-size: 16px;
+}
+:root[data-ui='sticker'] .card:nth-child(5n + 1) {
+  background: #fff6d0;
+}
+:root[data-ui='sticker'] .card:nth-child(5n + 2) {
+  background: #ffe4f0;
+}
+:root[data-ui='sticker'] .card:nth-child(5n + 3) {
+  background: #dfe8ff;
+}
+:root[data-ui='sticker'] .card:nth-child(5n + 4) {
+  background: #d9fbe6;
+}
+:root[data-ui='sticker'] .card:nth-child(5n) {
+  background: #e9e0ff;
+}
+:root[data-ui='sticker'] .grip {
+  color: var(--ink);
+  border-radius: 10px;
+}
+:root[data-ui='sticker'] .grip:hover,
+:root[data-ui='sticker'] .grip:focus-visible {
+  background: var(--yellow);
+  color: var(--ink);
+}
+:root[data-ui='sticker'] [data-lifted] {
+  box-shadow: 14px 16px 0 var(--ink) !important;
+  rotate: 2deg !important;
+  border-color: var(--ink) !important;
+}
+
+/* ---------- buttons ---------- */
+:root[data-ui='sticker'] .btn {
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 7px 18px;
+  box-shadow: var(--sh-s);
+  transition:
+    translate 0.35s var(--pop),
+    box-shadow 0.35s var(--pop),
+    scale 0.35s var(--pop),
+    rotate 0.35s var(--pop);
+}
+:root[data-ui='sticker'] .btn:hover {
+  filter: none;
+  transform: none;
+  translate: -1px -3px;
+  rotate: -1.5deg;
+  box-shadow: 5px 6px 0 var(--ink);
+}
+:root[data-ui='sticker'] .btn:active {
+  transform: none;
+  translate: 3px 3px;
+  scale: 0.94 0.88;
+  rotate: 0deg;
+  box-shadow: 0 0 0 var(--ink);
+  transition-duration: 0.07s;
+}
+:root[data-ui='sticker'] .btn.ghost {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='sticker'] .btn:disabled,
+:root[data-ui='sticker'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: #e3dcc0;
+  color: #5a5030;
+  box-shadow: none;
+  translate: 3px 3px;
+  border-style: dashed;
+}
+:root[data-ui='sticker'] .btn.sm {
+  padding: 3px 12px;
+}
+
+:root[data-ui='sticker'] .tag {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .dot {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+/* ---------- inputs ---------- */
+:root[data-ui='sticker'] .search input[type] {
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  font-weight: 700;
+}
+:root[data-ui='sticker'] input::file-selector-button {
+  font: inherit;
+  font-family: var(--display);
+  font-weight: 700;
+  margin-right: 10px;
+  padding: 4px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+}
+:root[data-ui='sticker'] .search {
+  background: var(--paper);
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--sh-s);
+  color: var(--ink);
+  padding: 6px 16px;
+  transition:
+    box-shadow 0.3s var(--pop),
+    translate 0.3s var(--pop);
+}
+:root[data-ui='sticker'] .search:focus-within {
+  border-color: var(--ink);
+  outline: 4px solid var(--blue);
+  translate: -1px -2px;
+  box-shadow: 5px 5px 0 var(--ink);
+}
+:root[data-ui='sticker'] .search input::placeholder,
+:root[data-ui='sticker'] input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-ui='sticker'] input[type='text'],
+:root[data-ui='sticker'] input[type='search'],
+:root[data-ui='sticker'] input[type='number'],
+:root[data-ui='sticker'] input:not([type]),
+:root[data-ui='sticker'] textarea,
+:root[data-ui='sticker'] select {
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 14px;
+  font-weight: 700;
+}
+:root[data-ui='sticker'] input[type='checkbox'],
+:root[data-ui='sticker'] input[type='radio'] {
+  accent-color: var(--pink);
+}
+
+/* ---------- chips, filters, tabs (scoped classes in each module) ---------- */
+:root[data-ui='sticker'] .fchip,
+:root[data-ui='sticker'] .chip,
+:root[data-ui='sticker'] .seg button,
+:root[data-ui='sticker'] .strip .tab {
+  border: var(--bw) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 800;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition:
+    translate 0.3s var(--pop),
+    box-shadow 0.3s var(--pop),
+    rotate 0.3s var(--pop),
+    background 0.15s;
+}
+:root[data-ui='sticker'] .fchip:hover,
+:root[data-ui='sticker'] .strip .tab:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  translate: -1px -2px;
+  rotate: -2deg;
+  box-shadow: 4px 5px 0 var(--ink);
+}
+:root[data-ui='sticker'] .fchip:active {
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='sticker'] .fchip .cnt {
+  color: var(--muted);
+}
+:root[data-ui='sticker'] .fchip[aria-pressed='true'] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--pink);
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='sticker'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='sticker'] .fchip[aria-pressed='true'] .cnt {
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .strip {
+  background: transparent !important;
+  border-bottom: var(--bw) dashed var(--ink) !important;
+  gap: 10px !important;
+  padding: 6px 4px 14px;
+}
+:root[data-ui='sticker'] .strip .tab {
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 700;
+}
+:root[data-ui='sticker'] .strip .tab[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  translate: 3px 3px;
+  box-shadow: 0 0 0 var(--ink);
+}
+:root[data-ui='sticker'] .ind {
+  display: none;
+}
+:root[data-ui='sticker'] .top {
+  border-bottom: var(--bw) dashed var(--ink) !important;
+  padding-bottom: 16px !important;
+}
+:root[data-ui='sticker'] .sw[aria-checked='true'] {
+  outline: 4px solid var(--ink);
+  outline-offset: 3px;
+}
+:root[data-ui='sticker'] .sw {
+  border: var(--bw) solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+:root[data-ui='sticker'] kbd,
+:root[data-ui='sticker'] .k {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  font-weight: 800;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+:root[data-ui='sticker'] code {
+  color: var(--ink);
+  background: #fff0b0;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+:root[data-ui='sticker'] .banner {
+  color: var(--ink);
+  background: var(--orange);
+  border: var(--bw) solid var(--ink);
+  font-weight: 800;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='sticker'] .skel div {
+  background: repeating-linear-gradient(45deg, var(--paper) 0 12px, #fff0b0 12px 24px);
+  border: var(--bw) solid var(--ink);
+  box-shadow: var(--sh-s);
+}
+
+/* ---------- library hero, rings, charts ---------- */
+:root[data-ui='sticker'] .hero {
+  background: var(--pink) !important;
+  border: var(--bw) solid var(--ink);
+  border-radius: 26px;
+  box-shadow: var(--sh);
+  color: var(--ink);
+  rotate: -0.6deg;
+}
+:root[data-ui='sticker'] .hero .art {
+  opacity: 0.4;
+  mix-blend-mode: multiply;
+}
+:root[data-ui='sticker'] .hero .lab {
+  color: var(--ink);
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .hero h3 {
+  font-size: 38px;
+}
+:root[data-ui='sticker'] .hero .pchip {
+  background: var(--paper);
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .ring b {
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+}
+:root[data-ui='sticker'] .ring {
+  color: var(--ink);
+}
+:root[data-ui='sticker'] figcaption,
+:root[data-ui='sticker'] .nums b,
+:root[data-ui='sticker'] .st h3 {
+  color: var(--ink);
+}
+:root[data-ui='sticker'] h3 {
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .st .top {
+  border-bottom: 0 !important;
+  padding-bottom: 6px !important;
+}
+:root[data-ui='sticker'] .shelf h4 {
+  color: var(--ink);
+  font-size: 20px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+:root[data-ui='sticker'] .shelf .n {
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .chev {
+  border: var(--bw) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 50%;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+:root[data-ui='sticker'] .chev[aria-disabled='true'] {
+  opacity: 1;
+  background: #e3dcc0;
+  color: #5a5030;
+  box-shadow: none;
+}
+:root[data-ui='sticker'] .shelf .more {
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: underline wavy var(--pink) 2px;
+  text-underline-offset: 4px;
+}
+:root[data-ui='sticker'] .tc {
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  font-weight: 800;
+}
+
+/* ---------- library covers ---------- */
+:root[data-ui='sticker'] .wrap {
+  transition:
+    rotate 0.45s var(--pop),
+    translate 0.45s var(--pop);
+  rotate: -1.5deg;
+}
+:root[data-ui='sticker'] .wrap:nth-child(even) {
+  rotate: 1.2deg;
+}
+:root[data-ui='sticker'] .wrap:hover,
+:root[data-ui='sticker'] .wrap:has(:focus-visible) {
+  transform: none;
+  rotate: 0deg;
+  translate: 0 -6px;
+}
+:root[data-ui='sticker'] .wrap :is(.cover, .g > div:first-child) {
+  border: var(--bw) solid var(--ink);
+  border-radius: 16px;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='sticker'] .wrap:hover :is(.cover) {
+  box-shadow: 7px 8px 0 var(--ink);
+}
+:root[data-ui='sticker'] .badge,
+:root[data-ui='sticker'] .pchip,
+:root[data-ui='sticker'] .tchip {
+  background: var(--paper);
+  color: var(--ink);
+  backdrop-filter: none;
+  border: 2px solid var(--ink);
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .uchip {
+  background: var(--green);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .uchip.need {
+  background: var(--orange);
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .badge.run {
+  background: var(--pink);
+}
+:root[data-ui='sticker'] .wrap .ach {
+  height: 8px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+}
+:root[data-ui='sticker'] .wrap .ach i {
+  background: var(--green);
+}
+:root[data-ui='sticker'] .wrap .name {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+}
+:root[data-ui='sticker'] .wrap .sub {
+  color: var(--muted);
+  font-weight: 700;
+}
+:root[data-ui='sticker'] .glow {
+  display: none;
+}
+:root[data-ui='sticker'] .play {
+  border-radius: 999px;
+}
+
+/* ---------- dropdowns, menus, dialogs, command menu ---------- */
+:root[data-ui='sticker'] .cm,
+:root[data-ui='sticker'] .rs,
+:root[data-ui='sticker'] .mp {
+  background: var(--paper);
+  border: var(--bw) solid var(--ink);
+  border-radius: 24px;
+  box-shadow: 10px 10px 0 var(--ink);
+  color: var(--ink);
+  backdrop-filter: none;
+}
+:root[data-ui='sticker'] .cm-dim {
+  background: rgba(255, 95, 162, 0.55);
+  backdrop-filter: none;
+}
+:root[data-ui='sticker'] .cm-it[data-selected],
+:root[data-ui='sticker'] .cm-it[aria-selected='true'] {
+  background: var(--yellow);
+  color: var(--ink);
+  border-radius: 14px;
+  outline: 3px solid var(--ink);
+}
+:root[data-ui='sticker'] .cm-in {
+  font-family: var(--display);
+  font-weight: 700;
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .cm-empty {
+  color: var(--muted);
+}
+:root[data-ui='sticker'] .dd-menu {
+  background: var(--paper);
+  border: var(--bw) solid var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--sh);
+  backdrop-filter: none;
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .dd-menu [role='option']:hover,
+:root[data-ui='sticker'] .dd-menu [data-highlighted] {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+:root[data-ui='sticker'] .soon {
+  opacity: 1;
+}
+:root[data-ui='sticker'] .card .note,
+:root[data-ui='sticker'] .card .lab {
+  color: var(--muted);
+}
+
+/* ---------- game detail panel ---------- */
+:root[data-ui='sticker'] .gd-side .head {
+  background: var(--pink) !important;
+  border-bottom: var(--bw) solid var(--ink);
+}
+:root[data-ui='sticker'] .gd-side .head .art {
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+}
+:root[data-ui='sticker'] .gd-t {
+  color: var(--ink);
+  font: 700 32px / 1.05 var(--display);
+}
+:root[data-ui='sticker'] .gd-d {
+  color: var(--ink);
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .gd-side {
+  border-right: var(--bw) solid var(--ink);
+  background: #fff6d0;
+}
+:root[data-ui='sticker'] .gd-x {
+  background: var(--pink);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: rotate 0.3s var(--pop);
+}
+:root[data-ui='sticker'] .gd-x:hover,
+:root[data-ui='sticker'] .gd-x:focus-visible {
+  background: var(--orange);
+  color: var(--ink);
+  rotate: 90deg;
+}
+:root[data-ui='sticker'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='sticker'] .alist li.locked img,
+:root[data-ui='sticker'] .alist li.locked .ph {
+  filter: grayscale(1);
+}
+:root[data-ui='sticker'] .alist small,
+:root[data-ui='sticker'] .gd-main .lab {
+  color: var(--muted);
+}
+:root[data-ui='sticker'] .pb,
+:root[data-ui='sticker'] .chips li {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 800;
+}
+:root[data-ui='sticker'] .bar {
+  height: 14px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  border-radius: 999px;
+}
+:root[data-ui='sticker'] .bar i {
+  background: var(--green);
+}
+:root[data-ui='sticker'] .shot img,
+:root[data-ui='sticker'] .shot .ph {
+  border: var(--bw) solid var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='sticker'] .hc {
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .rs {
+  overflow: hidden;
+}
+:root[data-ui='sticker'] .rs.gd {
+  border-radius: 28px;
+}
+
+/* ---------- toasts and tooltips ---------- */
+:root[data-ui='sticker'] .toast {
+  background: var(--green);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--sh);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+  rotate: -1.2deg;
+}
+:root[data-ui='sticker'] .toast.error {
+  background: var(--pink);
+  color: var(--ink);
+}
+:root[data-ui='sticker'] .tip {
+  background: var(--ink);
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-weight: 800;
+  box-shadow: 3px 3px 0 var(--pink);
+}
+
+/* ---------- scrollbar ---------- */
+:root[data-ui='sticker'] *::-webkit-scrollbar-thumb {
+  background: var(--ink);
+  border: 3px solid var(--yellow);
+  border-radius: 999px;
+}
+:root[data-ui='sticker'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--pink);
+  background-clip: padding-box;
+}
+
+/* ---------- motion: cards pop in like stickers slapped on ---------- */
+@keyframes sticker-slap {
+  from {
+    opacity: 0;
+    scale: 0.82;
+    translate: 0 18px;
+  }
+  60% {
+    opacity: 1;
+    scale: 1.04;
+  }
+}
+@keyframes sticker-wobble {
+  0%,
+  100% {
+    rotate: -2deg;
+  }
+  50% {
+    rotate: 2deg;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='sticker'] .reveal[data-enter],
+  :root[data-ui='sticker'] .enter[data-enter] {
+    animation: sticker-slap 0.55s var(--pop) calc(var(--i, 0) * 60ms) backwards;
+  }
+  :root[data-ui='sticker'] .page-in {
+    animation: sticker-slap 0.35s var(--pop) backwards;
+  }
+  :root[data-ui='sticker'] .side .nav[aria-current='page']::after {
+    animation: sticker-wobble 1.6s ease-in-out infinite;
+  }
+}
+
+/* ---------- stream chrome (main is never transformed) ---------- */
+:root[data-ui='sticker'] .side:has(~ main :is(.stream, [data-stream])) {
+  position: static;
+}
+
+/* ---------- history charts ---------- */
+:root[data-ui='sticker'] .chart {
+  background: var(--paper);
+  border: var(--bw) solid var(--ink);
+  border-radius: 20px;
+  box-shadow: var(--sh);
+}
+:root[data-ui='sticker'] .chart:nth-child(2n) {
+  background: #ffe4f0;
+}
+:root[data-ui='sticker'] .chart:nth-child(3n) {
+  background: #dfe8ff;
+}
+:root[data-ui='sticker'] figcaption {
+  font-family: var(--display);
+  font-size: 15px;
+}
+:root[data-ui='sticker'] figcaption .mono {
+  color: var(--ink);
+  font-weight: 700;
+}
+:root[data-ui='sticker'] .plot .lc-root-container {
+  --color-surface-300: rgba(20, 18, 16, 0.25);
+}
+:root[data-ui='sticker'] .plot .lc-axis-tick-label {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+/* ---------- controller test: pad and sticks ---------- */
+:root[data-ui='sticker'] .stick .ring {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 0.04;
+}
+:root[data-ui='sticker'] .pad .body {
+  fill: var(--paper);
+  stroke: var(--ink);
+}
+:root[data-ui='sticker'] .pad .key :is(path, circle),
+:root[data-ui='sticker'] .pad .stick .well {
+  stroke: var(--ink);
+}
+:root[data-ui='sticker'] .pad .stick .cap {
+  fill: var(--pink);
+  stroke: var(--ink);
+}
+:root[data-ui='sticker'] .pad .key.on :is(path, circle),
+:root[data-ui='sticker'] .pad .stick.on .cap {
+  fill: var(--accent);
+  stroke: var(--ink);
+}
+:root[data-ui='sticker'] .pad .stick .travel {
+  stroke: var(--ink);
+}
+:root[data-ui='sticker'] .pad text {
+  fill: var(--ink);
+  font-weight: 800;
+}

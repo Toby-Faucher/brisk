@@ -1,0 +1,843 @@
+/* UI style command: every rule starts with :root[data-ui='command']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* ---------- tokens (doubled attribute so the accent picker cannot win) ---------- */
+:root[data-ui='command'][data-ui='command'] {
+  --bg: #09090b;
+  --panel: #0e0e12;
+  --panel2: #15151a;
+  --line: #26262d;
+  --line-hover: #43434e;
+  --fg: #ececf1;
+  --muted: #a0a0ad;
+  --dim: #8e8e9b;
+  --accent: #e4e4ea;
+  --accent-fg: #09090b;
+  --grad: linear-gradient(100deg, #7c3aed, #db2777);
+  --violet: #8b5cf6;
+  --pink: #ec4899;
+  --font: 'Inter Variable', system-ui, sans-serif;
+  --mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  --r-card: 6px;
+  --r-ctl: 6px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-page: 90ms;
+  --dur-tab: 90ms;
+  --dur-enter: 140ms;
+  --dur-exit: 90ms;
+  --rise: 3px;
+  --rise-scroll: 3px;
+  --rise-enter: 3px;
+  --stagger: 14ms;
+  --bar-h: 44px;
+}
+
+:root[data-ui='command'] body {
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: -0.003em;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+:root[data-ui='command'] .mono,
+:root[data-ui='command'] kbd,
+:root[data-ui='command'] code {
+  font-family: var(--mono);
+}
+:root[data-ui='command'] h1,
+:root[data-ui='command'] h2,
+:root[data-ui='command'] h3,
+:root[data-ui='command'] h4 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+:root[data-ui='command'] h2 {
+  font-size: 15px;
+}
+:root[data-ui='command'] .bg {
+  display: none; /* Home and Stream smoke: this style is flat */
+}
+
+/* ---------- focus: violet outline, pink halo ---------- */
+:root[data-ui='command'] :focus-visible {
+  outline: 1.5px solid var(--violet);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pink) 30%, transparent);
+  border-radius: 6px;
+}
+:root[data-ui='command'] input[type='checkbox'],
+:root[data-ui='command'] input[type='range'] {
+  accent-color: var(--violet);
+}
+
+/* ---------- the top strip (the old sidebar) ---------- */
+:root[data-ui='command'] .app {
+  flex-direction: column;
+}
+:root[data-ui='command'] .side {
+  width: auto;
+  height: var(--bar-h);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(12px);
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+:root[data-ui='command'] .side .brand {
+  padding: 0 12px 0 0;
+}
+:root[data-ui='command'] .side .brand img {
+  width: 48px;
+  height: auto;
+}
+:root[data-ui='command'] .side .sec,
+:root[data-ui='command'] .side .soon {
+  display: none; /* the "coming" placeholders are not controls */
+}
+:root[data-ui='command'] .side .nav {
+  padding: 5px 7px;
+  border-radius: 6px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background 90ms var(--ease),
+    color 90ms var(--ease);
+}
+:root[data-ui='command'] .side a.nav:hover {
+  transform: none;
+  background: var(--panel2);
+  color: var(--fg);
+}
+:root[data-ui='command'] .side .nav svg {
+  filter: grayscale(1) brightness(1.5);
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+/* narrow strip: only the current page keeps its label, the rest are icons (the link text stays for screen readers) */
+:root[data-ui='command'] .side a.nav:not([aria-current='page']) {
+  font-size: 0;
+  gap: 0;
+}
+:root[data-ui='command'] .side a.nav:not([aria-current='page'])::after {
+  display: none;
+}
+:root[data-ui='command'] .side .nav[aria-current='page']::before {
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line-hover) inset;
+  background: var(--panel2);
+}
+:root[data-ui='command'] .side a.nav::after {
+  font: 500 10px / 1 var(--mono);
+  padding: 2px 4px;
+  border: 1px solid var(--line-hover);
+  border-radius: 4px;
+  color: var(--muted);
+}
+:root[data-ui='command'] .side a.nav[href='/']::after {
+  content: 'g h';
+}
+:root[data-ui='command'] .side a.nav[href='/library']::after {
+  content: 'g l';
+}
+:root[data-ui='command'] .side a.nav[href='/stream']::after {
+  content: 'g s';
+}
+@media (min-width: 1620px) {
+  :root[data-ui='command'] .side a.nav:not([aria-current='page']) {
+    font-size: 13px;
+    gap: 6px;
+  }
+  :root[data-ui='command'] .side a.nav:not([aria-current='page'])::after {
+    display: inline;
+  }
+}
+
+/* host pill: the right end of the strip */
+:root[data-ui='command'] .side .pill,
+:root[data-ui='command'] .side .wrap {
+  margin: 0 0 0 auto;
+}
+:root[data-ui='command'] .side .wrap {
+  display: block;
+}
+:root[data-ui='command'] .side .pill {
+  width: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+  gap: 8px;
+  transition:
+    border-color 90ms var(--ease),
+    background 90ms var(--ease);
+}
+:root[data-ui='command'] .side .pill:hover {
+  border-color: var(--line-hover);
+}
+:root[data-ui='command'] .side .pill .name {
+  font-family: var(--mono);
+  color: var(--fg);
+}
+:root[data-ui='command'] .side .menu {
+  left: auto;
+  right: 0;
+  bottom: auto;
+  top: calc(100% + 6px);
+  min-width: 240px;
+  border-radius: 6px;
+}
+:root[data-ui='command'] .side .menu .it {
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+:root[data-ui='command'] .side .menu .it:hover,
+:root[data-ui='command'] .side .menu .it:focus-visible {
+  background: var(--panel2);
+  box-shadow: inset 2px 0 0 var(--violet);
+}
+
+/* ---------- the command field (Layer.svelte) ---------- */
+:root[data-ui='command'] .cmd-field {
+  position: fixed;
+  top: 6px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 21;
+  width: min(420px, 32vw);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--line-hover);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: text;
+  transition:
+    border-color 90ms var(--ease),
+    background 90ms var(--ease),
+    color 90ms var(--ease);
+}
+:root[data-ui='command'] .cmd-field:hover {
+  background: var(--panel2);
+  color: var(--fg);
+}
+:root[data-ui='command'] .cmd-field:focus-visible {
+  outline: 0;
+  border-color: transparent;
+  box-shadow: none;
+  background:
+    linear-gradient(var(--panel2), var(--panel2)) padding-box,
+    var(--grad) border-box;
+  color: var(--fg);
+}
+:root[data-ui='command'] .cmd-field .ph {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root[data-ui='command'] .ks {
+  display: inline-flex;
+  gap: 3px;
+}
+@media (max-width: 1100px) {
+  :root[data-ui='command'] .cmd-field .ph {
+    display: none;
+  }
+  :root[data-ui='command'] .cmd-field {
+    width: 96px;
+  }
+}
+@media (max-width: 760px) {
+  :root[data-ui='command'] .cmd-field {
+    left: auto;
+    right: 168px;
+    translate: none;
+    width: 44px;
+  }
+  :root[data-ui='command'] .cmd-field .ks,
+  :root[data-ui='command'] .side .brand,
+  :root[data-ui='command'] .side .pill .st {
+    display: none;
+  }
+}
+
+/* ---------- kbd chips ---------- */
+:root[data-ui='command'] kbd,
+:root[data-ui='command'] .k {
+  font: 500 10.5px / 1 var(--mono);
+  padding: 3px 5px;
+  border: 1px solid var(--line-hover);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel2);
+  color: var(--muted);
+}
+
+/* ---------- page column ---------- */
+:root[data-ui='command'] main {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 20px 80px;
+}
+:root[data-ui='command'] .top {
+  padding-bottom: 10px;
+}
+:root[data-ui='command'] .lab,
+:root[data-ui='command'] .muted {
+  font-size: 12.5px;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='command'] .btn {
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--grad);
+  transition:
+    filter 90ms var(--ease),
+    background 90ms var(--ease),
+    box-shadow 90ms var(--ease),
+    transform 90ms var(--ease);
+}
+:root[data-ui='command'] .btn:hover {
+  transform: none;
+  filter: brightness(1.12);
+}
+:root[data-ui='command'] .btn:active {
+  transform: scale(0.98);
+}
+:root[data-ui='command'] .btn.ghost {
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--line) inset;
+  filter: none;
+}
+:root[data-ui='command'] .btn.ghost:hover {
+  background: var(--panel2);
+  box-shadow: 0 0 0 1px var(--line-hover) inset;
+}
+:root[data-ui='command'] .search {
+  border-radius: 6px;
+  padding: 4px 10px;
+  min-width: 220px;
+  font-size: 13px;
+}
+:root[data-ui='command'] .search:focus-within {
+  outline: 0;
+  box-shadow: none;
+  border-color: transparent;
+  background:
+    linear-gradient(var(--panel2), var(--panel2)) padding-box,
+    var(--grad) border-box;
+}
+:root[data-ui='command'] .tag {
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+}
+:root[data-ui='command'] .glass {
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line-hover);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+}
+:root[data-ui='command'] select,
+:root[data-ui='command'] input[type='text'],
+:root[data-ui='command'] input[type='search'],
+:root[data-ui='command'] input:not([type]),
+:root[data-ui='command'] textarea {
+  border-radius: 6px;
+  font-family: inherit;
+}
+:root[data-ui='command'] input[type='file']::file-selector-button {
+  border-radius: 6px;
+  border: 1px solid var(--line-hover);
+  background: var(--panel2);
+  color: var(--fg);
+  font: inherit;
+  padding: 4px 10px;
+  margin-right: 8px;
+}
+
+/* ---------- cards become flat list rows ---------- */
+:root[data-ui='command'] .card {
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 12px 14px;
+  transition: border-color 90ms var(--ease);
+}
+:root[data-ui='command'] .card:hover {
+  transform: none;
+}
+:root[data-ui='command'] .card h4 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+:root[data-ui='command'] .card h4 small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 12px;
+}
+/* rows that act as links show the cursor bar and a return chip */
+:root[data-ui='command'] .card:has(.fill)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--grad);
+  transform: scaleY(0);
+  transition: transform 90ms var(--ease);
+  z-index: 3;
+}
+:root[data-ui='command'] .card:has(.fill):hover::before,
+:root[data-ui='command'] .card:has(.fill:focus-visible)::before {
+  transform: scaleY(1);
+}
+:root[data-ui='command'] .card:has(.fill):hover {
+  border-color: var(--line-hover);
+  background: var(--panel2);
+}
+:root[data-ui='command'] .card .grip {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+/* ---------- Home ---------- */
+:root[data-ui='command'] .bento {
+  grid-template-columns: 1fr;
+  grid-auto-rows: auto;
+  gap: 8px;
+}
+:root[data-ui='command'] .bento .card {
+  grid-column: 1 !important;
+  grid-row: auto !important;
+}
+
+/* ---------- Library ---------- */
+:root[data-ui='command'] .fchip {
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  transition:
+    color 90ms var(--ease),
+    border-color 90ms var(--ease);
+}
+:root[data-ui='command'] .fchip[aria-pressed='true']::before {
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--panel2), var(--panel2)) padding-box,
+    var(--grad) border-box;
+}
+:root[data-ui='command'] .hero {
+  border-radius: 8px;
+  min-height: 0;
+  padding: 14px;
+  gap: 16px;
+}
+:root[data-ui='command'] .hero h3 {
+  font-size: 20px;
+}
+:root[data-ui='command'] .hero .acts {
+  margin-top: 10px;
+}
+:root[data-ui='command'] .hero .art {
+  opacity: 0.28;
+}
+:root[data-ui='command'] .hero .cover {
+  width: 64px !important;
+}
+:root[data-ui='command'] .shelf h4 {
+  font: 600 11px var(--mono);
+  letter-spacing: 0.08em;
+}
+:root[data-ui='command'] .shelf h4 .more {
+  font: 500 12.5px var(--font);
+  letter-spacing: 0;
+}
+:root[data-ui='command'] .shelf .chev,
+:root[data-ui='command'] .shelf .more {
+  border-radius: 4px;
+}
+:root[data-ui='command'] .cover {
+  border-radius: 6px;
+}
+:root[data-ui='command'] .wrap:hover,
+:root[data-ui='command'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='command'] .wrap .g {
+  border-radius: 6px;
+}
+:root[data-ui='command'] .wrap .g:hover .cover {
+  outline: 1px solid var(--violet);
+}
+:root[data-ui='command'] .wrap .badge,
+:root[data-ui='command'] .wrap .pchip,
+:root[data-ui='command'] .wrap .uchip,
+:root[data-ui='command'] .wrap .tchip {
+  border-radius: 4px;
+}
+:root[data-ui='command'] .wrap .play {
+  border-radius: 4px;
+}
+:root[data-ui='command'] .wrap .name {
+  font-size: 13px;
+}
+/* "Show all": the grid is a list, one row per game */
+:root[data-ui='command'] .shelf .grid {
+  grid-template-columns: 1fr;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+:root[data-ui='command'] .shelf .grid .wrap {
+  border-bottom: 1px solid var(--line);
+}
+:root[data-ui='command'] .shelf .grid .wrap:last-child {
+  border-bottom: 0;
+}
+:root[data-ui='command'] .shelf .grid .g {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  grid-template-rows: auto auto auto;
+  column-gap: 12px;
+  align-items: center;
+  padding: 7px 90px 7px 12px;
+  position: relative;
+  border-radius: 0;
+}
+:root[data-ui='command'] .shelf .grid .g:hover,
+:root[data-ui='command'] .shelf .grid .g:focus-visible {
+  background: var(--panel2);
+  box-shadow: inset 2px 0 0 var(--violet);
+}
+:root[data-ui='command'] .shelf .grid .g::after {
+  content: '\21B5';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  translate: 0 -50%;
+  font: 500 10.5px / 1 var(--mono);
+  padding: 3px 6px;
+  border: 1px solid var(--line-hover);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 90ms var(--ease);
+}
+:root[data-ui='command'] .shelf .grid .g:hover::after,
+:root[data-ui='command'] .shelf .grid .g:focus-visible::after {
+  opacity: 1;
+}
+:root[data-ui='command'] .shelf .grid .g .cover {
+  grid-row: 1 / 4;
+  width: 24px;
+  border-radius: 3px;
+}
+:root[data-ui='command'] .shelf .grid .g .cover b,
+:root[data-ui='command'] .shelf .grid .g .badge,
+:root[data-ui='command'] .shelf .grid .g .chips,
+:root[data-ui='command'] .shelf .grid .g .glow,
+:root[data-ui='command'] .shelf .grid .g .play {
+  display: none;
+}
+:root[data-ui='command'] .shelf .grid .g .name {
+  margin: 0;
+  align-self: end;
+}
+:root[data-ui='command'] .shelf .grid .g .sub {
+  align-self: start;
+  font-size: 12px;
+}
+:root[data-ui='command'] .shelf .grid .g .ach {
+  margin-top: 3px;
+  width: 140px;
+}
+:root[data-ui='command'] .shelf .grid .quit {
+  top: 50%;
+  translate: 0 -50%;
+  right: 52px;
+}
+
+/* ---------- Library detail ---------- */
+:root[data-ui='command'] .gd-side {
+  background: var(--panel);
+}
+
+/* ---------- History ---------- */
+:root[data-ui='command'] .grid:has(> .card .spark) {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+:root[data-ui='command'] .grid > .card:has(.spark) {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 14px 8px 12px;
+}
+:root[data-ui='command'] .grid > .card:has(.spark) .head {
+  flex: 1.3;
+  min-width: 0;
+}
+:root[data-ui='command'] .grid > .card:has(.spark) .row {
+  flex: 1;
+  margin: 0;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+:root[data-ui='command'] .grid > .card:has(.spark) .spark {
+  width: 110px;
+  height: 22px;
+  flex: none;
+}
+:root[data-ui='command'] .grid > .card:has(.spark)::after {
+  content: '\21B5';
+  flex: none;
+  font: 500 10.5px / 1 var(--mono);
+  padding: 3px 6px;
+  border: 1px solid var(--line-hover);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--muted);
+  opacity: 0.55;
+}
+:root[data-ui='command'] .grid > .card:has(.spark):hover::after {
+  opacity: 1;
+}
+:root[data-ui='command'] .head .cover,
+:root[data-ui='command'] .hcover {
+  border-radius: 4px;
+}
+:root[data-ui='command'] .spark path {
+  stroke: var(--violet);
+}
+:root[data-ui='command'] .gate {
+  border-radius: 4px;
+}
+
+/* ---------- Machines ---------- */
+:root[data-ui='command'] .grid.hub {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+:root[data-ui='command'] .hub .card.hc .hd {
+  background: var(--panel2) !important;
+  color: var(--fg) !important;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 14px;
+}
+:root[data-ui='command'] .hub .card.hc .hd.idle {
+  background: var(--panel2) !important;
+}
+:root[data-ui='command'] .hub .card.hc .grip,
+:root[data-ui='command'] .hub .card.hc .hd .sel {
+  color: var(--fg);
+}
+:root[data-ui='command'] .hub .card.on:not([data-lifted]) {
+  border-color: var(--violet);
+  scale: 1;
+}
+:root[data-ui='command'] .hub .card.dim:not([data-lifted]) > :not(.actions, .grip, .fill) {
+  opacity: 0.8;
+  filter: none;
+}
+:root[data-ui='command'] .hub .word {
+  font-size: 18px;
+  margin-top: 2px;
+}
+:root[data-ui='command'] .big {
+  font-size: 22px;
+}
+:root[data-ui='command'] .hd .sel {
+  border-radius: 4px;
+  background: var(--panel) !important;
+  color: var(--fg) !important;
+  border: 1px solid var(--line-hover);
+}
+:root[data-ui='command'] .bd .chips span,
+:root[data-ui='command'] .chips span {
+  border-radius: 4px;
+}
+
+/* ---------- Settings ---------- */
+:root[data-ui='command'] .st .col {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding-top: 12px;
+}
+:root[data-ui='command'] .st .tab {
+  font: 500 13px var(--font);
+  padding: 8px 12px;
+  border-radius: 0;
+  transition: color 90ms var(--ease);
+}
+:root[data-ui='command'] .st .ind {
+  background: var(--grad);
+  transition-duration: 90ms;
+}
+:root[data-ui='command'] .opt {
+  min-height: 30px;
+}
+:root[data-ui='command'] .sw {
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+}
+:root[data-ui='command'] .styles .fchip {
+  font-size: 12.5px;
+}
+
+/* ---------- every remaining pill becomes a 6px chip ---------- */
+:root[data-ui='command']
+:is(.ptab, .seg, .segb, .tc, .pb, .dd, .dd-menu, .vchip, .gd-x, .use, .hero .pchip, .stream .pill, .sound, .up, .chips li) {
+  border-radius: 6px;
+}
+:root[data-ui='command'] .dd-menu {
+  border-radius: 6px;
+}
+:root[data-ui='command'] .dd {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+:root[data-ui='command'] .tc {
+  border-radius: 4px;
+}
+:root[data-ui='command'] .segb {
+  border-radius: 4px;
+}
+
+/* ---------- Command menu ---------- */
+:root[data-ui='command'] .cm-dim {
+  background: rgba(0, 0, 0, 0.62);
+}
+:root[data-ui='command'] .cm {
+  top: 12%;
+  width: min(640px, calc(100vw - 32px));
+  padding: 0;
+  --cm-r: 8px;
+  --cm-pad: 4px;
+}
+:root[data-ui='command'] .cm-in {
+  font-size: 15px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-hover);
+}
+:root[data-ui='command'] .cm-in:focus-visible {
+  outline: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+:root[data-ui='command'] .cm-it[data-selected]::after {
+  content: '\21B5';
+  font: 500 10.5px / 1 var(--mono);
+  padding: 3px 6px;
+  border: 1px solid var(--line-hover);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+:root[data-ui='command'] .cm-it:not(:has(.k))[data-selected]::after {
+  margin-left: auto;
+}
+:root[data-ui='command'] .cm-list {
+  padding: 4px;
+  max-height: 52vh;
+}
+:root[data-ui='command'] .cm-vp {
+  gap: 0;
+}
+:root[data-ui='command'] .cm-it {
+  padding: 7px 10px;
+  gap: 10px;
+  font-size: 13px;
+  border-radius: 4px;
+  min-height: 32px;
+  transition: background 90ms var(--ease);
+}
+:root[data-ui='command'] .cm-it[data-selected] {
+  background:
+    linear-gradient(var(--grad)) left / 2px 100% no-repeat,
+    var(--panel2);
+}
+:root[data-ui='command'] .cm-it .k {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+:root[data-ui='command'] .cm-it svg {
+  width: 15px;
+  height: 15px;
+  opacity: 0.85;
+}
+
+/* ---------- toasts, tooltips, stream chrome ---------- */
+:root[data-ui='command'] .toast {
+  border-radius: 6px;
+  padding: 7px 12px;
+  font: 500 12.5px var(--mono);
+  border-left: 2px solid var(--violet);
+}
+:root[data-ui='command'] .toast.error {
+  border-left-color: var(--bad);
+}
+:root[data-ui='command'] .tip {
+  border-radius: 4px;
+  background: var(--panel2);
+  border: 1px solid var(--line-hover);
+  color: var(--fg);
+  font: 500 11px var(--mono);
+}
+:root[data-ui='command'] .bar .ic {
+  border-radius: 6px;
+}
+:root[data-ui='command'] .bar .chip {
+  border-radius: 4px;
+}
+:root[data-ui='command'] .denied,
+:root[data-ui='command'] .off {
+  border-radius: 6px;
+}
+
+/* ---------- motion: 90ms, a short rise, nothing bouncy ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='command'] :is(.cm, .rs) {
+    transition:
+      opacity 90ms var(--ease),
+      translate 110ms var(--ease),
+      scale 110ms var(--ease);
+  }
+}

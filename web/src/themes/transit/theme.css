@@ -1,0 +1,440 @@
+/* UI style transit: every rule starts with :root[data-ui='transit']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/overpass/400.css';
+@import '@fontsource/overpass/600.css';
+@import '@fontsource/overpass/800.css';
+
+:root[data-ui='transit'] {
+  color-scheme: dark;
+  --bg: #0d1013;
+  --panel: #161a1f;
+  --panel2: #1e242b;
+  --line: #3a424d;
+  --line-hover: #7d8896;
+  --fg: #f5f7f9;
+  --muted: #b7c0cb;
+  --dim: #9ba6b3;
+  --ok: #3fd66f;
+  --warn: #ffd23f;
+  --bad: #ff6b6b;
+  --c-lib: #ffd23f;
+  --c-stream: #6cb4ff;
+  --c-host: #4fd1f5;
+  --c-set: #c4ccd6;
+  --c-agent: #c79bff;
+  --c-news: #ff8a8a;
+  --c-power: #3fd66f;
+  --c-hist: #ffa14a;
+  --font: 'Overpass', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Overpass', 'Helvetica Neue', Arial, sans-serif;
+  --r-card: 10px;
+  --r-ctl: 999px;
+  --side-w: 244px;
+  --bar-h: 48px;
+  --tactile: #f2c230;
+  --sign: #05070a;
+}
+:root[data-ui='transit'] body {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0 calc(var(--side-w) + 24px),
+      rgb(255 255 255 / 0.025) calc(var(--side-w) + 24px) calc(var(--side-w) + 25px),
+      transparent 0
+    ),
+    repeating-linear-gradient(0deg, transparent 0 79px, rgb(255 255 255 / 0.03) 79px 80px), var(--bg);
+  letter-spacing: 0.01em;
+}
+:root[data-ui='transit'] h1,
+:root[data-ui='transit'] h2,
+:root[data-ui='transit'] h3,
+:root[data-ui='transit'] h4 {
+  font-weight: 800;
+  letter-spacing: 0;
+}
+:root[data-ui='transit'] .mono {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+:root[data-ui='transit'] :focus-visible {
+  outline: 3px solid var(--tactile);
+  outline-offset: 2px;
+}
+:root[data-ui='transit'] main.page-in {
+  padding: calc(var(--bar-h) + 22px) 28px 40px;
+}
+
+/* ---- The line: the sidebar is a platform with a metro line down it ---- */
+:root[data-ui='transit'] .side {
+  width: var(--side-w);
+  background: var(--sign);
+  backdrop-filter: none;
+  border-right: 0;
+  padding: 16px 22px 16px 12px;
+  gap: 0;
+  isolation: isolate;
+}
+/* the tactile paving strip at the platform edge */
+:root[data-ui='transit'] .side::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 12px;
+  background:
+    radial-gradient(circle at 50% 50%, #7a5f08 0 2px, transparent 2.6px) 0 0 / 12px 12px,
+    var(--tactile);
+}
+:root[data-ui='transit'] .brand {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 8px;
+  justify-content: center;
+}
+:root[data-ui='transit'] .brand img {
+  filter: invert(1) hue-rotate(180deg);
+}
+:root[data-ui='transit'] .side .nav {
+  position: relative;
+  height: 48px;
+  padding: 0 10px 0 8px;
+  gap: 14px;
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 17px;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+:root[data-ui='transit'] .side a.nav:hover {
+  background: none;
+  transform: none;
+  color: #fff;
+}
+:root[data-ui='transit'] .side a.nav:hover span,
+:root[data-ui='transit'] .side a.nav:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+/* line segment from each stop down to the next */
+:root[data-ui='transit'] .side .nav::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  width: 10px;
+  top: 50%;
+  height: 100%;
+  z-index: -2;
+  background: var(--accent);
+}
+:root[data-ui='transit'] .side .nav.soon::after {
+  background: repeating-linear-gradient(180deg, var(--muted) 0 6px, transparent 6px 11px);
+}
+:root[data-ui='transit'] .side a.nav:last-of-type::after {
+  content: none;
+}
+:root[data-ui='transit'] .side nav:has(+ .sec) a.nav:last-of-type::after {
+  content: '';
+}
+:root[data-ui='transit'] .side div.nav.soon:last-of-type::after {
+  content: none;
+}
+/* the stop: a coloured line bullet */
+:root[data-ui='transit'] .side .nav svg {
+  --bg: var(--ic, #3a424d);
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  border-radius: 50%;
+  fill: #fff;
+  color: #fff;
+  background: var(--ic, #3a424d);
+  border: 3px solid var(--sign);
+  box-shadow: 0 0 0 2px #fff;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(1) {
+  --ic: #0f5bd4;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(2) {
+  --ic: #d1292b;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(3) {
+  --ic: #0a8a3c;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(4) {
+  --ic: #a02ec2;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(5) {
+  --ic: #d96a0c;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(6) {
+  --ic: #5b6572;
+}
+:root[data-ui='transit'] .side .nav:nth-of-type(n + 7) {
+  --ic: #5b6572;
+}
+/* you are here: a white station plate */
+:root[data-ui='transit'] .side .soon svg {
+  background: transparent;
+  fill: var(--dim);
+  box-shadow: 0 0 0 2px var(--dim);
+  border-color: var(--sign);
+}
+:root[data-ui='transit'] .side .nav[aria-current='page'] {
+  color: var(--sign);
+  font-weight: 800;
+}
+:root[data-ui='transit'] .side .nav[aria-current='page']::before {
+  background: #fff;
+  box-shadow: none;
+  border-radius: 8px;
+}
+:root[data-ui='transit'] .side .nav[aria-current='page'] svg {
+  box-shadow: 0 0 0 2px var(--sign);
+  border-color: #fff;
+}
+:root[data-ui='transit'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+}
+:root[data-ui='transit'] .side .soon .tag {
+  background: none;
+  border: 1px dashed var(--dim);
+  color: var(--dim);
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='transit'] .side .sec {
+  position: relative;
+  margin: 0 0 0 52px;
+  padding: 10px 0 8px;
+  height: 44px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--tactile);
+}
+:root[data-ui='transit'] .side .sec::before {
+  content: '';
+  position: absolute;
+  left: -32px;
+  width: 10px;
+  top: 0;
+  height: 100%;
+  z-index: -2;
+  background: repeating-linear-gradient(180deg, var(--muted) 0 6px, transparent 6px 11px);
+}
+/* host pill: a small black sign with a white frame */
+:root[data-ui='transit'] .pill {
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 2px solid #fff;
+  background: var(--sign);
+  color: #fff;
+  font-weight: 700;
+}
+:root[data-ui='transit'] .side .wrap,
+:root[data-ui='transit'] .side > .pill {
+  margin-top: auto;
+}
+:root[data-ui='transit'] .pill:hover {
+  background: #fff;
+  color: var(--sign);
+}
+:root[data-ui='transit'] .pill .st {
+  color: inherit;
+  opacity: 0.8;
+  font-size: 12px;
+}
+:root[data-ui='transit'] .menu {
+  background: var(--sign);
+  border: 2px solid #fff;
+  border-radius: 10px;
+  backdrop-filter: none;
+}
+:root[data-ui='transit'] .menu .it:hover,
+:root[data-ui='transit'] .menu .it:focus-visible {
+  background: #fff;
+  color: var(--sign);
+}
+
+/* ---- Platform signs: cards, headings, buttons ---- */
+:root[data-ui='transit'] .card {
+  background: var(--panel);
+  border: 0;
+  border-top: 8px solid var(--accent);
+  border-radius: 4px 4px var(--r-card) var(--r-card);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+:root[data-ui='transit'] .card h4 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='transit'] .btn {
+  background: #fff;
+  color: var(--sign);
+  border-radius: 999px;
+  font-weight: 800;
+  box-shadow: 0 3px 0 #8a929c;
+}
+:root[data-ui='transit'] .btn:hover {
+  filter: none;
+  background: var(--tactile);
+  transform: translateY(-1px);
+}
+:root[data-ui='transit'] .btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #8a929c;
+}
+:root[data-ui='transit'] .btn.ghost {
+  background: transparent;
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff inset;
+}
+:root[data-ui='transit'] .btn.ghost:hover {
+  background: #fff;
+  color: var(--sign);
+}
+:root[data-ui='transit'] .btn:disabled {
+  box-shadow: none;
+}
+
+/* split-flap look for big numbers */
+:root[data-ui='transit'] .big {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #0a0c0f 0 calc(50% - 1px), #000 calc(50% - 1px) calc(50% + 1px), #14181d calc(50% + 1px));
+  color: var(--warn);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+/* each card takes the colour of a line, so a page reads like a map */
+:root[data-ui='transit'] .card:nth-child(6n + 1) {
+  --lc: #2f7bff;
+}
+:root[data-ui='transit'] .card:nth-child(6n + 2) {
+  --lc: #ff4d4f;
+}
+:root[data-ui='transit'] .card:nth-child(6n + 3) {
+  --lc: #2fcf6e;
+}
+:root[data-ui='transit'] .card:nth-child(6n + 4) {
+  --lc: #c25cf0;
+}
+:root[data-ui='transit'] .card:nth-child(6n + 5) {
+  --lc: #ff9a2e;
+}
+:root[data-ui='transit'] .card:nth-child(6n) {
+  --lc: #ffd23f;
+}
+:root[data-ui='transit'] .card {
+  border-top-color: var(--lc, var(--accent));
+}
+
+/* page titles are station name plates */
+:root[data-ui='transit'] main .top > h1,
+:root[data-ui='transit'] main .top > h2 {
+  display: inline-block;
+  padding: 3px 14px 4px;
+  background: var(--sign);
+  border: 3px solid #fff;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+/* dialogs, menus and the command box are black signs with a white frame */
+:root[data-ui='transit'] .glass {
+  background: #11151a;
+  backdrop-filter: none;
+  border: 3px solid #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+}
+:root[data-ui='transit'] .cm-dim {
+  background: rgb(0 0 0 / 0.6);
+}
+
+/* history: the duration and quality row is a departures board line */
+:root[data-ui='transit'] .grid > .card .row.mono {
+  padding: 4px 8px;
+  margin-inline: -4px;
+  background: #000;
+  border-radius: 4px;
+  color: var(--warn);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+:root[data-ui='transit'] .gate {
+  border-radius: 4px;
+  font-weight: 800;
+}
+
+/* hover: the stop swells */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='transit'] .side .nav svg {
+    transition: scale 0.25s var(--spring-snappy);
+  }
+  :root[data-ui='transit'] .side a.nav:hover svg {
+    scale: 1.14;
+  }
+}
+
+/* the original dims locked achievements to .6; on this black that falls under AA */
+:root[data-ui='transit'] .alist li.locked {
+  opacity: 0.78;
+}
+
+/* numbers on the board flip in */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='transit'] .big {
+    animation: tr-flap 0.55s ease-out backwards;
+  }
+}
+@keyframes tr-flap {
+  0% {
+    transform: rotateX(90deg);
+    opacity: 0;
+  }
+  60% {
+    transform: rotateX(-14deg);
+    opacity: 1;
+  }
+}
+
+/* narrow windows: the line keeps only its stops */
+@media (max-width: 800px) {
+  :root[data-ui='transit'] {
+    --side-w: 76px;
+  }
+  :root[data-ui='transit'] .side {
+    padding: 12px 18px 12px 6px;
+  }
+  :root[data-ui='transit'] .side .nav {
+    font-size: 0;
+    gap: 0;
+    justify-content: center;
+    padding: 0;
+  }
+  :root[data-ui='transit'] .side .nav::after {
+    left: calc(50% - 5px);
+  }
+  :root[data-ui='transit'] .brand,
+  :root[data-ui='transit'] .side .sec,
+  :root[data-ui='transit'] .side .soon .tag,
+  :root[data-ui='transit'] .pill .name,
+  :root[data-ui='transit'] .pill .st {
+    display: none;
+  }
+  :root[data-ui='transit'] .pill {
+    justify-content: center;
+    padding: 9px 0;
+  }
+  :root[data-ui='transit'] main.page-in {
+    padding-inline: 14px;
+  }
+}

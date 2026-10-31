@@ -3,6 +3,7 @@
   import { safeGet, safeSet } from '../../state/storage';
   import { onMount } from 'svelte';
   import { Tabs } from 'bits-ui';
+  import { UI_THEMES } from '../../themes/registry';
   import { ACCENT_HEX, DEFAULTS, REPLAY_SECONDS, settings, type Accent, type ReplaySeconds, type Settings } from '../../state/settings';
   import type { Preset } from '../../state/api';
   import { host } from '../../state/host';
@@ -109,6 +110,14 @@
     <Tabs.Content value="general">
       <div class="col">
         <Card cols={2}>
+          <h4>Style <small class="lab">Alt+U flips to the next one</small></h4>
+          <div class="styles" role="group" aria-label="UI style">
+            {#each UI_THEMES as t (t.id)}
+              <button type="button" class="fchip" aria-pressed={$settings.ui === t.id} title={t.blurb} onclick={() => set({ ui: t.id })}>{t.name}</button>
+            {/each}
+          </div>
+        </Card>
+        <Card cols={2}>
           <h4>Accent</h4>
           <div class="row" role="radiogroup" aria-label="Accent colour">
             {#each Object.entries(ACCENT_HEX) as [a, hex] (a)}
@@ -205,6 +214,7 @@
   .ind { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); transition: transform .25s var(--ease), width .25s var(--ease); }
   @media (prefers-reduced-motion: reduce) { .ind, .st :global(.tab) { transition: none; } }
   .col { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding-top: 16px; }
+  .styles { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; isolation: isolate; }
   .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
   .sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
   .sw[aria-checked='true'] { outline: 2px solid var(--fg); outline-offset: 2px; }

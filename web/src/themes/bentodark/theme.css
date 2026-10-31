@@ -1,0 +1,262 @@
+/* UI style bentodark: every rule starts with :root[data-ui='bentodark']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/outfit';
+
+/* ---------- tokens: near-black tiles on a black ground; the accent is the only light source ---------- */
+:root[data-ui='bentodark'] {
+  --bg: #050608;
+  --panel: #0d0f13;
+  --panel2: #14171d;
+  --line: #1d212a;
+  --line-hover: #343b4a;
+  --fg: #f1f3f8;
+  --muted: #98a1b3;
+  --dim: #8a93a6;
+  --font: 'Geist Variable', system-ui, sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --disp: 'Outfit Variable', 'Geist Variable', system-ui, sans-serif;
+  --r-card: 18px;
+  --r-ctl: 10px;
+  --bd-gap: 12px;
+  --bd-lit: color-mix(in srgb, var(--accent) 85%, #fff);
+  --sx: -400px;
+  --sy: -400px;
+  color-scheme: dark;
+}
+
+:root[data-ui='bentodark'] body {
+  background: radial-gradient(900px 420px at 50% -120px, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%), var(--bg);
+  background-attachment: fixed;
+}
+:root[data-ui='bentodark'] h1,
+:root[data-ui='bentodark'] h2,
+:root[data-ui='bentodark'] h3 {
+  font-family: var(--disp);
+  letter-spacing: -0.02em;
+}
+:root[data-ui='bentodark'] ::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* ---------- shell: the sidebar is a tile too, with the same gap as everything else ---------- */
+:root[data-ui='bentodark'] .app {
+  padding: var(--bd-gap);
+  gap: var(--bd-gap);
+}
+:root[data-ui='bentodark'] .side {
+  top: var(--bd-gap);
+  height: calc(100vh - var(--bd-gap) * 2);
+  width: 206px;
+  border: 1px solid transparent;
+  border-radius: var(--r-card);
+  padding: 14px 10px;
+  gap: 3px;
+  backdrop-filter: none;
+}
+:root[data-ui='bentodark'] main {
+  padding: 18px 14px 40px;
+  min-width: 0;
+}
+:root[data-ui='bentodark'] .side .nav {
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+:root[data-ui='bentodark'] .side a.nav:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--fg);
+  transform: none;
+}
+:root[data-ui='bentodark'] .side .nav[aria-current='page'] {
+  color: var(--fg);
+}
+:root[data-ui='bentodark'] .side .nav[aria-current='page']::before {
+  background: radial-gradient(80px 40px at 0 50%, color-mix(in srgb, var(--accent) 30%, transparent), transparent), var(--panel2);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 30%, var(--line)) inset,
+    0 1px 0 color-mix(in srgb, var(--bd-lit) 70%, transparent) inset;
+}
+:root[data-ui='bentodark'] .side .sec {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+/* ---------- tiles: opaque near-black, a lit top edge, a border that follows the pointer ---------- */
+:root[data-ui='bentodark'] :is(.card, .side, .hero, figure, .rs) {
+  border: 1px solid transparent;
+  background:
+    radial-gradient(260px circle at var(--sx) var(--sy), color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%) padding-box,
+    radial-gradient(120% 60% at 50% 0, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%) padding-box,
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    radial-gradient(220px circle at var(--sx) var(--sy), color-mix(in srgb, var(--accent) 80%, #fff), transparent 70%) border-box,
+    radial-gradient(55% 130px at 50% 0, var(--bd-lit), transparent) border-box,
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, var(--line)), var(--line) 45%) border-box;
+  background-origin: border-box;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.03) inset,
+    0 24px 40px -28px rgba(0, 0, 0, 0.9);
+}
+:root[data-ui='bentodark'] .card {
+  padding: 18px;
+  transition:
+    transform var(--spring-soft-dur) var(--spring-soft),
+    box-shadow 0.3s;
+}
+:root[data-ui='bentodark'] .card:hover {
+  transform: translateY(-3px);
+  border-color: transparent;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 0 36px -14px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 26px 40px -24px rgba(0, 0, 0, 0.95);
+}
+:root[data-ui='bentodark'] .bento {
+  gap: var(--bd-gap);
+  grid-auto-rows: 132px;
+}
+:root[data-ui='bentodark'] .bento [data-lifted] {
+  background-color: var(--panel);
+}
+:root[data-ui='bentodark'] .bento .soon {
+  opacity: 1;
+  background: transparent;
+  border: 1px dashed var(--line);
+  box-shadow: none;
+}
+:root[data-ui='bentodark'] .bento .soon h4 {
+  color: var(--dim);
+}
+
+/* tiny uppercase labels, big numerals */
+:root[data-ui='bentodark'] .card h4 {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+:root[data-ui='bentodark'] :is(.nums b, .big, .num) {
+  font-family: var(--disp);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='bentodark'] .card .big .n {
+  font-size: 3.4rem;
+  line-height: 0.9;
+  background: linear-gradient(180deg, #fff 30%, color-mix(in srgb, var(--accent) 70%, #fff));
+  background-clip: text;
+  color: transparent;
+}
+:root[data-ui='bentodark'] .nums b {
+  font-size: 2.1rem;
+  line-height: 1;
+}
+:root[data-ui='bentodark'] .tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---------- headers ---------- */
+:root[data-ui='bentodark'] main h2 {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+:root[data-ui='bentodark'] main .top {
+  border-bottom: 0;
+  padding-bottom: 12px;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='bentodark'] .btn {
+  border-radius: 10px;
+  font-weight: 600;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 0 22px -6px color-mix(in srgb, var(--accent) 75%, transparent);
+  transition:
+    transform 0.3s var(--spring-snappy),
+    box-shadow 0.2s,
+    filter 0.18s;
+}
+:root[data-ui='bentodark'] .btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 0 30px -4px color-mix(in srgb, var(--accent) 90%, transparent);
+}
+:root[data-ui='bentodark'] .btn:active {
+  transform: scale(0.97);
+}
+:root[data-ui='bentodark'] .btn.ghost {
+  background: var(--panel2);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+:root[data-ui='bentodark'] .btn.ghost:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 55%, var(--line)) inset,
+    0 0 22px -10px var(--accent);
+}
+:root[data-ui='bentodark'] .search {
+  background: var(--panel);
+  border-radius: 10px;
+}
+:root[data-ui='bentodark'] .search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+:root[data-ui='bentodark'] .fchip[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent) inset,
+    0 0 18px -6px var(--accent);
+}
+:root[data-ui='bentodark'] .glass {
+  background: color-mix(in srgb, #0a0c10 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-top-color: color-mix(in srgb, var(--bd-lit) 70%, transparent);
+  box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.9);
+}
+:root[data-ui='bentodark'] .cm-dim {
+  background: rgba(2, 3, 5, 0.7);
+  backdrop-filter: blur(5px);
+}
+:root[data-ui='bentodark'] .cm-it[data-selected] {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent) inset;
+}
+:root[data-ui='bentodark'] .strip .ind {
+  box-shadow: 0 0 16px -2px var(--accent);
+}
+:root[data-ui='bentodark'] .sw[aria-checked='true'] {
+  box-shadow: 0 0 18px -2px currentColor;
+}
+
+/* ---------- motion: tile by tile, then hover lift ---------- */
+@keyframes bd-in {
+  from {
+    opacity: 0;
+    scale: 0.94;
+    translate: 0 14px;
+    filter: brightness(2.2);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='bentodark'] .reveal[data-enter],
+  :root[data-ui='bentodark'] .enter[data-enter] {
+    animation: bd-in 0.65s var(--spring-settle) calc(var(--i, 0) * 70ms) backwards;
+  }
+}
+@media (max-width: 800px) {
+  :root[data-ui='bentodark'] .app {
+    padding: 8px;
+  }
+  :root[data-ui='bentodark'] .side {
+    width: auto;
+    height: auto;
+    top: 0;
+  }
+}

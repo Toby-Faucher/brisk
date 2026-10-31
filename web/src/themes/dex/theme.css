@@ -1,0 +1,651 @@
+/* UI style dex (Creature dex): every rule starts with :root[data-ui='dex']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/orbitron/latin-400.css';
+@import '@fontsource/orbitron/latin-600.css';
+@import '@fontsource/orbitron/latin-800.css';
+
+:root[data-ui='dex']:not(#_) {
+  /* the LCD is a dark green screen with pale phosphor text */
+  --bg: #0b2216;
+  --panel: #123325;
+  --panel2: #1b4a35;
+  --line: #2f7a54;
+  --line-hover: #7fe0a4;
+  --fg: #e1fbe6;
+  --muted: #a9d9b7;
+  --dim: #9acfaa;
+  --accent-fg: #04210f;
+  --ok: #7dff9b;
+  --warn: #ffd85e;
+  --bad: #ff9a9a;
+  --font: system-ui, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --orb: 'Orbitron', system-ui, sans-serif;
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --rise: 0px;
+  --rise-scroll: 6px;
+  --rise-enter: 8px;
+  /* the plastic */
+  --red: #d3202f;
+  --red-hi: #ff5a64;
+  --red-lo: #7d0f1c;
+  --bezel: #1d2027;
+  --dx-side: 252px;
+  color-scheme: dark;
+  background:
+    radial-gradient(120% 60% at 20% -10%, var(--red-hi), transparent 55%),
+    linear-gradient(160deg, #e0303c 0%, var(--red) 40%, var(--red-lo) 100%);
+  background-attachment: fixed;
+}
+:root[data-ui='dex'] body {
+  color: var(--fg);
+  font-family: var(--font);
+  background: transparent;
+}
+:root[data-ui='dex']:not(#_) :is(h1, h2, h3, h4) {
+  font-family: var(--orb);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+:root[data-ui='dex'] h1 {
+  font-size: 22px;
+}
+:root[data-ui='dex'] :is(.tag, kbd, .lab.mono) {
+  font-family: var(--orb);
+}
+:root[data-ui='dex'] .tag {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root[data-ui='dex'] ::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+:root[data-ui='dex'] :focus-visible {
+  outline: 3px solid var(--warn);
+  outline-offset: 2px;
+}
+:root[data-ui='dex'] *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+:root[data-ui='dex'] *::-webkit-scrollbar-track {
+  background: #0a1c12;
+}
+:root[data-ui='dex'] *::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 6px;
+  border: 2px solid #0a1c12;
+}
+
+/* ---------- the shell: red plastic on the left, the screen in a bezel on the right ---------- */
+:root[data-ui='dex'] .app {
+  padding: 16px 16px 16px 0;
+  gap: 0;
+}
+:root[data-ui='dex'] main {
+  position: relative;
+  background: var(--bg);
+  border-radius: 18px 18px 18px 54px;
+  /* the bezel is a grey frame; the inset shadow makes the glass sit back */
+  border: 14px solid var(--bezel);
+  box-shadow:
+    0 0 0 3px var(--red-lo),
+    0 12px 28px rgba(60, 0, 8, 0.55),
+    inset 0 0 70px rgba(0, 0, 0, 0.55);
+  padding: 22px 24px 40px;
+  min-height: calc(100vh - 32px);
+  isolation: isolate;
+}
+/* scan lines, and one brighter band that drifts down the glass */
+:root[data-ui='dex'] main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  border-radius: 6px 6px 6px 40px;
+  background:
+    linear-gradient(180deg, transparent, rgba(150, 255, 190, 0.05) 50%, transparent) 0 0 / 100% 160px no-repeat,
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px);
+  animation: dx-scan 9s linear infinite;
+}
+@keyframes dx-scan {
+  from {
+    background-position:
+      0 -160px,
+      0 0;
+  }
+  to {
+    background-position:
+      0 100vh,
+      0 0;
+  }
+}
+/* the stream page keeps its fixed layout: no frame there, only the plastic strip */
+:root[data-ui='dex'] main:not(.page-in) {
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+}
+:root[data-ui='dex'] main:not(.page-in)::before {
+  display: none;
+}
+:root[data-ui='dex'] .app:has(> main:not(.page-in)) {
+  padding: 0;
+}
+:root[data-ui='dex'] main > .off {
+  background: var(--panel);
+  border: 2px solid var(--warn);
+  color: var(--fg);
+}
+:root[data-ui='dex'] .denied {
+  background: var(--panel);
+  border: 2px solid var(--bad);
+}
+
+/* ---------- sidebar: a lens, a signboard, a vertical list of entries ---------- */
+:root[data-ui='dex'] .side {
+  width: var(--dx-side);
+  background: transparent;
+  backdrop-filter: none;
+  border-right: 0;
+  padding: 16px 22px 14px 16px;
+  gap: 8px;
+  isolation: isolate;
+}
+/* the hinge: three knuckles down the seam */
+:root[data-ui='dex'] .side::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 15px;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(90deg, #121419, #5b6070 35%, #9ba0b0 50%, #4a4f5e 70%, #121419), var(--bezel);
+  -webkit-mask: linear-gradient(
+    180deg,
+    transparent 0 8%,
+    #000 8% 28%,
+    transparent 28% 38%,
+    #000 38% 62%,
+    transparent 62% 72%,
+    #000 72% 92%,
+    transparent 92%
+  );
+  mask: linear-gradient(
+    180deg,
+    transparent 0 8%,
+    #000 8% 28%,
+    transparent 28% 38%,
+    #000 38% 62%,
+    transparent 62% 72%,
+    #000 72% 92%,
+    transparent 92%
+  );
+  border-radius: 6px;
+}
+:root[data-ui='dex'] .side .brand {
+  position: relative;
+  padding: 0 0 12px;
+  gap: 12px;
+  min-height: 74px;
+}
+:root[data-ui='dex'] .side .brand img {
+  display: none;
+}
+/* the big blue lens, with a glint and a slow blink */
+:root[data-ui='dex'] .side .brand::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 5px solid #f2f4f8;
+  background:
+    radial-gradient(circle at 32% 28%, #fff 0 9%, transparent 11%), radial-gradient(circle at 50% 50%, #7cc9ff 0, #1e7fe0 45%, #0a3b9a 100%);
+  box-shadow:
+    0 0 0 3px #2a2d36,
+    0 0 22px 4px rgba(90, 190, 255, 0.75),
+    inset 0 -6px 10px rgba(0, 20, 80, 0.5);
+  animation: dx-lens 3.2s ease-in-out infinite;
+}
+@keyframes dx-lens {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  8% {
+    filter: brightness(1.45);
+  }
+  14% {
+    filter: brightness(0.85);
+  }
+  22% {
+    filter: brightness(1.3);
+  }
+  30% {
+    filter: brightness(1);
+  }
+}
+:root[data-ui='dex'] .side .brand::after {
+  content: 'BRISK DEX';
+  font-family: var(--orb);
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  color: #fff;
+  text-shadow: 0 2px 0 var(--red-lo);
+  /* three little status lights above the name */
+  background:
+    radial-gradient(circle, #ff6b6b 0 2.5px, transparent 3.5px) 0 0 / 14px 8px repeat-x,
+    none;
+  padding-top: 14px;
+  background-size: 42px 8px;
+  background-repeat: no-repeat;
+}
+:root[data-ui='dex'] .side nav {
+  counter-reset: dex;
+}
+:root[data-ui='dex'] .side .nav {
+  position: relative;
+  font-family: var(--orb);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #dff9e5;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #0d2a1b;
+  border: 2px solid #5c0b17;
+  box-shadow:
+    inset 0 0 14px rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(255, 120, 130, 0.35);
+  counter-increment: dex;
+  transition:
+    transform 0.18s var(--ease),
+    background 0.18s,
+    color 0.18s;
+}
+/* the entry number */
+:root[data-ui='dex'] .side a.nav::after {
+  content: 'No. ' counter(dex, decimal-leading-zero);
+  margin-left: auto;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #9fe3b4;
+}
+:root[data-ui='dex'] .side a.nav:hover {
+  transform: translateX(4px);
+  background: #123a26;
+  color: #fff;
+}
+:root[data-ui='dex'] .side .nav[aria-current='page'] {
+  color: #04210f;
+  background: transparent;
+}
+:root[data-ui='dex'] .side .nav[aria-current='page']::before {
+  background: linear-gradient(180deg, #c8ffd4, #7fe0a4);
+  box-shadow: inset 0 0 0 2px #e9fff0;
+}
+:root[data-ui='dex'] .side .nav[aria-current='page']::after {
+  color: #0b4a22;
+}
+:root[data-ui='dex'] .side .nav[aria-current='page'] svg {
+  filter: brightness(0.35) saturate(1.4);
+}
+:root[data-ui='dex'] .side .soon {
+  opacity: 1;
+  background: #0a1d13;
+  color: #a4cfb2;
+  border-style: dashed;
+  box-shadow: none;
+}
+:root[data-ui='dex'] .side .soon .tag {
+  color: #ffe08a;
+  background: transparent;
+}
+:root[data-ui='dex'] .side .sec {
+  font-family: var(--orb);
+  font-size: 10px;
+  color: #fff;
+  letter-spacing: 0.14em;
+  padding: 10px 4px 2px;
+}
+:root[data-ui='dex'] .side .sec::after {
+  content: ' (not caught yet)';
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font);
+}
+:root[data-ui='dex'] .pill {
+  border-radius: 12px;
+  background: #0d2a1b;
+  border: 2px solid #5c0b17;
+  color: #dff9e5;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.5);
+}
+:root[data-ui='dex'] .pill:hover {
+  background: #123a26;
+  color: #fff;
+}
+:root[data-ui='dex'] .side .pill {
+  margin-bottom: 0;
+}
+:root[data-ui='dex'] .glass,
+:root[data-ui='dex'] .menu {
+  background: #0f2b1d;
+  backdrop-filter: none;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+}
+:root[data-ui='dex'] .menu .it:hover,
+:root[data-ui='dex'] .menu .it:focus-visible,
+:root[data-ui='dex'] .menu .it[aria-checked='true'] {
+  background: var(--panel2);
+  color: #fff;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='dex'] .btn {
+  font-family: var(--orb);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #000));
+  color: var(--accent-fg);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
+}
+:root[data-ui='dex'] .btn:hover {
+  filter: brightness(1.12);
+}
+:root[data-ui='dex'] .btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+:root[data-ui='dex'] .btn.ghost {
+  background: var(--panel);
+  color: var(--fg);
+  border-color: var(--line);
+}
+:root[data-ui='dex'] .btn.ghost:hover {
+  border-color: var(--line-hover);
+}
+:root[data-ui='dex'] .search {
+  background: #0a1c12;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+:root[data-ui='dex'] .search:focus-within {
+  border-color: var(--line-hover);
+}
+:root[data-ui='dex'] .fchip {
+  font-family: var(--orb);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+}
+:root[data-ui='dex'] .fchip[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: #fff;
+}
+:root[data-ui='dex'] .card {
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
+}
+:root[data-ui='dex'] .card:hover {
+  border-color: var(--line-hover);
+}
+:root[data-ui='dex'] .card h4 {
+  color: var(--fg);
+}
+
+/* ---------- dex entries: silhouettes until you look closer ---------- */
+:root[data-ui='dex'] .g {
+  border-radius: 14px;
+}
+:root[data-ui='dex'] .g .cover {
+  border-radius: 12px 12px 12px 28px;
+  border: 2px solid var(--line);
+  transition:
+    filter 0.5s,
+    border-color 0.3s;
+}
+/* not installed: a flat dark shape with a green rim, colour returns on hover or focus */
+:root[data-ui='dex'] .g.off .cover {
+  filter: grayscale(1) brightness(0.5) contrast(1.5) sepia(1) hue-rotate(65deg) saturate(1.4);
+  border-color: #1f5a3c;
+}
+:root[data-ui='dex'] .g.off:hover .cover,
+:root[data-ui='dex'] .g.off:focus-visible .cover {
+  filter: none;
+  border-color: var(--line-hover);
+}
+:root[data-ui='dex'] .g .name {
+  font-family: var(--orb);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+}
+:root[data-ui='dex'] .g .sub {
+  color: var(--muted);
+}
+:root[data-ui='dex'] .g.off .name::before {
+  content: '??? ';
+  color: var(--warn);
+}
+:root[data-ui='dex'] .g.off:hover .name::before,
+:root[data-ui='dex'] .g.off:focus-visible .name::before {
+  content: '';
+}
+/* the badge dot becomes a plain capsule ball: caught (installed), empty ring (not yet) */
+:root[data-ui='dex'] .badge {
+  background: rgba(8, 24, 15, 0.92);
+  backdrop-filter: none;
+  color: #e1fbe6;
+  font-family: var(--orb);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+:root[data-ui='dex'] .badge i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid #101318;
+  background: linear-gradient(180deg, #ee3b46 0 44%, #101318 44% 56%, #f4f6f8 56%);
+  box-shadow: 0 0 6px rgba(255, 90, 100, 0.6);
+}
+:root[data-ui='dex'] .badge.off i {
+  background: transparent;
+  border: 1.5px dashed #9acfaa;
+  box-shadow: none;
+}
+:root[data-ui='dex'] .badge.run i {
+  animation: dx-wobble 0.9s ease-in-out infinite;
+}
+@keyframes dx-wobble {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-35deg);
+  }
+  75% {
+    transform: rotate(35deg);
+  }
+}
+:root[data-ui='dex'] .ach {
+  height: 6px;
+  border-radius: 3px;
+  background: #0a1c12;
+  border: 1px solid var(--line);
+}
+:root[data-ui='dex'] .shelf h4 {
+  color: #d9f6e0;
+  border-bottom: 2px dashed var(--line);
+  padding-bottom: 6px;
+}
+:root[data-ui='dex'] .hero {
+  border: 2px solid var(--line);
+  border-radius: 16px 16px 16px 40px;
+}
+
+/* ---------- the button pad (Layer.svelte) ---------- */
+:root[data-ui='dex'] .dx-pad {
+  position: fixed;
+  z-index: 2;
+  left: 14px;
+  bottom: 74px;
+  width: calc(var(--dx-side) - 44px);
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+:root[data-ui='dex'] .dx-pad button {
+  pointer-events: auto;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+:root[data-ui='dex'] .dx-dpad {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  filter: drop-shadow(0 3px 0 rgba(60, 0, 8, 0.6));
+}
+:root[data-ui='dex'] .dx-dpad button {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(180deg, #3a3e4a, #1d2027);
+}
+:root[data-ui='dex'] .dx-dpad .up {
+  left: 28px;
+  top: 0;
+  border-radius: 6px 6px 0 0;
+}
+:root[data-ui='dex'] .dx-dpad .down {
+  left: 28px;
+  bottom: 0;
+  border-radius: 0 0 6px 6px;
+}
+:root[data-ui='dex'] .dx-dpad .left {
+  left: 0;
+  top: 28px;
+  border-radius: 6px 0 0 6px;
+}
+:root[data-ui='dex'] .dx-dpad .right {
+  right: 0;
+  top: 28px;
+  border-radius: 0 6px 6px 0;
+}
+:root[data-ui='dex'] .dx-dpad::before {
+  content: '';
+  position: absolute;
+  left: 28px;
+  top: 28px;
+  width: 28px;
+  height: 28px;
+  background: #1d2027;
+}
+:root[data-ui='dex'] .dx-dpad button:hover,
+:root[data-ui='dex'] .dx-dpad button.on {
+  background: linear-gradient(180deg, #5a6070, #2c303a);
+}
+:root[data-ui='dex'] .dx-ab {
+  position: relative;
+  width: 84px;
+  height: 70px;
+}
+:root[data-ui='dex'] .dx-ab button {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-family: var(--orb);
+  font-weight: 800;
+  font-size: 12px;
+  color: #f4f6f8;
+  background: radial-gradient(circle at 35% 30%, #4b5062, #1d2027 70%);
+  box-shadow:
+    0 4px 0 #0c0e12,
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+:root[data-ui='dex'] .dx-ab .b {
+  left: 0;
+  bottom: 0;
+}
+:root[data-ui='dex'] .dx-ab .a {
+  right: 0;
+  top: 0;
+}
+:root[data-ui='dex'] .dx-ab button:hover,
+:root[data-ui='dex'] .dx-ab button.on {
+  background: radial-gradient(circle at 35% 30%, #6a7188, #2a2e3a 70%);
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #0c0e12;
+}
+
+/* short windows have no room for the pad */
+@media (max-height: 800px) {
+  :root[data-ui='dex'] .dx-pad {
+    display: none;
+  }
+}
+@media (max-width: 899px) {
+  :root[data-ui='dex'] .dx-pad {
+    display: none;
+  }
+  :root[data-ui='dex'] .app {
+    padding: 8px;
+    flex-direction: column;
+  }
+  :root[data-ui='dex'] .side {
+    width: auto;
+    height: auto;
+    position: static;
+  }
+  :root[data-ui='dex'] .side::after {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='dex'] main::before,
+  :root[data-ui='dex'] .side .brand::before,
+  :root[data-ui='dex'] .badge.run i {
+    animation: none;
+  }
+  :root[data-ui='dex'] .side a.nav:hover {
+    transform: none;
+  }
+}
+:root[data-ui='dex'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='dex'] .alist li.locked :is(img, .ph) {
+  opacity: 0.45;
+}

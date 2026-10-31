@@ -1,0 +1,1260 @@
+/* UI style zine: every rule starts with :root[data-ui='zine']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/special-elite';
+@import '@fontsource/permanent-marker';
+@import '@fontsource/bebas-neue';
+@import '@fontsource/dm-serif-display';
+@import '@fontsource/bowlby-one';
+
+:root[data-ui='zine'] {
+  --ink: #17140f;
+  --paper: #f0eadd;
+  --paper2: #e3dac6;
+  --sheet: #fbf8f0;
+  --pink: #ff3d95;
+  --yellow: #ffe93b;
+  --bg: var(--paper);
+  --panel: var(--sheet);
+  --panel2: var(--paper2);
+  --line: var(--ink);
+  --line-hover: var(--ink);
+  --fg: var(--ink);
+  --muted: #554e41;
+  --dim: #5d5547;
+  --accent: #ff3d95;
+  --accent-fg: #17140f;
+  --ok: #0b6b30;
+  --warn: #7a4300;
+  --bad: #b00a3a;
+  --c-lib: var(--ink);
+  --c-stream: var(--ink);
+  --c-host: var(--ink);
+  --c-set: var(--ink);
+  --c-agent: var(--ink);
+  --c-news: var(--ink);
+  --c-power: var(--ink);
+  --c-hist: var(--ink);
+  --font: 'Special Elite', 'Courier New', ui-monospace, monospace;
+  --mono: 'Special Elite', 'Courier New', ui-monospace, monospace;
+  --marker: 'Permanent Marker', 'Special Elite', cursive;
+  --news: 'Bebas Neue', Impact, sans-serif;
+  --serif: 'DM Serif Display', Georgia, serif;
+  --fat: 'Bowlby One', Impact, sans-serif;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --sh: 4px 4px 0 var(--ink);
+  --sh-s: 2px 2px 0 var(--ink);
+  --jit: steps(3, jump-none);
+  /* photocopy grain: static, cheap, no JS */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .09 0 0 0 0 .08 0 0 0 0 .06 0 0 0 .55 -.18'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  --tape: rgba(255, 233, 59, 0.78);
+  color-scheme: light;
+}
+/* Accent: the pink spot colour. Every swatch maps to a bright riso ink that keeps dark text readable. */
+:root[data-ui='zine'][data-accent='indigo'] {
+  --accent: #9da5ff;
+}
+:root[data-ui='zine'][data-accent='pink'] {
+  --accent: #ff3d95;
+}
+:root[data-ui='zine'][data-accent='orange'] {
+  --accent: #ff8a2b;
+}
+:root[data-ui='zine'][data-accent='lime'] {
+  --accent: #b6f03a;
+}
+:root[data-ui='zine'][data-accent='sky'] {
+  --accent: #52c7ff;
+}
+:root[data-ui='zine'][data-accent='mint'] {
+  --accent: #ff3d95;
+}
+:root[data-ui='zine'][data-accent='teal'] {
+  --accent: #3fe0c4;
+}
+
+:root[data-ui='zine'] {
+  background-color: var(--paper);
+  background-image: var(--grain);
+}
+:root[data-ui='zine'] body {
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.45;
+}
+:root[data-ui='zine'] ::selection {
+  background: var(--accent);
+  color: var(--ink);
+}
+:root[data-ui='zine'] :focus-visible {
+  outline: 3px dashed var(--ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--yellow);
+}
+:root[data-ui='zine'] .bg,
+:root[data-ui='zine'] .glow {
+  display: none;
+}
+:root[data-ui='zine'] a {
+  color: var(--ink);
+}
+:root[data-ui='zine'] .link {
+  text-decoration: underline wavy var(--accent) 2px;
+  text-underline-offset: 3px;
+}
+
+/* ---------- headings: cut letters, marker highlight ---------- */
+:root[data-ui='zine'] h1,
+:root[data-ui='zine'] h2,
+:root[data-ui='zine'] h3,
+:root[data-ui='zine'] h4,
+:root[data-ui='zine'] .big,
+:root[data-ui='zine'] .word {
+  font-family: var(--news);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+:root[data-ui='zine'] h2 {
+  display: inline-block;
+  font-family: var(--fat);
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: 0;
+  margin: 4px 0 6px;
+  padding: 2px 12px 4px;
+  background: var(--ink);
+  color: var(--paper);
+  rotate: -1.4deg;
+  box-shadow: 5px 5px 0 var(--accent);
+}
+:root[data-ui='zine'] h2::first-letter {
+  background: var(--yellow);
+  color: var(--ink);
+  font-family: var(--serif);
+  padding: 0 4px;
+}
+:root[data-ui='zine'] h3 {
+  font-size: 26px;
+}
+:root[data-ui='zine'] h4 {
+  font-size: 21px;
+  background: linear-gradient(transparent 52%, var(--yellow) 52% 92%, transparent 92%);
+  display: inline;
+  padding: 0 4px;
+}
+:root[data-ui='zine'] .lab,
+:root[data-ui='zine'] .muted,
+:root[data-ui='zine'] small {
+  color: var(--muted);
+}
+:root[data-ui='zine'] .mono {
+  font-family: var(--mono);
+}
+:root[data-ui='zine'] .top {
+  border-bottom: 3px solid var(--ink) !important;
+  padding-bottom: 14px !important;
+  margin-bottom: 18px;
+}
+
+/* ---------- sidebar: a taped strip of newsprint, ransom-note nav ---------- */
+:root[data-ui='zine'] .side {
+  position: sticky;
+  background: var(--paper2);
+  background-image: var(--grain);
+  backdrop-filter: none;
+  border-right: 0;
+  padding: 16px 14px 14px;
+  gap: 7px;
+  width: 226px;
+  z-index: 20;
+}
+:root[data-ui='zine'] .side::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -9px;
+  width: 10px;
+  background: var(--paper2);
+  background-image: var(--grain);
+  clip-path: polygon(
+    0 0,
+    100% 2%,
+    40% 5%,
+    90% 9%,
+    30% 13%,
+    85% 18%,
+    20% 22%,
+    100% 27%,
+    45% 31%,
+    90% 36%,
+    25% 40%,
+    80% 45%,
+    30% 49%,
+    100% 54%,
+    40% 58%,
+    85% 63%,
+    20% 67%,
+    90% 72%,
+    35% 76%,
+    100% 81%,
+    30% 85%,
+    85% 90%,
+    40% 94%,
+    90% 98%,
+    0 100%
+  );
+  pointer-events: none;
+}
+:root[data-ui='zine'] .brand {
+  align-self: flex-start;
+  background: var(--sheet);
+  padding: 4px 10px 2px;
+  rotate: -3deg;
+  box-shadow: 3px 3px 0 var(--ink);
+  position: relative;
+  margin: 2px 0 12px 4px;
+  transition: rotate 0.2s var(--jit);
+}
+:root[data-ui='zine'] .brand::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  width: 54px;
+  height: 17px;
+  translate: -50% 0;
+  rotate: 3deg;
+  background: var(--tape);
+  border-left: 2px dotted rgba(23, 20, 15, 0.25);
+  border-right: 2px dotted rgba(23, 20, 15, 0.25);
+}
+:root[data-ui='zine'] .brand:hover {
+  rotate: 2deg;
+}
+:root[data-ui='zine'] .brand img {
+  filter: grayscale(1) contrast(1.7);
+  mix-blend-mode: multiply;
+  width: 84px;
+  height: 40px;
+}
+:root[data-ui='zine'] .side .nav {
+  position: relative;
+  padding: 3px 10px 2px;
+  border-radius: 0;
+  background: var(--sheet);
+  color: var(--ink);
+  font-family: var(--news);
+  font-size: 24px;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: none;
+  transform: none;
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n + 1) {
+  rotate: -1.5deg;
+  margin-right: 14px;
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n + 2) {
+  rotate: 1.2deg;
+  font-family: var(--serif);
+  font-size: 21px;
+  margin-left: 8px;
+  background: var(--yellow);
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n + 3) {
+  rotate: -0.7deg;
+  font-family: var(--marker);
+  font-size: 18px;
+  background: var(--ink);
+  color: var(--paper);
+  margin-right: 6px;
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n + 4) {
+  rotate: 1.6deg;
+  font-family: var(--fat);
+  font-size: 16px;
+  margin-left: 4px;
+  background: var(--accent);
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n + 5) {
+  rotate: -1.1deg;
+  margin-right: 18px;
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n) {
+  rotate: 0.8deg;
+  font-family: var(--serif);
+  font-size: 21px;
+  background: var(--yellow);
+}
+:root[data-ui='zine'] .side .nav svg {
+  filter: grayscale(1) brightness(0);
+  flex: none;
+}
+:root[data-ui='zine'] .side nav .nav:nth-of-type(6n + 3) svg {
+  filter: grayscale(1) brightness(0) invert(1);
+}
+:root[data-ui='zine'] .side a.nav:hover {
+  background: var(--accent);
+  color: var(--ink);
+  transform: none;
+  animation: zine-jitter 0.36s steps(1) infinite;
+}
+:root[data-ui='zine'] .side a.nav:hover svg {
+  filter: grayscale(1) brightness(0);
+}
+:root[data-ui='zine'] .side a.nav:active {
+  translate: 2px 2px;
+  box-shadow: none;
+}
+:root[data-ui='zine'] .side .nav[aria-current='page'] {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+  background: var(--accent);
+  color: var(--ink);
+}
+:root[data-ui='zine'] .side .nav[aria-current='page'] svg {
+  filter: grayscale(1) brightness(0);
+}
+:root[data-ui='zine'] .side .nav[aria-current='page']::before {
+  content: '';
+  inset: auto;
+  left: -12px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  translate: 0 -50%;
+  border-radius: 0;
+  background: var(--ink);
+  box-shadow: none;
+  clip-path: polygon(0 20%, 55% 20%, 55% 0, 100% 50%, 55% 100%, 55% 80%, 0 80%);
+  z-index: 1;
+}
+:root[data-ui='zine'] .side .nav.soon {
+  opacity: 1;
+  box-shadow: none;
+  background: transparent;
+  border: 2px dashed var(--muted);
+  color: var(--muted);
+  font-size: 17px;
+  rotate: 0deg;
+  margin: 0 8px 0 0;
+  padding: 1px 8px;
+}
+:root[data-ui='zine'] .side .nav.soon svg {
+  filter: grayscale(1) opacity(0.6);
+}
+:root[data-ui='zine'] .side .nav.soon .tag {
+  margin-left: auto;
+  font-family: var(--marker);
+  font-size: 11px;
+  background: var(--yellow);
+  color: var(--ink);
+  border: 0;
+  padding: 0 5px;
+  rotate: -6deg;
+}
+:root[data-ui='zine'] .side .sec {
+  font-family: var(--marker);
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  padding: 16px 4px 2px;
+  rotate: -2deg;
+}
+:root[data-ui='zine'] .side .sec::before {
+  content: '(';
+}
+:root[data-ui='zine'] .side .sec::after {
+  content: ')';
+}
+
+/* host pill: a name tag */
+:root[data-ui='zine'] .side .pill {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--ink);
+  font-family: var(--marker);
+  rotate: 1.2deg;
+}
+:root[data-ui='zine'] .side .pill:hover {
+  background: var(--yellow);
+  color: var(--ink);
+  animation: zine-jitter 0.36s steps(1) infinite;
+}
+:root[data-ui='zine'] .side .pill .st {
+  color: var(--muted);
+  font-family: var(--font);
+}
+:root[data-ui='zine'] .side .it {
+  border-radius: 0;
+  color: var(--ink);
+}
+:root[data-ui='zine'] .side .it:hover,
+:root[data-ui='zine'] .side .it:focus-visible {
+  background: var(--yellow);
+  color: var(--ink);
+}
+:root[data-ui='zine'] .side .menu {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+  backdrop-filter: none;
+}
+
+/* ---------- page ---------- */
+:root[data-ui='zine'] main {
+  padding: 22px 28px 70px 30px;
+}
+:root[data-ui='zine'] main > .off {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh);
+  rotate: -0.5deg;
+  font-family: var(--marker);
+}
+:root[data-ui='zine'] .denied {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--accent);
+}
+:root[data-ui='zine'] .denied p {
+  color: var(--muted);
+}
+:root[data-ui='zine'] code {
+  background: var(--yellow);
+  color: var(--ink);
+  padding: 0 4px;
+}
+:root[data-ui='zine'] kbd,
+:root[data-ui='zine'] .k {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 var(--ink);
+  font-family: var(--font);
+}
+
+/* ---------- cards: paper scraps held by tape ---------- */
+:root[data-ui='zine'] .card,
+:root[data-ui='zine'] .glass {
+  background: var(--sheet);
+  backdrop-filter: none;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  box-shadow: var(--sh);
+}
+:root[data-ui='zine'] .card {
+  position: relative;
+  rotate: -0.5deg;
+  transform: none;
+  transition:
+    translate 0.18s var(--jit),
+    box-shadow 0.18s var(--jit);
+}
+:root[data-ui='zine'] .card:nth-child(even) {
+  rotate: 0.6deg;
+}
+:root[data-ui='zine'] .card:nth-child(3n) {
+  rotate: -0.2deg;
+  background: #fff7bd;
+}
+:root[data-ui='zine'] .card:nth-child(4n) {
+  background: var(--paper2);
+}
+:root[data-ui='zine'] .card::before {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  left: 22px;
+  top: -10px;
+  width: 64px;
+  height: 19px;
+  rotate: -5deg;
+  background: var(--tape);
+  border-left: 2px dotted rgba(23, 20, 15, 0.22);
+  border-right: 2px dotted rgba(23, 20, 15, 0.22);
+  pointer-events: none;
+}
+:root[data-ui='zine'] .card:nth-child(even)::before {
+  left: auto;
+  right: 22px;
+  rotate: 4deg;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-ui='zine'] .card:nth-child(3n)::before {
+  left: 50%;
+  translate: -50% 0;
+}
+:root[data-ui='zine'] .card:hover {
+  transform: none;
+  translate: -2px -3px;
+  box-shadow: 7px 8px 0 var(--ink);
+  border-color: var(--ink);
+}
+:root[data-ui='zine'] .card h4 {
+  font-size: 22px;
+  color: var(--ink);
+  white-space: nowrap;
+  width: fit-content;
+  align-self: flex-start;
+}
+:root[data-ui='zine'] .card .note,
+:root[data-ui='zine'] .card .lab {
+  color: var(--muted);
+}
+:root[data-ui='zine'] .grip {
+  color: var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .grip:hover,
+:root[data-ui='zine'] .grip:focus-visible {
+  background: var(--yellow);
+  color: var(--ink);
+}
+:root[data-ui='zine'] [data-lifted] {
+  box-shadow: 12px 14px 0 var(--ink) !important;
+  rotate: 2.5deg !important;
+  border-color: var(--ink) !important;
+}
+
+/* ---------- buttons: stamped labels ---------- */
+:root[data-ui='zine'] .btn {
+  background: var(--accent);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  font-family: var(--news);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  padding: 4px 14px 3px;
+  box-shadow: var(--sh-s);
+  transition: none;
+}
+:root[data-ui='zine'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: var(--yellow);
+  animation: zine-jitter 0.36s steps(1) infinite;
+}
+:root[data-ui='zine'] .btn:active {
+  translate: 2px 2px;
+  box-shadow: none;
+  animation: none;
+}
+:root[data-ui='zine'] .btn.ghost {
+  background: var(--sheet);
+  color: var(--ink);
+}
+:root[data-ui='zine'] .btn.ghost:hover {
+  background: var(--yellow);
+}
+:root[data-ui='zine'] .btn:disabled,
+:root[data-ui='zine'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: var(--paper2);
+  color: var(--muted);
+  border-style: dashed;
+  box-shadow: none;
+  animation: none;
+}
+:root[data-ui='zine'] .btn.sm {
+  font-size: 16px;
+  padding: 2px 10px 1px;
+}
+:root[data-ui='zine'] .tag {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 0;
+  font-family: var(--marker);
+}
+:root[data-ui='zine'] .dot {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+/* ---------- inputs ---------- */
+:root[data-ui='zine'] input[type='text'],
+:root[data-ui='zine'] input[type='search'],
+:root[data-ui='zine'] input[type='number'],
+:root[data-ui='zine'] input:not([type]),
+:root[data-ui='zine'] textarea,
+:root[data-ui='zine'] select {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  font-family: var(--font);
+}
+:root[data-ui='zine'] .search {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh-s);
+  color: var(--ink);
+}
+:root[data-ui='zine'] .search:focus-within {
+  border-color: var(--ink);
+  background: #fff7bd;
+  box-shadow: 0 0 0 4px var(--accent);
+}
+:root[data-ui='zine'] .search input[type] {
+  border: 0;
+  background: transparent;
+}
+:root[data-ui='zine'] input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-ui='zine'] input::file-selector-button {
+  font-family: var(--news);
+  font-size: 16px;
+  margin-right: 10px;
+  padding: 2px 10px;
+  border: 2px solid var(--ink);
+  background: var(--accent);
+  color: var(--ink);
+  cursor: pointer;
+}
+:root[data-ui='zine'] input[type='checkbox'],
+:root[data-ui='zine'] input[type='radio'] {
+  accent-color: var(--ink);
+}
+:root[data-ui='zine'] input[type='range'] {
+  accent-color: var(--ink);
+}
+:root[data-ui='zine'] .sw {
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+:root[data-ui='zine'] .sw[aria-checked='true'] {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+  rotate: 8deg;
+}
+
+/* ---------- chips, tabs, filters ---------- */
+:root[data-ui='zine'] .fchip,
+:root[data-ui='zine'] .chip,
+:root[data-ui='zine'] .seg button,
+:root[data-ui='zine'] .strip .tab {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: none;
+}
+:root[data-ui='zine'] .fchip:hover,
+:root[data-ui='zine'] .chip:hover,
+:root[data-ui='zine'] .strip .tab:hover {
+  background: var(--yellow);
+  color: var(--ink);
+  border-color: var(--ink);
+  animation: zine-jitter 0.36s steps(1) infinite;
+}
+:root[data-ui='zine'] .fchip:nth-child(3n + 1) {
+  rotate: -0.8deg;
+}
+:root[data-ui='zine'] .fchip:nth-child(3n + 2) {
+  rotate: 0.7deg;
+}
+:root[data-ui='zine'] .fchip .cnt {
+  color: var(--muted);
+}
+:root[data-ui='zine'] .fchip[aria-pressed='true'],
+:root[data-ui='zine'] .chip[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--ink);
+  border-color: var(--ink);
+  box-shadow: none;
+  translate: 2px 2px;
+}
+:root[data-ui='zine'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='zine'] .fchip[aria-pressed='true'] .cnt {
+  color: var(--ink);
+}
+:root[data-ui='zine'] .strip {
+  background: transparent !important;
+  border-bottom: 3px dashed var(--ink) !important;
+  gap: 8px !important;
+  padding-bottom: 10px;
+}
+:root[data-ui='zine'] .strip .tab {
+  font-family: var(--news);
+  font-size: 20px;
+  letter-spacing: 0.05em;
+  padding: 2px 14px 1px;
+}
+:root[data-ui='zine'] .strip .tab[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--ink);
+  box-shadow: none;
+  translate: 2px 2px;
+}
+:root[data-ui='zine'] .ind {
+  display: none;
+}
+:root[data-ui='zine'] .banner {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='zine'] .skel div {
+  background: repeating-linear-gradient(135deg, var(--paper2) 0 10px, var(--sheet) 10px 20px);
+  border: 2px dashed var(--ink);
+  border-radius: 0;
+}
+
+/* ---------- library: hero + glued photos ---------- */
+:root[data-ui='zine'] .hero {
+  background:
+    radial-gradient(rgba(23, 20, 15, 0.2) 1.6px, transparent 2.2px) 0 0 / 9px 9px,
+    var(--accent) !important;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 var(--ink);
+  color: var(--ink);
+  rotate: -0.4deg;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 94%,
+    96% 98%,
+    90% 94%,
+    83% 99%,
+    75% 95%,
+    66% 99%,
+    58% 95%,
+    49% 99%,
+    41% 95%,
+    32% 99%,
+    24% 95%,
+    15% 99%,
+    7% 95%,
+    0 99%
+  );
+  padding-bottom: 30px;
+}
+:root[data-ui='zine'] .hero .art {
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  filter: grayscale(1) contrast(1.5);
+}
+:root[data-ui='zine'] .hero .lab {
+  color: var(--ink);
+  font-family: var(--marker);
+}
+:root[data-ui='zine'] .hero h3 {
+  font-family: var(--fat);
+  font-size: 34px;
+  line-height: 1.05;
+}
+:root[data-ui='zine'] .hero .pchip {
+  background: var(--sheet);
+  color: var(--ink);
+}
+:root[data-ui='zine'] .hero .cover {
+  rotate: -3deg;
+}
+:root[data-ui='zine'] .shelf h4 {
+  font-size: 26px;
+  text-transform: none;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+}
+:root[data-ui='zine'] .shelf .n {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 7px;
+  font-family: var(--marker);
+  rotate: -4deg;
+}
+:root[data-ui='zine'] .chev {
+  border: 2px solid var(--ink);
+  background: var(--sheet);
+  color: var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='zine'] .chev[aria-disabled='true'] {
+  opacity: 1;
+  background: var(--paper2);
+  color: var(--muted);
+  box-shadow: none;
+}
+:root[data-ui='zine'] .shelf .more {
+  color: var(--ink);
+  text-decoration: underline wavy var(--accent) 2px;
+}
+:root[data-ui='zine'] .tc {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .wrap {
+  position: relative;
+  transition:
+    translate 0.18s var(--jit),
+    rotate 0.18s var(--jit);
+  rotate: -1.3deg;
+}
+:root[data-ui='zine'] .wrap:nth-child(even) {
+  rotate: 1.1deg;
+}
+:root[data-ui='zine'] .wrap:nth-child(3n) {
+  rotate: -0.4deg;
+}
+:root[data-ui='zine'] .wrap:hover,
+:root[data-ui='zine'] .wrap:has(:focus-visible) {
+  transform: none;
+  rotate: 0deg;
+  translate: 0 -4px;
+}
+:root[data-ui='zine'] .wrap::before {
+  content: '';
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: -8px;
+  width: 46px;
+  height: 15px;
+  translate: -50% 0;
+  rotate: -4deg;
+  background: var(--tape);
+  border-left: 2px dotted rgba(23, 20, 15, 0.22);
+  border-right: 2px dotted rgba(23, 20, 15, 0.22);
+  pointer-events: none;
+  transition:
+    translate 0.15s steps(2),
+    rotate 0.15s steps(2);
+}
+:root[data-ui='zine'] .wrap:nth-child(even)::before {
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+  rotate: 5deg;
+}
+:root[data-ui='zine'] .wrap:hover::before {
+  rotate: -28deg;
+  translate: -90% -4px;
+}
+:root[data-ui='zine'] .wrap :is(.cover, .g > div:first-child) {
+  border: 3px solid var(--sheet);
+  outline: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+:root[data-ui='zine'] .wrap .cover img,
+:root[data-ui='zine'] .hero .cover img {
+  filter: grayscale(1) contrast(1.35);
+  transition: filter 0.2s steps(3);
+}
+:root[data-ui='zine'] .wrap .cover::before {
+  background: repeating-linear-gradient(0deg, rgba(23, 20, 15, 0.12) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+:root[data-ui='zine'] .wrap:hover .cover img,
+:root[data-ui='zine'] .wrap:has(:focus-visible) .cover img {
+  filter: none;
+}
+:root[data-ui='zine'] .off .cover {
+  filter: grayscale(1) contrast(0.9);
+}
+:root[data-ui='zine'] .badge,
+:root[data-ui='zine'] .pchip,
+:root[data-ui='zine'] .tchip {
+  background: var(--sheet);
+  color: var(--ink);
+  backdrop-filter: none;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .uchip {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .uchip.need {
+  background: var(--accent);
+}
+:root[data-ui='zine'] .badge.run {
+  background: var(--accent);
+}
+:root[data-ui='zine'] .wrap .ach {
+  height: 8px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--sheet);
+}
+:root[data-ui='zine'] .wrap .ach i {
+  background: var(--ink);
+}
+:root[data-ui='zine'] .wrap .name {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 400;
+}
+:root[data-ui='zine'] .wrap .sub {
+  color: var(--muted);
+}
+:root[data-ui='zine'] .play {
+  border-radius: 0;
+}
+:root[data-ui='zine'] .ring {
+  color: var(--ink);
+}
+:root[data-ui='zine'] .ring b {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+}
+:root[data-ui='zine'] .st h3,
+:root[data-ui='zine'] figcaption,
+:root[data-ui='zine'] .nums b {
+  color: var(--ink);
+}
+:root[data-ui='zine'] .st .top {
+  border-bottom: 0 !important;
+}
+
+/* ---------- command menu, dialogs, dropdowns: pasted-on sheets ---------- */
+:root[data-ui='zine'] .cm,
+:root[data-ui='zine'] .rs,
+:root[data-ui='zine'] .mp {
+  background: var(--sheet);
+  background-image: var(--grain);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 9px 9px 0 var(--ink);
+  backdrop-filter: none;
+}
+:root[data-ui='zine'] .cm-dim {
+  background: rgba(23, 20, 15, 0.55);
+  backdrop-filter: none;
+}
+:root[data-ui='zine'] .cm-in {
+  font-family: var(--marker);
+  font-size: 20px;
+  color: var(--ink);
+}
+:root[data-ui='zine'] .cm-it[data-selected],
+:root[data-ui='zine'] .cm-it[aria-selected='true'] {
+  background: var(--yellow);
+  color: var(--ink);
+  border-radius: 0;
+  outline: 2px solid var(--ink);
+}
+:root[data-ui='zine'] .cm-empty {
+  color: var(--muted);
+  font-family: var(--marker);
+}
+:root[data-ui='zine'] .dd {
+  background: var(--sheet);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='zine'] .dd:hover,
+:root[data-ui='zine'] .dd[data-state='open'] {
+  background: var(--yellow);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+:root[data-ui='zine'] .dd-item {
+  color: var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .dd-menu {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh);
+  backdrop-filter: none;
+  color: var(--ink);
+}
+:root[data-ui='zine'] .dd-menu [role='option']:hover,
+:root[data-ui='zine'] .dd-menu [data-highlighted] {
+  background: var(--yellow);
+  color: var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .soon {
+  opacity: 1;
+}
+
+/* ---------- game detail ---------- */
+:root[data-ui='zine'] .rs.gd {
+  border-radius: 0;
+}
+:root[data-ui='zine'] .gd-side {
+  background: var(--paper2);
+  border-right: 3px solid var(--ink);
+}
+:root[data-ui='zine'] .gd-side .head {
+  background: var(--accent) !important;
+  border-bottom: 3px solid var(--ink);
+}
+:root[data-ui='zine'] .gd-side .head .art {
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+  filter: grayscale(1) contrast(1.4);
+}
+:root[data-ui='zine'] .gd-t {
+  color: var(--ink);
+  font: 400 36px / 1.05 var(--fat);
+}
+:root[data-ui='zine'] .gd-d {
+  color: var(--ink);
+  font-family: var(--marker);
+}
+:root[data-ui='zine'] .gd-x {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh-s);
+}
+:root[data-ui='zine'] .gd-x:hover,
+:root[data-ui='zine'] .gd-x:focus-visible {
+  background: var(--accent);
+  color: var(--ink);
+  animation: zine-jitter 0.36s steps(1) infinite;
+}
+:root[data-ui='zine'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='zine'] .alist li.locked img,
+:root[data-ui='zine'] .alist li.locked .ph {
+  filter: grayscale(1) contrast(0.8);
+}
+:root[data-ui='zine'] .alist small,
+:root[data-ui='zine'] .gd-main .lab {
+  color: var(--muted);
+}
+:root[data-ui='zine'] .pb,
+:root[data-ui='zine'] .chips li {
+  border: 2px solid var(--ink);
+  background: var(--sheet);
+  color: var(--ink);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .bar {
+  height: 14px;
+  border: 2px solid var(--ink);
+  background: var(--sheet);
+  border-radius: 0;
+}
+:root[data-ui='zine'] .bar i {
+  background: repeating-linear-gradient(135deg, var(--ink) 0 4px, var(--accent) 4px 8px);
+}
+:root[data-ui='zine'] .shot img,
+:root[data-ui='zine'] .shot .ph {
+  border: 4px solid var(--sheet);
+  outline: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh);
+}
+:root[data-ui='zine'] .shot:nth-child(odd) {
+  rotate: -1deg;
+}
+:root[data-ui='zine'] .shot:nth-child(even) {
+  rotate: 1.2deg;
+}
+:root[data-ui='zine'] .hc {
+  color: var(--ink);
+}
+
+/* ---------- toasts, tooltips ---------- */
+:root[data-ui='zine'] .toast {
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh);
+  font-family: var(--marker);
+  rotate: -1.5deg;
+  clip-path: polygon(0 0, 100% 3%, 98% 100%, 60% 96%, 30% 100%, 2% 96%);
+  padding: 10px 20px;
+}
+:root[data-ui='zine'] .toast.error {
+  background: var(--accent);
+  color: var(--ink);
+  rotate: 1.2deg;
+}
+:root[data-ui='zine'] .tip {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 0;
+  font-family: var(--marker);
+  box-shadow: 3px 3px 0 var(--accent);
+}
+:root[data-ui='zine'] *::-webkit-scrollbar-thumb {
+  background: var(--ink);
+  border: 2px solid var(--paper);
+  border-radius: 0;
+}
+:root[data-ui='zine'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+
+/* ---------- history, controller ---------- */
+:root[data-ui='zine'] .chart {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--sh);
+}
+:root[data-ui='zine'] .chart:nth-child(2n) {
+  rotate: 0.4deg;
+}
+:root[data-ui='zine'] .chart:nth-child(3n) {
+  rotate: -0.4deg;
+  background: #fff7bd;
+}
+:root[data-ui='zine'] .chart figcaption {
+  font-family: var(--news);
+  font-size: 20px;
+}
+:root[data-ui='zine'] figcaption .mono {
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13px;
+}
+:root[data-ui='zine'] .plot .lc-root-container {
+  --color-surface-300: rgba(23, 20, 15, 0.3);
+}
+:root[data-ui='zine'] .plot .lc-axis-tick-label {
+  fill: var(--ink);
+}
+:root[data-ui='zine'] .stick .ring {
+  fill: var(--sheet);
+  stroke: var(--ink);
+  stroke-width: 0.04;
+}
+:root[data-ui='zine'] .pad .body {
+  fill: var(--sheet);
+  stroke: var(--ink);
+}
+:root[data-ui='zine'] .pad .key :is(path, circle),
+:root[data-ui='zine'] .pad .stick .well,
+:root[data-ui='zine'] .pad .stick .travel {
+  stroke: var(--ink);
+}
+:root[data-ui='zine'] .pad .stick .cap {
+  fill: var(--yellow);
+  stroke: var(--ink);
+}
+:root[data-ui='zine'] .pad .key.on :is(path, circle),
+:root[data-ui='zine'] .pad .stick.on .cap {
+  fill: var(--accent);
+  stroke: var(--ink);
+}
+:root[data-ui='zine'] .pad text {
+  fill: var(--ink);
+}
+
+/* ---------- stream chrome only (main is never transformed) ---------- */
+:root[data-ui='zine'] .side:has(~ main :is(.stream, [data-stream])) {
+  position: static;
+}
+:root[data-ui='zine'] .stream .bar.glass {
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  rotate: -0.6deg;
+}
+:root[data-ui='zine'] .stream .bar .ic {
+  color: var(--ink) !important;
+  border-radius: 0;
+}
+:root[data-ui='zine'] .stream .bar .ic:hover,
+:root[data-ui='zine'] .stream .bar .ic[aria-pressed='true'],
+:root[data-ui='zine'] .stream .bar .ic[aria-expanded='true'] {
+  background: var(--yellow);
+  outline: 2px solid var(--ink);
+}
+:root[data-ui='zine'] .stream .center.glass,
+:root[data-ui='zine'] .stream .esc,
+:root[data-ui='zine'] .stream .sound,
+:root[data-ui='zine'] .stream .up {
+  color: var(--ink);
+}
+:root[data-ui='zine'] .stream .menu.glass {
+  box-shadow: 5px 5px 0 var(--ink);
+}
+
+/* ---------- motion: stop-motion, 3 frames per second feel ---------- */
+@keyframes zine-jitter {
+  0% {
+    translate: 0 0;
+  }
+  33% {
+    translate: 1px -1px;
+  }
+  66% {
+    translate: -1px 1px;
+  }
+}
+@keyframes zine-cutin {
+  from {
+    opacity: 0;
+    translate: -6px -10px;
+    rotate: -2deg;
+  }
+  50% {
+    opacity: 1;
+    translate: 3px 2px;
+    rotate: 1deg;
+  }
+}
+@keyframes zine-wobble {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  50% {
+    rotate: 1.5deg;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='zine'] .reveal[data-enter],
+  :root[data-ui='zine'] .enter[data-enter] {
+    animation: zine-cutin 0.4s steps(4) calc(var(--i, 0) * 70ms) backwards;
+  }
+  :root[data-ui='zine'] .page-in {
+    animation: zine-cutin 0.3s steps(3) backwards;
+  }
+  :root[data-ui='zine'] .skel div {
+    animation: zine-wobble 0.9s steps(2) infinite;
+  }
+  :root[data-ui='zine'] .side .brand:hover {
+    animation: zine-jitter 0.36s steps(1) infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='zine'] .side a.nav:hover,
+  :root[data-ui='zine'] .btn:hover,
+  :root[data-ui='zine'] .fchip:hover,
+  :root[data-ui='zine'] .chip:hover,
+  :root[data-ui='zine'] .strip .tab:hover,
+  :root[data-ui='zine'] .gd-x:hover,
+  :root[data-ui='zine'] .side .pill:hover {
+    animation: none;
+  }
+}

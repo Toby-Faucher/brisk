@@ -8,6 +8,8 @@ import '@fontsource-variable/geist'; // one variable file per subset, any weight
 import '@fontsource-variable/geist-mono';
 import '../styles/tokens.css';
 import '../styles/base.css';
+import '../themes/index.css';
+import { UI_IDS } from '../themes/registry';
 
 const { title } = Astro.props as { title: string };
 ---
@@ -21,12 +23,14 @@ const { title } = Astro.props as { title: string };
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>{title === 'Home' ? 'Brisk' : `${title} · Brisk`}</title>
     <ClientRouter />
-    <script is:inline define:vars={{ key: SETTINGS_KEY, accents: Object.keys(ACCENT_HEX) }}>
+    <script is:inline define:vars={{ key: SETTINGS_KEY, accents: Object.keys(ACCENT_HEX), uis: UI_IDS }}>
       // Apply the saved accent before first paint and after every page swap (no mint flash).
       const accent = () => {
         try {
           const a = JSON.parse(localStorage.getItem(key) || '{}').accent;
           document.documentElement.dataset.accent = accents.includes(a) ? a : 'mint';
+          const u = JSON.parse(localStorage.getItem(key) || '{}').ui;
+          document.documentElement.dataset.ui = uis.includes(u) ? u : 'brisk';
         } catch {}
       };
       accent();
