@@ -14,6 +14,7 @@
   import Toasts from './Toasts.svelte';
   import CommandMenu from './CommandMenu.svelte';
   import QuitDialog from './QuitDialog.svelte';
+  import { attachPadNav } from './padnav';
 
   let { path, children }: { path: string; children?: Snippet } = $props();
   $effect(() => bindAccent(settings, document.documentElement));
@@ -24,6 +25,8 @@
     e.preventDefault();
     settings.update((s) => ({ ...s, ui: nextUi(s.ui, e.shiftKey ? -1 : 1) }));
   }
+  // The pad drives the UI everywhere but /stream, where it belongs to the game.
+  $effect(() => (/^\/stream/.test(path) ? undefined : attachPadNav()));
   onMount(() => (enterWhenHydrated(), startMachines())); // startMachines returns its cleanup
   // A changed machine (Use, host pill, Ctrl+K) dips the page while its data reloads; the first selection and a remount don't.
   let main: HTMLElement | undefined = $state();
