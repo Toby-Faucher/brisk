@@ -8,23 +8,23 @@
   --panel: #1f1236;
   --panel2: #2d1a50;
   --line: #6b49a8;
-  --line-hover: #2dff8f;
+  --line-hover: #c6ff00;
   --fg: #fff7ee;
   --muted: #dacbf2;
   --dim: #bfaee0;
-  --ok: #2dff8f;
+  --ok: #c6ff00;
   --warn: #ffd23f;
   --bad: #ff7b8a;
   --font: 'Fredoka Variable', 'Fredoka', system-ui, sans-serif;
   --display: 'Lilita One', 'Fredoka Variable', sans-serif;
-  --r-card: 26px;
-  --r-ctl: 18px;
-  --ik-o: #ff6a13;
-  --ik-g: #2dff8f;
-  --ik-v: #a24bff;
+  --r-card: 16px;
+  --r-ctl: 12px;
+  --ik-o: #ff2e88;
+  --ik-g: #c6ff00;
+  --ik-v: #7a5cff;
   --ik-ink: #140a24;
-  --blob: 34px 22px 38px 24px / 24px 36px 22px 38px;
-  --blob2: 22px 38px 24px 36px / 38px 22px 36px 24px;
+  --blob: 16px;
+  --blob2: 16px;
   --pop: linear(0, 0.2 12%, 0.62 24%, 0.98 36%, 1.14 46%, 1.1 54%, 0.97 68%, 1.02 82%, 1);
   --dur-enter: 420ms;
   --rise-enter: 26px;
@@ -42,16 +42,16 @@
   --tongues: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='130'%3E%3Crect x='20' y='8' width='26' height='130' rx='13'/%3E%3Crect x='90' y='38' width='18' height='130' rx='9'/%3E%3Crect x='150' y='0' width='30' height='130' rx='15'/%3E%3Crect x='210' y='28' width='22' height='130' rx='11'/%3E%3Crect x='0' y='62' width='260' height='70'/%3E%3C/svg%3E");
   /* a round ink dot as the pointer */
   --ik-cursor:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Ccircle cx='11' cy='11' r='7' fill='%23ff6a13' stroke='%23fff7ee' stroke-width='2'/%3E%3Ccircle cx='20' cy='20' r='3' fill='%23ff6a13'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Ccircle cx='11' cy='11' r='7' fill='%23ff2e88' stroke='%23fff7ee' stroke-width='2'/%3E%3Ccircle cx='20' cy='20' r='3' fill='%23ff2e88'/%3E%3C/svg%3E")
     11 11,
     auto;
   --ik-cursor-hot:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 26 26'%3E%3Ccircle cx='11' cy='11' r='8' fill='%232dff8f' stroke='%23140a24' stroke-width='2'/%3E%3Ccircle cx='21' cy='21' r='3' fill='%232dff8f'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 26 26'%3E%3Ccircle cx='11' cy='11' r='8' fill='%23c6ff00' stroke='%23140a24' stroke-width='2'/%3E%3Ccircle cx='21' cy='21' r='3' fill='%23c6ff00'/%3E%3C/svg%3E")
     13 13,
     pointer;
 }
 :root[data-ui='ink'][data-accent='mint'] {
-  --accent: #ff6a13;
+  --accent: #ff2e88;
   --accent-fg: #140a24;
 }
 :root[data-ui='ink'] body {
@@ -680,7 +680,7 @@
 :root[data-ui='ink'] .cm,
 :root[data-ui='ink'] .rs {
   border: 4px solid var(--ik-o);
-  border-radius: 40px 28px 44px 30px / 30px 44px 28px 40px;
+  border-radius: 20px;
   background: #170c2b;
   box-shadow: 8px 8px 0 var(--ik-g);
   backdrop-filter: none;
@@ -1011,4 +1011,92 @@
   :root[data-ui='ink'] .top h2 {
     font-size: 38px;
   }
+}
+
+/* ---------- Splatoon pass: clean rounded boxes, small tilt, ink only as accents ---------- */
+:root[data-ui='ink'] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' fill='none' stroke-width='5' stroke-linecap='round'%3E%3Cpath d='M20 30q10-14 20 0t20 0' stroke='%23ff2e88' opacity='.14'/%3E%3Cpath d='M130 150l16-26 16 26z' stroke='%23c6ff00' opacity='.12'/%3E%3Ccircle cx='170' cy='50' r='11' stroke='%237a5cff' opacity='.18'/%3E%3Cpath d='M40 170l22 22M62 170l-22 22' stroke='%23c6ff00' opacity='.12'/%3E%3Ccircle cx='110' cy='96' r='3' fill='%23ff2e88' stroke='none' opacity='.35'/%3E%3C/svg%3E")
+    0 0 / 220px 220px,
+    #140a24;
+}
+:root[data-ui='ink'] .side::before,
+:root[data-ui='ink'] .side::after {
+  mask: none;
+  width: 292px;
+  border-radius: 0 22px 22px 0;
+}
+:root[data-ui='ink'] .side::after {
+  width: 300px;
+  mask-position: 0 0;
+}
+:root[data-ui='ink'] .top h2 {
+  padding: 12px 32px 14px 28px;
+  margin: 0 10px 14px 6px;
+  font-style: italic;
+  rotate: -1.5deg;
+}
+:root[data-ui='ink'] .top h2::before,
+:root[data-ui='ink'] .top h2::after {
+  inset: 0;
+  mask: none;
+  border-radius: 14px;
+}
+:root[data-ui='ink'] .top h2::after {
+  translate: 7px 6px;
+  scale: 1;
+  rotate: 1.5deg;
+}
+:root[data-ui='ink'] .brand::before {
+  mask: none;
+  border-radius: 14px;
+  padding: 8px 22px 10px 20px;
+  font-style: italic;
+  rotate: -3deg;
+}
+:root[data-ui='ink'] .brand::after {
+  display: none;
+}
+:root[data-ui='ink'] .side .nav::before {
+  mask: none;
+  border-radius: 14px;
+  inset: 0 -6px;
+}
+:root[data-ui='ink'] .side .nav:nth-child(even)::before {
+  mask-image: none;
+}
+:root[data-ui='ink'] .side .nav[aria-current='page']::before {
+  inset: 0 -6px;
+  rotate: -2deg;
+}
+:root[data-ui='ink'] .card:nth-of-type(odd),
+:root[data-ui='ink'] .card:nth-of-type(even),
+:root[data-ui='ink'] .g:nth-child(odd),
+:root[data-ui='ink'] .g:nth-child(even) {
+  rotate: 0deg;
+}
+:root[data-ui='ink'] .card,
+:root[data-ui='ink'] .glass,
+:root[data-ui='ink'] .hero {
+  border-width: 2px;
+  box-shadow: 5px 5px 0 var(--ik-v);
+}
+:root[data-ui='ink'] .card:nth-of-type(even) {
+  box-shadow: 5px 5px 0 var(--ik-o);
+}
+:root[data-ui='ink'] .g:hover,
+:root[data-ui='ink'] .g:focus-visible {
+  rotate: -1deg;
+  scale: 1.04;
+}
+:root[data-ui='ink'] .card:hover {
+  animation: none;
+  scale: 1.01;
+}
+:root[data-ui='ink'] .btn:hover {
+  rotate: -1deg;
+  scale: 1.04;
+}
+:root[data-ui='ink'] .card h4::before {
+  display: none;
 }

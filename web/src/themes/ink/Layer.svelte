@@ -29,23 +29,23 @@
 {/if}
 
 <style>
-  .ik-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: #140a24; }
+  .ik-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
   .ik-bg i { position: absolute; display: block; }
   /* big soft puddles in the corners, each one wobbling on its own beat */
-  .b { border-radius: 58% 42% 61% 39% / 44% 57% 43% 56%; }
-  .b1 { right: -12vw; top: -14vh; width: 52vw; height: 52vh; background: #ff6a13; opacity: 0.2; }
-  .b2 { left: 18vw; bottom: -20vh; width: 56vw; height: 40vh; background: #2dff8f; opacity: 0.14; }
-  .b3 { right: 8vw; bottom: 8vh; width: 24vw; height: 30vh; background: #a24bff; opacity: 0.22; }
+  .b { display: none; }
+  .b1 { right: -12vw; top: -14vh; width: 52vw; height: 52vh; background: #ff2e88; opacity: 0; }
+  .b2 { left: 18vw; bottom: -20vh; width: 56vw; height: 40vh; background: #c6ff00; opacity: 0; }
+  .b3 { right: 8vw; bottom: 8vh; width: 24vw; height: 30vh; background: #7a5cff; opacity: 0; }
   .d { border-radius: 50%; }
-  .d1 { left: 40vw; top: 12vh; width: 26px; height: 26px; background: #ff6a13; opacity: 0.55; }
-  .d2 { right: 30vw; top: 46vh; width: 14px; height: 14px; background: #2dff8f; opacity: 0.55; }
-  .d3 { left: 8vw; bottom: 22vh; width: 20px; height: 20px; background: #a24bff; opacity: 0.7; }
+  .d1 { left: 40vw; top: 12vh; width: 26px; height: 26px; background: #ff2e88; opacity: 0.55; }
+  .d2 { right: 30vw; top: 46vh; width: 14px; height: 14px; background: #c6ff00; opacity: 0.55; }
+  .d3 { left: 8vw; bottom: 22vh; width: 20px; height: 20px; background: #7a5cff; opacity: 0.7; }
 
   .ik-word {
     position: fixed; z-index: 55; left: 50%; top: 44%; pointer-events: none; display: grid; gap: 6px; justify-items: center;
     color: #140a24; opacity: 0; translate: -50% -50%; text-align: center;
   }
-  .ik-word b { font: 400 clamp(52px, 9vw, 120px)/1 'Lilita One', 'Fredoka Variable', sans-serif; letter-spacing: 0.02em; text-transform: uppercase; text-shadow: 4px 5px 0 #2dff8f; }
+  .ik-word b { font: 400 clamp(52px, 9vw, 120px)/1 'Lilita One', 'Fredoka Variable', sans-serif; letter-spacing: 0.02em; text-transform: uppercase; text-shadow: 4px 5px 0 #c6ff00; }
   .ik-word span { font: 600 18px/1.2 'Fredoka Variable', sans-serif; background: #140a24; color: #fff7ee; padding: 5px 16px; border-radius: 99px; rotate: -2deg; }
   @media (prefers-reduced-motion: no-preference) {
     .ik-word { animation: ik-word 0.6s 0.08s both; }
