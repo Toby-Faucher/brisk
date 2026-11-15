@@ -152,6 +152,7 @@ dependencies = [
  "quinn",
  "quinn-proto",
  "rand_core 0.6.4",
+ "rustix",
  "rustls",
  "rustls-rustcrypto",
  "sha2",

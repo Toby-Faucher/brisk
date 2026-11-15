@@ -8,9 +8,11 @@
 //! A broken mic path never touches the stream: the first failure is logged once, then packets
 //! are dropped, and `push` never blocks.
 
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::mpsc;
+use tokio::time::Instant;
 
 /// Datagram kind of a mic packet.
 pub const KIND_MIC: u8 = 0x30;
@@ -19,8 +21,11 @@ pub const MIC_FRAMES: usize = 480;
 /// `kind` + `seq` + `MIC_FRAMES` s16 samples.
 pub const MIC_PACKET_LEN: usize = 3 + MIC_FRAMES * 2;
 
-/// Packets queued for the writer; more than this and `push` drops.
-const QUEUE: usize = 8;
+/// Packets queued for the writer (30 ms); more than this and `push` drops. With the 4 KiB stdin
+/// pipe (about 43 ms) the mic lags by at most about 73 ms, however long the session runs.
+const QUEUE: usize = 3;
+/// No mic packet for this long means the viewer toggled the mic: the next seq starts a new run.
+const IDLE_RESET: Duration = Duration::from_millis(200);
 /// A seq this far behind the last one is taken as a page restart, not a late packet.
 const RESTART_GAP: u16 = 100;
 
@@ -36,11 +41,21 @@ pub fn parse(b: &[u8]) -> Option<(u16, &[u8])> {
 #[derive(Debug, Default)]
 pub struct Order {
     last: Option<u16>,
+    at: Option<Instant>,
 }
 
 impl Order {
     /// True if the packet with `seq` should be played. Updates the last seq when it is.
     pub fn fresh(&mut self, seq: u16) -> bool {
+        self.fresh_at(seq, Instant::now())
+    }
+
+    /// [`fresh`](Self::fresh) with the arrival time; after [`IDLE_RESET`] of silence any seq is fresh.
+    fn fresh_at(&mut self, seq: u16, now: Instant) -> bool {
+        if self.at.is_some_and(|t| now.duration_since(t) >= IDLE_RESET) {
+            self.last = None;
+        }
+        self.at = Some(now);
         let ok = match self.last {
             None => true,
             Some(last) => {
@@ -73,7 +88,7 @@ pub fn pw_cat() -> Command {
     .arg("-")
     .stdin(std::process::Stdio::piped())
     .stdout(std::process::Stdio::null())
-    .stderr(std::process::Stdio::null())
+    .stderr(std::process::Stdio::inherit())
     .kill_on_drop(true);
     c
 }
@@ -93,7 +108,9 @@ pub async fn serve(s: std::sync::Arc<crate::wt::Session>) {
 enum State {
     /// Not started; holds the command to spawn on the first push.
     Idle(Command),
-    Running(mpsc::Sender<Vec<u8>>),
+    /// The child is kept here so dropping `MicOut` kills it (kill_on_drop), even if a write is stuck.
+    #[allow(dead_code, reason = "held only so drop kills the child")]
+    Running(mpsc::Sender<Vec<u8>>, tokio::process::Child),
     /// Failed once (already logged); every push is a no-op.
     Off,
 }
@@ -115,21 +132,21 @@ impl MicOut {
     pub fn push(&mut self, pcm: &[u8]) {
         if let State::Idle(cmd) = &mut self.state {
             self.state = match start(cmd) {
-                Ok(tx) => State::Running(tx),
+                Ok(r) => State::Running(r.0, r.1),
                 Err(e) => {
                     tracing::warn!("mic: cannot start pw-cat: {e}");
                     State::Off
                 }
             };
         }
-        if let State::Running(tx) = &self.state {
+        if let State::Running(tx, _) = &self.state {
             // Full: drop the packet. Closed: the writer failed and already logged.
             let _ = tx.try_send(pcm.to_vec());
         }
     }
 }
 
-fn start(cmd: &mut Command) -> std::io::Result<mpsc::Sender<Vec<u8>>> {
+fn start(cmd: &mut Command) -> std::io::Result<(mpsc::Sender<Vec<u8>>, tokio::process::Child)> {
     let mut child = cmd
         .stdin(std::process::Stdio::piped())
         .kill_on_drop(true)
@@ -137,10 +154,10 @@ fn start(cmd: &mut Command) -> std::io::Result<mpsc::Sender<Vec<u8>>> {
     let Some(mut stdin) = child.stdin.take() else {
         return Err(std::io::Error::other("no stdin"));
     };
+    // A small pipe bounds the lag: a full 64 KiB pipe would hold about 680 ms. Failure is harmless.
+    let _ = rustix::pipe::fcntl_setpipe_size(&stdin, 4096);
     let (tx, mut rx) = mpsc::channel::<Vec<u8>>(QUEUE);
     tokio::spawn(async move {
-        // `child` lives here: when MicOut drops, the channel closes, and kill_on_drop ends it.
-        let _child = child;
         while let Some(pcm) = rx.recv().await {
             if let Err(e) = stdin.write_all(&pcm).await {
                 tracing::warn!("mic: write to pw-cat failed: {e}");
@@ -148,14 +165,13 @@ fn start(cmd: &mut Command) -> std::io::Result<mpsc::Sender<Vec<u8>>> {
             }
         }
     });
-    println!("mic	started");
-    Ok(tx)
+    println!("mic\tstarted");
+    Ok((tx, child))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, Instant};
     use tokio::process::Command;
 
     #[test]
@@ -190,6 +206,17 @@ mod tests {
         assert!(o.fresh(30000));
         assert!(!o.fresh(29950));
         assert!(o.fresh(0));
+    }
+
+    #[test]
+    fn order_resets_after_idle() {
+        let t0 = Instant::now();
+        let mut o = Order::default();
+        assert!(o.fresh_at(50, t0));
+        assert!(!o.fresh_at(0, t0 + Duration::from_millis(10)));
+        let mut o = Order::default();
+        assert!(o.fresh_at(50, t0));
+        assert!(o.fresh_at(0, t0 + Duration::from_millis(300)));
     }
 
     #[tokio::test]
