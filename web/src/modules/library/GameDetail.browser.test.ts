@@ -791,6 +791,18 @@ describe('GameDetail', () => {
       await loaded();
       expect(c).not.toHaveBeenCalled();
     });
+
+    it('a melonDS game asks for the DS mapping and links to melonDS in Settings', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const ds = (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-ds-get.json')).default;
+      const c = vi.spyOn(api, 'emulatorControls').mockResolvedValue(ds as never);
+      await render(GameDetail, { props: props(mkw({ id: 'emu:melonds:a', name: 'Mario Kart DS', emulator: 'melonds', caps })) });
+      await expect.element(page.getByText(/melonDS uses one mapping for every DS game/)).toBeInTheDocument();
+      await expect
+        .element(page.getByRole('link', { name: 'Edit mappings' }))
+        .toHaveAttribute('href', '/settings#emulators/melonds/controllers');
+      expect(c).toHaveBeenCalledWith('ds');
+    });
   });
 });
 

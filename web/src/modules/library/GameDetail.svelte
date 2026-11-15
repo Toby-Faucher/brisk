@@ -250,8 +250,8 @@
 
       <div class="gd-main">
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>
-        <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no Dolphin -->
-        {#if caps.controls}{#key key}<ControlsSummary />{/key}{/if}
+        <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no editor for it -->
+        {#if caps.controls}{#key key}<ControlsSummary emu={game.emulator} />{/key}{/if}
         <!-- Steam and emulator games: wrappers, environment and arguments, per field default or override -->
         {#if caps.launchOptions}{#key key}<GameLaunch {game} />{/key}{/if}
         <!-- store description and screenshots -->

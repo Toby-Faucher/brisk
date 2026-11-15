@@ -1,4 +1,4 @@
-//! The Dolphin controller editor.
+//! The emulator controller editor (Dolphin and melonDS).
 
 use super::{AppState, blocking, err};
 use crate::controls::{Controls, CtlError, Kind as PadKind};
@@ -8,16 +8,20 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
-/// The editor needs a library game whose emulator has this editor (`registry` controller types);
-/// and whether any such emulator runs (the config files are shared, so any running one owns them).
-pub(super) fn controls_gate(s: &AppState, kind: &str) -> Result<(PadKind, bool), Response> {
-    let Some(kind) = PadKind::parse(kind) else {
+/// The editor needs a library game of the emulator that owns this controller type (`registry`
+/// controller types); and whether that emulator runs (its config is shared by all its games).
+pub(super) fn controls_gate(
+    s: &AppState,
+    emu: &str,
+    kind: &str,
+) -> Result<(PadKind, bool), Response> {
+    let Some(kind) = PadKind::parse(kind).filter(|k| k.emulator() == emu) else {
         return Err(err(StatusCode::NOT_FOUND, "no such controller type"));
     };
     let recs = s.records();
     let mut editable = recs
         .iter()
-        .filter(|r| crate::emu::caps(&r.emulator).controls)
+        .filter(|r| r.emulator == emu && crate::emu::caps(&r.emulator).controls)
         .peekable();
     if editable.peek().is_none() {
         return Err(err(StatusCode::NOT_FOUND, "no controls on this machine"));
@@ -43,13 +47,13 @@ pub(super) fn controls_reply(r: Result<crate::controls::View, CtlError>) -> Resp
 /// The gate and then `act`, together on the blocking pool (/proc scan, canonicalize, fsynced writes).
 async fn controls_run(
     s: &Arc<AppState>,
-    kind: String,
+    (emu, kind): (String, String),
     act: impl FnOnce(&Controls, PadKind, bool) -> Result<crate::controls::View, CtlError>
     + Send
     + 'static,
 ) -> Response {
     let r = blocking(s, move |s| {
-        controls_gate(s, &kind).map(|(k, run)| controls_reply(act(&s.controls, k, run)))
+        controls_gate(s, &emu, &kind).map(|(k, run)| controls_reply(act(&s.controls, k, run)))
     })
     .await;
     match r {
@@ -59,23 +63,23 @@ async fn controls_run(
 
 pub(super) async fn controls_get(
     State(s): State<Arc<AppState>>,
-    UrlPath(kind): UrlPath<String>,
+    UrlPath(at): UrlPath<(String, String)>,
 ) -> Response {
-    controls_run(&s, kind, |c, k, run| c.get(k, run)).await
+    controls_run(&s, at, |c, k, run| c.get(k, run)).await
 }
 
 pub(super) async fn controls_put(
     State(s): State<Arc<AppState>>,
-    UrlPath(kind): UrlPath<String>,
+    UrlPath(at): UrlPath<(String, String)>,
     b: axum::body::Bytes,
 ) -> Response {
-    controls_run(&s, kind, move |c, k, run| c.put(k, &b, run)).await
+    controls_run(&s, at, move |c, k, run| c.put(k, &b, run)).await
 }
 
 pub(super) async fn controls_reset(
     State(s): State<Arc<AppState>>,
-    UrlPath(kind): UrlPath<String>,
+    UrlPath(at): UrlPath<(String, String)>,
     _b: axum::body::Bytes,
 ) -> Response {
-    controls_run(&s, kind, |c, k, run| c.reset(k, run)).await
+    controls_run(&s, at, |c, k, run| c.reset(k, run)).await
 }

@@ -3,12 +3,14 @@ import classicGet from '../../../../../crates/brisk-hostd/tests/fixtures/control
 import classicPut from '../../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-put.json';
 import gcGet from '../../../../../crates/brisk-hostd/tests/fixtures/controls/v2-gamecube-get.json';
 import gcPut from '../../../../../crates/brisk-hostd/tests/fixtures/controls/v2-gamecube-put.json';
+import dsGet from '../../../../../crates/brisk-hostd/tests/fixtures/controls/v2-ds-get.json';
+import dsPut from '../../../../../crates/brisk-hostd/tests/fixtures/controls/v2-ds-put.json';
 import type { ControllerType } from '../../../state/api';
 import { PAD_LABEL, PAD_NAMES } from '../pad.svg';
 import { accepts, bind, CONTROL_SETS, controlOf, DEFAULTS, drawnLabels, idsOf, kindOf, PAD_BY_INDEX, padHolder, unbound } from './mapping';
 
-const TYPES: ControllerType[] = ['classic', 'gamecube'];
-const fixtures = { classic: [classicGet, classicPut], gamecube: [gcGet, gcPut] };
+const TYPES: ControllerType[] = ['classic', 'gamecube', 'ds'];
+const fixtures = { classic: [classicGet, classicPut], gamecube: [gcGet, gcPut], ds: [dsGet, dsPut] };
 
 describe('contract with the fixtures', () => {
   for (const t of TYPES) {
@@ -17,7 +19,7 @@ describe('contract with the fixtures', () => {
         expect(Object.keys(f.bindings).sort()).toEqual(idsOf(t).sort());
         for (const [id, pad] of Object.entries(f.bindings)) expect(accepts(t, id, pad as string), `${id}=${pad}`).toBe(true);
       }
-      const get = t === 'classic' ? classicGet : gcGet;
+      const get = { classic: classicGet, gamecube: gcGet, ds: dsGet }[t];
       expect(Object.keys(get.custom).sort()).toEqual(idsOf(t).sort());
       expect(Object.keys(get.deadZone).sort()).toEqual(
         idsOf(t)
@@ -31,9 +33,10 @@ describe('contract with the fixtures', () => {
       expect(new Set(v).size).toBe(v.length);
     });
   }
-  it('sizes: 14 classic controls, 11 GameCube controls', () => {
+  it('sizes: 14 classic controls, 11 GameCube controls, 9 DS controls', () => {
     expect(CONTROL_SETS.classic).toHaveLength(14);
     expect(CONTROL_SETS.gamecube).toHaveLength(11);
+    expect(CONTROL_SETS.ds).toHaveLength(9);
   });
 });
 

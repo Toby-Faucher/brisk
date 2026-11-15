@@ -1,33 +1,37 @@
 <script lang="ts">
-  // Emulator mappings (Settings > Emulators > Dolphin > Controllers): what the pad buttons do in Dolphin. Two ways, one mapping: click a
+  // Emulator mappings (Settings > Emulators > Dolphin or melonDS > Controllers): what the pad buttons do in the emulator. Two ways, one mapping: click a
   // button on the pad drawing and pick its game function, or press "Change" on a game control and press a pad button.
   // Spec: docs/plans/2026-10-28-emulator-controls-v2.md, section 1.
   import { onMount, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { padName, type PadLike } from '../../lib/gamepad';
   import { toast } from '../../shell/Toasts.svelte';
-  import { api, type ControllerType } from '../../state/api';
+  import { api, EMU_OF, type ControllerType } from '../../state/api';
   import Card from '../../ui/Card.svelte';
   import { gameCaps, gameKey } from '../../state/gameId';
   import { padChoices, padView, type PadView } from './controllertest';
   import { Listener, wrongKind } from './emulators/listen';
   import { accepts, ACCEPTS, bind, CONTROL_SETS, controlOf, drawnLabels, padHolder, TYPE_LABEL } from './emulators/mapping';
+  import { emulatorOf } from './emulators/registry';
   import { createMappings, SAVED, type State, type Target } from './emulators/store';
   import PadDiagram from './PadDiagram.svelte';
   import { PAD_LABEL, type PadName } from './pad.svg';
 
-  /** Changes each time the page is opened at #emulators/dolphin: scroll here and focus the heading. */
-  let { focusKey = 0 }: { focusKey?: number } = $props();
+  /** `focusKey` changes each time the page is opened at #emulators/<emu>: scroll here and focus the heading. */
+  let { focusKey = 0, emu = 'dolphin' }: { focusKey?: number; emu?: string } = $props();
 
-  const TYPES: ControllerType[] = ['classic', 'gamecube'];
-  const stores = { classic: createMappings('classic', { toast }), gamecube: createMappings('gamecube', { toast }) };
+  // The Emulators tab mounts one card per emulator ({#key}), so `emu` is fixed for the card's life.
+  // svelte-ignore state_referenced_locally
+  const TYPES = (Object.keys(EMU_OF) as ControllerType[]).filter((t) => EMU_OF[t] === emu);
+  const emuName = $derived(emulatorOf(emu).name);
+  const stores = Object.fromEntries(TYPES.map((t) => [t, createMappings(t, { toast })])) as Record<ControllerType, ReturnType<typeof createMappings>>;
   const asked = new Set<ControllerType>();
   const noPad = { index: -1, id: '', connected: false, mapping: '', buttons: [], axes: [] } as PadLike;
 
   let root: HTMLElement | undefined = $state();
   let heading: HTMLElement | undefined = $state();
-  let type = $state<ControllerType>('classic');
-  let s = $state.raw<State>(get(stores.classic.state));
+  let type = $state<ControllerType>(TYPES[0]);
+  let s = $state.raw<State>(get(stores[TYPES[0]].state));
   $effect(() => stores[type].state.subscribe((v) => (s = v)));
   const ctl = $derived(stores[type]);
 
@@ -201,8 +205,8 @@
   });
 
   onMount(() => {
-    asked.add('classic');
-    void stores.classic.load();
+    asked.add(TYPES[0]);
+    void stores[TYPES[0]].load();
     const ac = new AbortController();
     const on = (t: EventTarget, name: string, f: (e: never) => void) => t.addEventListener(name, f as EventListener, { signal: ac.signal });
     on(window, 'focus', () => (sync(), void ctl.refresh()));
@@ -245,8 +249,8 @@
       <h4 id="em-h" tabindex="-1" bind:this={heading}>Emulator mappings</h4>
 
       <div class="head">
-        <h5>Dolphin</h5>
-        <div class="seg" role="radiogroup" aria-label="Controller type">
+        <h5>{emuName}</h5>
+        {#if TYPES.length > 1}<div class="seg" role="radiogroup" aria-label="Controller type">
           {#each TYPES as t (t)}
             <button
               type="button"
@@ -258,10 +262,10 @@
               onkeydown={typeKeys}
               onclick={() => pickType(t)}>{TYPE_LABEL[t]}</button>
           {/each}
-        </div>
+        </div>{/if}
         <span class="chip">{padNow ? `Pad: ${padNow}` : 'No pad seen'}</span>
       </div>
-      <p class="note first">These buttons are shared by every Dolphin game on this machine. The change is used the next time a game starts.</p>
+      <p class="note first">These buttons are shared by every {emuName} game on this machine. The change is used the next time a game starts.</p>
 
       {#if s.load === 'loading'}
         <div class="grid" aria-hidden="true">
@@ -315,7 +319,7 @@
                 {:else}
                   <button type="button" class="btn ghost sm" data-change={c.id} aria-label={chip ? `${c.name}, bound to ${chip}. Press Enter to change.` : `${c.name}, custom. Press Enter to change.`} onclick={() => startListen(c.id)}>Change</button>
                 {/if}
-                {#if chip === null && !mine}<span class="sub">Set in Dolphin. Pick a button to replace it.</span>{/if}
+                {#if chip === null && !mine}<span class="sub">Set in {emuName}. Pick a button to replace it.</span>{/if}
                 {#if mine && hint}<span class="sub hint">{hint}</span>{/if}
               </li>
             {/each}
@@ -337,7 +341,7 @@
               onchange={(e) => commitDz(stickId, e.currentTarget.valueAsNumber)}
               onkeydown={(e) => dzKeys(e, stickId)} />
             <span class="mono">{dz}%</span>
-            <span id="em-dz-h" class="note full">How far to push before Dolphin sees movement.</span>
+            <span id="em-dz-h" class="note full">How far to push before {emuName} sees movement.</span>
           </div>
         {/if}
 
@@ -356,7 +360,7 @@
             {:else if s.restartError}
               <span role="alert">{s.restartError}.</span>
             {:else}
-              <span><b>Saved.</b> Dolphin reads the mapping at start, so restart the game to use it.</span>
+              <span><b>Saved.</b> {emuName} reads the mapping at start, so restart the game to use it.</span>
             {/if}
             {#if target}<button type="button" class="btn" disabled={s.restarting} onclick={() => target && ctl.restart(target)}>{s.restartError ? 'Try again' : 'Restart game to apply'}</button>{/if}
           </div>
@@ -368,7 +372,7 @@
   <section class="em" aria-labelledby="em-h">
     <Card cols={2} class="emcard">
       <h4 id="em-h">Emulator mappings</h4>
-      <p class="none">No Dolphin was found on this machine, so there is nothing to map yet. Install Dolphin on the host and this page fills in.</p>
+      <p class="none">No {emuName} was found on this machine, so there is nothing to map yet. Install {emuName} on the host and this page fills in.</p>
     </Card>
   </section>
 {/if}

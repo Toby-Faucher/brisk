@@ -38,13 +38,31 @@ describe('Settings tabs', () => {
     await expect.element(page.getByText(/Removing a game from the Library never deletes its file/)).toBeInTheDocument();
   });
 
-  it('#emulators/melonds/folders shows melonDS with no Controllers tab', async () => {
+  it('#emulators/melonds/folders shows melonDS with its Controllers tab', async () => {
     history.replaceState(null, '', '#emulators/melonds/folders');
     await render(Settings);
     await expect.element(page.getByRole('tab', { name: 'melonDS' })).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('tab', { name: 'Games folders' })).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('button', { name: 'Scan games folder' })).toBeInTheDocument();
-    await expect.element(page.getByRole('tab', { name: 'Controllers' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'Controllers' })).toBeInTheDocument();
+  });
+
+  it('#emulators/melonds/controllers shows the DS mapping', async () => {
+    const { api } = await import('../../state/api');
+    const fx = (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-ds-get.json')).default;
+    const c = vi.spyOn(api, 'emulatorControls').mockResolvedValue(fx as never);
+    history.replaceState(null, '', '#emulators/melonds/controllers');
+    await render(Settings);
+    await expect.element(page.getByRole('tab', { name: 'melonDS' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('tab', { name: 'Controllers' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('heading', { name: 'melonDS' })).toBeInTheDocument();
+    await expect.element(page.getByText(/shared by every melonDS game/)).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Select', exact: true })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Select, bound to Back. Press Enter to change.' })).toBeInTheDocument();
+    expect(page.getByRole('radiogroup', { name: 'Controller type' }).elements()).toHaveLength(0);
+    expect(c).toHaveBeenCalledWith('ds');
+    expect(c).not.toHaveBeenCalledWith('classic');
+    vi.restoreAllMocks();
   });
 
   const mock = async () => {

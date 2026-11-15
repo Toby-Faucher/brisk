@@ -1,6 +1,6 @@
 //! The emulators brisk can run: a static table, one row each. A second emulator is a new row
-//! (and a header reader when its files carry an id). Where Dolphin keeps its config is
-//! `Config::dolphin_dir`, which the controller editor takes from there.
+//! (and a header reader when its files carry an id). Where Dolphin and melonDS keep their config is
+//! `Config::dolphin_dir` and `Config::melonds_dir`, which the controller editor takes from there.
 //! shortcut: one window class per emulator and no pid match for the window; add `match_by` to a
 //! row if two emulators ever share a class.
 
@@ -58,7 +58,7 @@ pub(crate) static EMULATORS: &[Emulator] = &[
         args: &[],
         // shortcut: class not checked on the real machine (Qt usually sets it from the binary name); confirm with swaymsg -t get_tree.
         window_class: "melonDS",
-        controller: &[],
+        controller: &["ds"],
         systems: &[System {
             id: "nds",
             folder: "NDS",
@@ -84,7 +84,10 @@ mod tests {
             ("dolphin-emu", &["-b", "-e"][..], "dolphin-emu")
         );
         let m = get("melonds").unwrap();
-        assert_eq!((m.cmd, m.args, m.controller), ("melonDS", &[][..], &[][..]));
+        assert_eq!(
+            (m.cmd, m.args, m.controller),
+            ("melonDS", &[][..], &["ds"][..])
+        );
         assert!(get("mystery").is_none());
         // a system's id is its ingest folder, and the display folder is the same name
         for e in EMULATORS {

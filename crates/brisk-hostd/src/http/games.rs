@@ -364,6 +364,9 @@ pub(super) async fn game_cmd(s: Arc<AppState>, b: &[u8], install: bool) -> Respo
         if install {
             s2.stream.install(&id) == Some(true)
         } else {
+            if let Some((emu, _)) = id.emu_parts() {
+                s2.controls.seed(emu);
+            }
             s2.stream.launch(&id)
         }
     })

@@ -216,8 +216,11 @@ export type SessionRec = {
 /** `[t s since started, delay ms, fps, Mbit/s]`, one per 5 s. */
 export type SeriesPoint = [number, number, number, number];
 
-/** An emulator controller mapping (GET/PUT/reset /api/emulators/dolphin/controls/{type}); see docs/plans/2026-10-28-emulator-controls-v2.md. */
-export type ControllerType = 'classic' | 'gamecube';
+/** An emulator controller mapping (GET/PUT/reset /api/emulators/{emulator}/controls/{type}); see docs/plans/2026-10-28-emulator-controls-v2.md. */
+export type ControllerType = 'classic' | 'gamecube' | 'ds';
+/** The emulator whose config holds each controller type. */
+export const EMU_OF: Record<ControllerType, string> = { classic: 'dolphin', gamecube: 'dolphin', ds: 'melonds' };
+const ctlPath = (type: ControllerType) => `/api/emulators/${EMU_OF[type]}/controls/${type}`;
 /** Game control ids of the type (`a`, `zl`, `ms`...); the key sets are in modules/settings/emulators/mapping.ts. */
 export type Bindings = Record<string, string | null>;
 export type ControlsData = {
@@ -544,9 +547,9 @@ export const api = {
   gameAchievements: (key: string, refresh?: boolean) =>
     call<Achievements | RaAnswer>('GET', gamePath(key, `/achievements${q(refresh)}`), undefined, SLOW),
   gameNews: (key: string, refresh?: boolean) => call<News>('GET', gamePath(key, `/news${q(refresh)}`), undefined, SLOW),
-  emulatorControls: (type: ControllerType) => call<ControlsData>('GET', `/api/emulators/dolphin/controls/${type}`),
-  putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', `/api/emulators/dolphin/controls/${type}`, b),
-  resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `/api/emulators/dolphin/controls/${type}/reset`),
+  emulatorControls: (type: ControllerType) => call<ControlsData>('GET', ctlPath(type)),
+  putEmulatorControls: (type: ControllerType, b: ControlsPut) => call<ControlsData>('PUT', ctlPath(type), b),
+  resetEmulatorControls: (type: ControllerType) => call<ControlsData>('POST', `${ctlPath(type)}/reset`),
   launchDefaults: () => call<LaunchDefaults>('GET', '/api/launch/defaults'),
   putLaunchDefaults: (b: { rev?: string; allowCustomCommands: boolean; options: LaunchOpts }) =>
     call<LaunchDefaults>('PUT', '/api/launch/defaults', b),

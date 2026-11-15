@@ -1,0 +1,8 @@
+{
+  "rev": "none",
+  "bindings": {
+    "a": "A", "b": "B", "x": "X", "y": "Y", "l": "LT", "r": "RT",
+    "start": "Menu", "select": "View", "dp": "D-pad"
+  },
+  "deadZone": {}
+}

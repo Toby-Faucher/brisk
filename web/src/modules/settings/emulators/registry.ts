@@ -17,6 +17,7 @@ export const EMULATORS: EmulatorEntry[] = [
     id: 'melonds',
     name: 'melonDS',
     sections: [
+      { id: 'controllers', name: 'Controllers' },
       { id: 'launch', name: 'Launch options' },
       { id: 'folders', name: 'Games folders' },
       { id: 'art', name: 'Art and details' },
