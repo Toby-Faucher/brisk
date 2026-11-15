@@ -269,5 +269,7 @@ describe('saveRow', () => {
       now,
     );
     expect([c.icon, c.note]).toEqual(['clip', 'Shared']);
+    const g = saveRow({ kind: 'game-save', name: 'Kart DS.sav', path: 'Kart DS.sav', size: 512, modified: null }, now);
+    expect([g.icon, g.detail]).toEqual(['pad', 'Game save, 1 KB']);
   });
 });

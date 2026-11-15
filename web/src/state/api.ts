@@ -129,9 +129,9 @@ export type GameInfo = {
 export type GameLocal = { screenshots: string[]; saves: { files: number; bytes: number; modified: number /* unix s */ } | null };
 /** A stream screenshot stored by hostd (`takenAt` is unix ms). */
 export type StoredShot = { name: string; width: number; height: number; size: number; takenAt: number };
-/** GET /api/games/{id}/saves (emulator games with `caps.saves`): read-only. `path` is relative to the emulator's user folder. */
+/** GET /api/games/{id}/saves (emulator games with `caps.saves`): read-only. `path` is relative to the emulator's user folder (melonDS: the bare file name). */
 export type SaveItem = {
-  kind: 'state' | 'memory-card' | 'nand-save';
+  kind: 'state' | 'memory-card' | 'nand-save' | 'game-save';
   name: string;
   path: string;
   size: number;

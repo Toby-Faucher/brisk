@@ -45,6 +45,8 @@ pub struct Config {
     pub dolphin_dir: PathBuf,
     /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
     pub dolphin_user_dir: PathBuf,
+    /// melonDS's config dir, holding `melonDS.toml` (`BRISK_MELONDS_DIR`).
+    pub melonds_dir: PathBuf,
     /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
     pub playtime_poll: std::time::Duration,
     /// RetroAchievements: line 1 user name, line 2 Web API key (`BRISK_RA_KEY_FILE`). Missing = off.
@@ -113,6 +115,12 @@ impl Config {
                     .filter(|p| p.is_absolute())
                     .unwrap_or_else(|| home.join(".local/share"))
                     .join("dolphin-emu")
+            }),
+            melonds_dir: env_path("BRISK_MELONDS_DIR").unwrap_or_else(|| {
+                env_path("XDG_CONFIG_HOME")
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or_else(|| home.join(".config"))
+                    .join("melonDS")
             }),
             playtime_poll: crate::playtime::poll_from(env_str("BRISK_PLAYTIME_POLL_S").as_deref()),
             ra_key_file: env_path("BRISK_RA_KEY_FILE")

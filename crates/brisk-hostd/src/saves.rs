@@ -1,5 +1,6 @@
-//! Read-only list of an emulator game's saves, from Dolphin's user directory. Only names, sizes and
-//! times are read, never file contents; paths are relative to the user dir.
+//! Read-only list of an emulator game's saves, from Dolphin's user directory or a melonDS game's
+//! folders. Only names, sizes and times are read, never save contents; paths are relative to the user
+//! dir.
 //!
 //! Layout, checked against Dolphin's source (CommonPaths.h, State.cpp, UICommon.cpp, NandPaths.cpp,
 //! MainSettings.cpp, Formats.h):
@@ -12,15 +13,27 @@
 //! the source text; they are from memory. Re-check against a real user dir.
 //! shortcut: `lastState.sav` (the undo state, shared by all games) is not listed.
 //! shortcut: symlinks anywhere under the user dir are skipped, even ones that point inside it.
+//!
+//! melonDS (checked against its 1.1 source, EmuInstance.cpp `getAssetPath`, `getSavestateName`,
+//! `loadROM`; Window.cpp; Config.cpp): the game save is `<rom stem>.sav` and the state slots 1 to 8
+//! are `<rom stem>.ml1` to `.ml8`, all next to the ROM. `[Instance0] SaveFilePath` and `SavestatePath`
+//! in `melonDS.toml` move them to another folder. Paths are then the bare file names.
+//! shortcut: states saved with "File..." (any name, `.mln` by default), the `.sav` that
+//! `Savestate.RelocSRAM` writes next to a state, and the `.2`+ suffixed files of a second instance are
+//! not listed.
 
 use serde::Serialize;
 use std::fs::Metadata;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAX_ITEMS: usize = 100;
 const MAX_WALK: usize = 2000;
 const MAX_DEPTH: usize = 4;
 const STATE_SLOTS: u32 = 10;
+const MELON_SLOTS: u32 = 8;
+/// More than any real `melonDS.toml`; the rest is not read.
+const MELON_TOML_MAX: u64 = 256 * 1024;
 
 /// The kind of save data.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
@@ -29,6 +42,8 @@ pub enum Kind {
     State,
     MemoryCard,
     NandSave,
+    /// A cartridge save (melonDS `.sav`).
+    GameSave,
 }
 
 /// One save file or folder an emulator holds.
@@ -211,9 +226,70 @@ pub fn list(user: &Path, disc: &str, system: &str) -> Option<Vec<SaveItem>> {
             ));
         }
     }
-    out.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.path.cmp(&b.path)));
-    out.truncate(MAX_ITEMS);
-    Some(out)
+    Some(newest_first(out))
+}
+
+fn newest_first(mut v: Vec<SaveItem>) -> Vec<SaveItem> {
+    v.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.path.cmp(&b.path)));
+    v.truncate(MAX_ITEMS);
+    v
+}
+
+/// An absolute folder set as `key` in the `[Instance0]` table of `melonDS.toml`.
+/// shortcut: a line scan, not a TOML parser. Values with escapes, relative paths, dotted keys and
+/// inline tables are ignored (the ROM folder is used); fine for the file melonDS writes itself.
+fn melon_dir(toml: &str, key: &str) -> Option<PathBuf> {
+    let mut table = "";
+    for line in toml.lines().map(str::trim) {
+        if let Some(h) = line.strip_prefix('[') {
+            table = h.trim_end_matches(']').trim();
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        if table != "Instance0" || k.trim() != key {
+            continue;
+        }
+        let v = v.trim();
+        let s = (v.strip_prefix('"').and_then(|v| v.strip_suffix('"')))
+            .or_else(|| v.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))?;
+        let p = PathBuf::from(s);
+        return (!s.contains('\\') && p.is_absolute()).then_some(p);
+    }
+    None
+}
+
+/// The game save and save states of a melonDS game, found from its ROM path; `None` when the ROM's
+/// folder does not exist. `cfg` is melonDS's config dir. Newest first.
+pub fn list_melonds(rom: &Path, cfg: &Path) -> Option<Vec<SaveItem>> {
+    let home = rom.parent().filter(|d| d.is_dir())?;
+    // melonDS cuts the name at its last dot, as file_stem does.
+    let Some(stem) = rom.file_stem().and_then(|s| s.to_str()) else {
+        return Some(vec![]);
+    };
+    let mut toml = String::new();
+    let f = cfg.join("melonDS.toml");
+    if plain(&f).is_some_and(|m| m.is_file())
+        && let Ok(f) = std::fs::File::open(&f)
+    {
+        // Not UTF-8 or unreadable: no redirects.
+        let _ = f.take(MELON_TOML_MAX).read_to_string(&mut toml);
+    }
+    let dir = |key| melon_dir(&toml, key).unwrap_or_else(|| home.to_path_buf());
+    let (saves, states) = (dir("SaveFilePath"), dir("SavestatePath"));
+    let mut out: Vec<SaveItem> = file_item(&saves, &[&format!("{stem}.sav")], Kind::GameSave, None)
+        .into_iter()
+        .collect();
+    for n in 1..=MELON_SLOTS {
+        out.extend(file_item(
+            &states,
+            &[&format!("{stem}.ml{n}")],
+            Kind::State,
+            None,
+        ));
+    }
+    Some(newest_first(out))
 }
 
 #[cfg(test)]
@@ -343,5 +419,98 @@ mod tests {
         }
         let v = list(t.path(), "RMCE01", "wii").unwrap();
         assert!(v[0].files.unwrap() as usize <= MAX_WALK);
+    }
+
+    /// A ROM folder holding `Game.v1.nds`, plus an empty melonDS config dir.
+    fn melon() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let t = tempfile::tempdir().unwrap();
+        let (rom, cfg) = (t.path().join("nds/Game.v1.nds"), t.path().join("cfg"));
+        put(t.path(), "nds/Game.v1.nds", 1);
+        fs::create_dir(&cfg).unwrap();
+        (t, rom, cfg)
+    }
+
+    #[test]
+    fn melonds_lists_the_save_and_state_slots_next_to_the_rom() {
+        let (t, rom, cfg) = melon();
+        for (f, len) in [
+            ("Game.v1.sav", 512),
+            ("Game.v1.ml1", 10),
+            ("Game.v1.ml8", 20),
+            ("Game.v1.ml9", 1),
+            ("Game.v1.mln", 1),
+            ("Game.v1.ml1.sav", 1),
+            ("Other.sav", 1),
+        ] {
+            put(t.path(), &format!("nds/{f}"), len);
+        }
+        let v = list_melonds(&rom, &cfg).unwrap();
+        let mut got: Vec<_> = v
+            .iter()
+            .map(|i| (i.kind, i.path.as_str(), i.size))
+            .collect();
+        got.sort_by_key(|g| g.1);
+        assert_eq!(
+            got,
+            [
+                (Kind::State, "Game.v1.ml1", 10),
+                (Kind::State, "Game.v1.ml8", 20),
+                (Kind::GameSave, "Game.v1.sav", 512),
+            ]
+        );
+        assert!(v.iter().all(|i| i.name == i.path && i.modified.is_some()));
+    }
+
+    #[test]
+    fn melonds_nothing_yet_is_empty_and_no_rom_folder_is_none() {
+        let (t, rom, cfg) = melon();
+        assert_eq!(list_melonds(&rom, &cfg).unwrap(), vec![]);
+        assert!(list_melonds(&t.path().join("gone/Game.nds"), &cfg).is_none());
+    }
+
+    #[test]
+    fn melonds_honors_the_save_and_state_folders_from_its_config() {
+        let (t, rom, cfg) = melon();
+        let (sd, st) = (t.path().join("saves"), t.path().join("states"));
+        put(t.path(), "nds/Game.v1.sav", 1);
+        put(t.path(), "nds/Game.v1.ml2", 1);
+        put(t.path(), "saves/Game.v1.sav", 7);
+        put(t.path(), "states/Game.v1.ml3", 9);
+        let toml = format!(
+            "[Instance1]\nSaveFilePath = \"/elsewhere\"\n\n[Instance0]\nEnableCheats = false\n\
+             SaveFilePath = \"{}/\"\nSavestatePath = '{}'\n\n[Instance0.Keyboard]\nA = 1\n",
+            sd.display(),
+            st.display()
+        );
+        fs::write(cfg.join("melonDS.toml"), toml).unwrap();
+        let v = list_melonds(&rom, &cfg).unwrap();
+        let mut got: Vec<_> = v.iter().map(|i| (i.path.as_str(), i.size)).collect();
+        got.sort();
+        assert_eq!(got, [("Game.v1.ml3", 9), ("Game.v1.sav", 7)]);
+    }
+
+    #[test]
+    fn melonds_config_scan_ignores_what_it_cannot_trust() {
+        let d = |t: &str| melon_dir(t, "SaveFilePath");
+        assert_eq!(d("[Instance0]\nSaveFilePath = \"/s\""), Some("/s".into()));
+        assert_eq!(d("[Instance0]\nSaveFilePath = \"\""), None);
+        assert_eq!(d("[Instance0]\nSaveFilePath = \"rel/dir\""), None);
+        assert_eq!(d("[Instance0]\nSaveFilePath = \"/a\\\"b\""), None);
+        assert_eq!(d("SaveFilePath = \"/root-level\""), None);
+        assert_eq!(d("[Instance0.X]\nSaveFilePath = \"/s\""), None);
+    }
+
+    #[test]
+    fn melonds_skips_symlinks_and_folders() {
+        let (t, rom, cfg) = melon();
+        let out = tempfile::tempdir().unwrap();
+        put(out.path(), "secret.bin", 3);
+        let r = t.path().join("nds");
+        std::os::unix::fs::symlink(out.path().join("secret.bin"), r.join("Game.v1.sav")).unwrap();
+        fs::create_dir(r.join("Game.v1.ml1")).unwrap();
+        put(t.path(), "nds/Game.v1.ml2", 4);
+        let v = list_melonds(&rom, &cfg).unwrap();
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert_eq!(v[0].path, "Game.v1.ml2");
     }
 }

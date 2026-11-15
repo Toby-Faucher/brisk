@@ -165,8 +165,10 @@ Emulator {
 Adding PCSX2, RPCS3, Cemu, Ryujinx later is: a row, an `ident` function per system, a controller type if it
 has an editor.
 
-DS games (`.nds`, in `~/Games/nds/`) run through melonDS, the second row. It has no controller editor, no
-saves list and no RetroAchievements hash yet (rcheevos hashes DS ROMs its own way).
+DS games (`.nds`, in `~/Games/nds/`) run through melonDS, the second row. It has no controller editor
+and no RetroAchievements hash yet (rcheevos hashes DS ROMs its own way).
+The saves list shows a DS game's `.sav` and state slots `.ml1` to `.ml8`, next to the ROM or in the
+folders set in `melonDS.toml`.
 
 ### 2.5 API changes
 
