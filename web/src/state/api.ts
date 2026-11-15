@@ -82,6 +82,8 @@ export type Achievements = {
   state?: 'ok';
   /** How the RA game was found: by the file's hash, or only by its title (the hash is not in RA's list). */
   matched?: 'hash' | 'title';
+  /** The emulator has no RetroAchievements client (melonDS): the list can be seen but not earned. */
+  viewOnly?: boolean;
   unlockedHardcore?: number;
   pointsUnlocked?: number;
   pointsTotal?: number;

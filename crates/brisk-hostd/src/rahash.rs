@@ -6,6 +6,8 @@
 //! (capped at 1 MiB), then the data of each of the 18 main.dol segments with a non-zero size.
 //! The DOL header itself is not hashed. Unlike rcheevos, a read past the end of the file is an
 //! error rather than a hash of whatever was read.
+//!
+//! Wii and Nintendo DS hashes are here too (`ra_hash_wii`, `ra_hash_nds`).
 
 use crate::discid::{self, Error, System};
 use std::fs::File;
@@ -300,6 +302,41 @@ pub(crate) fn ra_hash_wii(path: &Path) -> Result<String, Error> {
     Ok(md5.finish_hex())
 }
 
+const NDS_ICON: u64 = 0xA00;
+
+/// RA hash (MD5 hex) of a Nintendo DS ROM, as rcheevos `rc_hash_nintendo_ds`
+/// (`src/hash/rc_hash_rom.c`) computes it for console 18: the 0x160-byte header, the ARM9 code,
+/// the ARM7 code, then 0xA00 bytes of icon and title, zero-padded when the file ends first. A
+/// SuperCard dump's 512-byte prefix is skipped. Unlike rcheevos, ARM9 or ARM7 code past the end
+/// of the file is an error (rcheevos would hash stale buffer bytes), and the 16 MiB size cap is
+/// summed without wrapping.
+pub(crate) fn ra_hash_nds(path: &Path) -> Result<String, Error> {
+    let f = discid::open_regular(path)?;
+    let len = f.metadata()?.len();
+    let mut d = Disc::Iso(f, len);
+    let mut h = d.read_at(0, 0x200)?;
+    let mut base = 0;
+    if h[..4] == [0x2E, 0, 0, 0xEA] && h[0xB0..0xB4] == [0x44, 0x46, 0x96, 0] {
+        base = 0x200;
+        h = d.read_at(base, 0x200)?;
+    }
+    let le = |at: usize| u64::from(u32::from_le_bytes([h[at], h[at + 1], h[at + 2], h[at + 3]]));
+    let (arm9, arm9_size, arm7, arm7_size, icon) =
+        (le(0x20), le(0x2C), le(0x30), le(0x3C), le(0x68));
+    if arm9_size + arm7_size > 16 << 20 {
+        return Err(Error::Invalid("DS code sizes over 16 MiB"));
+    }
+    let mut md5 = Md5::new();
+    md5.update(&h[..0x160]);
+    d.hash_range(&mut md5, base + arm9, arm9_size)?;
+    d.hash_range(&mut md5, base + arm7, arm7_size)?;
+    let at = (base + icon).min(len); // past the end: nothing read, all padding
+    let mut icon = d.read_at(at, (len - at).min(NDS_ICON))?;
+    icon.resize(NDS_ICON as usize, 0);
+    md5.update(&icon);
+    Ok(md5.finish_hex())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,6 +567,135 @@ mod tests {
         for (n, data) in cases {
             let p = write(n, &data);
             assert!(ra_hash_wii(&p).is_err(), "{n}");
+        }
+    }
+
+    // ---- Nintendo DS ----
+
+    /// rcheevos `fill_image` (`test/hash/hash_data.c`), so its own test vector can be checked.
+    fn rc_fill_image(img: &mut [u8]) {
+        let mut size = img.len() as u64;
+        let mut seed = (size ^ (size >> 8) ^ (size - 1).wrapping_mul(25387)) as i32;
+        let mut i = 0;
+        while size > 0 {
+            let hi = ((seed >> 16) & 0xFF) as u8;
+            let (mut count, value) = match seed & 0xFF {
+                0 => ((((seed >> 8) & 0x3F) as u64 & !(size & 0x0F)).max(1), 0),
+                1 => (((seed >> 8) & 0x07) as u64 + 1, hi),
+                n @ 2..=7 => {
+                    let x = [0xFF, 0xA5, 0xC3, 0x96, 0x78, 0x78][n as usize - 2];
+                    (((seed >> 8) & 0x03) as u64 + 1, hi ^ x)
+                }
+                _ => (1, (((seed >> 8) ^ (seed >> 16)) & 0xFF) as u8),
+            };
+            loop {
+                img[i] = value;
+                i += 1;
+                size -= 1;
+                count -= 1;
+                if size == 0 || count == 0 {
+                    break;
+                }
+            }
+            seed = seed.wrapping_mul(0x41C6_4E6D).wrapping_add(12345) & 0x7FFF_FFFF;
+        }
+    }
+
+    /// rcheevos `generate_nds_file(2, 1234567, 654321)` (`test/hash/test_rc_hash_rom.c`).
+    fn rc_nds_image() -> Vec<u8> {
+        let mut img = vec![0u8; 2 << 20];
+        rc_fill_image(&mut img);
+        let (arm9, arm9_size, arm7_size) = (65536u32, 1234567u32, 654321u32);
+        put(&mut img, 0x20, &arm9.to_le_bytes());
+        put(&mut img, 0x2C, &arm9_size.to_le_bytes());
+        put(&mut img, 0x30, &(arm9 + arm9_size).to_le_bytes());
+        put(&mut img, 0x3C, &arm7_size.to_le_bytes());
+        put(
+            &mut img,
+            0x68,
+            &(arm9 + arm9_size + arm7_size).to_le_bytes(),
+        );
+        img
+    }
+
+    #[test]
+    fn nds_matches_rcheevos_test_vector_with_and_without_supercard() {
+        const WANT: &str = "56b30c276cba4affa886bd38e8e34d7e"; // test_hash_nds
+        let img = rc_nds_image();
+        assert_eq!(ra_hash_nds(&write("nds", &img)).unwrap(), WANT);
+        let mut sc = vec![0u8; 0x200];
+        put(&mut sc, 0, &[0x2E, 0, 0, 0xEA]);
+        put(&mut sc, 0xB0, &[0x44, 0x46, 0x96, 0]);
+        sc.extend_from_slice(&img);
+        assert_eq!(ra_hash_nds(&write("nds-sc", &sc)).unwrap(), WANT);
+    }
+
+    /// ARM9 (6 bytes) at 0x200, ARM7 (4 bytes) at 0x300, icon at 0x400, file ends at 0x500.
+    fn nds_image() -> Vec<u8> {
+        let mut img: Vec<u8> = (0..0x500).map(|i| (i * 13 + i / 7) as u8).collect();
+        for (at, v) in [
+            (0x20, 0x200u32),
+            (0x2C, 6),
+            (0x30, 0x300),
+            (0x3C, 4),
+            (0x68, 0x400),
+        ] {
+            put(&mut img, at, &v.to_le_bytes());
+        }
+        img
+    }
+
+    #[test]
+    fn nds_hash_by_hand_pads_a_short_or_missing_icon() {
+        let want = |img: &[u8], icon: &[u8]| {
+            let mut w = img[..0x160].to_vec();
+            w.extend_from_slice(&img[0x200..0x206]);
+            w.extend_from_slice(&img[0x300..0x304]);
+            w.extend_from_slice(icon);
+            w.resize(0x160 + 10 + 0xA00, 0);
+            md5hex(&w)
+        };
+        // Only 0x100 icon bytes before the end of the file.
+        let img = nds_image();
+        let got = ra_hash_nds(&write("nds-hand", &img)).unwrap();
+        assert_eq!(got, want(&img, &img[0x400..]));
+        // Icon offset past the end: 0xA00 zero bytes, as rcheevos does.
+        let mut far = img.clone();
+        put(&mut far, 0x68, &u32::MAX.to_le_bytes());
+        assert_eq!(
+            ra_hash_nds(&write("nds-far", &far)).unwrap(),
+            want(&far, &[])
+        );
+    }
+
+    #[test]
+    fn nds_rejects_truncated_and_hostile() {
+        let img = nds_image();
+        let mut cases: Vec<(&str, Vec<u8>)> = vec![
+            ("tiny", img[..0x1FF].to_vec()),
+            ("arm7cut", img[..0x302].to_vec()),
+        ];
+        for (n, at, v) in [
+            ("arm9past", 0x20, 0xFFFF_FF00u32),
+            ("arm7big", 0x3C, 0x1000),
+            ("bothmax", 0x2C, u32::MAX),
+        ] {
+            let mut bad = img.clone();
+            put(&mut bad, at, &v.to_le_bytes());
+            cases.push((n, bad));
+        }
+        // Sizes that wrap a u32 sum to 1 (rcheevos would pass its check, then overrun).
+        let mut wrap = img.clone();
+        put(&mut wrap, 0x2C, &u32::MAX.to_le_bytes());
+        put(&mut wrap, 0x3C, &2u32.to_le_bytes());
+        cases.push(("wrap", wrap));
+        // A SuperCard prefix with no full header after it.
+        let mut sc = vec![0u8; 0x300];
+        put(&mut sc, 0, &[0x2E, 0, 0, 0xEA]);
+        put(&mut sc, 0xB0, &[0x44, 0x46, 0x96, 0]);
+        cases.push(("sc-short", sc));
+        for (n, data) in cases {
+            assert!(ra_hash_nds(&write(n, &data)).is_err(), "{n}");
         }
     }
 

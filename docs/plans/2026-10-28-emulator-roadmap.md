@@ -165,8 +165,9 @@ Emulator {
 Adding PCSX2, RPCS3, Cemu, Ryujinx later is: a row, an `ident` function per system, a controller type if it
 has an editor.
 
-DS games (`.nds`, in `~/Games/nds/`) run through melonDS, the second row. It has no controller editor, no
-saves list and no RetroAchievements hash yet (rcheevos hashes DS ROMs its own way).
+DS games (`.nds`, in `~/Games/nds/`) run through melonDS, the second row. It has no controller editor and no
+saves list. Brisk hashes DS ROMs the rcheevos way and shows the RetroAchievements list and progress, but the
+list is view only until melonDS gets an RA client.
 
 ### 2.5 API changes
 

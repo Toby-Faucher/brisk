@@ -1,4 +1,4 @@
-# RetroAchievements hash for GameCube and Wii discs
+# RetroAchievements hash for GameCube, Wii and DS
 
 Question: how does brisk turn a Wii or GameCube file (Toby's Mario Kart Wii is a `.wbfs`) into the hash the RA game list expects?
 Earlier notes call this unknown. It is not: rcheevos implements both.
@@ -75,6 +75,26 @@ The plan was to run `dolphin-tool verify -a rchash` on the games VM for a golden
 1. On a machine with Dolphin, run `dolphin-tool verify -i "Mario Kart Wii.wbfs" -a rchash`. This gives the true hash and a golden value.
 2. Check it against the RA game list entry for Mario Kart Wii.
 3. Run the ignored test in `rahash.rs` with the file and that hash. A match makes the Wii routine verified; a mismatch means the +0x2B8 quirk or the WBFS handling needs fixing.
+
+## Nintendo DS (console 18), verified from code
+
+Read 2026-11-14 from the rcheevos develop tarball (CHANGELOG top: v12.5.0). Console id: `RC_CONSOLE_NINTENDO_DS = 18` in `include/rc_consoles.h`.
+The `nds` extension maps to it in `src/hash/rc_hash.c`, and DSi (78) uses the same routine.
+The routine is `rc_hash_nintendo_ds` in `src/hash/rc_hash_rom.c`. It reads the file in place, never the whole ROM:
+
+1. Read 512 header bytes; fewer is an error.
+2. SuperCard dump: if bytes 0..4 are `2E 00 00 EA` and 0xB0..0xB4 are `44 46 96 00`, skip a 512-byte prefix and read the header again from there. Every offset below is then shifted by 512.
+3. Little-endian u32 values: ARM9 offset at 0x20, ARM9 size at 0x2C, ARM7 offset at 0x30, ARM7 size at 0x3C, icon/title offset at 0x68.
+4. If ARM9 size + ARM7 size is over 16 MiB, it is not a DS ROM (error).
+5. MD5 over the first 0x160 header bytes, the ARM9 code, the ARM7 code, then 0xA00 bytes at the icon offset. A short icon read is padded with zeros to 0xA00 (homebrew often has no full icon block).
+
+`ra_hash_nds` in `rahash.rs` follows this. Deliberate differences, all on broken files only:
+ARM9 or ARM7 code past the end of the file is an error (rcheevos would hash leftover buffer bytes);
+the 16 MiB check adds the sizes as u64 (rcheevos adds u32 values, which can wrap);
+a SuperCard prefix with no full second header is an error.
+Tests: rcheevos' own vector (`test_hash_nds` in `test/hash/test_rc_hash_rom.c`, its `fill_image` ported, expected `56b30c276cba4affa886bd38e8e34d7e`), the same with a SuperCard prefix, a hand-built ROM with a short and a missing icon, and hostile sizes and offsets.
+
+melonDS 1.1 has no RA client, so achievements cannot be earned in it. Brisk shows the list and progress and says it is view only (`ra_client: false` in `registry.rs`, `viewOnly` in the achievements answer).
 
 ## Verified vs not
 

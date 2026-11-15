@@ -103,8 +103,11 @@ pub(super) async fn emu_achievements(s: &AppState, g: &Game, refresh: bool) -> R
         }
         ok
     };
-    let body =
+    let mut body =
         crate::ra_game::state_json(&s.cfg, &r.file, std::slice::from_ref(&r.name), fresh).await;
+    if crate::registry::get(&r.emulator).is_some_and(|e| !e.ra_client) {
+        body["viewOnly"] = true.into();
+    }
     ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
 }
 

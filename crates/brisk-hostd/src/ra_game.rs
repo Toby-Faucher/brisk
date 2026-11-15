@@ -9,8 +9,8 @@ use crate::discid::{self, Container, System};
 use crate::game::Game;
 use crate::rahash;
 use crate::retroachievements::{
-    self as ra, Achievement, CONSOLE_GAMECUBE, CONSOLE_WII, GameProgress, Matched, RaConfig,
-    RaError,
+    self as ra, Achievement, CONSOLE_GAMECUBE, CONSOLE_NDS, CONSOLE_WII, GameProgress, Matched,
+    RaConfig, RaError,
 };
 use crate::steam::now;
 use serde::{Deserialize, Serialize};
@@ -35,11 +35,12 @@ impl Config {
     }
 }
 
-/// Wii and GameCube are the systems RA can serve; true only with the key file present.
+/// Wii, GameCube and DS are the systems RA can serve here; true only with the key file present.
 pub fn caps_on(cfg: &Config, games: &mut [Game]) {
     let key = cfg.ra_key_file.is_file();
     for g in games {
-        g.caps.achievements = key && matches!(g.system.as_deref(), Some("wii" | "gamecube"));
+        g.caps.achievements =
+            key && matches!(g.system.as_deref(), Some("wii" | "gamecube" | "nds"));
     }
 }
 
@@ -47,7 +48,7 @@ pub fn caps_on(cfg: &Config, games: &mut [Game]) {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HashInfo {
-    /// RA console id (16 GameCube, 19 Wii).
+    /// RA console id (16 GameCube, 18 DS, 19 Wii).
     pub console: u32,
     pub hash: String,
     pub container: String,
@@ -93,6 +94,7 @@ fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
         (System::GameCube, Container::Iso) => {
             (CONSOLE_GAMECUBE, rahash::ra_hash_gamecube_iso(file))
         }
+        (System::NDS, _) => (CONSOLE_NDS, rahash::ra_hash_nds(file)),
         (System::Wii | System::GameCube, c) => {
             return Err(HashErr::Unsupported(format!(
                 "{c:?} images cannot be hashed yet, use an ISO or WBFS file"
@@ -100,13 +102,13 @@ fn hash_for(data_dir: &Path, file: &Path) -> Result<HashInfo, HashErr> {
         }
         _ => {
             return Err(HashErr::Unsupported(
-                "RetroAchievements here covers Wii and GameCube".into(),
+                "RetroAchievements here covers Wii, GameCube and DS".into(),
             ));
         }
     };
     let hash = hashed.map_err(|e| match e {
         discid::Error::Io(_) => HashErr::Failed("game file unreadable".into()),
-        _ => HashErr::Unsupported("disc layout brisk cannot hash".into()),
+        _ => HashErr::Unsupported("a file layout brisk cannot hash".into()),
     })?;
     let info = HashInfo {
         console,
