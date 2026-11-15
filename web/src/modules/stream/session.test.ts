@@ -203,6 +203,15 @@ describe('StreamSession', () => {
       await flush();
       expect(stop).toHaveBeenCalledTimes(1);
       expect(get(s.micOn)).toBe(false);
+      expect(f.deps.notify).toHaveBeenCalledWith('Reconnecting… your keys and mic are released');
+    });
+    it('reconnect without a mic keeps the keys-only text', async () => {
+      const f = mk(async () => ({ stop: vi.fn() }));
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      f.transports[0].drop();
+      await flush();
+      expect(f.deps.notify).toHaveBeenCalledWith('Reconnecting… your keys are released');
     });
     it('late_mic_after_reconnect_is_stopped', async () => {
       const stop = vi.fn();

@@ -244,10 +244,11 @@ export class StreamSession {
 
   private dropped(conn: Conn) {
     if (conn.ours || conn !== this.conn) return;
+    const hadMic = !!conn.mic;
     this.end();
     if (Date.now() - conn.liveAt >= STABLE_MS) this.tries = 0;
     this.state.set('reconnecting');
-    this.d.notify('Reconnecting… your keys are released');
+    this.d.notify(hadMic ? 'Reconnecting… your keys and mic are released' : 'Reconnecting… your keys are released');
     void this.retry(this.gen);
   }
 
