@@ -139,10 +139,11 @@ export function wheelToX(dx: number, dy: number, scrollLeft: number, clientWidth
   return dy;
 }
 
-const SAVE_ICON = { state: 'replay', 'memory-card': 'clip', 'nand-save': 'host' } as const;
+const SAVE_ICON = { state: 'replay', 'memory-card': 'clip', 'nand-save': 'host', 'game-save': 'pad' } as const;
+const SAVE_WHAT = { state: 'Save state', 'memory-card': 'Memory card', 'nand-save': 'Wii save', 'game-save': 'Game save' } as const;
 /** One row of the Saves list: icon, title, and a detail line ("Save state, 4.1 MB, 3 d ago"). `now` is unix ms. */
 export function saveRow(i: SaveItem, now = Date.now()) {
-  const what = i.kind === 'state' ? 'Save state' : i.kind === 'memory-card' ? 'Memory card' : 'Wii save';
+  const what = SAVE_WHAT[i.kind];
   const parts = [
     what,
     ...(i.files !== undefined ? [`${i.files} ${i.files === 1 ? 'file' : 'files'}`] : []),
