@@ -14,6 +14,8 @@ const props = (extra = {}) => ({
   upload: null,
   onfiles: vi.fn(),
   onvolume: vi.fn(),
+  micOn: false,
+  onmic: vi.fn(),
   oncapture: vi.fn(),
   onquality: vi.fn(),
   onforget: vi.fn(),
@@ -35,6 +37,19 @@ describe('screenshot button', () => {
   it('an emulator game says it keeps the shot with the game', async () => {
     await render(GhostBar, { props: props({ storesShots: true }) });
     await expect.element(page.getByText('Screenshot · kept with the game · Ctrl+Alt+S')).toBeInTheDocument();
+  });
+});
+
+describe('mic button', () => {
+  it('shows its state and calls onmic', async () => {
+    const p = props();
+    const r = await render(GhostBar, { props: p });
+    const off = page.getByRole('button', { name: 'Turn mic on' });
+    expect(off.element().getAttribute('aria-pressed')).toBe('false');
+    (off.element() as HTMLElement).click();
+    expect(p.onmic).toHaveBeenCalledTimes(1);
+    await r.rerender({ ...p, micOn: true });
+    expect(page.getByRole('button', { name: 'Turn mic off' }).element().getAttribute('aria-pressed')).toBe('true');
   });
 });
 

@@ -49,6 +49,8 @@ export interface Deps {
     onDecode?: (au: Uint8Array, h: FrameHeader, at: number) => void,
   ): { stats: VideoStats; done: Promise<void> };
   startAudio(t: Transport, ctx: Ctx, out?: Gain, onPacket?: (h: AudioHeader) => void): Promise<unknown>;
+  /** Opens the microphone and sends it to the host; rejects (after cleaning up) when denied. */
+  startMic?(t: Transport): Promise<{ stop(): void }>;
   /** Replay buffer length, read at each connect; 0 or absent = off. */
   replaySeconds?(): number;
   startInput(t: Transport, c: Canvas, onpads: (p: PadInfo[]) => void): Promise<{ release(): void }>;
@@ -69,6 +71,7 @@ type Conn = {
   video?: { stats: VideoStats };
   input?: { release(): void };
   replay?: Replay;
+  mic?: { stop(): void };
   ours: boolean;
   liveAt: number;
 };
@@ -93,6 +96,9 @@ export class StreamSession {
   readonly canvasEl = writable<Canvas | null>(null);
   /** Controllers attached to the live connection (for the ghost bar chip). */
   readonly pads = writable<PadInfo[]>([]);
+  /** The mic is sending. Off after every connect, reconnect, quality change and disconnect. */
+  readonly micOn = writable(false);
+  private micPending = false; // a start is awaiting permission: a second click must not open another mic
   info: StreamInfo | null = null;
   private infoAt = 0; // performance.now() when `info` came from hostd (its elapsedS is as of then)
   private conn: Conn | null = null;
@@ -149,6 +155,29 @@ export class StreamSession {
   setVolume(v: number) {
     this.volume = v;
     if (this.conn?.gain) this.conn.gain.gain.value = v;
+  }
+
+  /** Mic on or off for the live connection. A denied or failed mic toasts and stays off. */
+  async toggleMic() {
+    const conn = this.conn;
+    if (conn?.mic) {
+      conn.mic.stop();
+      conn.mic = undefined;
+      this.micOn.set(false);
+      return;
+    }
+    if (!conn || !this.d.startMic || this.micPending) return;
+    this.micPending = true;
+    try {
+      const mic = await this.d.startMic(conn.t);
+      if (conn !== this.conn) return mic.stop(); // the connection ended while the prompt was open
+      conn.mic = mic;
+      this.micOn.set(true);
+    } catch (e) {
+      this.d.notify(`Could not use the mic: ${errMsg(e)}`, true);
+    } finally {
+      this.micPending = false;
+    }
   }
 
   /** This connection's replay ring (references) for the clip worker, or null: off, or no key frame yet. */
@@ -254,6 +283,9 @@ export class StreamSession {
     this.conn = null;
     c.ours = true;
     c.input?.release();
+    c.mic?.stop();
+    c.mic = undefined;
+    this.micOn.set(false);
     c.replay?.clear();
     c.replay = undefined;
     this.pads.set([]);

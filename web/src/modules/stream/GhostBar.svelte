@@ -21,6 +21,8 @@
     onfiles,
     statsOn = $bindable(false),
     onvolume,
+    micOn,
+    onmic,
     oncapture,
     onquality,
     savedFor = null,
@@ -43,6 +45,8 @@
     onfiles: (f: File[]) => void;
     statsOn?: boolean;
     onvolume: (v: number) => void;
+    micOn: boolean;
+    onmic: () => void;
     oncapture: () => void;
     onquality: (r: StreamReq) => void;
     /** The game's name while its quality is saved, else null. */
@@ -168,6 +172,9 @@
     <Icon name={muted ? 'mute' : 'vol'} /><span class="tip">{muted ? 'Unmute' : 'Mute'}</span>
   </button>
   <input class="vol" type="range" min="0" max="100" bind:value={vol} aria-label="Volume" />
+  <button class="ic" aria-pressed={micOn} aria-label={micOn ? 'Turn mic off' : 'Turn mic on'} onclick={onmic} style="color:var(--c-power)">
+    <Icon name={micOn ? 'mic' : 'micoff'} /><span class="tip">{micOn ? 'Mic on: the host hears you' : 'Mic off'}</span>
+  </button>
   <button class="ic" aria-pressed={captured} aria-label="Keyboard capture" onclick={oncapture} style="color:var(--c-stream)">
     <Icon name="kbd" /><span class="tip">{captured ? 'Release keyboard and mouse' : 'Capture keyboard and mouse'}</span>
   </button>

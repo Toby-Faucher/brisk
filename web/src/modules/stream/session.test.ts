@@ -178,6 +178,68 @@ describe('StreamSession', () => {
     expect(f.ctxs[0].close).toHaveBeenCalledTimes(1);
   });
 
+  describe('mic', () => {
+    const mk = (startMic: Deps['startMic']) => fakeDeps({ startMic });
+    it('toggleMic starts and stops', async () => {
+      const stop = vi.fn();
+      const startMic = vi.fn(async () => ({ stop }));
+      const f = mk(startMic);
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      await s.toggleMic();
+      expect(get(s.micOn)).toBe(true);
+      expect(startMic).toHaveBeenCalledWith(f.transports[0]);
+      await s.toggleMic();
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(get(s.micOn)).toBe(false);
+    });
+    it('reconnect turns the mic off', async () => {
+      const stop = vi.fn();
+      const f = mk(async () => ({ stop }));
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      await s.toggleMic();
+      f.transports[0].drop();
+      await flush();
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(get(s.micOn)).toBe(false);
+    });
+    it('late_mic_after_reconnect_is_stopped', async () => {
+      const stop = vi.fn();
+      let done!: (m: { stop(): void }) => void;
+      const f = mk(() => new Promise((r) => (done = r)));
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      const p = s.toggleMic();
+      f.failAfterFirst.on = false;
+      await s.changeQuality({ preset: 'balanced' } as any);
+      done({ stop });
+      await p;
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(get(s.micOn)).toBe(false);
+    });
+    it('a second click while the first start is pending opens one mic', async () => {
+      let done!: (m: { stop(): void }) => void;
+      const startMic = vi.fn(() => new Promise<{ stop(): void }>((r) => (done = r)));
+      const f = mk(startMic);
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      const p = s.toggleMic();
+      await s.toggleMic();
+      done({ stop: vi.fn() });
+      await p;
+      expect(startMic).toHaveBeenCalledTimes(1);
+    });
+    it('denied_mic_notifies_and_stays_off', async () => {
+      const f = mk(async () => Promise.reject(new Error('Permission denied')));
+      const s = new StreamSession(f.deps);
+      await s.connect(LIVE);
+      await s.toggleMic();
+      expect(f.deps.notify).toHaveBeenCalledWith('Could not use the mic: Permission denied', true);
+      expect(get(s.micOn)).toBe(false);
+    });
+  });
+
   it('pads_show_for_the_live_connection_only', async () => {
     let onpads!: (p: { slot: number; name: string }[]) => void;
     const f = fakeDeps({ startInput: async (_t, _c, cb) => ((onpads = cb), { release: vi.fn() }) });

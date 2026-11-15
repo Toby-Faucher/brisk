@@ -16,6 +16,8 @@
     plus: '<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/>',
     fit: '<path d="M4 9.5c0-1 .8-1.8 1.8-1.8H7v8.6H5.8c-1 0-1.8-.8-1.8-1.8zM20 9.5c0-1-.8-1.8-1.8-1.8H17v8.6h1.2c1 0 1.8-.8 1.8-1.8zM8.5 11h7v2h-7z"/>',
     vol: '<path d="M3 9.5v5h3.6L11 18.5v-13L6.6 9.5z"/><path d="M14 8.5a5 5 0 0 1 0 7M16.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
+    mic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
+    micoff: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M4 4l16 16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
     mute: '<path d="M3 9.5v5h3.6L11 18.5v-13L6.6 9.5z"/><path d="M15 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round"/>',
     kbd: '<rect x="2" y="6" width="20" height="12" rx="3.2"/><rect x="5" y="9.4" width="2.2" height="2" rx=".6" style="fill:var(--bg)"/><rect x="8.8" y="9.4" width="2.2" height="2" rx=".6" style="fill:var(--bg)"/><rect x="12.6" y="9.4" width="2.2" height="2" rx=".6" style="fill:var(--bg)"/><rect x="16.4" y="9.4" width="2.2" height="2" rx=".6" style="fill:var(--bg)"/><rect x="7" y="13.2" width="10" height="2" rx=".8" style="fill:var(--bg)"/>',
     clip: '<rect x="5" y="4" width="14" height="17" rx="3"/><rect x="8.5" y="2.3" width="7" height="4" rx="1.6" style="fill:var(--bg)" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="10" width="8" height="1.8" rx=".9" style="fill:var(--bg)"/><rect x="8" y="13.6" width="5.5" height="1.8" rx=".9" style="fill:var(--bg)"/>',
