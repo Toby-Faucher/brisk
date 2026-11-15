@@ -78,6 +78,18 @@ pub fn pw_cat() -> Command {
     c
 }
 
+/// Plays the viewer's mic datagrams until the connection ends (dropping `MicOut` stops `pw-cat`).
+pub async fn serve(s: std::sync::Arc<crate::wt::Session>) {
+    let (mut order, mut out) = (Order::default(), MicOut::new(pw_cat()));
+    while let Ok(d) = s.read_datagram().await {
+        if let Some((seq, pcm)) = parse(&d)
+            && order.fresh(seq)
+        {
+            out.push(pcm);
+        }
+    }
+}
+
 enum State {
     /// Not started; holds the command to spawn on the first push.
     Idle(Command),
