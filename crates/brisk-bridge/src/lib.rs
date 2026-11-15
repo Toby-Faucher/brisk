@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod input;
+pub mod mic;
 pub mod quic_crypto;
 pub mod session;
 pub mod wt;

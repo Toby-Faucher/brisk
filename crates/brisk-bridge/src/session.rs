@@ -25,7 +25,7 @@ use brisk_proto::sdp::SS_ENC_AUDIO;
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{input, wt};
+use crate::{input, mic, wt};
 
 /// More unacknowledged frame streams than this means the browser is behind.
 pub const MAX_BEHIND: usize = 3;
@@ -633,6 +633,7 @@ pub async fn forward(
                 println!("viewer\t{} connected", s.remote());
                 let s = Arc::new(s);
                 tokio::spawn(input::serve(s.clone(), input.clone()));
+                tokio::spawn(mic::serve(s.clone()));
                 viewer = Some(Viewer {
                     id: r.viewers,
                     s,

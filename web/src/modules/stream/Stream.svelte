@@ -17,6 +17,8 @@
   import { startInput } from '../../lib/input';
   import { listener } from '../../lib/listen';
   import workletUrl from '../../lib/audio-worklet.ts?worker&url';
+  import { startMic } from '../../lib/mic';
+  import micWorkletUrl from '../../lib/mic-worklet.ts?worker&url';
   import { StreamSession, pollLive } from './session';
   import { SeriesUploader } from './series';
   import { holdEsc, type Hold } from './ghostbar';
@@ -36,6 +38,7 @@
     audioContext: () => new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' }),
     startVideo: (t, c, onDecode) => startVideo(t as WebTransport, c, onDecode),
     startAudio: (t, ctx, out, onPacket) => startAudio(t as WebTransport, ctx as AudioContext, workletUrl, out as unknown as AudioNode, onPacket),
+    startMic: (t) => startMic(t as WebTransport, micWorkletUrl),
     replaySeconds: () => get(settings).replaySeconds,
     startInput: (t, c, onpads) => startInput(t as WebTransport, c, onpads),
     canvas: () => {
@@ -46,7 +49,7 @@
     notify: (text, error) => toast(text, { error }),
     sample: (id, elapsed, delay, fps, mbps) => series.add(id, elapsed, delay, fps, mbps),
   });
-  const { state: phase, stats, needsSound, canvasEl, pads } = session;
+  const { state: phase, stats, needsSound, canvasEl, pads, micOn } = session;
 
   let clipDenied = $state(false);
   const clip = new ClipSync({
@@ -370,6 +373,8 @@
       onfiles={(f) => uploads.add(f)}
       bind:statsOn
       onvolume={(v) => session.setVolume(v)}
+      micOn={$micOn}
+      onmic={() => session.toggleMic()}
       oncapture={capture}
       onquality={quality}
       {savedFor}

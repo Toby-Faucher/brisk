@@ -5,7 +5,8 @@
 //! Per connection: we open our control stream with SETTINGS (WebTransport, extended CONNECT,
 //! datagrams), accept the browser's CONNECT on its first bidirectional stream and answer 200 only
 //! when the path is the session token. The browser's own uni streams (H3 control, QPACK) are kept
-//! open and ignored; its WebTransport uni streams are short messages for the bridge.
+//! open and ignored; its WebTransport uni streams are short messages for the bridge. Its
+//! datagrams are mic audio (see `mic`).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -244,6 +245,11 @@ fn datagram_header(stream_id: u64) -> Vec<u8> {
     h
 }
 
+/// `d` without the prefix `h`, or `None` if `d` does not start with it.
+fn strip_header<'a>(h: &[u8], d: &'a [u8]) -> Option<&'a [u8]> {
+    d.strip_prefix(h)
+}
+
 /// Takes the browser's uni streams. Each gets its own task: the HTTP/3 control and QPACK
 /// streams may stay silent for a long time and must not block the WebTransport ones behind them.
 /// quinn caps them at 100 concurrent streams.
@@ -306,6 +312,17 @@ impl Session {
         Ok(evict)
     }
 
+    /// The next datagram from the browser for this session, without its prefix. Datagrams for
+    /// other sessions are skipped. Errors when the connection ends.
+    pub async fn read_datagram(&self) -> Result<Bytes, quinn::ConnectionError> {
+        loop {
+            let d = self.conn.read_datagram().await?;
+            if let Some(p) = strip_header(&self.datagram_header, &d) {
+                return Ok(d.slice_ref(p));
+            }
+        }
+    }
+
     /// Largest datagram payload the connection takes now (path MTU and the browser's limit).
     pub fn max_datagram_payload(&self) -> Option<usize> {
         self.conn
@@ -337,7 +354,14 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use super::datagram_header;
+    use super::{datagram_header, strip_header};
+
+    #[test]
+    fn strip_header_checks_the_prefix() {
+        assert_eq!(strip_header(&[0x01], &[0x01, 9, 9]), Some(&[9, 9][..]));
+        assert_eq!(strip_header(&[0x01], &[0x02, 9]), None);
+        assert_eq!(strip_header(&[0x40, 0x40], &[0x40]), None);
+    }
 
     #[test]
     fn datagram_header_is_the_quarter_stream_id_varint() {

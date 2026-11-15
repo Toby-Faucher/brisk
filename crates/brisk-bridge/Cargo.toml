@@ -18,11 +18,12 @@ http = "1"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio"] }
 quinn-proto = { version = "0.11", default-features = false }
 rand_core.workspace = true
+rustix = { workspace = true, features = ["pipe"] }
 rustls.workspace = true
 rustls-rustcrypto.workspace = true
 sha2.workspace = true
 subtle.workspace = true
-tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal", "sync"] }
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal", "sync", "process"] }
 tracing.workspace = true
 web-transport-proto = "0.6"
 
