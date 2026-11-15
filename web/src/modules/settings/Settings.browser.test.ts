@@ -38,6 +38,15 @@ describe('Settings tabs', () => {
     await expect.element(page.getByText(/Removing a game from the Library never deletes its file/)).toBeInTheDocument();
   });
 
+  it('#emulators/melonds/folders shows melonDS with no Controllers tab', async () => {
+    history.replaceState(null, '', '#emulators/melonds/folders');
+    await render(Settings);
+    await expect.element(page.getByRole('tab', { name: 'melonDS' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('tab', { name: 'Games folders' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('button', { name: 'Scan games folder' })).toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'Controllers' })).not.toBeInTheDocument();
+  });
+
   const mock = async () => {
     const { api } = await import('../../state/api');
     const fx = (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-classic-get.json')).default;

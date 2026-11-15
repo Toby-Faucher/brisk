@@ -21,6 +21,7 @@ pub enum System {
     GB,
     GBC,
     GBA,
+    NDS,
     Unknown,
 }
 
@@ -244,6 +245,18 @@ fn cartridge(f: &mut File, h: &[u8], len: u64, ext: &str) -> Result<Identity, Er
             id.game_id = Some(String::from_utf8_lossy(code).into_owned());
             id.region = Some(region_of(code[3]));
         }
+    } else if h.len() >= 0x160
+        && h[0xC0..0xC4] == [0x24, 0xFF, 0xAE, 0x51]
+        && h[0x15C..0x15E] == [0x56, 0xCF]
+    {
+        // DS: the GBA logo moved to 0xC0, its CRC 0xCF56 (LE) at 0x15C; title at 0, game code at 0xC.
+        id.system = System::NDS;
+        id.title = Some(c_text(&h[0x00..0x0C]));
+        let code = &h[0x0C..0x10];
+        if code.iter().all(u8::is_ascii_alphanumeric) {
+            id.game_id = Some(String::from_utf8_lossy(code).into_owned());
+            id.region = Some(region_of(code[3]));
+        }
     } else if h.len() >= 0x150 && h[0x104..0x108] == [0xCE, 0xED, 0x66, 0x66] {
         id.system = if matches!(h[0x143], 0x80 | 0xC0) {
             System::GBC
@@ -263,6 +276,7 @@ fn cartridge(f: &mut File, h: &[u8], len: u64, ext: &str) -> Result<Identity, Er
             "gb" => id.system = System::GB,
             "gbc" => id.system = System::GBC,
             "gba" => id.system = System::GBA,
+            "nds" => id.system = System::NDS,
             "md" | "gen" | "smd" => id.system = System::MegaDrive,
             _ => return Ok(unknown()),
         }
@@ -541,7 +555,10 @@ mod tests {
         let mut gba = vec![0u8; 0x200];
         gba[4..8].copy_from_slice(&[0x24, 0xFF, 0xAE, 0x51]);
         gba[0xB2] = 0x96;
-        let mut fixtures = vec![wbfs_file(&h), rvz_file(b"RVZ\x01", &h), h, gba];
+        let mut nds = vec![0u8; 0x200];
+        nds[0xC0..0xC4].copy_from_slice(&[0x24, 0xFF, 0xAE, 0x51]);
+        nds[0x15C..0x15E].copy_from_slice(&[0x56, 0xCF]);
+        let mut fixtures = vec![wbfs_file(&h), rvz_file(b"RVZ\x01", &h), h, gba, nds];
         fixtures.push([&b"NES\x1A"[..], &[0u8; 32]].concat());
         let mut seed = 0x1234_5678u32;
         for f in &fixtures {
@@ -587,6 +604,29 @@ mod tests {
         gb[0x143] = 0x80;
         let g = identify(&write(&d, "d.gb", &gb)).unwrap();
         assert_eq!((g.system, g.title.as_deref()), (System::GBC, Some("TEST")));
+        let mut nds = vec![0u8; 0x200];
+        nds[..9].copy_from_slice(b"POKEMON D");
+        nds[0x0C..0x10].copy_from_slice(b"ADAE");
+        nds[0xC0..0xC4].copy_from_slice(&[0x24, 0xFF, 0xAE, 0x51]);
+        nds[0x15C..0x15E].copy_from_slice(&[0x56, 0xCF]);
+        let n = identify(&write(&d, "f.bin", &nds)).unwrap();
+        assert_eq!(
+            (n.system, n.game_id.as_deref(), n.title.as_deref()),
+            (System::NDS, Some("ADAE"), Some("POKEMON D"))
+        );
+        assert_eq!(n.region, Some(Region::Usa));
+        // a DS file is not read as GBA, and the reverse
+        let mut gba = vec![0u8; 0x200];
+        gba[4..8].copy_from_slice(&[0x24, 0xFF, 0xAE, 0x51]);
+        gba[0xB2] = 0x96;
+        assert_eq!(
+            identify(&write(&d, "h.bin", &gba)).unwrap().system,
+            System::GBA
+        );
+        assert_eq!(
+            identify(&write(&d, "g.nds", &[1u8; 64])).unwrap().system,
+            System::NDS
+        );
         let mut md = vec![0u8; 0x200];
         md[0x100..0x104].copy_from_slice(b"SEGA");
         assert_eq!(

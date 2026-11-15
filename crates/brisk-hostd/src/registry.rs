@@ -27,28 +27,45 @@ pub struct Emulator {
 }
 
 /// Every emulator brisk knows.
-pub(crate) static EMULATORS: &[Emulator] = &[Emulator {
-    id: "dolphin",
-    name: "Dolphin",
-    cmd: "dolphin-emu",
-    // -b: no UI shell, -e: boot this file.
-    args: &["-b", "-e"],
-    window_class: "dolphin-emu",
-    controller: &["classic", "gamecube"],
-    systems: &[
-        System {
-            id: "gamecube",
-            folder: "GameCube",
-        },
-        System {
-            id: "wii",
-            folder: "Wii",
-        },
-    ],
-    extensions: &[
-        "iso", "rvz", "wbfs", "gcm", "ciso", "gcz", "wia", "wad", "tgc",
-    ],
-}];
+pub(crate) static EMULATORS: &[Emulator] = &[
+    Emulator {
+        id: "dolphin",
+        name: "Dolphin",
+        cmd: "dolphin-emu",
+        // -b: no UI shell, -e: boot this file.
+        args: &["-b", "-e"],
+        window_class: "dolphin-emu",
+        controller: &["classic", "gamecube"],
+        systems: &[
+            System {
+                id: "gamecube",
+                folder: "GameCube",
+            },
+            System {
+                id: "wii",
+                folder: "Wii",
+            },
+        ],
+        extensions: &[
+            "iso", "rvz", "wbfs", "gcm", "ciso", "gcz", "wia", "wad", "tgc",
+        ],
+    },
+    Emulator {
+        id: "melonds",
+        name: "melonDS",
+        cmd: "melonDS",
+        // melonDS boots a ROM given as its only argument.
+        args: &[],
+        // shortcut: class not checked on the real machine (Qt usually sets it from the binary name); confirm with swaymsg -t get_tree.
+        window_class: "melonDS",
+        controller: &[],
+        systems: &[System {
+            id: "nds",
+            folder: "NDS",
+        }],
+        extensions: &["nds"],
+    },
+];
 
 /// The emulator with this id.
 pub fn get(id: &str) -> Option<&'static Emulator> {
@@ -66,7 +83,15 @@ mod tests {
             (d.cmd, d.args, d.window_class),
             ("dolphin-emu", &["-b", "-e"][..], "dolphin-emu")
         );
+        let m = get("melonds").unwrap();
+        assert_eq!((m.cmd, m.args, m.controller), ("melonDS", &[][..], &[][..]));
         assert!(get("mystery").is_none());
+        // a system's id is its ingest folder, and the display folder is the same name
+        for e in EMULATORS {
+            for s in e.systems {
+                assert_eq!(s.folder.to_ascii_lowercase(), s.id);
+            }
+        }
         let ids: Vec<_> = EMULATORS.iter().map(|e| e.id).collect();
         assert!(ids.iter().all(|i| {
             !i.is_empty()

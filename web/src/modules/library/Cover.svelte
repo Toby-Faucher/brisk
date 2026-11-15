@@ -10,7 +10,7 @@
 
   let { game, style = '', children }: { game: Game; style?: string; children?: Snippet } = $props();
   // The disc's own system when hostd knows it (Dolphin plays both); else a name for the emulator.
-  const SYSTEMS: Record<string, string> = { wii: 'Wii', gamecube: 'GameCube', dolphin: 'Wii' };
+  const SYSTEMS: Record<string, string> = { wii: 'Wii', gamecube: 'GameCube', nds: 'DS', dolphin: 'Wii', melonds: 'DS' };
   // set by onerror; a different cover in the same slot gets another try
   let failed = $derived.by(() => (void game.cover, false));
   const h = $derived(hue(game));
