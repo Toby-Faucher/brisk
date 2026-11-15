@@ -1,0 +1,34 @@
+# brisk's starting melonDS config: the DS buttons on the streamed Xbox-layout pad (SDL joystick 0),
+# and melonDS's old keyboard keys (Qt key codes). melonDS fills in the rest and rewrites this file
+# when it exits. A joystick value is a button number, or 256 + a direction of hat 0 (1 up, 2 right,
+# 4 down, 8 left); -1 is none. See crates/brisk-hostd/src/controls.rs.
+[Instance0]
+JoystickID = 0
+
+[Instance0.Keyboard]
+A = 88
+B = 90
+X = 83
+Y = 65
+L = 81
+R = 87
+Start = 16777220
+Select = 16777219
+Up = 16777235
+Down = 16777237
+Left = 16777234
+Right = 16777236
+
+[Instance0.Joystick]
+A = 1
+B = 0
+X = 3
+Y = 4
+L = 6
+R = 7
+Start = 11
+Select = 10
+Up = 257
+Down = 260
+Left = 264
+Right = 258

@@ -43,6 +43,8 @@ pub struct Config {
     pub machines_explicit: bool,
     /// Dolphin's config dir, holding `WiimoteNew.ini` (`BRISK_DOLPHIN_DIR`).
     pub dolphin_dir: PathBuf,
+    /// melonDS's config dir, holding `melonDS.toml` (`BRISK_MELONDS_DIR`).
+    pub melonds_dir: PathBuf,
     /// Dolphin's user dir, holding `StateSaves/`, `GC/`, `Wii/` (`BRISK_DOLPHIN_USER_DIR`).
     pub dolphin_user_dir: PathBuf,
     /// How often the playtime watcher looks at running games (`BRISK_PLAYTIME_POLL_S`).
@@ -102,6 +104,12 @@ impl Config {
                     .filter(|p| !p.as_os_str().is_empty())
                     .unwrap_or_else(|| home.join(".config"))
                     .join("dolphin-emu")
+            }),
+            melonds_dir: env_path("BRISK_MELONDS_DIR").unwrap_or_else(|| {
+                env_path("XDG_CONFIG_HOME")
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or_else(|| home.join(".config"))
+                    .join("melonDS")
             }),
             // Dolphin's own rule: ~/.dolphin-emu if it exists, else XDG data home.
             dolphin_user_dir: env_path("BRISK_DOLPHIN_USER_DIR").unwrap_or_else(|| {

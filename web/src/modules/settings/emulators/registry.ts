@@ -13,6 +13,16 @@ export const EMULATORS: EmulatorEntry[] = [
       { id: 'art', name: 'Art and details' },
     ],
   },
+  {
+    id: 'melonds',
+    name: 'melonDS',
+    sections: [
+      { id: 'controllers', name: 'Controllers' },
+      { id: 'launch', name: 'Launch options' },
+      { id: 'folders', name: 'Games folders' },
+      { id: 'art', name: 'Art and details' },
+    ],
+  },
 ];
 
 export const shownSections = (e: EmulatorEntry) => e.sections.filter((s) => !s.planned);

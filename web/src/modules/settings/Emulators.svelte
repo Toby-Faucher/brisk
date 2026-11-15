@@ -8,7 +8,10 @@
   import ArtDetails from './ArtDetails.svelte';
   import { EMULATORS, emulatorOf, sectionOf, shownSections } from './emulators/registry';
 
-  const VIEW: Record<string, Record<string, Component<{ focusKey?: number }>>> = { dolphin: { controllers: EmulatorMappings, launch: EmulatorLaunch, folders: Folders, art: ArtDetails } };
+  const VIEW: Record<string, Record<string, Component<{ focusKey?: number; emu?: string }>>> = {
+    dolphin: { controllers: EmulatorMappings, launch: EmulatorLaunch, folders: Folders, art: ArtDetails },
+    melonds: { controllers: EmulatorMappings, launch: EmulatorLaunch, folders: Folders, art: ArtDetails },
+  };
   let { emu, section, focusKey = 0, onpick }: { emu: string; section: string; focusKey?: number; onpick: (emu: string, section: string) => void } = $props();
   const e = $derived(emulatorOf(emu));
   const sec = $derived(sectionOf(e, section).id);
@@ -25,7 +28,7 @@
         <Tabs.List class="pick sub" aria-label="{e.name} settings">
           {#each shownSections(e) as x (x.id)}<Tabs.Trigger value={x.id} class="ptab">{x.name}</Tabs.Trigger>{/each}
         </Tabs.List>
-        <Tabs.Content value={sec}>{#if View}<View {focusKey} />{/if}</Tabs.Content>
+        <Tabs.Content value={sec}>{#if View}{#key e.id}<View {focusKey} emu={e.id} />{/key}{/if}</Tabs.Content>
       </Tabs.Root>
     </Tabs.Content>
   </Tabs.Root>

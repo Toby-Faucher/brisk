@@ -15,6 +15,9 @@ const CLASSIC_GET: &str = include_str!("fixtures/controls/v2-classic-get.json");
 const CLASSIC_PUT: &str = include_str!("fixtures/controls/v2-classic-put.json");
 const GC_GET: &str = include_str!("fixtures/controls/v2-gamecube-get.json");
 const GC_PUT: &str = include_str!("fixtures/controls/v2-gamecube-put.json");
+const DS_TOML: &str = include_str!("../../../deploy/melonds/melonDS.toml");
+const DS_GET: &str = include_str!("fixtures/controls/v2-ds-get.json");
+const DS_PUT: &str = include_str!("fixtures/controls/v2-ds-put.json");
 const MAIN: &str = "Dolphin.ini";
 const ROMF: &str = "/games/mkw.iso";
 
@@ -149,6 +152,7 @@ fn rig_with(emulators: Option<&str>, running: bool) -> T {
     cfg.secret = SECRET.into();
     cfg.data_dir = data;
     cfg.dolphin_dir = d.path().join("dolphin");
+    cfg.melonds_dir = d.path().join("melonds");
     cfg.proc_dir = proc;
     cfg.steam_dir = d.path().join("nosteam");
     cfg.steam_key_file = d.path().join("nokey");
@@ -714,4 +718,114 @@ async fn reset_restores_default() {
             assert_eq!(t.read(MAIN), "[Core]\nSIDevice0 = 0\n");
         }
     }
+}
+
+/// melonDS: its own route, its own dir, gated on a DS game in the library.
+#[tokio::test]
+async fn ds_route_reads_and_writes_melonds_toml() {
+    const NDS: &str = "/games/nds/mk.nds";
+    let lib = format!(r#"[{{"name":"Mario Kart DS","emulator":"melonds","file":"{NDS}"}}]"#);
+    let url = "/api/emulators/melonds/controls/ds";
+    let t = rig_with(Some(&lib), false);
+    let mel = t.dir.path().join("melonds");
+    let file = mel.join("melonDS.toml");
+    let not_found = |v: &Value| v["error"].as_str().unwrap_or_default().to_string();
+    // The type belongs to its emulator only; Dolphin's types need a Dolphin game.
+    for u in [
+        "/api/emulators/dolphin/controls/ds",
+        "/api/emulators/melonds/controls/classic",
+    ] {
+        let (s, v) = t.call("GET", u, true, None).await;
+        assert_eq!(
+            (s, not_found(&v).as_str()),
+            (StatusCode::NOT_FOUND, "no such controller type")
+        );
+    }
+    for (t, u) in [(&t, CL.url()), (&rig(false), url.to_string())] {
+        let (s, v) = t.call("GET", &u, true, None).await;
+        assert_eq!(
+            (s, not_found(&v).as_str()),
+            (StatusCode::NOT_FOUND, "no controls on this machine")
+        );
+    }
+
+    // GET with no file: the default, nothing written.
+    let (s, v) = t.call("GET", url, true, None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v, serde_json::from_str::<Value>(DS_GET).unwrap());
+    assert!(!mel.exists());
+
+    // PUT creates the shipped file with the change; the next GET matches; Dolphin's dir is untouched.
+    let (s, v) = t.call("PUT", url, true, Some(DS_PUT.into())).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let want: Value = serde_json::from_str(DS_PUT).unwrap();
+    assert_eq!(v["bindings"], want["bindings"]);
+    assert_eq!(v, t.call("GET", url, true, None).await.1);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        DS_TOML.replace(
+            "A = 1\nB = 0\nX = 3\nY = 4\nL = 6\nR = 7\n",
+            "A = 0\nB = 1\nX = 4\nY = 3\nL = 35782655\nR = 86114303\n"
+        )
+    );
+    assert!(!t.dol().exists());
+
+    // A file melonDS wrote keeps every other line; a stale rev conflicts.
+    let theirs = "[Instance0]\nJoystickID = 1\n\n[Instance0.Joystick]\nA = -1\nHK_Lid = 5\n\n[Instance0.Window0]\nWidth = 256\n";
+    std::fs::write(&file, theirs).unwrap();
+    let (_, v) = t.call("GET", url, true, None).await;
+    assert_eq!(v["source"], "file");
+    assert_eq!(
+        (&v["custom"]["a"], &v["bindings"]["a"]),
+        (&json!(true), &Value::Null)
+    );
+    assert_eq!(
+        t.call("PUT", url, true, Some(DS_PUT.into())).await.0,
+        StatusCode::CONFLICT
+    );
+    let mut b = want.clone();
+    b["rev"] = v["rev"].clone();
+    assert_eq!(
+        t.call("PUT", url, true, Some(b.to_string())).await.0,
+        StatusCode::OK
+    );
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        text.starts_with(
+            "[Instance0]\nJoystickID = 1\n\n[Instance0.Joystick]\nA = 0\nHK_Lid = 5\nB = 1\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Right = 258\n\n[Instance0.Window0]\nWidth = 256\n"),
+        "{text}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(mel.join("melonDS.toml.before-brisk-edit")).unwrap(),
+        theirs
+    );
+
+    // A table brisk cannot edit safely is refused and left alone.
+    let odd = "[Instance0]\nJoystick = { A = 1 }\n";
+    std::fs::write(&file, odd).unwrap();
+    b.as_object_mut().unwrap().remove("rev");
+    for (m, u) in [("PUT", url.to_string()), ("POST", format!("{url}/reset"))] {
+        let (s, v) = t.call(m, &u, true, Some(b.to_string())).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{m}");
+        assert_eq!(
+            v["error"],
+            "melonDS.toml has its joystick table in a form brisk does not edit"
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), odd);
+
+    // Running is a melonDS process on a DS game; a running Dolphin does not count.
+    let r = rig_with(Some(&lib), true);
+    assert_eq!(r.call("GET", url, true, None).await.1["running"], false);
+    let p = t.dir.path().join("proc").join("901");
+    std::fs::create_dir_all(&p).unwrap();
+    std::fs::write(p.join("cmdline"), format!("melonDS\0{NDS}\0")).unwrap();
+    let stat = "901 (melonDS) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 1900 0 0";
+    std::fs::write(p.join("stat"), stat).unwrap();
+    assert_eq!(t.call("GET", url, true, None).await.1["running"], true);
 }

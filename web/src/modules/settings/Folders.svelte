@@ -1,13 +1,13 @@
 <script lang="ts">
   // Emulators.svelte passes every view a focusKey; this one has nothing to focus.
   const { focusKey: _focusKey }: { focusKey?: number } = $props();
-  // Settings > Emulators > Dolphin > Games folders. hostd does not tell the folder yet, so it is described in words.
+  // Settings > Emulators > (any emulator) > Games folders. hostd does not tell the folder yet, so it is described in words.
   import ScanGames from '../library/ScanGames.svelte';
 </script>
 
 <section class="fold" aria-label="Games folder">
   <h3>Games folder</h3>
-  <p>Each machine keeps its games in the <code>Games</code> folder in its home folder. Games you add from the Library are saved there, in one folder per system, picked from the file itself. For example <code>wii</code> and <code>gamecube</code>.</p>
+  <p>Each machine keeps its games in the <code>Games</code> folder in its home folder. Games you add from the Library are saved there, in one folder per system, picked from the file itself. For example <code>wii</code>, <code>gamecube</code> and <code>nds</code>.</p>
   <p class="lab">You can also copy game files into that folder yourself. Press Scan to add them to the Library. Removing a game from the Library never deletes its file.</p>
   <ScanGames />
 </section>

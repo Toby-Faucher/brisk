@@ -1,0 +1,18 @@
+{
+  "emulator": "melonds",
+  "type": "ds",
+  "controller": "Nintendo DS",
+  "source": "default",
+  "rev": "none",
+  "running": false,
+  "appliesOn": "next-launch",
+  "bindings": {
+    "a": "B", "b": "A", "x": "Y", "y": "X", "l": "LB", "r": "RB",
+    "start": "Menu", "select": "View", "dp": "D-pad"
+  },
+  "deadZone": {},
+  "custom": {
+    "a": false, "b": false, "x": false, "y": false, "l": false, "r": false,
+    "start": false, "select": false, "dp": false
+  }
+}

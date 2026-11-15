@@ -6,7 +6,7 @@
   import { api, type Game, type GameInfo, type Achievements, type RaAnswer, type News, type GameLocal, type GameSaves } from '../../state/api';
   import { savesLine, saveRow } from './library';
   import { gameCaps, gameKey } from '../../state/gameId';
-  import { raView, TITLE_NOTE, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
+  import { raView, TITLE_NOTE, VIEW_ONLY_NOTE, startPoll, REFRESH_COOLDOWN_MS } from '../../state/ra';
   import { toast, toastError } from '../../shell/Toasts.svelte';
   import Icon from '../../ui/Icon.svelte';
   import GameSide from './GameSide.svelte';
@@ -250,8 +250,8 @@
 
       <div class="gd-main">
         <div class="rbar"><button class="btn ghost rf" aria-label="Refresh Steam data" aria-busy={reloading} aria-disabled={cool || reloading || info === null} aria-describedby={cool ? 'rf-why' : undefined} title={cool ? 'Steam data was just refreshed. Wait 10 seconds to refresh again.' : 'Ask Steam for fresh store details, achievements and news'} onclick={refresh}><Icon name="replay" size={14} /> Refresh</button>{#if cool}<span id="rf-why" class="vh">Steam data was just refreshed. Wait 10 seconds to refresh again.</span>{/if}</div>
-        <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no Dolphin -->
-        {#if caps.controls}{#key key}<ControlsSummary />{/key}{/if}
+        <!-- emulator games: a note and a link to the mappings in Settings; hides itself when hostd has no editor for it -->
+        {#if caps.controls}{#key key}<ControlsSummary emu={game.emulator} />{/key}{/if}
         <!-- Steam and emulator games: wrappers, environment and arguments, per field default or override -->
         {#if caps.launchOptions}{#key key}<GameLaunch {game} />{/key}{/if}
         <!-- store description and screenshots -->
@@ -332,6 +332,7 @@
             {#if ach.source === 'retroachievements'}
               <p class="lab ra">{ach.unlocked} of {ach.total} unlocked, {ach.pointsUnlocked ?? 0} of {ach.pointsTotal ?? 0} points · <a href={ach.url} target="_blank" rel="noopener noreferrer">RetroAchievements</a> {@render raBtn()}</p>
               {#if ach.matched === 'title'}<p class="lab" role="note">{TITLE_NOTE}</p>{/if}
+              {#if ach.viewOnly}<p class="lab" role="note">{VIEW_ONLY_NOTE}</p>{/if}
             {/if}
             <ul class="alist">
               {#each ach.list.slice(0, PREVIEW) as a (a.id)}

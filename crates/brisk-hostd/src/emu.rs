@@ -214,9 +214,11 @@ pub fn games(recs: &[Record], proc: &Path, data_dir: &Path) -> Vec<Game> {
             g.source = Source::Emu;
             g.legacy_id = Some(legacy.to_string());
             g.caps = caps(&r.emulator);
-            // Cheap: no I/O. Only Dolphin's layout is known.
-            g.caps.saves =
-                r.emulator == "dolphin" && matches!(r.system.as_deref(), Some("wii" | "gamecube"));
+            // Cheap: no I/O. Only Dolphin's and melonDS's layouts are known.
+            g.caps.saves = matches!(
+                (r.emulator.as_str(), r.system.as_deref()),
+                ("dolphin", Some("wii" | "gamecube")) | ("melonds", Some("nds"))
+            );
             g.system = r.system.clone();
             g.installed = r.file.is_file();
             g.size_bytes = std::fs::metadata(&r.file).ok().map(|m| m.len());

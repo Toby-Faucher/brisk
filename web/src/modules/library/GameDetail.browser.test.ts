@@ -791,6 +791,18 @@ describe('GameDetail', () => {
       await loaded();
       expect(c).not.toHaveBeenCalled();
     });
+
+    it('a melonDS game asks for the DS mapping and links to melonDS in Settings', async () => {
+      vi.spyOn(api, 'gameInfo').mockResolvedValue(none);
+      const ds = (await import('../../../../crates/brisk-hostd/tests/fixtures/controls/v2-ds-get.json')).default;
+      const c = vi.spyOn(api, 'emulatorControls').mockResolvedValue(ds as never);
+      await render(GameDetail, { props: props(mkw({ id: 'emu:melonds:a', name: 'Mario Kart DS', emulator: 'melonds', caps })) });
+      await expect.element(page.getByText(/melonDS uses one mapping for every DS game/)).toBeInTheDocument();
+      await expect
+        .element(page.getByRole('link', { name: 'Edit mappings' }))
+        .toHaveAttribute('href', '/settings#emulators/melonds/controllers');
+      expect(c).toHaveBeenCalledWith('ds');
+    });
   });
 });
 
@@ -980,6 +992,16 @@ describe('GameDetail RetroAchievements', () => {
     await render(GameDetail, { props: props(wii) });
     await expect.element(page.getByText(/3 of 8 points/)).toBeInTheDocument();
     expect(page.getByText(/^Matched by title; your file's hash isn't/).elements()).toHaveLength(n);
+  });
+
+  it.each([
+    [true, 1],
+    [false, 0],
+  ] as const)('viewOnly %s shows the view only note %i times', async (viewOnly, n) => {
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue({ ...raOk, viewOnly });
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/3 of 8 points/)).toBeInTheDocument();
+    expect(page.getByText("This emulator can't unlock achievements yet, so this list is view only.").elements()).toHaveLength(n);
   });
 
   it('hides the panel for off', async () => {

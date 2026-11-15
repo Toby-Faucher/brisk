@@ -195,6 +195,26 @@ fn cartridges_key_on_the_hash_and_have_no_emulator_yet() {
     assert_eq!((m.unplayable, recs.len()), (1, 0));
 }
 
+#[test]
+fn ds_roms_go_to_melonds_keyed_on_the_hash() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = vec![0u8; 0x200];
+    h[..4].copy_from_slice(b"TEST");
+    h[0x0C..0x10].copy_from_slice(b"ATSE");
+    h[0xC0..0xC4].copy_from_slice(&[0x24, 0xFF, 0xAE, 0x51]);
+    h[0x15C..0x15E].copy_from_slice(&[0x56, 0xCF]);
+    let g = found(&d.path().join("t.nds"), &h);
+    let k = key(&g.id).unwrap();
+    let mut recs = vec![];
+    let m = merge(&mut recs, &[g], "scan");
+    assert_eq!((m.unplayable, recs.len()), (0, 1));
+    assert_eq!(
+        (recs[0].emulator.as_str(), recs[0].system.as_deref()),
+        ("melonds", Some("nds"))
+    );
+    assert_eq!(recs[0].id.as_str(), format!("emu:melonds:{k}"));
+}
+
 fn cfg(d: &Path) -> Config {
     let mut c = Config::from_env(d.join("dist"));
     c.games_dir = d.join("Games");

@@ -1,7 +1,8 @@
 //! The Dolphin controller editor's file side (docs/plans/2026-10-28-emulator-controls-v2.md): reads and
 //! rewrites one pad section of Dolphin's config for a Classic Controller on Wii Remote 1
 //! (`WiimoteNew.ini`) or a GameCube controller on port 1 (`GCPadNew.ini`), fed by the Xbox-layout pad
-//! the stream shows. A GameCube save also makes sure `Dolphin.ini` has `SIDevice0 = 6`. Line based, so
+//! the stream shows. A GameCube save also makes sure `Dolphin.ini` has `SIDevice0 = 6`. The same code
+//! edits melonDS's `[Instance0.Joystick]` table in `melonDS.toml` for the DS (kind `ds`). Line based, so
 //! everything it does not own survives byte for byte. Values come only from the tables below, picked
 //! by an already validated pad name or a number in 0 to 50; user text never reaches a file. Written
 //! whole to a 0600 temp file and renamed over the old one, with a one-time backup of each original.
@@ -17,6 +18,7 @@ use crate::fsutil::write_atomic;
 /// The known-good files; used when the machine has no file or no pad section yet.
 const CLASSIC_INI: &str = include_str!("../../../deploy/dolphin/WiimoteNew.ini");
 const GAMECUBE_INI: &str = include_str!("../../../deploy/dolphin/GCPadNew.ini");
+const DS_TOML: &str = include_str!("../../../deploy/melonds/melonDS.toml");
 const MAIN_INI: &str = "Dolphin.ini";
 const CORE: &str = "[Core]";
 const PORT_KEY: &str = "SIDevice0";
@@ -28,6 +30,7 @@ const PORT_VALUE: &str = "6";
 pub enum Kind {
     Classic,
     GameCube,
+    Ds,
 }
 
 impl Kind {
@@ -36,6 +39,7 @@ impl Kind {
         match s {
             "classic" => Some(Kind::Classic),
             "gamecube" => Some(Kind::GameCube),
+            "ds" => Some(Kind::Ds),
             _ => None,
         }
     }
@@ -43,30 +47,42 @@ impl Kind {
         match self {
             Kind::Classic => "classic",
             Kind::GameCube => "gamecube",
+            Kind::Ds => "ds",
+        }
+    }
+    /// The registry id of the emulator whose config this is.
+    pub fn emulator(self) -> &'static str {
+        match self {
+            Kind::Classic | Kind::GameCube => "dolphin",
+            Kind::Ds => "melonds",
         }
     }
     fn controller(self) -> &'static str {
         match self {
             Kind::Classic => "Wii Remote 1, Classic Controller",
             Kind::GameCube => "GameCube controller, port 1",
+            Kind::Ds => "Nintendo DS",
         }
     }
     fn file(self) -> &'static str {
         match self {
             Kind::Classic => "WiimoteNew.ini",
             Kind::GameCube => "GCPadNew.ini",
+            Kind::Ds => "melonDS.toml",
         }
     }
     fn section(self) -> &'static str {
         match self {
             Kind::Classic => "[Wiimote1]",
             Kind::GameCube => "[GCPad1]",
+            Kind::Ds => "[Instance0.Joystick]",
         }
     }
     fn default_ini(self) -> &'static str {
         match self {
             Kind::Classic => CLASSIC_INI,
             Kind::GameCube => GAMECUBE_INI,
+            Kind::Ds => DS_TOML,
         }
     }
     /// The button ids of this controller type, in editor order.
@@ -76,13 +92,15 @@ impl Kind {
                 "a", "b", "x", "y", "l", "r", "zl", "zr", "minus", "plus", "home", "ls", "rs", "dp",
             ],
             Kind::GameCube => &["a", "b", "x", "y", "z", "start", "l", "r", "ms", "cs", "dp"],
+            Kind::Ds => &["a", "b", "x", "y", "l", "r", "start", "select", "dp"],
         }
     }
-    /// The two stick ids, in the order of the dead zone pair.
-    fn sticks(self) -> [&'static str; 2] {
+    /// The stick ids, in the order of the dead zone values (none on a DS).
+    fn sticks(self) -> &'static [&'static str] {
         match self {
-            Kind::Classic => ["ls", "rs"],
-            Kind::GameCube => ["ms", "cs"],
+            Kind::Classic => &["ls", "rs"],
+            Kind::GameCube => &["ms", "cs"],
+            Kind::Ds => &[],
         }
     }
 }
@@ -142,6 +160,7 @@ fn keys(kind: Kind, id: &str) -> (Vec<String>, Vec<String>) {
     match kind {
         Kind::Classic => classic_keys(id),
         Kind::GameCube => (gamecube_keys(id), vec![]),
+        Kind::Ds => (ds_keys(id), vec![]),
     }
 }
 
@@ -199,13 +218,69 @@ fn gamecube_keys(id: &str) -> Vec<String> {
     }
 }
 
-/// The plain expression for each Classic key of `id` bound to `pad`.
+/// melonDS's names for the DS buttons in `[Instance0.Joystick]` (`EmuInstance::buttonNames`).
+fn ds_keys(id: &str) -> Vec<String> {
+    match id {
+        "a" => s(&["A"]),
+        "b" => s(&["B"]),
+        "x" => s(&["X"]),
+        "y" => s(&["Y"]),
+        "l" => s(&["L"]),
+        "r" => s(&["R"]),
+        "start" => s(&["Start"]),
+        "select" => s(&["Select"]),
+        _ => s(&D),
+    }
+}
+
+/// melonDS joystick values, checked in its 1.1 source (`EmuInstance::joystickButtonDown`): -1 is
+/// none; low 16 bits a button number, or 0x100 | hat << 4 | direction (1 up, 2 right, 4 down,
+/// 8 left); 0xFFFF there means no button. An axis adds 0x10000 | axis << 24 | mode << 20 (0 plus,
+/// 1 minus, 2 trigger: pressed past half). Written in decimal, as melonDS's TOML writer does.
+///
+/// shortcut: the SDL numbers are worked out, not seen on the real pad; check them in melonDS's input
+/// dialog with the streamed pad. melonDS reads raw SDL joystick numbers. SDL's Linux evdev backend
+/// numbers buttons in key code order from BTN_JOYSTICK, and axes in ABS order without the hat axes
+/// (ABS_HAT0X/Y are hat 0). libvirtualhid's Xbox Series pad has BTN_SOUTH to BTN_THUMBR with filler
+/// codes in the gaps, so button n is code 0x130 + n: A 0, B 1, Y 3 (NORTH), X 4 (WEST, as Dolphin's
+/// live mapping shows), LB 6, RB 7, View 10, Menu 11, Guide 12. Axes: LT 2, RT 5. If SDL's HIDAPI
+/// driver gets the pad instead (hidraw access), the numbers differ.
+fn ds_button(pad: &str) -> Option<&'static str> {
+    Some(match pad {
+        "A" => "0",
+        "B" => "1",
+        "X" => "4",
+        "Y" => "3",
+        "LB" => "6",
+        "RB" => "7",
+        "LT" => "35782655", // 0x0221FFFF: axis 2, trigger
+        "RT" => "86114303", // 0x0521FFFF: axis 5, trigger
+        "View" => "10",
+        "Menu" => "11",
+        "Guide" => "12",
+        _ => return None,
+    })
+}
+
+/// The plain expression for each primary and mirror key of `id` bound to `pad`.
 fn exprs(kind: Kind, id: &str, pad: &str) -> Vec<&'static str> {
     if matches!(id, "ls" | "rs" | "ms" | "cs" | "dp") {
+        if kind == Kind::Ds {
+            // Hat 0 up, down, left, right; the DS has no sticks.
+            return if pad == "D-pad" {
+                vec!["257", "260", "264", "258"]
+            } else {
+                vec![]
+            };
+        }
         group_exprs(pad).map(|r| r.to_vec()).unwrap_or_default()
     } else {
-        let e = button_expr(pad).unwrap_or_default();
-        vec![e; keys(kind, id).0.len()]
+        let e = if kind == Kind::Ds {
+            ds_button(pad)
+        } else {
+            button_expr(pad)
+        };
+        vec![e.unwrap_or_default(); keys(kind, id).0.len()]
     }
 }
 
@@ -227,8 +302,9 @@ mod dead_zone {
         match (kind, id) {
             (Kind::Classic, "ls") => "Classic/Left Stick/Dead Zone",
             (Kind::Classic, _) => "Classic/Right Stick/Dead Zone",
-            (Kind::GameCube, "ms") => "Main Stick/Dead Zone",
-            (Kind::GameCube, _) => "C-Stick/Dead Zone",
+            (_, "ms") => "Main Stick/Dead Zone",
+            // A DS has no sticks, so no dead zone key is ever asked for.
+            _ => "C-Stick/Dead Zone",
         }
         .into()
     }
@@ -289,7 +365,7 @@ fn norm(v: &str) -> Option<String> {
 struct Read {
     bindings: Vec<Option<&'static str>>,
     custom: Vec<bool>,
-    dz: [u8; 2],
+    dz: Vec<u8>,
     found: bool,
 }
 
@@ -304,7 +380,7 @@ fn read_text(kind: Kind, text: &str) -> Read {
     let mut r = Read {
         bindings: vec![None; ids.len()],
         custom: vec![true; ids.len()],
-        dz: [0; 2],
+        dz: vec![0; kind.sticks().len()],
         found: true,
     };
     let mut used: Vec<&str> = vec![];
@@ -475,7 +551,7 @@ fn rev_of(bytes: Option<&[u8]>) -> String {
     })
 }
 
-type Checked = (Put, Vec<Option<&'static str>>, [u8; 2]);
+type Checked = (Put, Vec<Option<&'static str>>, Vec<u8>);
 
 /// All checks that need no file. Returns the validated bindings and dead zones.
 fn validate(kind: Kind, b: &[u8]) -> Result<Checked, CtlError> {
@@ -507,20 +583,20 @@ fn validate(kind: Kind, b: &[u8]) -> Result<Checked, CtlError> {
     {
         return Err(CtlError::Bad("a pad button can drive only one control"));
     }
-    let [s0, s1] = kind.sticks();
-    let dz = |id: &str| {
-        p.dead_zone
-            .get(id)
-            .and_then(|n| u8::try_from(*n).ok())
-            .filter(|n| *n <= 50)
-    };
-    let (Some(d0), Some(d1)) = (dz(s0), dz(s1)) else {
-        return Err(CtlError::Bad("dead zone must be 0 to 50"));
-    };
-    if p.dead_zone.len() != 2 {
-        return Err(CtlError::Bad("dead zone must be 0 to 50"));
+    let sticks = kind.sticks();
+    let dz: Option<Vec<u8>> = sticks
+        .iter()
+        .map(|id| {
+            p.dead_zone
+                .get(*id)
+                .and_then(|n| u8::try_from(*n).ok())
+                .filter(|n| *n <= 50)
+        })
+        .collect();
+    match dz {
+        Some(dz) if p.dead_zone.len() == sticks.len() => Ok((p, pads, dz)),
+        _ => Err(CtlError::Bad("dead zone must be 0 to 50")),
     }
-    Ok((p, pads, [d0, d1]))
 }
 
 /// Does `Dolphin.ini` text put port 1 on a standard controller?
@@ -536,26 +612,95 @@ fn port_ready(text: &str) -> bool {
         .is_some_and(|(_, v)| v.trim() == PORT_VALUE)
 }
 
-/// One machine's Dolphin config directory. One mutex covers every read, edit and write, for both
-/// controller types and `Dolphin.ini`.
+/// The section block of the known-good file (the whole file for Dolphin's one-section files).
+fn default_block(kind: Kind) -> String {
+    let lines = split(kind.default_ini());
+    let (h, e) = section(kind.section(), &lines).unwrap_or((0, 0));
+    lines[h..e].concat()
+}
+
+/// melonDS drops a config it cannot parse and later saves its defaults over it. So a DS write goes
+/// ahead only when the joystick table is one plain `[Instance0.Joystick]` block of `key = value`
+/// lines with bare keys, or is absent and not set up in another form (dotted keys or an inline
+/// table, which would make the added header a duplicate).
+/// shortcut: not a TOML parser (a `[` line inside a multi-line string or array would confuse it);
+/// melonDS writes neither near these tables. Use toml_edit if the file ever gets harder.
+fn toml_safe(text: &str) -> bool {
+    let sec = Kind::Ds.section();
+    let lines = split(text);
+    if text.contains('\0') || lines.iter().filter(|l| l.trim() == sec).count() > 1 {
+        return false;
+    }
+    let mut cur = "";
+    for l in &lines {
+        let t = l.trim();
+        if t.starts_with('[') {
+            cur = t;
+            continue;
+        }
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let Some((k, _)) = t.split_once('=') else {
+            if cur == sec {
+                return false;
+            }
+            continue;
+        };
+        let k = k.trim();
+        let bare = k.trim_matches(['"', '\'']);
+        let bad = match cur {
+            "" => bare == "Instance0" || bare.starts_with("Instance0."),
+            "[Instance0]" => bare == "Joystick" || bare.starts_with("Joystick."),
+            c => c == sec && bare != k,
+        };
+        if bad {
+            return false;
+        }
+    }
+    true
+}
+
+/// One machine's Dolphin and melonDS config directories. One mutex covers every read, edit and
+/// write, for every controller type and `Dolphin.ini`.
 pub struct Controls {
     dir: PathBuf,
+    melonds: PathBuf,
     lock: Mutex<()>,
 }
 
 impl Controls {
-    /// The editor for the config files in Dolphin's config dir `dir`.
-    pub fn new(dir: PathBuf) -> Controls {
+    /// The editor for the config files in Dolphin's config dir `dir` and melonDS's `melonds`.
+    pub fn new(dir: PathBuf, melonds: PathBuf) -> Controls {
         Controls {
             dir,
+            melonds,
             lock: Mutex::new(()),
         }
     }
 
-    /// The file to read and replace: a symlinked config resolves to its target.
+    /// The file to read and replace: a symlinked config resolves to its target. `melonDS.toml` is
+    /// the only file in melonDS's dir; every other name is Dolphin's.
     fn path(&self, file: &str) -> PathBuf {
-        let p = self.dir.join(file);
+        let dir = if file == Kind::Ds.file() {
+            &self.melonds
+        } else {
+            &self.dir
+        };
+        let p = dir.join(file);
         std::fs::canonicalize(&p).unwrap_or(p)
+    }
+
+    /// Writes the known-good melonDS config when there is none, so the first DS game starts with
+    /// the pad mapped (melonDS's own first config leaves every control unset). Only logs errors.
+    pub fn seed(&self, emulator: &str) {
+        if emulator != Kind::Ds.emulator() {
+            return;
+        }
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        if let Ok((None, _)) = self.load(Kind::Ds.file(), "") {
+            let _ = self.write_file(Kind::Ds.file(), None, DS_TOML);
+        }
     }
 
     /// File bytes (None = no file) and text. A non-UTF-8 file is an error: nothing may be written
@@ -575,9 +720,8 @@ impl Controls {
         let (bytes, text) = self.load(kind.file(), kind.default_ini())?;
         let r = read_text(kind, &text);
         let ids = kind.ids();
-        let [s0, s1] = kind.sticks();
         Ok(View {
-            emulator: "dolphin",
+            emulator: kind.emulator(),
             kind: kind.name(),
             controller: kind.controller(),
             source: if bytes.is_some() && r.found {
@@ -593,7 +737,7 @@ impl Controls {
                     .is_ok_and(|(b, t)| b.is_some() && port_ready(&t))
             }),
             bindings: ids.iter().copied().zip(r.bindings).collect(),
-            dead_zone: BTreeMap::from([(s0, r.dz[0]), (s1, r.dz[1])]),
+            dead_zone: kind.sticks().iter().copied().zip(r.dz).collect(),
             custom: ids.iter().copied().zip(r.custom).collect(),
         })
     }
@@ -644,7 +788,11 @@ impl Controls {
             .zip(def.bindings)
             .flat_map(|(id, p)| bind_ops(kind, id, p.unwrap_or_default()))
             .collect();
-        ops.extend(kind.sticks().map(|id| Op::Remove(dead_zone::key(kind, id))));
+        ops.extend(
+            kind.sticks()
+                .iter()
+                .map(|id| Op::Remove(dead_zone::key(kind, id))),
+        );
         self.save(kind, bytes, &text, &ops)?;
         self.view(kind, running)
     }
@@ -656,9 +804,14 @@ impl Controls {
         text: &str,
         ops: &[Op],
     ) -> Result<(), CtlError> {
+        if kind == Kind::Ds && !toml_safe(text) {
+            return Err(CtlError::Bad(
+                "melonDS.toml has its joystick table in a form brisk does not edit",
+            ));
+        }
         let new = apply(
             kind.section(),
-            &ensure_section(kind.section(), kind.default_ini(), text),
+            &ensure_section(kind.section(), &default_block(kind), text),
             ops,
         );
         self.write_file(kind.file(), orig, &new)?;
@@ -719,7 +872,7 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    const KINDS: [Kind; 2] = [Kind::Classic, Kind::GameCube];
+    const KINDS: [Kind; 3] = [Kind::Classic, Kind::GameCube, Kind::Ds];
     const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/controls");
 
     fn fixture(name: &str) -> String {
@@ -735,7 +888,7 @@ mod tests {
         let sec = kind.section();
         apply(
             sec,
-            &ensure_section(sec, kind.default_ini(), text),
+            &ensure_section(sec, &default_block(kind), text),
             &bind_ops(kind, id, pad),
         )
     }
@@ -785,10 +938,12 @@ mod tests {
                 "A X B Y RB Menu LT RT Left stick Right stick D-pad",
                 vec!["Device"],
             ),
+            (Kind::Ds, "B A Y X LB RB Menu View D-pad", vec![]),
         ];
         for (kind, names, skip) in expect {
             let r = read_text(kind, kind.default_ini());
-            assert!(r.found && r.custom.iter().all(|c| !c) && r.dz == [0, 0]);
+            assert!(r.found && r.custom.iter().all(|c| !c));
+            assert_eq!(r.dz, vec![0; kind.sticks().len()]);
             assert_eq!(
                 r.bindings.iter().map(|b| b.unwrap()).collect::<Vec<_>>(),
                 want(names)
@@ -803,7 +958,7 @@ mod tests {
                 &format!("{}\n", kind.section()),
                 &ops,
             ));
-            let mut file = pairs(kind.default_ini());
+            let mut file = pairs(&default_block(kind));
             for k in skip {
                 file.remove(k);
             }
@@ -897,9 +1052,11 @@ mod tests {
 
     #[test]
     fn dead_zone_format() {
-        for kind in KINDS {
+        for kind in [Kind::Classic, Kind::GameCube] {
             let (sec, def) = (kind.section(), kind.default_ini());
-            let [s0, s1] = kind.sticks();
+            let &[s0, s1] = kind.sticks() else {
+                panic!("{kind:?} has two sticks")
+            };
             assert_eq!(read_text(kind, def).dz, [0, 0]);
             for (v, n) in [
                 ("12", 12),
@@ -951,7 +1108,7 @@ mod tests {
             ] {
                 assert!(bad(&with("a", b.into())), "{b:?}");
             }
-            let [s0, _] = kind.sticks();
+            let s0 = kind.sticks()[0];
             assert!(bad(&with(s0, "A".into())));
             assert!(bad(&with("dp", "Left stick".into())));
             assert!(bad(&with("a", v["bindings"]["b"].clone()))); // duplicate
@@ -1017,7 +1174,7 @@ mod tests {
             if let Some(t) = text {
                 std::fs::write(d.path().join(MAIN_INI), t).unwrap();
             }
-            let c = Controls::new(d.path().into());
+            let c = Controls::new(d.path().into(), d.path().into());
             let v = c.reset(Kind::GameCube, false).unwrap();
             let after = std::fs::read_to_string(d.path().join(MAIN_INI)).ok();
             let bk = std::fs::read_to_string(d.path().join(backup_name(MAIN_INI))).ok();
@@ -1055,7 +1212,7 @@ mod tests {
         // Classic never touches Dolphin.ini.
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join(MAIN_INI), "[Core]\nSIDevice0 = 0\n").unwrap();
-        let c = Controls::new(d.path().into());
+        let c = Controls::new(d.path().into(), d.path().into());
         assert_eq!(c.reset(Kind::Classic, false).unwrap().port_ready, None);
         assert_eq!(
             std::fs::read_to_string(d.path().join(MAIN_INI)).unwrap(),
@@ -1071,7 +1228,7 @@ mod tests {
         assert!(write_atomic(&target, b"x").is_err());
         let left: Vec<_> = std::fs::read_dir(d.path()).unwrap().collect();
         assert_eq!(left.len(), 1);
-        let c = Controls::new(d.path().into());
+        let c = Controls::new(d.path().into(), d.path().into());
         assert!(c.reset(Kind::Classic, false).is_err());
     }
 
@@ -1079,9 +1236,9 @@ mod tests {
     fn writes_0600_and_backs_up_once() {
         for kind in KINDS {
             let d = tempfile::tempdir().unwrap();
-            let c = Controls::new(d.path().join("dolphin-emu"));
-            c.reset(kind, false).unwrap(); // no file: created, no backup
             let dir = d.path().join("dolphin-emu");
+            let c = Controls::new(dir.clone(), dir.clone());
+            c.reset(kind, false).unwrap(); // no file: created, no backup
             let (file, bk) = (kind.file(), backup_name(kind.file()));
             assert!(!dir.join(&bk).exists());
             let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
@@ -1098,5 +1255,125 @@ mod tests {
                     .contains("Device = mine")
             );
         }
+    }
+
+    /// The shape melonDS 1.1 writes (toml11: top-level keys, then `[a.b]` tables, decimal ints).
+    const MELON: &str = "LastROMFolder = \"/games/nds\"\nRecentROM = [\"/games/nds/a.nds\"]\n\n[Instance0]\nJoystickID = 0\n\n[Instance0.Keyboard]\nA = 88\nB = 90\nHK_Lid = -1\n\n[Instance0.Joystick]\nA = 1\nB = 0\nSelect = 10\nStart = 11\nRight = 258\nLeft = 264\nUp = 257\nDown = 260\nR = 7\nL = 6\nX = 3\nY = 4\nHK_Lid = -1\nHK_Mic = 12\n\n[Instance0.Window0]\nWidth = 256\n";
+
+    fn ds_dir(text: Option<&[u8]>) -> (tempfile::TempDir, Controls) {
+        let d = tempfile::tempdir().unwrap();
+        if let Some(t) = text {
+            std::fs::write(d.path().join("melonDS.toml"), t).unwrap();
+        }
+        let c = Controls::new(d.path().join("nodolphin"), d.path().into());
+        (d, c)
+    }
+
+    #[test]
+    fn ds_edit_touches_only_its_lines() {
+        let r = read_text(Kind::Ds, MELON);
+        assert_eq!(
+            r.bindings,
+            ["B", "A", "Y", "X", "LB", "RB", "Menu", "View", "D-pad"].map(Some)
+        );
+        let t = set(Kind::Ds, MELON, "a", "LT");
+        assert_eq!(
+            t,
+            MELON.replace(
+                "[Instance0.Joystick]\nA = 1\n",
+                "[Instance0.Joystick]\nA = 35782655\n"
+            )
+        );
+        // The keyboard's own `A` and the hotkeys stay as they were.
+        assert!(t.contains("[Instance0.Keyboard]\nA = 88\n") && t.contains("HK_Mic = 12\n"));
+        assert_eq!(pad_of(Kind::Ds, &t, "a"), Some("LT"));
+        // Unset (-1), a hat on the wrong direction, or a stick axis read as custom.
+        for (k, v) in [("A", "-1"), ("Up", "258"), ("B", "0x0"), ("Up", "17104895")] {
+            let t = apply(Kind::Ds.section(), MELON, &[Op::Set(k.into(), v.into())]);
+            let r = read_text(Kind::Ds, &t);
+            let i = if k == "A" {
+                0
+            } else if k == "B" {
+                1
+            } else {
+                8
+            };
+            assert!(r.custom[i] && r.bindings[i].is_none(), "{k} = {v}");
+        }
+    }
+
+    #[test]
+    fn ds_missing_table_is_added_once() {
+        let no_joy = "[Instance0]\nJoystickID = 0\n\n[Instance0.Keyboard]\nA = 88\n";
+        let (d, c) = ds_dir(Some(no_joy.as_bytes()));
+        let v = c.reset(Kind::Ds, false).unwrap();
+        assert_eq!(v.emulator, "melonds");
+        assert!(v.dead_zone.is_empty());
+        let t = std::fs::read_to_string(d.path().join("melonDS.toml")).unwrap();
+        assert!(t.starts_with(no_joy));
+        assert_eq!(t.matches("[Instance0.Keyboard]").count(), 1);
+        assert_eq!(t.matches("[Instance0.Joystick]").count(), 1);
+        assert!(toml_safe(&t));
+        assert_eq!(read_text(Kind::Ds, &t), read_text(Kind::Ds, DS_TOML));
+    }
+
+    #[test]
+    fn ds_damaged_file_is_never_written() {
+        let bad: [&[u8]; 6] = [
+            b"[Instance0.Joystick]\nA = 1\n[Instance0.Joystick]\nB = 0\n",
+            b"[Instance0]\nJoystick = { A = 1 }\n",
+            b"[Instance0]\nJoystick.A = 1\n",
+            b"Instance0.Joystick.A = 1\n",
+            b"[Instance0.Joystick]\n\"A\" = 1\n",
+            b"[Instance0.Joystick]\nA = [\n1,\n]\n",
+        ];
+        for b in bad
+            .iter()
+            .copied()
+            .chain([&b"[Instance0.Joystick]\nA = \xff\n"[..]])
+        {
+            let (d, c) = ds_dir(Some(b));
+            assert!(
+                c.reset(Kind::Ds, false).is_err(),
+                "{:?}",
+                String::from_utf8_lossy(b)
+            );
+            let body = br#"{"bindings":{"a":"B","b":"A","x":"Y","y":"X","l":"LB","r":"RB","start":"Menu","select":"View","dp":"D-pad"},"deadZone":{}}"#;
+            assert!(c.put(Kind::Ds, body, false).is_err());
+            assert_eq!(std::fs::read(d.path().join("melonDS.toml")).unwrap(), b);
+            assert!(!d.path().join(backup_name("melonDS.toml")).exists());
+        }
+        assert!(toml_safe(MELON) && toml_safe(DS_TOML) && toml_safe(""));
+    }
+
+    #[test]
+    fn ds_put_validates_and_seed_writes_only_a_missing_file() {
+        let (d, c) = ds_dir(None);
+        let file = d.path().join("melonDS.toml");
+        let body = |dz: &str| {
+            format!(
+                r#"{{"bindings":{{"a":"A","b":"B","x":"X","y":"Y","l":"LT","r":"RT","start":"Menu","select":"View","dp":"D-pad"}},"deadZone":{dz}}}"#
+            )
+        };
+        assert!(
+            c.put(Kind::Ds, body(r#"{"ls":0}"#).as_bytes(), false)
+                .is_err()
+        );
+        let v = c.put(Kind::Ds, body("{}").as_bytes(), false).unwrap();
+        assert_eq!((v.source, v.bindings["l"]), ("file", Some("LT")));
+        // The first write kept the shipped keyboard keys.
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("Start = 16777220\n")
+        );
+        std::fs::remove_file(&file).unwrap();
+        c.seed("dolphin");
+        assert!(!file.exists());
+        c.seed("melonds");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), DS_TOML);
+        std::fs::write(&file, MELON).unwrap();
+        c.seed("melonds");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), MELON);
     }
 }

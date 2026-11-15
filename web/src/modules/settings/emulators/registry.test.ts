@@ -10,6 +10,11 @@ describe('emulator registry', () => {
     const d = emulatorOf('dolphin');
     expect(shownSections(d).map((s) => s.id)).toEqual(['controllers', 'launch', 'folders', 'art']);
   });
+  it('melonDS shows Controllers first, like Dolphin', () => {
+    const m = emulatorOf('melonds');
+    expect(shownSections(m).map((s) => s.id)).toEqual(['controllers', 'launch', 'folders', 'art']);
+    expect(sectionOf(m, null).id).toBe('controllers');
+  });
   it('unknown ids fall back to the first entry', () => {
     expect(emulatorOf('nope').id).toBe('dolphin');
     expect(emulatorOf(null).id).toBe('dolphin');

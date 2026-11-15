@@ -1,12 +1,14 @@
 <script lang="ts">
-  // The Controls section of an emulator game's detail panel: a short note and a link into Settings, where the Dolphin
-  // mapping is edited (docs/plans/2026-10-28-emulator-controls-v2.md, section 1.9). Hidden when this machine has no Dolphin.
+  // The Controls section of an emulator game's detail panel: a short note and a link into Settings, where the emulator's
+  // mapping is edited (docs/plans/2026-10-28-emulator-controls-v2.md, section 1.9). Hidden when hostd has no editor for it.
   import { onMount } from 'svelte';
   import { api, ApiError } from '../../state/api';
 
+  let { emu = 'dolphin' }: { emu?: string } = $props();
+  const ds = $derived(emu === 'melonds');
   let hidden = $state(false);
   onMount(() => {
-    api.emulatorControls('classic').catch((e) => {
+    api.emulatorControls(ds ? 'ds' : 'classic').catch((e) => {
       if (e instanceof ApiError && e.status === 404) hidden = true;
     });
   });
@@ -15,8 +17,12 @@
 {#if !hidden}
   <section class="sec" aria-labelledby="ctl-h">
     <h3 id="ctl-h">Controls</h3>
-    <p class="lab">Dolphin uses one mapping for every game on this machine. Wii games use the Classic Controller mapping. GameCube games use the GameCube controller mapping.</p>
-    <p class="lab"><a class="link" href="/settings#emulators/dolphin/controllers">Edit mappings</a></p>
+    {#if ds}
+      <p class="lab">melonDS uses one mapping for every DS game on this machine.</p>
+    {:else}
+      <p class="lab">Dolphin uses one mapping for every game on this machine. Wii games use the Classic Controller mapping. GameCube games use the GameCube controller mapping.</p>
+    {/if}
+    <p class="lab"><a class="link" href="/settings#emulators/{ds ? 'melonds' : 'dolphin'}/controllers">Edit mappings</a></p>
   </section>
 {/if}
 

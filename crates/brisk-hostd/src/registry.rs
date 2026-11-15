@@ -1,6 +1,6 @@
 //! The emulators brisk can run: a static table, one row each. A second emulator is a new row
-//! (and a header reader when its files carry an id). Where Dolphin keeps its config is
-//! `Config::dolphin_dir`, which the controller editor takes from there.
+//! (and a header reader when its files carry an id). Where Dolphin and melonDS keep their config is
+//! `Config::dolphin_dir` and `Config::melonds_dir`, which the controller editor takes from there.
 //! shortcut: one window class per emulator and no pid match for the window; add `match_by` to a
 //! row if two emulators ever share a class.
 
@@ -22,33 +22,56 @@ pub struct Emulator {
     pub window_class: &'static str,
     /// Controller editor types it supports; empty = no editor.
     pub controller: &'static [&'static str],
+    /// Has its own RetroAchievements client, so playing can unlock achievements. Without one,
+    /// brisk still shows the RA list, as view only.
+    pub ra_client: bool,
     pub systems: &'static [System],
     pub extensions: &'static [&'static str],
 }
 
 /// Every emulator brisk knows.
-pub(crate) static EMULATORS: &[Emulator] = &[Emulator {
-    id: "dolphin",
-    name: "Dolphin",
-    cmd: "dolphin-emu",
-    // -b: no UI shell, -e: boot this file.
-    args: &["-b", "-e"],
-    window_class: "dolphin-emu",
-    controller: &["classic", "gamecube"],
-    systems: &[
-        System {
-            id: "gamecube",
-            folder: "GameCube",
-        },
-        System {
-            id: "wii",
-            folder: "Wii",
-        },
-    ],
-    extensions: &[
-        "iso", "rvz", "wbfs", "gcm", "ciso", "gcz", "wia", "wad", "tgc",
-    ],
-}];
+pub(crate) static EMULATORS: &[Emulator] = &[
+    Emulator {
+        id: "dolphin",
+        name: "Dolphin",
+        cmd: "dolphin-emu",
+        // -b: no UI shell, -e: boot this file.
+        args: &["-b", "-e"],
+        window_class: "dolphin-emu",
+        controller: &["classic", "gamecube"],
+        ra_client: true,
+        systems: &[
+            System {
+                id: "gamecube",
+                folder: "GameCube",
+            },
+            System {
+                id: "wii",
+                folder: "Wii",
+            },
+        ],
+        extensions: &[
+            "iso", "rvz", "wbfs", "gcm", "ciso", "gcz", "wia", "wad", "tgc",
+        ],
+    },
+    Emulator {
+        id: "melonds",
+        name: "melonDS",
+        cmd: "melonDS",
+        // melonDS boots a ROM given as its only argument.
+        args: &[],
+        // shortcut: class not checked on the real machine (Qt usually sets it from the binary name); confirm with swaymsg -t get_tree.
+        window_class: "melonDS",
+        controller: &["ds"],
+        // Upstream melonDS 1.1 has no RetroAchievements client.
+        ra_client: false,
+        systems: &[System {
+            id: "nds",
+            folder: "NDS",
+        }],
+        extensions: &["nds"],
+    },
+];
 
 /// The emulator with this id.
 pub fn get(id: &str) -> Option<&'static Emulator> {
@@ -66,7 +89,18 @@ mod tests {
             (d.cmd, d.args, d.window_class),
             ("dolphin-emu", &["-b", "-e"][..], "dolphin-emu")
         );
+        let m = get("melonds").unwrap();
+        assert_eq!(
+            (m.cmd, m.args, m.controller),
+            ("melonDS", &[][..], &["ds"][..])
+        );
         assert!(get("mystery").is_none());
+        // a system's id is its ingest folder, and the display folder is the same name
+        for e in EMULATORS {
+            for s in e.systems {
+                assert_eq!(s.folder.to_ascii_lowercase(), s.id);
+            }
+        }
         let ids: Vec<_> = EMULATORS.iter().map(|e| e.id).collect();
         assert!(ids.iter().all(|i| {
             !i.is_empty()

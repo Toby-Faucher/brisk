@@ -37,8 +37,23 @@ export const CONTROL_SETS: Record<ControllerType, ControlDef[]> = {
     { id: 'cs', name: 'C stick', kind: 'stick' },
     { id: 'dp', name: 'D-pad', kind: 'dpad' },
   ],
+  ds: [
+    btn('a', 'A'),
+    btn('b', 'B'),
+    btn('x', 'X'),
+    btn('y', 'Y'),
+    btn('l', 'L'),
+    btn('r', 'R'),
+    btn('start', 'Start'),
+    btn('select', 'Select'),
+    { id: 'dp', name: 'D-pad', kind: 'dpad' },
+  ],
 };
-export const TYPE_LABEL: Record<ControllerType, string> = { classic: 'Classic Controller', gamecube: 'GameCube controller' };
+export const TYPE_LABEL: Record<ControllerType, string> = {
+  classic: 'Classic Controller',
+  gamecube: 'GameCube controller',
+  ds: 'Nintendo DS',
+};
 export const idsOf = (t: ControllerType) => CONTROL_SETS[t].map((c) => c.id);
 export const controlOf = (t: ControllerType, id: string) => CONTROL_SETS[t].find((c) => c.id === id)!;
 
@@ -69,6 +84,7 @@ export const DEFAULTS: Record<ControllerType, Bindings> = {
     dp: 'D-pad',
   },
   gamecube: { a: 'A', b: 'X', x: 'B', y: 'Y', z: 'RB', start: 'Menu', l: 'LT', r: 'RT', ms: 'Left stick', cs: 'Right stick', dp: 'D-pad' },
+  ds: { a: 'B', b: 'A', x: 'Y', y: 'X', l: 'LB', r: 'RB', start: 'Menu', select: 'View', dp: 'D-pad' },
 };
 
 /** Gamepad API standard-mapping button index -> pad name. 10 and 11 (stick clicks) map to nothing. */

@@ -58,7 +58,7 @@ pub struct AppState {
     pub notes: NotesStore,
     /// Launch option defaults and per-game overrides (`data_dir/launch.json`).
     pub launch: LaunchStore,
-    /// Dolphin's config directory (controller editor).
+    /// Dolphin's and melonDS's config directories (controller editor).
     pub controls: Controls,
     pub hosts: Hosts,
     /// Disk (`cfg.dist`) unless main picks the embedded build (feature `embed`, BRISK_STATIC).
@@ -107,7 +107,7 @@ impl AppState {
             prefs: Prefs::load(cfg.data_dir.join("prefs.json")),
             notes: NotesStore::load(cfg.data_dir.join("notes.json")),
             launch: LaunchStore::load(cfg.data_dir.join("launch.json")),
-            controls: Controls::new(cfg.dolphin_dir.clone()),
+            controls: Controls::new(cfg.dolphin_dir.clone(), cfg.melonds_dir.clone()),
             quit: Quitter::new(runner.clone(), cfg.proc_dir.clone(), cfg.data_dir.clone()),
             hosts: Hosts::new(&cfg.allowed_hosts, runner.clone()),
             site: Site::Disk(cfg.dist.clone()),
@@ -270,13 +270,13 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(crate::art::pick).layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route(
-            "/emulators/dolphin/controls/{kind}",
+            "/emulators/{emu}/controls/{kind}",
             get(controls::controls_get)
                 .put(controls::controls_put)
                 .layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route(
-            "/emulators/dolphin/controls/{kind}/reset",
+            "/emulators/{emu}/controls/{kind}/reset",
             post(controls::controls_reset).layer(DefaultBodyLimit::max(4 << 10)),
         )
         .route("/library/scan", post(games::library_scan))

@@ -137,3 +137,40 @@ async fn saves_route_finds_the_disc_id_in_an_alias() {
         "{v}"
     );
 }
+
+#[tokio::test]
+async fn saves_route_lists_a_melonds_game_from_its_rom_folder() {
+    let mut s = setup_dir(false);
+    let nds = s._t.path().join("games/nds");
+    std::fs::create_dir_all(&nds).unwrap();
+    std::fs::write(nds.join("Kart DS.nds"), b"rom").unwrap();
+    std::fs::write(nds.join("Kart DS.sav"), b"12345").unwrap();
+    std::fs::write(nds.join("Kart DS.ml2"), b"12").unwrap();
+    s.cfg.melonds_dir = s._t.path().join("melonDS");
+    let lib = serde_json::json!({"v": 1, "games": [{"id": "emu:melonds:kart-ds", "emulator": "melonds",
+        "system": "nds", "file": nds.join("Kart DS.nds"), "name": "Kart DS"}]});
+    std::fs::write(s.cfg.data_dir.join("library.json"), lib.to_string()).unwrap();
+    let (st, v) = get_json(&s.cfg, "/api/games/emu:melonds:kart-ds/saves").await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["available"], true);
+    let mut got: Vec<_> = v["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| (i["kind"].as_str().unwrap(), i["path"].as_str().unwrap()))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        [("game-save", "Kart DS.sav"), ("state", "Kart DS.ml2")]
+    );
+    assert!(!v.to_string().contains(s._t.path().to_str().unwrap()));
+    let (g, _) = games_json(&s.cfg, "/api/games").await;
+    let ds = g["games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["id"] == "emu:melonds:kart-ds")
+        .unwrap();
+    assert_eq!(ds["caps"]["saves"], true);
+}

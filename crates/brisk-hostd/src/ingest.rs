@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 /// Extensions a scan or an upload looks at.
 pub(crate) const EXTS: &[&str] = &[
-    "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "gen",
+    "iso", "gcm", "wbfs", "rvz", "wia", "nes", "sfc", "smc", "gb", "gbc", "gba", "nds", "md", "gen",
 ];
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 20_000;
@@ -42,6 +42,7 @@ pub fn folder(s: System) -> &'static str {
         System::GB => "gb",
         System::GBC => "gbc",
         System::GBA => "gba",
+        System::NDS => "nds",
         System::Unknown => "unknown",
     }
 }

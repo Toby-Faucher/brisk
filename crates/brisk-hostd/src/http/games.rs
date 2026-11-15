@@ -103,8 +103,11 @@ pub(super) async fn emu_achievements(s: &AppState, g: &Game, refresh: bool) -> R
         }
         ok
     };
-    let body =
+    let mut body =
         crate::ra_game::state_json(&s.cfg, &r.file, std::slice::from_ref(&r.name), fresh).await;
+    if crate::registry::get(&r.emulator).is_some_and(|e| !e.ra_client) {
+        body["viewOnly"] = true.into();
+    }
     ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
 }
 
@@ -191,13 +194,23 @@ pub(super) async fn game_saves(
         return err(StatusCode::NOT_FOUND, "no saves for this game");
     }
     let recs = s.records();
+    let rec = crate::emu::find(&recs, &g.id);
+    let melon = rec
+        .filter(|r| r.emulator == "melonds")
+        .map(|r| (r.file.clone(), s.cfg.melonds_dir.clone()));
+    let user_dir = if melon.is_some() {
+        "melonDS save folder"
+    } else {
+        "Dolphin user folder"
+    };
     let (disc, system) = (
-        crate::emu::find(&recs, &g.id).and_then(crate::emu::disc_id_of),
+        rec.and_then(crate::emu::disc_id_of),
         g.system.clone().unwrap_or_default(),
     );
     let dir = s.cfg.dolphin_user_dir.clone();
-    let found = tokio::task::spawn_blocking(move || {
-        disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system))
+    let found = tokio::task::spawn_blocking(move || match melon {
+        Some((rom, cfg)) => crate::saves::list_melonds(&rom, &cfg),
+        None => disc.map_or(Some(vec![]), |d| crate::saves::list(&dir, &d, &system)),
     })
     .await;
     let Ok(found) = found else {
@@ -205,7 +218,7 @@ pub(super) async fn game_saves(
     };
     let body = serde_json::json!({
         "available": found.is_some(),
-        "userDir": "Dolphin user folder",
+        "userDir": user_dir,
         "items": found.unwrap_or_default(),
     });
     ([(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
@@ -364,6 +377,9 @@ pub(super) async fn game_cmd(s: Arc<AppState>, b: &[u8], install: bool) -> Respo
         if install {
             s2.stream.install(&id) == Some(true)
         } else {
+            if let Some((emu, _)) = id.emu_parts() {
+                s2.controls.seed(emu);
+            }
             s2.stream.launch(&id)
         }
     })
