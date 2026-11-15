@@ -7,6 +7,8 @@ export type RaView = { ach: Achievements | null; note: string | null };
 export const TITLE_NOTE =
   "Matched by title; your file's hash isn't in RetroAchievements' list, so unlocks in this list may not count for a modified or different-region disc.";
 
+export const VIEW_ONLY_NOTE = "This emulator can't unlock achievements yet, so this list is view only.";
+
 const NOTES: Record<string, string> = {
   'not-found': 'No RetroAchievements set for this game.',
   'rate-limited': 'RetroAchievements is busy. Try again shortly.',

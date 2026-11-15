@@ -18,6 +18,8 @@ pub(crate) const DEFAULT_BASE: &str = "https://retroachievements.org/API";
 /// shortcut: console ids from memory of the RA site, not confirmed by the official docs (the docs page
 /// lists no ids); check with API_GetConsoleIDs.php once a key exists.
 pub(crate) const CONSOLE_GAMECUBE: u32 = 16;
+/// Nintendo DS (rcheevos `RC_CONSOLE_NINTENDO_DS`, include/rc_consoles.h).
+pub(crate) const CONSOLE_NDS: u32 = 18;
 /// RetroAchievements console id for the Wii.
 pub const CONSOLE_WII: u32 = 19;
 

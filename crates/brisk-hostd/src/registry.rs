@@ -22,6 +22,9 @@ pub struct Emulator {
     pub window_class: &'static str,
     /// Controller editor types it supports; empty = no editor.
     pub controller: &'static [&'static str],
+    /// Has its own RetroAchievements client, so playing can unlock achievements. Without one,
+    /// brisk still shows the RA list, as view only.
+    pub ra_client: bool,
     pub systems: &'static [System],
     pub extensions: &'static [&'static str],
 }
@@ -36,6 +39,7 @@ pub(crate) static EMULATORS: &[Emulator] = &[
         args: &["-b", "-e"],
         window_class: "dolphin-emu",
         controller: &["classic", "gamecube"],
+        ra_client: true,
         systems: &[
             System {
                 id: "gamecube",
@@ -59,6 +63,8 @@ pub(crate) static EMULATORS: &[Emulator] = &[
         // shortcut: class not checked on the real machine (Qt usually sets it from the binary name); confirm with swaymsg -t get_tree.
         window_class: "melonDS",
         controller: &["ds"],
+        // Upstream melonDS 1.1 has no RetroAchievements client.
+        ra_client: false,
         systems: &[System {
             id: "nds",
             folder: "NDS",

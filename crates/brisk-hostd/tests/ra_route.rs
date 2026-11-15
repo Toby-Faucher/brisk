@@ -199,6 +199,7 @@ async fn ok_has_the_steam_shape_plus_ra_fields() {
         "https://media.retroachievements.org/Badge/250337_lock.png"
     );
     assert!(!body.contains(KEY) && !body.contains("toby_ra"));
+    assert!(v.get("viewOnly").is_none(), "Dolphin can unlock");
 }
 
 #[tokio::test]
@@ -313,6 +314,7 @@ async fn caps_need_a_ra_system_and_the_key_file() {
     };
     assert!(caps(&rig("http://x", Some(GOOD), "gamecube")));
     assert!(caps(&rig("http://x", Some(GOOD), "wii")));
+    assert!(caps(&rig("http://x", Some(GOOD), "nds")));
     assert!(!caps(&rig("http://x", None, "wii")));
     assert!(!caps(&rig("http://x", Some(GOOD), "nes")));
 }
@@ -390,4 +392,52 @@ async fn hash_match_beats_a_title_match() {
     );
     let log = log.lock().unwrap();
     assert!(log.iter().any(|l| l.contains("g=777")) && !log.iter().any(|l| l.contains("g=1 ")));
+}
+
+/// A melonDS game: hashed as console 18, and the answer says the list is view only.
+#[tokio::test]
+async fn ds_game_uses_console_18_and_is_view_only() {
+    const DS: &str = "/api/games/emu:melonds:dsgame";
+    let mut r = rig("http://127.0.0.1:1", Some(GOOD), "nds");
+    let rom = r.iso.with_extension("nds");
+    let mut img = vec![0x5Au8; 0x500];
+    for (at, v) in [
+        (0x20, 0x200u32),
+        (0x2C, 6),
+        (0x30, 0x300),
+        (0x3C, 4),
+        (0x68, 0x400),
+    ] {
+        put(&mut img, at, &v.to_le_bytes());
+    }
+    std::fs::write(&rom, img).unwrap();
+    std::fs::write(
+        r.cfg.data_dir.join("library.json"),
+        serde_json::json!({"v":1,"games":[{"id":"emu:melonds:dsgame","emulator":"melonds","system":"nds","file":rom,"name":"DS Game"}]})
+            .to_string(),
+    )
+    .unwrap();
+    let h = json(&app(&r.cfg), &format!("{DS}/ra-hash")).await;
+    assert_eq!(
+        (h["console"].clone(), h["container"].clone()),
+        (18.into(), "rom".into())
+    );
+    let hash = h["hash"].as_str().unwrap().to_string();
+    let (base, log) = mock(vec![
+        (
+            "API_GetGameList.php",
+            200,
+            list(&hash).replace(":16,", ":18,"),
+        ),
+        ("API_GetGameInfoAndUserProgress.php", 200, progress()),
+    ])
+    .await;
+    r.cfg.ra_base = base;
+    let v = json(&app(&r.cfg), &format!("{DS}/achievements")).await;
+    assert_eq!(
+        (v["state"].as_str(), v["matched"].as_str()),
+        (Some("ok"), Some("hash"))
+    );
+    assert_eq!(v["viewOnly"], true);
+    assert!(log.lock().unwrap().iter().any(|l| l.contains("i=18&")));
 }

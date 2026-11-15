@@ -994,6 +994,16 @@ describe('GameDetail RetroAchievements', () => {
     expect(page.getByText(/^Matched by title; your file's hash isn't/).elements()).toHaveLength(n);
   });
 
+  it.each([
+    [true, 1],
+    [false, 0],
+  ] as const)('viewOnly %s shows the view only note %i times', async (viewOnly, n) => {
+    vi.spyOn(api, 'gameAchievements').mockResolvedValue({ ...raOk, viewOnly });
+    await render(GameDetail, { props: props(wii) });
+    await expect.element(page.getByText(/3 of 8 points/)).toBeInTheDocument();
+    expect(page.getByText("This emulator can't unlock achievements yet, so this list is view only.").elements()).toHaveLength(n);
+  });
+
   it('hides the panel for off', async () => {
     const spy = vi.spyOn(api, 'gameAchievements').mockResolvedValue({ state: 'off' });
     await render(GameDetail, { props: props(wii) });
