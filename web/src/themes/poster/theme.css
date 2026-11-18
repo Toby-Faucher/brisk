@@ -1,0 +1,1072 @@
+/* UI style poster: every rule starts with :root[data-ui='poster']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/bebas-neue/latin-400.css';
+
+/* ---------- tokens: near-black ground, warm paper white, poster lettering ---------- */
+:root[data-ui='poster'] {
+  --bg: #050505;
+  --panel: #0b0b0b;
+  --panel2: #131313;
+  --line: #1d1d1c;
+  --line-hover: #4a4944;
+  --fg: #f3eee4;
+  --muted: #a6a094;
+  --dim: #8f897d;
+  --r-card: 0px;
+  --r-ctl: 2px;
+  --poster: 'Bebas Neue', 'Oswald', Impact, 'Arial Narrow', sans-serif;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-page: 700ms;
+  --dur-tab: 380ms;
+  --dur-enter: 900ms;
+  --rise-enter: 22px;
+  --stagger: 90ms;
+  --bar: 48px; /* the top bar */
+  --gut: 28px; /* page side padding; posters and hero bleed past it */
+  --hair: 1px solid var(--line);
+  --pad-top: var(--bar);
+}
+:root[data-ui='poster'] body {
+  background: var(--bg);
+  letter-spacing: 0.005em;
+}
+:root[data-ui='poster'] ::selection {
+  background: var(--fg);
+  color: #000;
+}
+:root[data-ui='poster'] *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-ui='poster'] *::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  border-width: 3px;
+  background-color: color-mix(in srgb, var(--fg) 22%, transparent);
+}
+:root[data-ui='poster'] :focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+}
+
+/* ---------- top bar: the sidebar collapsed into thin transparent type ---------- */
+:root[data-ui='poster'] .app {
+  display: block;
+}
+:root[data-ui='poster'] .side {
+  position: fixed;
+  inset: 0 0 auto 0;
+  width: auto;
+  height: var(--bar);
+  z-index: 20;
+  flex-direction: row;
+  align-items: center;
+  gap: 26px;
+  padding: 0 var(--gut);
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.78), transparent);
+  backdrop-filter: none;
+  border: 0;
+}
+:root[data-ui='poster'] .side::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #050505;
+  border-bottom: var(--hair);
+  opacity: 0;
+}
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    :root[data-ui='poster'] .side::before {
+      /* longhands on purpose: the minifier folds a full set into a shorthand Chrome drops */
+      animation-name: poster-bar;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(root);
+      animation-range: 0 200px;
+    }
+  }
+}
+@keyframes poster-bar {
+  to {
+    opacity: 0.96;
+  }
+}
+:root[data-ui='poster'] .brand {
+  padding: 0;
+  margin-right: 6px;
+}
+:root[data-ui='poster'] .brand img {
+  width: 56px;
+  height: 27px;
+  opacity: 0.92;
+  filter: grayscale(1) brightness(1.6);
+  transition: filter 0.6s var(--ease);
+}
+:root[data-ui='poster'] .side:hover .brand img {
+  filter: none;
+}
+:root[data-ui='poster'] .side .nav {
+  padding: 4px 0;
+  border-radius: 0;
+  gap: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.6s var(--ease),
+    border-color 0.6s var(--ease);
+}
+:root[data-ui='poster'] .side .nav svg {
+  display: none;
+}
+:root[data-ui='poster'] .side .nav::before {
+  display: none;
+}
+:root[data-ui='poster'] .side:hover a.nav,
+:root[data-ui='poster'] .side:focus-within a.nav {
+  color: var(--fg);
+}
+:root[data-ui='poster'] .side a.nav:hover {
+  background: none;
+  transform: none;
+  border-bottom-color: var(--muted);
+}
+:root[data-ui='poster'] .side .nav[aria-current='page'] {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+:root[data-ui='poster'] .side .sec,
+:root[data-ui='poster'] .side .soon {
+  display: none;
+}
+
+/* host pill: right end of the bar; its menu drops down */
+:root[data-ui='poster'] .side .wrap,
+:root[data-ui='poster'] .side > a.pill {
+  margin-left: auto;
+}
+:root[data-ui='poster'] .side .wrap {
+  display: block;
+  margin-top: 0;
+}
+:root[data-ui='poster'] .side .pill {
+  margin-top: 0;
+  width: auto;
+  padding: 4px 0;
+  gap: 8px;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+:root[data-ui='poster'] .side .pill:hover {
+  background: none;
+  color: var(--fg);
+}
+:root[data-ui='poster'] .side .pill .name {
+  flex: none;
+}
+:root[data-ui='poster'] .side .pill svg {
+  display: none;
+}
+:root[data-ui='poster'] .side .pill .st {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+}
+:root[data-ui='poster'] .side .menu {
+  left: auto;
+  right: 0;
+  bottom: auto;
+  top: calc(100% + 10px);
+  width: 260px;
+  border-radius: 0;
+}
+:root[data-ui='poster'] .side .it {
+  border-radius: 0;
+  font-family: var(--poster);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .side .it .st {
+  margin-left: auto;
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+:root[data-ui='poster'] .side .it:hover,
+:root[data-ui='poster'] .side .it:focus-visible {
+  background: var(--fg);
+  color: #000;
+}
+:root[data-ui='poster'] .side .it:hover .st,
+:root[data-ui='poster'] .side .it:focus-visible .st {
+  color: #333;
+}
+
+/* ---------- page frame ---------- */
+:root[data-ui='poster'] main {
+  padding: var(--pad-top) var(--gut) 72px;
+}
+:root[data-ui='poster'] .page-in {
+  animation-duration: 800ms;
+}
+:root[data-ui='poster'] main .off {
+  margin: 0 0 14px;
+  border-radius: 0;
+  background: var(--panel);
+}
+:root[data-ui='poster'] .denied {
+  border-radius: 0;
+}
+
+/* page titles: poster lettering */
+:root[data-ui='poster'] main h2,
+:root[data-ui='poster'] .top h2 {
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 64px;
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .top {
+  border: 0;
+  padding: 34px 0 10px;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+:root[data-ui='poster'] .top .lab {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+:root[data-ui='poster'] main h3,
+:root[data-ui='poster'] main h4 {
+  font-family: var(--poster);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='poster'] .btn {
+  border-radius: var(--r-ctl);
+  background: var(--fg);
+  color: #070707;
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 20px 6px;
+  transition:
+    background 0.5s var(--ease),
+    color 0.5s var(--ease),
+    transform 0.4s var(--ease);
+}
+:root[data-ui='poster'] .btn:hover {
+  filter: none;
+  transform: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+:root[data-ui='poster'] .btn:active {
+  transform: scale(0.97);
+}
+:root[data-ui='poster'] .btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 38%, transparent) inset;
+}
+:root[data-ui='poster'] .btn.ghost:hover {
+  background: var(--fg);
+  color: #070707;
+}
+:root[data-ui='poster'] .btn.sm {
+  font-size: 16px;
+  padding: 5px 14px 3px;
+}
+:root[data-ui='poster'] .search {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 40%, transparent);
+  border-radius: 0;
+  padding: 6px 2px;
+  min-width: 240px;
+  transition: border-color 0.5s var(--ease);
+}
+:root[data-ui='poster'] .search:focus-within {
+  border-color: var(--fg);
+  outline: 0;
+}
+:root[data-ui='poster'] .search input::placeholder {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+:root[data-ui='poster'] .tag {
+  border-radius: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+:root[data-ui='poster'] .glass {
+  background: rgb(8 8 8 / 0.94);
+  backdrop-filter: blur(24px) saturate(1.1);
+  border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+  border-radius: 0;
+  box-shadow: 0 40px 120px rgb(0 0 0 / 0.8);
+}
+
+/* chips become a row of small-caps tabs with a hairline under the chosen one */
+:root[data-ui='poster'] .fchip {
+  border: 0;
+  border-radius: 0;
+  padding: 6px 2px;
+  margin-right: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .fchip:hover {
+  color: var(--fg);
+}
+:root[data-ui='poster'] .fchip[aria-pressed='true'] {
+  color: var(--fg);
+}
+:root[data-ui='poster'] .fchip[aria-pressed='true']::before {
+  inset: auto 0 0 0;
+  height: 2px;
+  border: 0;
+  background: var(--accent);
+}
+:root[data-ui='poster'] .filters {
+  padding: 8px 0 0;
+  gap: 0 4px;
+  align-items: center;
+}
+:root[data-ui='poster'] .filters .sort {
+  gap: 14px;
+}
+:root[data-ui='poster'] .dd {
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 40%, transparent);
+  background: transparent;
+  padding: 5px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .dd-menu {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .dd-item {
+  border-radius: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .dd-item[data-highlighted] {
+  background: var(--fg);
+  color: #000;
+  box-shadow: none;
+}
+:root[data-ui='poster'] .rf {
+  border-radius: 0;
+}
+
+/* ---------- library: giant hero, then poster rows with zero gutters ---------- */
+:root[data-ui='poster'] main:has(.hero) {
+  display: flex;
+  flex-direction: column;
+}
+:root[data-ui='poster'] main:has(.hero) .body {
+  display: contents;
+}
+:root[data-ui='poster'] main:has(.hero) .hero {
+  order: -3;
+}
+:root[data-ui='poster'] main:has(.hero) .top {
+  order: -2;
+}
+:root[data-ui='poster'] main:has(.hero) .filters {
+  order: -1;
+}
+:root[data-ui='poster'] .hero {
+  margin: calc(var(--bar) * -1) calc(var(--gut) * -1) 0;
+  min-height: min(70vh, 720px);
+  padding: 0 var(--gut) 70px;
+  align-items: flex-end;
+  border: 0;
+  border-radius: 0;
+}
+:root[data-ui='poster'] .hero .art {
+  opacity: 1;
+  mask-image: none;
+  background-position: center 18%;
+}
+:root[data-ui='poster'] .hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(to top, var(--bg) 2%, rgb(5 5 5 / 0.55) 32%, transparent 62%),
+    linear-gradient(to right, rgb(0 0 0 / 0.72), transparent 62%);
+}
+:root[data-ui='poster'] .hero > :not(.art) {
+  z-index: 2;
+}
+:root[data-ui='poster'] .hero:has(.art) .cover {
+  display: none;
+}
+:root[data-ui='poster'] .hero .cover {
+  order: 2;
+  margin-left: auto;
+  width: 230px !important;
+  border-radius: 0;
+  box-shadow: 0 30px 90px rgb(0 0 0 / 0.8);
+}
+:root[data-ui='poster'] .hero .txt {
+  max-width: min(920px, 100%);
+}
+:root[data-ui='poster'] .hero .lab {
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .hero h3 {
+  margin: 6px 0 14px;
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: clamp(76px, 12vw, 190px);
+  line-height: 0.84;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  text-shadow: 0 6px 60px rgb(0 0 0 / 0.6);
+}
+:root[data-ui='poster'] .hero .acts {
+  margin-top: 22px;
+  gap: 10px;
+}
+:root[data-ui='poster'] .hero .acts .btn {
+  font-size: 24px;
+  padding: 12px 32px 9px;
+}
+:root[data-ui='poster'] .hero .pchip {
+  border-radius: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='poster'] .hero .lab,
+  :root[data-ui='poster'] .hero .acts {
+    animation: poster-up 1.4s var(--ease) 0.35s backwards;
+  }
+  :root[data-ui='poster'] .hero .art {
+    animation: poster-push 14s ease-out both;
+  }
+}
+@keyframes poster-up {
+  from {
+    opacity: 0;
+    translate: 0 26px;
+  }
+}
+@keyframes poster-push {
+  from {
+    scale: 1.07;
+  }
+}
+
+/* shelves */
+:root[data-ui='poster'] .shelf {
+  margin-top: 40px;
+  order: 5;
+}
+:root[data-ui='poster'] .shelf h4 {
+  font-size: 28px;
+  letter-spacing: 0.08em;
+  padding: 0 0 8px;
+}
+:root[data-ui='poster'] .shelf .n {
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  vertical-align: middle;
+}
+:root[data-ui='poster'] .shelf .more {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border-radius: 0;
+}
+:root[data-ui='poster'] .shelf .chev {
+  border-radius: 0;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--fg) 30%, transparent);
+}
+:root[data-ui='poster'] .shelf .row {
+  margin: -8px calc(var(--gut) * -1) 0;
+  padding: 8px 0;
+}
+:root[data-ui='poster'] .shelf .track {
+  gap: 0;
+}
+:root[data-ui='poster'] .shelf .slot {
+  flex-basis: 152px; /* the row's windowing in Shelf.svelte counts 138 + 14 per card */
+}
+:root[data-ui='poster'] .shelf .grid {
+  gap: 1px;
+  margin: 0 calc(var(--gut) * -1);
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+:root[data-ui='poster'] .banner,
+:root[data-ui='poster'] .empty {
+  order: 4;
+  border-radius: 0;
+}
+:root[data-ui='poster'] .empty b {
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 40px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .skel {
+  gap: 0;
+  margin: 24px calc(var(--gut) * -1) 0;
+}
+:root[data-ui='poster'] .skel div {
+  border-radius: 0;
+  flex-basis: 152px;
+}
+
+/* a card: the cover is all of it; name and play appear on a dark gradient */
+:root[data-ui='poster'] .wrap:hover,
+:root[data-ui='poster'] .wrap:has(:focus-visible) {
+  transform: scale(1.07);
+  z-index: 6;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.85);
+}
+:root[data-ui='poster'] .wrap {
+  transition:
+    transform 0.7s var(--ease),
+    box-shadow 0.7s var(--ease);
+}
+:root[data-ui='poster'] .wrap .g {
+  position: relative;
+  border-radius: 0;
+  overflow: hidden;
+}
+:root[data-ui='poster'] .wrap .g:focus-visible {
+  outline-offset: -3px;
+}
+:root[data-ui='poster'] .wrap .cover {
+  border-radius: 0;
+  box-shadow: 0 0 0 1px #000 inset;
+}
+:root[data-ui='poster'] .wrap .cover::before {
+  background: radial-gradient(90% 70% at 20% 10%, rgb(255 255 255 / 0.14), transparent 60%);
+}
+:root[data-ui='poster'] .wrap .g::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 48%;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.9), transparent);
+  opacity: 0.7;
+  transition:
+    opacity 0.7s var(--ease),
+    height 0.7s var(--ease);
+}
+:root[data-ui='poster'] .wrap .g:hover::after,
+:root[data-ui='poster'] .wrap .g:focus-visible::after {
+  height: 78%;
+  opacity: 1;
+}
+:root[data-ui='poster'] .wrap .g > .name {
+  position: absolute;
+  inset: auto 10px 12px 10px;
+  z-index: 4;
+  margin: 0;
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 0.95;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  transition: translate 0.6s var(--ease);
+}
+:root[data-ui='poster'] .wrap .g > .sub {
+  position: absolute;
+  inset: auto 10px 12px 10px;
+  z-index: 4;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #d7d1c4;
+  opacity: 0;
+  transition: opacity 0.6s var(--ease);
+}
+:root[data-ui='poster'] .wrap .g:hover > .name,
+:root[data-ui='poster'] .wrap .g:focus-visible > .name {
+  translate: 0 -18px;
+}
+:root[data-ui='poster'] .wrap .g:hover > .sub,
+:root[data-ui='poster'] .wrap .g:focus-visible > .sub {
+  opacity: 1;
+}
+:root[data-ui='poster'] .wrap .ach {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 5;
+  margin: 0;
+  height: 3px;
+  border-radius: 0;
+  background: rgb(255 255 255 / 0.2);
+}
+:root[data-ui='poster'] .wrap .play {
+  left: 50%;
+  top: 42%;
+  bottom: auto;
+  transform: translate(-50%, -30%);
+  border-radius: 0;
+  font-size: 15px;
+  padding: 5px 12px 3px;
+}
+:root[data-ui='poster'] .wrap .g:hover .play,
+:root[data-ui='poster'] .wrap .g:focus-visible .play {
+  transform: translate(-50%, -50%);
+}
+:root[data-ui='poster'] .wrap .badge {
+  left: 8px;
+  top: 8px;
+  border-radius: 0;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  background: rgb(0 0 0 / 0.72);
+}
+:root[data-ui='poster'] .wrap .badge:not(.run) {
+  opacity: 0;
+  transition: opacity 0.5s var(--ease);
+}
+:root[data-ui='poster'] .wrap .g:hover .badge,
+:root[data-ui='poster'] .wrap .g:focus-visible .badge {
+  opacity: 1;
+}
+:root[data-ui='poster'] .wrap .chips {
+  left: 8px;
+  top: 30px;
+}
+:root[data-ui='poster'] .wrap .pchip,
+:root[data-ui='poster'] .wrap .tchip,
+:root[data-ui='poster'] .wrap .uchip {
+  border-radius: 0;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='poster'] .wrap .pchip,
+:root[data-ui='poster'] .wrap .tchip {
+  opacity: 0;
+  transition: opacity 0.5s var(--ease);
+}
+:root[data-ui='poster'] .wrap .g:hover .pchip,
+:root[data-ui='poster'] .wrap .g:hover .tchip {
+  opacity: 1;
+}
+:root[data-ui='poster'] .wrap .quit {
+  border-radius: 0;
+  right: 8px;
+  top: 8px;
+  z-index: 7;
+}
+:root[data-ui='poster'] .wrap .glow {
+  display: none;
+}
+
+/* ---------- home: a lobby wall of hairline tiles, Resume as the marquee ---------- */
+:root[data-ui='poster'] .bg {
+  display: none;
+}
+:root[data-ui='poster'] .bento {
+  gap: 0;
+  margin: 0 calc(var(--gut) * -1);
+  grid-auto-rows: 132px;
+  border-top: var(--hair);
+}
+:root[data-ui='poster'] .bento .card {
+  background: var(--bg);
+  border-width: 0 1px 1px 0;
+  border-color: var(--line);
+  border-radius: 0;
+  padding: 18px 20px;
+  transition: background 0.6s var(--ease);
+}
+:root[data-ui='poster'] .bento .card:hover {
+  transform: none;
+  background: var(--panel);
+}
+:root[data-ui='poster'] .bento .card h4 {
+  font-size: 18px;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+}
+:root[data-ui='poster'] .bento .card h4 svg {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+:root[data-ui='poster'] .bento .big {
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .bento .grip {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .bento [data-lifted] {
+  background: var(--panel);
+}
+:root[data-ui='poster'] .bento .card[data-card='resume'] {
+  order: -1;
+  grid-column: 1 / -1 !important;
+  grid-row: span 3 !important;
+  padding: 26px var(--gut);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: radial-gradient(120% 120% at 85% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%), var(--bg);
+}
+:root[data-ui='poster'] .bento .card[data-card='resume'] .row {
+  align-items: flex-end;
+  gap: 28px;
+}
+:root[data-ui='poster'] .bento .card[data-card='resume'] .cover {
+  width: 172px;
+  height: 258px;
+  border-radius: 0;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.8);
+}
+:root[data-ui='poster'] .bento .card[data-card='resume'] .txt b {
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: clamp(56px, 8vw, 112px);
+  line-height: 0.88;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  white-space: normal;
+}
+:root[data-ui='poster'] .bento .card[data-card='resume'] .lab {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  margin-top: 8px;
+}
+:root[data-ui='poster'] .bento .card[data-card='resume'] .btn {
+  margin-left: 12px;
+  font-size: 24px;
+  padding: 12px 30px 9px;
+}
+:root[data-ui='poster'] .bento .card[data-card='quick'] {
+  grid-row: span 2 !important;
+}
+:root[data-ui='poster'] .bento .ring {
+  border-radius: 50%;
+}
+:root[data-ui='poster'] .bento .soon {
+  opacity: 0.55;
+}
+
+/* ---------- history, machines, settings ---------- */
+:root[data-ui='poster'] main .grid {
+  gap: 0;
+  margin: 0 calc(var(--gut) * -1);
+  padding-top: 8px;
+  border-top: var(--hair);
+}
+:root[data-ui='poster'] main .grid .card {
+  background: var(--bg);
+  border-width: 0 1px 1px 0;
+  border-radius: 0;
+  transition: background 0.6s var(--ease);
+}
+:root[data-ui='poster'] main .grid .card:hover {
+  transform: none;
+  background: var(--panel);
+}
+:root[data-ui='poster'] .shelf .grid {
+  border-top: 0;
+  padding-top: 0;
+}
+:root[data-ui='poster'] .grid .cover,
+:root[data-ui='poster'] .hcover {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .grid .gate,
+:root[data-ui='poster'] .grid .sel {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .hd {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .big {
+  font-family: var(--poster);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .card {
+  border-radius: 0;
+}
+
+/* settings: poster tabs, flat panels */
+:root[data-ui='poster'] .st .strip {
+  top: var(--bar);
+  gap: 22px;
+  background: var(--bg);
+}
+:root[data-ui='poster'] .st .tab {
+  padding: 12px 0 8px;
+  font-family: var(--poster);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 0;
+}
+:root[data-ui='poster'] .st .ind {
+  height: 3px;
+  border-radius: 0;
+}
+:root[data-ui='poster'] .st .col {
+  gap: 1px;
+}
+:root[data-ui='poster'] .st .col .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 20px 22px;
+}
+:root[data-ui='poster'] .st .sw {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .st .styles {
+  gap: 4px 14px;
+}
+:root[data-ui='poster'] .st .col .card h4 {
+  font-size: 20px;
+  color: var(--fg);
+}
+:root[data-ui='poster'] .st .col .card h4 small {
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='poster'] kbd {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .st input[type='checkbox'] {
+  border-radius: 0;
+}
+:root[data-ui='poster'] input,
+:root[data-ui='poster'] select,
+:root[data-ui='poster'] textarea {
+  border-radius: 0;
+}
+
+/* ---------- command menu, dialogs, toasts, tooltips ---------- */
+:root[data-ui='poster'] .cm-in:focus-visible {
+  outline: 0;
+}
+:root[data-ui='poster'] .tc,
+:root[data-ui='poster'] .chips li,
+:root[data-ui='poster'] .chips span,
+:root[data-ui='poster'] .pb,
+:root[data-ui='poster'] .gate {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .cm-dim {
+  background: rgb(0 0 0 / 0.82);
+  backdrop-filter: blur(6px);
+}
+:root[data-ui='poster'] .cm {
+  --cm-r: 0px;
+  top: 14%;
+  width: min(760px, calc(100vw - 32px));
+  padding: 0;
+}
+:root[data-ui='poster'] .cm-in {
+  font-family: var(--poster);
+  font-size: 40px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 20px 24px 14px;
+  border-bottom: var(--hair);
+}
+:root[data-ui='poster'] .cm-in::placeholder {
+  color: var(--dim);
+}
+:root[data-ui='poster'] .cm-list {
+  padding: 6px 0;
+}
+:root[data-ui='poster'] .cm-vp {
+  gap: 0;
+}
+:root[data-ui='poster'] .cm-it {
+  border-radius: 0;
+  padding: 11px 24px;
+  letter-spacing: 0.06em;
+  border-left: 3px solid transparent;
+  transition:
+    background 0.3s var(--ease),
+    border-color 0.3s var(--ease);
+}
+:root[data-ui='poster'] .cm-it[data-selected] {
+  background: var(--fg);
+  color: #000;
+  border-left-color: var(--accent);
+}
+:root[data-ui='poster'] .cm-it[data-selected] .k {
+  color: #333;
+}
+:root[data-ui='poster'] .rs {
+  border-radius: 0;
+  background: rgb(8 8 8 / 0.97);
+}
+:root[data-ui='poster'] .rs-t {
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+:root[data-ui='poster'] .gd-side {
+  background: #070707;
+}
+:root[data-ui='poster'] .gd-x {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .toasts {
+  bottom: 28px;
+}
+:root[data-ui='poster'] .toast {
+  padding: 12px 22px 10px;
+  font-family: var(--poster);
+  font-weight: 400;
+  font-size: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-left: 3px solid var(--fg);
+}
+:root[data-ui='poster'] .toast.error {
+  border-left-color: var(--bad);
+}
+:root[data-ui='poster'] .toast .act {
+  font-size: 15px;
+}
+:root[data-ui='poster'] .tip {
+  border-radius: 0;
+  background: var(--fg);
+  color: #000;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ---------- stream chrome (cards over the video; never transform main) ---------- */
+:root[data-ui='poster'] .stream .pill,
+:root[data-ui='poster'] .stream .sound,
+:root[data-ui='poster'] .stream .esc,
+:root[data-ui='poster'] .stream .up,
+:root[data-ui='poster'] .stream .drop,
+:root[data-ui='poster'] .stream .card {
+  border-radius: 0;
+}
+:root[data-ui='poster'] .stream .card h2,
+:root[data-ui='poster'] .stream .card h3 {
+  font-size: 40px;
+  line-height: 1;
+}
+:root[data-ui='poster'] .stream .sound {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='poster'] .reveal[data-enter],
+  :root[data-ui='poster'] .enter[data-enter] {
+    animation-duration: var(--dur-enter);
+  }
+  :root[data-ui='poster'] .bento .card,
+  :root[data-ui='poster'] main .grid .card {
+    animation-timing-function: var(--ease);
+  }
+}
+
+/* machines: a switched-off card is dimmed to half, so its small text starts brighter to stay readable */
+:root[data-ui='poster'] .hub .card.dim .lab,
+:root[data-ui='poster'] .hub .card.dim .muted {
+  color: var(--fg);
+}
+
+@media (max-width: 760px) {
+  :root[data-ui='poster'] {
+    --gut: 14px;
+  }
+  :root[data-ui='poster'] .side {
+    gap: 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  :root[data-ui='poster'] .side .brand,
+  :root[data-ui='poster'] .side .pill .st {
+    display: none;
+  }
+  :root[data-ui='poster'] .side .menu {
+    position: fixed;
+    right: 8px;
+  }
+  :root[data-ui='poster'] main h2,
+  :root[data-ui='poster'] .top h2 {
+    font-size: 48px;
+  }
+  :root[data-ui='poster'] .hero .cover {
+    display: none;
+  }
+  :root[data-ui='poster'] .bento .card[data-card='resume'] .row {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  :root[data-ui='poster'] .bento .card[data-card='resume'] .cover {
+    width: 96px;
+    height: 144px;
+  }
+  :root[data-ui='poster'] .bento .card[data-card='resume'] .btn {
+    margin-left: 0;
+  }
+}

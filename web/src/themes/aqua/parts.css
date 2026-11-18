@@ -1,0 +1,497 @@
+/* Aqua glass: screens, dialogs, controls and motion. Every rule starts with :root[data-ui='aqua']. */
+
+/* ---- fixes for colours the components hard-code for the dark look ---- */
+:root[data-ui='aqua'] .card h4,
+:root[data-ui='aqua'] figcaption,
+:root[data-ui='aqua'] .nums b,
+:root[data-ui='aqua'] main h3,
+:root[data-ui='aqua'] .gd-d {
+  color: var(--muted);
+}
+:root[data-ui='aqua'] .ring b {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(20 40 70 / 0.3) inset;
+}
+:root[data-ui='aqua'] .ring:not(svg) {
+  background: conic-gradient(var(--accent) calc(var(--p, 0) * 1%), rgb(120 140 170 / 0.28) 0);
+  box-shadow: 0 1px 0 #fff;
+}
+/* the close button on the game panel is a red gel bead, like a window's close light */
+:root[data-ui='aqua'] .gd-x {
+  width: 26px;
+  height: 26px;
+  margin-top: 4px;
+  color: #fff;
+  background: radial-gradient(120% 90% at 50% 0%, rgb(255 255 255 / 0.7), transparent 55%), #e0413a;
+  border: 1px solid #9c1f1a;
+  box-shadow: 0 1px 2px rgb(60 0 0 / 0.4);
+}
+:root[data-ui='aqua'] .gd-x:hover,
+:root[data-ui='aqua'] .gd-x:focus-visible {
+  color: #fff;
+  background: radial-gradient(120% 90% at 50% 0%, rgb(255 255 255 / 0.85), transparent 55%), #ff5a50;
+}
+:root[data-ui='aqua'] .mini {
+  border-top-color: rgb(120 140 170 / 0.3);
+}
+/* Machines: a header with its own colour keeps its own text colour; an idle one is pale silver; dimmed cards stay readable */
+:root[data-ui='aqua'] .card .hd h4 {
+  color: inherit;
+  text-shadow: none;
+}
+:root[data-ui='aqua'] .hd.idle {
+  background: linear-gradient(180deg, #f6f9fc, #dfe7f1);
+  color: var(--fg);
+}
+:root[data-ui='aqua'] .hub .card.dim:not([data-lifted]) > :not(.actions, .grip, .fill) {
+  opacity: 0.86;
+  filter: saturate(0.55);
+}
+:root[data-ui='aqua'] .hub .card.on:not([data-lifted]) {
+  border-color: var(--accent);
+  box-shadow:
+    var(--lift),
+    0 0 0 3px rgb(61 155 244 / 0.45);
+}
+/* Cover art banners keep their dark colour wash, so their text stays white. */
+:root[data-ui='aqua'] .hero,
+:root[data-ui='aqua'] .gd-side .head {
+  --fg: #fff;
+  --muted: #dbe6f5;
+  color: #fff;
+}
+:root[data-ui='aqua'] .hero {
+  border: 1px solid rgb(30 60 110 / 0.7);
+  box-shadow: var(--lift);
+}
+:root[data-ui='aqua'] .hero::after,
+:root[data-ui='aqua'] .gd-side .head::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 52% 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.32), rgb(255 255 255 / 0.04));
+}
+:root[data-ui='aqua'] .hero h3,
+:root[data-ui='aqua'] .gd-t {
+  text-shadow: 0 1px 3px rgb(0 20 60 / 0.6);
+}
+:root[data-ui='aqua'] .hero .btn.ghost {
+  --fg: #16212f;
+}
+
+/* ---- covers: a glossy gel highlight ---- */
+:root[data-ui='aqua'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.42), rgb(255 255 255 / 0.04));
+  border-radius: inherit;
+}
+:root[data-ui='aqua'] .cover {
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.4) inset,
+    0 4px 10px rgb(20 40 80 / 0.35);
+}
+
+/* ---- status dots become little gel beads ---- */
+:root[data-ui='aqua'] .dot {
+  background: radial-gradient(circle at 35% 30%, #fff 0 14%, var(--ok) 55%, color-mix(in srgb, var(--ok) 70%, #000) 100%);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.2),
+    0 0 6px color-mix(in srgb, var(--ok) 60%, transparent);
+}
+
+/* ---- fields ---- */
+:root[data-ui='aqua']
+:is(input[type='text'], input[type='number'], input[type='url'], input[type='password'], textarea, select):not(.cm-in) {
+  background: linear-gradient(180deg, #eef3f9, #fff 35%);
+  border: 1px solid #8397b0;
+  border-radius: 8px;
+  color: var(--fg);
+  box-shadow: 0 2px 3px rgb(30 50 80 / 0.2) inset;
+}
+:root[data-ui='aqua']
+  :is(input[type='text'], input[type='number'], input[type='url'], input[type='password'], textarea, select):not(.cm-in):focus-visible,
+:root[data-ui='aqua'] .search:focus-within {
+  outline: 0;
+  border-color: #3f8ee8;
+  box-shadow:
+    0 2px 3px rgb(30 50 80 / 0.2) inset,
+    0 0 0 3px rgb(61 155 244 / 0.55);
+}
+:root[data-ui='aqua'] .search:focus-within {
+  outline: 0;
+}
+:root[data-ui='aqua'] input[type='checkbox'] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid #6d82a0;
+  background: var(--gel-silver);
+  box-shadow: 0 1px 2px rgb(30 50 80 / 0.3);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+:root[data-ui='aqua'] input[type='checkbox']:checked {
+  background: var(--gel-blue);
+  border-color: #0d57b0;
+}
+:root[data-ui='aqua'] input[type='checkbox']:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-left: 2.4px solid #fff;
+  border-bottom: 2.4px solid #fff;
+  rotate: -45deg;
+  translate: 0 -1px;
+  filter: drop-shadow(0 -1px 0 rgb(0 30 90 / 0.6));
+}
+:root[data-ui='aqua'] input[type='range'] {
+  accent-color: var(--accent);
+}
+
+/* Filter / choice chips: pressed ones go gel blue */
+:root[data-ui='aqua'] .fchip,
+:root[data-ui='aqua'] .chip,
+:root[data-ui='aqua'] .dd {
+  background: var(--gel-silver);
+  border: 1px solid #8397b0;
+  color: var(--fg);
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 1px 2px rgb(30 50 80 / 0.22);
+  text-shadow: 0 1px 0 #fff;
+}
+:root[data-ui='aqua'] .fchip[aria-pressed='true'],
+:root[data-ui='aqua'] .chip[aria-pressed='true'],
+:root[data-ui='aqua'] .chip[aria-checked='true'],
+:root[data-ui='aqua'] .chip.on,
+:root[data-ui='aqua'] .fchip.on {
+  background: var(--gel-blue);
+  border-color: #0d57b0;
+  color: #fff;
+  text-shadow: 0 -1px 0 rgb(0 30 90 / 0.5);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.55) inset,
+    0 2px 5px rgb(0 40 110 / 0.35) inset;
+}
+:root[data-ui='aqua'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='aqua'] .fchip:hover:not([aria-pressed='true']),
+:root[data-ui='aqua'] .dd:hover {
+  filter: brightness(1.04);
+  border-color: #5f86b5;
+}
+:root[data-ui='aqua'] .sw {
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 -4px 6px rgb(0 0 0 / 0.15) inset,
+    0 2px 4px rgb(20 40 70 / 0.35);
+}
+:root[data-ui='aqua'] .sw[aria-checked='true'] {
+  outline: 3px solid rgb(61 155 244 / 0.7);
+}
+
+/* Settings tab strip: a segmented Aqua control, with a gel pill that glides */
+:root[data-ui='aqua'] .st .strip {
+  position: sticky;
+  top: 36px;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 3px;
+  gap: 0;
+  border: 1px solid #8397b0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #d6dfea, #eef3f9);
+  box-shadow:
+    0 2px 3px rgb(30 50 80 / 0.2) inset,
+    0 1px 0 #fff;
+}
+:root[data-ui='aqua'] .st .tab {
+  position: relative;
+  z-index: 1;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  transition: color 0.2s;
+}
+:root[data-ui='aqua'] .st .tab[aria-selected='true'] {
+  color: #fff;
+  text-shadow: 0 -1px 0 rgb(0 30 90 / 0.5);
+}
+:root[data-ui='aqua'] .st .ind {
+  top: 3px;
+  bottom: 3px;
+  height: auto;
+  border-radius: 999px;
+  background: var(--gel-blue);
+  border: 1px solid #0d57b0;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.55) inset,
+    0 1px 3px rgb(0 40 110 / 0.4);
+  transition:
+    transform 0.45s var(--spring-snappy),
+    width 0.45s var(--spring-snappy);
+}
+:root[data-ui='aqua'] .top:has(+ .st) {
+  text-align: center;
+}
+:root[data-ui='aqua'] .st > div,
+:root[data-ui='aqua'] .st [role='tabpanel'] {
+  margin-top: 4px;
+}
+
+/* controller test: the stick wells are pale glass, not black discs */
+:root[data-ui='aqua'] svg .ring {
+  fill: #dfe8f3;
+  stroke: #8da3bf;
+  background: none;
+  box-shadow: none;
+}
+:root[data-ui='aqua'] .stick .cap {
+  fill: #6d86a8;
+  stroke: #3f5778;
+}
+:root[data-ui='aqua'] svg .cross {
+  stroke: #9fb2ca;
+}
+
+/* ---- scrollbars: blue-grey gel ---- */
+:root[data-ui='aqua'] *::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #9fb4cf, #7e98ba);
+  background-clip: padding-box;
+}
+:root[data-ui='aqua'] *::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+
+/* ---- the host pill in the dock ---- */
+:root[data-ui='aqua'] .side .pill,
+:root[data-ui='aqua'] .side .wrap {
+  align-self: center;
+  margin: 0 0 4px 6px;
+}
+:root[data-ui='aqua'] .side .wrap {
+  width: auto;
+}
+:root[data-ui='aqua'] .side .pill {
+  width: auto;
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: var(--fg);
+  font-weight: 600;
+  background: var(--gel-silver);
+  border: 1px solid #8397b0;
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 1px 3px rgb(30 50 80 / 0.28);
+  text-shadow: 0 1px 0 #fff;
+}
+:root[data-ui='aqua'] .side .pill:hover {
+  background: var(--gel-silver);
+  filter: brightness(1.05);
+}
+:root[data-ui='aqua'] .side .menu {
+  left: auto;
+  right: 0;
+  min-width: 230px;
+  bottom: calc(100% + 14px);
+}
+:root[data-ui='aqua'] .side .menu .it {
+  color: var(--fg);
+}
+:root[data-ui='aqua'] .side .menu .it:hover,
+:root[data-ui='aqua'] .side .menu .it:focus-visible {
+  background: var(--gel-blue);
+  color: #fff;
+}
+:root[data-ui='aqua'] .side .menu .it:hover .st,
+:root[data-ui='aqua'] .side .menu .it:focus-visible .st {
+  color: #fff;
+}
+
+/* ---- dialogs, command menu, menus ---- */
+:root[data-ui='aqua'] .cm-dim {
+  background: radial-gradient(80% 80% at 50% 40%, rgb(190 210 235 / 0.35), rgb(60 85 120 / 0.55));
+  backdrop-filter: blur(3px);
+}
+:root[data-ui='aqua'] .cm,
+:root[data-ui='aqua'] .rs {
+  border-radius: 16px;
+  border: 1px solid rgb(90 115 150 / 0.75);
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 24px 60px rgb(20 40 80 / 0.5),
+    0 3px 10px rgb(20 40 80 / 0.3);
+}
+:root[data-ui='aqua'] .rs-t {
+  text-align: center;
+  font-size: 15px;
+}
+:root[data-ui='aqua'] .rs-a {
+  justify-content: center;
+}
+:root[data-ui='aqua'] .rs.te .rs-a {
+  background: transparent;
+}
+:root[data-ui='aqua'] .cm-in {
+  background: linear-gradient(180deg, #e9eff6, #fff 40%);
+  border: 1px solid #8397b0;
+  border-radius: 999px;
+  margin-bottom: 6px;
+  box-shadow: 0 2px 3px rgb(30 50 80 / 0.2) inset;
+}
+:root[data-ui='aqua'] .cm-in:focus-visible {
+  outline: 0;
+  border-color: #3f8ee8;
+  box-shadow:
+    0 2px 3px rgb(30 50 80 / 0.2) inset,
+    0 0 0 3px rgb(61 155 244 / 0.55);
+}
+:root[data-ui='aqua'] .cm-it[data-selected],
+:root[data-ui='aqua'] .dd-item[data-highlighted] {
+  background: var(--gel-blue);
+  color: #fff;
+  box-shadow: none;
+  text-shadow: 0 -1px 0 rgb(0 30 90 / 0.45);
+}
+:root[data-ui='aqua'] .cm-it[data-selected] .k {
+  color: #fff;
+}
+:root[data-ui='aqua'] .cm-it[data-selected] svg {
+  fill: #fff !important;
+}
+:root[data-ui='aqua'] .dd-menu {
+  background: linear-gradient(180deg, #fff, #eef3f9);
+}
+/* tooltips: the old pale-yellow Mac tip */
+:root[data-ui='aqua'] .tip {
+  background: #fffbd6;
+  color: #3a3200;
+  border: 1px solid #b9ad5c;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+}
+/* toasts: a notification slides in at the top right, away from the dock */
+:root[data-ui='aqua'] .toasts {
+  left: auto;
+  right: 18px;
+  bottom: auto;
+  top: 44px;
+  transform: none;
+  justify-items: end;
+}
+:root[data-ui='aqua'] .toast {
+  border-radius: 14px;
+}
+
+/* ---- Home / Machines / History odds and ends ---- */
+:root[data-ui='aqua'] .grip {
+  color: #6d7f98;
+}
+:root[data-ui='aqua'] .grip:hover,
+:root[data-ui='aqua'] .grip:focus-visible {
+  background: rgb(22 112 217 / 0.12);
+}
+:root[data-ui='aqua'] .off {
+  border-radius: 999px;
+  background: var(--glass);
+  box-shadow: var(--lift);
+  border-color: #8397b0;
+}
+:root[data-ui='aqua'] .denied {
+  background: var(--glass);
+  box-shadow: var(--lift);
+}
+:root[data-ui='aqua'] .bar i {
+  background: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.3) 0 6px, transparent 6px 12px), var(--gel-blue);
+}
+:root[data-ui='aqua'] .bar {
+  border: 1px solid #8397b0;
+  box-shadow: 0 1px 2px rgb(30 50 80 / 0.3) inset;
+}
+
+/* ---- motion: glass pops in from slightly small, the dock bounces, dialogs fall back into the dock ---- */
+@keyframes aqua-pop {
+  from {
+    opacity: 0;
+    scale: 0.93;
+    translate: 0 14px;
+  }
+}
+@keyframes aqua-sheen {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+@keyframes aqua-pulse {
+  50% {
+    filter: brightness(1.14) saturate(1.1);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.65) inset,
+      0 -2px 4px rgb(0 40 110 / 0.25) inset,
+      0 2px 4px rgb(20 50 100 / 0.3),
+      0 0 14px rgb(61 155 244 / 0.8);
+  }
+}
+@keyframes aqua-dock-in {
+  from {
+    translate: 0 90px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='aqua'] .reveal[data-enter],
+  :root[data-ui='aqua'] .enter[data-enter] {
+    animation: aqua-pop 0.7s var(--spring-settle) calc(var(--i, 0) * 45ms) backwards;
+  }
+  :root[data-ui='aqua'] .page-in {
+    animation: fade-in 0.25s var(--ease) backwards;
+  }
+  :root[data-ui='aqua'] .side {
+    animation: aqua-dock-in 0.8s var(--spring-settle) 0.1s backwards;
+  }
+  :root[data-ui='aqua'] .hero .btn:not(.ghost),
+  :root[data-ui='aqua'] .rs-a .btn:not(.ghost) {
+    animation: aqua-pulse 1.8s ease-in-out infinite;
+  }
+  :root[data-ui='aqua'] .cm,
+  :root[data-ui='aqua'] .rs {
+    transform-origin: 50% 0;
+    transition:
+      opacity 0.2s var(--ease),
+      translate var(--spring-settle-dur) var(--spring-settle),
+      scale var(--spring-settle-dur) var(--spring-settle);
+  }
+  :root[data-ui='aqua'] :is(.cm, .rs)[data-ending-style] {
+    translate: 0 55vh;
+    scale: 0.35;
+    opacity: 0;
+    transition-duration: 0.22s;
+    transition-timing-function: cubic-bezier(0.5, 0, 0.9, 0.4);
+  }
+  @starting-style {
+    :root[data-ui='aqua'] .cm[data-state='open'] {
+      translate: 0 -26px;
+      scale: 0.9 0.96;
+    }
+    :root[data-ui='aqua'] .rs[data-state='open'] {
+      translate: 0 -26px;
+      scale: 0.92 0.96;
+    }
+  }
+  :root[data-ui='aqua'] .toast {
+    animation: aqua-pop 0.5s var(--spring-settle) backwards;
+  }
+}

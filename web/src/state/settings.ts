@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import type { Preset } from './api';
 import { safeGet, safeSet } from './storage';
+import { DEFAULT_UI, isUiTheme, type UiTheme } from '../themes/registry';
 
 export type Accent = 'mint' | 'indigo' | 'pink' | 'orange' | 'lime' | 'sky';
 /** Same values as tokens.css, for code that needs the colour itself (the smoke shader). */
@@ -19,6 +20,7 @@ export type ReplaySeconds = (typeof REPLAY_SECONDS)[number];
  *  `keepAwake`: the Stream page holds a screen wake lock while live. */
 export type Settings = {
   accent: Accent;
+  ui: UiTheme;
   sounds: boolean;
   shaders: boolean;
   defaultPreset: Preset;
@@ -30,6 +32,7 @@ export type Settings = {
 export const SETTINGS_KEY = 'brisk.settings';
 export const DEFAULTS: Settings = {
   accent: 'mint',
+  ui: DEFAULT_UI,
   sounds: true,
   shaders: true,
   defaultPreset: 'balanced',
@@ -42,6 +45,7 @@ function read(): Settings {
   try {
     const v = { ...DEFAULTS, ...JSON.parse(safeGet(() => localStorage, SETTINGS_KEY) ?? '{}') };
     if (!Object.hasOwn(ACCENT_HEX, v.accent)) v.accent = DEFAULTS.accent;
+    if (!isUiTheme(v.ui)) v.ui = DEFAULTS.ui;
     if (!REPLAY_SECONDS.includes(v.replaySeconds)) v.replaySeconds = DEFAULTS.replaySeconds;
     return v;
   } catch {

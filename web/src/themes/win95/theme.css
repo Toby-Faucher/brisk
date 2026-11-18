@@ -1,0 +1,945 @@
+/* UI style win95 (Classic desktop): every rule starts with :root[data-ui='win95']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/pixelify-sans/latin-400.css';
+@import '@fontsource/pixelify-sans/latin-700.css';
+
+:root[data-ui='win95'] {
+  --bg: #008080;
+  --panel: #c0c0c0;
+  --panel2: #dfdfdf;
+  --line: #808080;
+  --line-hover: #404040;
+  --fg: #000;
+  --muted: #404040;
+  --dim: #404040;
+  --accent: #000080;
+  --accent-fg: #fff;
+  --ok: #006400;
+  --warn: #7a5200;
+  --bad: #a00000;
+  --font: 'Pixelify Sans', Tahoma, 'MS Sans Serif', sans-serif;
+  --mono: 'Courier New', ui-monospace, monospace;
+  --r-card: 0;
+  --r-ctl: 0;
+  --w95-bar: 32px;
+  --w95-navy: linear-gradient(90deg, #000080, #1084d0);
+  --w95-raised: inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  --w95-sunken: inset -1px -1px #fff, inset 1px 1px #808080, inset -2px -2px #dfdfdf, inset 2px 2px #000;
+  --w95-flat: inset -1px -1px #fff, inset 1px 1px #808080;
+  --w95-ctl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='14' shape-rendering='crispEdges'%3E%3Cg fill='%23c0c0c0' stroke='%23fff'%3E%3Cpath d='M0 13V0h16M18 13V0h16M36 13V0h16'/%3E%3C/g%3E%3Cg stroke='%23000'%3E%3Cpath d='M0 13.5h16v-13M18 13.5h16v-13M36 13.5h16v-13'/%3E%3C/g%3E%3Cpath d='M4 10h6v2H4zM22 3h8v1H22zM22 3h1v7H22zM29 3h1v7h-1zM22 9h8v1H22zM41 3h2v1h-2zM45 3h2v1h-2zM42 4h4v1h-4zM43 5h2v2h-2zM42 7h4v1h-4zM41 8h2v1h-2zM45 8h2v1h-2z'/%3E%3C/svg%3E");
+  --w95-dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath fill='%23c0c0c0' d='M0 0h1v1H0zM1 1h1v1H1z'/%3E%3Cpath fill='%23fff' d='M1 0h1v1H1zM0 1h1v1H0z'/%3E%3C/svg%3E");
+  color-scheme: light;
+  background: #008080;
+}
+
+/* the page: teal desktop, room for the taskbar */
+:root[data-ui='win95'] body {
+  background: #008080;
+  color: #000;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: none;
+  padding-bottom: var(--w95-bar);
+}
+:root[data-ui='win95'] .app {
+  min-height: calc(100vh - var(--w95-bar));
+  padding: 8px;
+  gap: 8px;
+}
+:root[data-ui='win95'] :focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+:root[data-ui='win95'] .btn:focus-visible,
+:root[data-ui='win95'] button:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -5px;
+}
+:root[data-ui='win95'] h1,
+:root[data-ui='win95'] h2,
+:root[data-ui='win95'] h3,
+:root[data-ui='win95'] h4 {
+  font-weight: 700;
+}
+:root[data-ui='win95'] ::selection {
+  background: #000080;
+  color: #fff;
+}
+:root[data-ui='win95'] a {
+  color: #00007a;
+}
+
+/* ---------- windows: the main pane and every card ---------- */
+:root[data-ui='win95'] main.page-in {
+  position: relative;
+  background: #c0c0c0;
+  box-shadow:
+    var(--w95-raised),
+    2px 2px 0 #000;
+  padding: 30px 6px 6px;
+  margin-bottom: 2px;
+}
+:root[data-ui='win95'] main.page-in::before {
+  content: 'Brisk';
+  position: absolute;
+  inset: 3px 3px auto 3px;
+  height: 18px;
+  padding: 1px 4px 0 6px;
+  background: var(--w95-navy);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 17px;
+}
+:root[data-ui='win95'] main.page-in::after {
+  content: '' / '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 52px;
+  height: 14px;
+  background: var(--w95-ctl);
+}
+:root[data-ui='win95'] .card,
+:root[data-ui='win95'] .denied,
+:root[data-ui='win95'] .off {
+  background: #c0c0c0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--w95-raised);
+  padding: 8px;
+  color: #000;
+  transform: none;
+}
+:root[data-ui='win95'] .card:hover {
+  transform: none;
+  border-color: transparent;
+}
+:root[data-ui='win95'] .card > h4:first-of-type,
+:root[data-ui='win95'] .card > .head:first-of-type,
+:root[data-ui='win95'] .card > [data-grip] + .head,
+:root[data-ui='win95'] .denied h1 {
+  position: relative;
+  margin: -5px -5px 8px;
+  padding: 2px 62px 2px 6px;
+  min-height: 18px;
+  background: var(--w95-navy);
+  color: #fff;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+:root[data-ui='win95'] .card > h4:first-of-type::after,
+:root[data-ui='win95'] .card > .head:first-of-type::after,
+:root[data-ui='win95'] .denied h1::after {
+  content: '' / '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 52px;
+  height: 14px;
+  background: var(--w95-ctl);
+}
+:root[data-ui='win95'] .card > h4:first-of-type *,
+:root[data-ui='win95'] .card > .head:first-of-type * {
+  color: #fff;
+}
+:root[data-ui='win95'] .card > .head:first-of-type {
+  margin: -5px -5px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+:root[data-ui='win95'] .card > .head h4 {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+}
+:root[data-ui='win95'] .card > .head:first-of-type {
+  padding-right: 92px;
+}
+:root[data-ui='win95'] .card > h4 .tc,
+:root[data-ui='win95'] .card > h4 .tag {
+  background: #c0c0c0;
+}
+:root[data-ui='win95'] .card > h4 .tc *,
+:root[data-ui='win95'] .card > h4 .tag {
+  color: #000;
+}
+:root[data-ui='win95'] .card > .head .chips,
+:root[data-ui='win95'] .card > .head .chip {
+  color: #000;
+}
+:root[data-ui='win95'] .grip {
+  top: 0;
+  right: 56px;
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+  color: #fff;
+  z-index: 3;
+}
+:root[data-ui='win95'] .grip svg {
+  width: 8px;
+  height: 12px;
+}
+:root[data-ui='win95'] .grip:hover,
+:root[data-ui='win95'] .grip:focus-visible,
+:root[data-ui='win95'] .grip[aria-pressed='true'] {
+  color: #fff;
+  background: #1084d0;
+}
+:root[data-ui='win95'] .card h4 {
+  color: #000;
+}
+:root[data-ui='win95'] .denied {
+  max-width: 560px;
+}
+:root[data-ui='win95'] .denied p {
+  color: #000;
+}
+:root[data-ui='win95'] .page-in h2 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+:root[data-ui='win95'] .lab,
+:root[data-ui='win95'] .muted {
+  color: #404040;
+}
+:root[data-ui='win95'] .card .lab,
+:root[data-ui='win95'] .card .muted {
+  color: #404040;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='win95'] .btn,
+:root[data-ui='win95'] .btn.ghost {
+  background: #c0c0c0;
+  color: #000;
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--w95-raised);
+  font-weight: 400;
+  padding: 4px 12px;
+  min-height: 24px;
+  transition: none;
+  filter: none;
+  transform: none;
+  justify-content: center;
+}
+:root[data-ui='win95'] .btn:hover {
+  filter: none;
+  transform: none;
+}
+:root[data-ui='win95'] .btn:active,
+:root[data-ui='win95'] .btn[aria-pressed='true'],
+:root[data-ui='win95'] .btn.on {
+  box-shadow: var(--w95-sunken);
+  padding: 5px 11px 3px 13px;
+  transform: none;
+}
+:root[data-ui='win95'] .btn:disabled,
+:root[data-ui='win95'] .btn[aria-disabled='true'] {
+  color: #6b6b6b;
+  text-shadow: 1px 1px #fff;
+  opacity: 1;
+}
+:root[data-ui='win95'] input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+:root[data-ui='win95'] textarea,
+:root[data-ui='win95'] select,
+:root[data-ui='win95'] .search {
+  background: #fff;
+  color: #000;
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--w95-sunken);
+  font: inherit;
+}
+:root[data-ui='win95'] .search {
+  padding: 4px 6px;
+  min-width: 210px;
+}
+:root[data-ui='win95'] .search:focus-within {
+  border: 0;
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+:root[data-ui='win95'] .search input {
+  box-shadow: none;
+  background: transparent;
+}
+:root[data-ui='win95'] input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']):not(.search input) {
+  padding: 3px 5px;
+}
+:root[data-ui='win95'] ::placeholder {
+  color: #595959;
+}
+:root[data-ui='win95'] .tag {
+  border-radius: 0;
+  background: #c0c0c0;
+  color: #000;
+  box-shadow: var(--w95-flat);
+  padding: 1px 6px;
+}
+:root[data-ui='win95'] .dot {
+  border-radius: 0;
+  width: 10px;
+  height: 10px;
+  animation: none;
+  box-shadow: var(--w95-sunken);
+  background: var(--ok);
+}
+:root[data-ui='win95'] .dot.busy {
+  background: #e0a800;
+}
+:root[data-ui='win95'] .dot.down,
+:root[data-ui='win95'] .dot.off {
+  background: #c00000;
+}
+:root[data-ui='win95'] .glass {
+  background: #c0c0c0;
+  backdrop-filter: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow:
+    var(--w95-raised),
+    3px 3px 0 #000;
+  color: #000;
+}
+
+/* scrollbars: grey, with a dither track */
+:root[data-ui='win95'] *::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+:root[data-ui='win95'] *::-webkit-scrollbar-track {
+  background: var(--w95-dither);
+}
+:root[data-ui='win95'] *::-webkit-scrollbar-corner {
+  background: #c0c0c0;
+}
+:root[data-ui='win95'] *::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--w95-raised);
+}
+:root[data-ui='win95'] *::-webkit-scrollbar-thumb:hover,
+:root[data-ui='win95'] *::-webkit-scrollbar-thumb:active {
+  background: #c0c0c0;
+}
+:root[data-ui='win95'] *::-webkit-scrollbar-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: #c0c0c0;
+  box-shadow: var(--w95-raised);
+}
+
+/* ---------- Explorer pane (the original sidebar) ---------- */
+:root[data-ui='win95'] .side {
+  position: sticky;
+  top: 8px;
+  width: 192px;
+  height: calc(100vh - var(--w95-bar) - 18px);
+  background: #c0c0c0;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow:
+    var(--w95-raised),
+    2px 2px 0 #000;
+  padding: 30px 6px 6px;
+  gap: 1px;
+  isolation: isolate;
+  overflow: auto;
+}
+:root[data-ui='win95'] .side::before {
+  content: 'Explorer';
+  position: absolute;
+  inset: 3px 3px auto 3px;
+  height: 18px;
+  padding: 1px 4px 0 6px;
+  background: var(--w95-navy);
+  color: #fff;
+  font-weight: 700;
+  line-height: 17px;
+}
+:root[data-ui='win95'] .brand {
+  padding: 4px;
+  margin-bottom: 4px;
+  background: #fff;
+  box-shadow: var(--w95-sunken);
+}
+:root[data-ui='win95'] .brand img {
+  width: 96px;
+  height: 46px;
+  image-rendering: pixelated;
+}
+:root[data-ui='win95'] .nav {
+  border-radius: 0;
+  color: #000;
+  padding: 4px 6px;
+  transition: none;
+  border: 1px solid transparent;
+}
+:root[data-ui='win95'] a.nav:hover {
+  color: #000;
+  transform: none;
+  box-shadow: var(--w95-flat);
+  background: #dfdfdf;
+}
+:root[data-ui='win95'] .nav[aria-current='page'] {
+  color: #fff;
+  font-weight: 700;
+}
+:root[data-ui='win95'] .nav[aria-current='page']::before {
+  border-radius: 0;
+  background: #000080;
+  box-shadow: none;
+}
+:root[data-ui='win95'] .nav:focus-visible {
+  outline: 1px dotted #ffff00;
+  outline-offset: -3px;
+}
+:root[data-ui='win95'] .nav[aria-current='page']:focus-visible {
+  outline-color: #fff;
+}
+:root[data-ui='win95'] .soon {
+  opacity: 1;
+  color: #404040;
+}
+:root[data-ui='win95'] .sec {
+  color: #404040;
+  letter-spacing: 0;
+  text-transform: none;
+  border-top: 2px groove #fff;
+  margin-top: 8px;
+  padding: 6px 4px 2px;
+}
+:root[data-ui='win95'] .side .pill {
+  border-radius: 0;
+  background: #c0c0c0;
+  color: #000;
+  box-shadow: var(--w95-raised);
+  padding: 5px 8px;
+  transition: none;
+}
+:root[data-ui='win95'] .side .pill:hover {
+  background: #dfdfdf;
+  color: #000;
+}
+:root[data-ui='win95'] .side .pill .st {
+  color: #404040;
+}
+:root[data-ui='win95'] .side .menu {
+  border-radius: 0;
+  padding: 3px;
+  background: #c0c0c0;
+}
+:root[data-ui='win95'] .side .it {
+  border-radius: 0;
+  color: #000;
+}
+:root[data-ui='win95'] .side .it:hover,
+:root[data-ui='win95'] .side .it:focus-visible {
+  background: #000080;
+  color: #fff;
+}
+:root[data-ui='win95'] .side .it:hover *,
+:root[data-ui='win95'] .side .it:focus-visible * {
+  color: #fff;
+}
+
+/* ---------- taskbar and Start menu (Layer.svelte) ---------- */
+:root[data-ui='win95'] .w95-bar {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: var(--w95-bar);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 3px 2px;
+  background: #c0c0c0;
+  box-shadow:
+    inset 0 1px #dfdfdf,
+    inset 0 2px #fff;
+  border-top: 1px solid #c0c0c0;
+  color: #000;
+  font-family: var(--font);
+  font-size: 13px;
+}
+:root[data-ui='win95'] .w95-start,
+:root[data-ui='win95'] .w95-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  background: #c0c0c0;
+  color: #000;
+  border: 0;
+  border-radius: 0;
+  box-shadow: var(--w95-raised);
+  font: inherit;
+  cursor: pointer;
+}
+:root[data-ui='win95'] .w95-start {
+  font-weight: 700;
+  padding: 0 8px 0 6px;
+}
+:root[data-ui='win95'] .w95-start[aria-expanded='true'],
+:root[data-ui='win95'] .w95-task[aria-current='page'] {
+  box-shadow: var(--w95-sunken);
+  background: var(--w95-dither);
+  font-weight: 700;
+}
+:root[data-ui='win95'] .w95-start[aria-expanded='true'] {
+  background: #dfdfdf;
+}
+:root[data-ui='win95'] .w95-task {
+  min-width: 150px;
+  max-width: 220px;
+  color: #000;
+}
+:root[data-ui='win95'] .w95-task svg {
+  width: 16px;
+  height: 16px;
+}
+:root[data-ui='win95'] .w95-flag {
+  width: 16px;
+  height: 16px;
+  background:
+    linear-gradient(#e03020, #e03020) 0 0 / 7px 7px no-repeat,
+    linear-gradient(#20a020, #20a020) 9px 0 / 7px 7px no-repeat,
+    linear-gradient(#2040e0, #2040e0) 0 9px / 7px 7px no-repeat,
+    linear-gradient(#f0c000, #f0c000) 9px 9px / 7px 7px no-repeat;
+}
+:root[data-ui='win95'] .w95-sep {
+  width: 2px;
+  height: 22px;
+  margin: 0 2px;
+  box-shadow:
+    inset 1px 0 #808080,
+    inset -1px 0 #fff;
+}
+:root[data-ui='win95'] .w95-tray {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  padding: 0 10px;
+  box-shadow: var(--w95-flat);
+  white-space: nowrap;
+  overflow: hidden;
+}
+:root[data-ui='win95'] .w95-tray time {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='win95'] .w95-led {
+  width: 8px;
+  height: 8px;
+  background: #006400;
+  flex: 0 0 auto;
+}
+:root[data-ui='win95'] .w95-menu {
+  position: absolute;
+  left: 3px;
+  bottom: calc(100% + 1px);
+  display: flex;
+  width: 240px;
+  background: #c0c0c0;
+  box-shadow:
+    var(--w95-raised),
+    2px 2px 0 #000;
+  padding: 3px;
+}
+:root[data-ui='win95'] .w95-ban {
+  width: 24px;
+  flex: 0 0 auto;
+  background: linear-gradient(0deg, #000080, #1084d0);
+  position: relative;
+}
+:root[data-ui='win95'] .w95-ban span {
+  position: absolute;
+  left: 0;
+  bottom: 6px;
+  width: 24px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+:root[data-ui='win95'] .w95-ban b {
+  font-weight: 400;
+  color: #c0c0c0;
+}
+:root[data-ui='win95'] .w95-menu nav {
+  flex: 1;
+  display: grid;
+  padding: 2px 0;
+}
+:root[data-ui='win95'] .w95-menu hr {
+  border: 0;
+  margin: 3px 2px;
+  height: 2px;
+  box-shadow:
+    inset 0 1px #808080,
+    inset 0 -1px #fff;
+}
+:root[data-ui='win95'] .w95-it {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: #000;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+:root[data-ui='win95'] .w95-it svg {
+  width: 20px;
+  height: 20px;
+}
+:root[data-ui='win95'] .w95-it:hover,
+:root[data-ui='win95'] .w95-it:focus-visible {
+  background: #000080;
+  color: #fff;
+  outline: 1px dotted #ffff00;
+  outline-offset: -3px;
+}
+:root[data-ui='win95'] .w95-it[aria-current='page'] {
+  font-weight: 700;
+}
+:root[data-ui='win95'] .w95-k {
+  margin-left: auto;
+  font-size: 12px;
+}
+:root[data-ui='win95'] .w95-host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  color: #000;
+}
+
+/* ---------- dialogs, command menu, toasts, tips ---------- */
+:root[data-ui='win95'] .cm,
+:root[data-ui='win95'] .rs,
+:root[data-ui='win95'] .mp {
+  background: #c0c0c0;
+  color: #000;
+  border: 0;
+  border-radius: 0;
+  box-shadow:
+    var(--w95-raised),
+    4px 4px 0 rgba(0, 0, 0, 0.5);
+  backdrop-filter: none;
+}
+:root[data-ui='win95'] .cm-dim,
+:root[data-ui='win95'] .rs-dim {
+  background: rgba(0, 64, 64, 0.45);
+  backdrop-filter: none;
+}
+:root[data-ui='win95'] .rs:not(.gd, .lb) {
+  padding: 3px 3px 10px;
+}
+:root[data-ui='win95'] .rs:not(.gd, .lb) > :not(.rs-t) {
+  margin-inline: 10px;
+}
+:root[data-ui='win95'] .rs-t {
+  background: var(--w95-navy);
+  color: #fff;
+  font-size: 13px;
+  padding: 2px 62px 2px 6px;
+  min-height: 18px;
+  line-height: 14px;
+  position: relative;
+  margin-bottom: 8px;
+}
+:root[data-ui='win95'] .rs-t::after {
+  content: '' / '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 52px;
+  height: 14px;
+  background: var(--w95-ctl);
+}
+:root[data-ui='win95'] .rs.gd {
+  grid-template-rows: 22px minmax(0, 1fr);
+}
+:root[data-ui='win95'] .rs.gd::before {
+  content: 'Game details';
+  grid-column: 1 / -1;
+  margin: 3px 3px 0;
+  padding: 2px 6px;
+  background: var(--w95-navy);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 14px;
+}
+:root[data-ui='win95'] .rs.gd .head,
+:root[data-ui='win95'] .rs.gd .gd-t,
+:root[data-ui='win95'] .rs.gd .gd-d {
+  --fg: #fff;
+  color: #fff;
+}
+:root[data-ui='win95'] .cm {
+  padding: 4px;
+}
+:root[data-ui='win95'] .cm-in {
+  background: #fff;
+  color: #000;
+  box-shadow: var(--w95-sunken);
+  border: 0;
+  margin-bottom: 4px;
+}
+:root[data-ui='win95'] .cm-it[data-selected] {
+  background: #000080;
+  color: #fff;
+}
+:root[data-ui='win95'] .cm-it[data-selected] .k,
+:root[data-ui='win95'] .cm-it[data-selected] * {
+  color: #fff;
+}
+:root[data-ui='win95'] .cm-it .k {
+  color: #404040;
+}
+:root[data-ui='win95'] .locked {
+  opacity: 1 !important;
+  color: #404040;
+}
+:root[data-ui='win95'] .locked img {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+:root[data-ui='win95'] .toasts .toast {
+  background: #ffffe1;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 0;
+  box-shadow: 2px 2px 0 #000;
+  backdrop-filter: none;
+}
+:root[data-ui='win95'] .tip {
+  background: #ffffe1;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* no motion beyond instant state changes */
+:root[data-ui='win95'] *,
+:root[data-ui='win95'] *::before,
+:root[data-ui='win95'] *::after {
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+:root[data-ui='win95'] .reveal,
+:root[data-ui='win95'] .page-in,
+:root[data-ui='win95'] .fade-in,
+:root[data-ui='win95'] .swap-in {
+  animation: none !important;
+}
+
+/* ---------- the rest: square everything, flat chips, tabs, covers ---------- */
+:root[data-ui='win95'] *:not(svg *) {
+  border-radius: 0 !important;
+}
+:root[data-ui='win95'] a.link,
+:root[data-ui='win95'] .link {
+  text-decoration: underline;
+}
+:root[data-ui='win95'] .fchip,
+:root[data-ui='win95'] .chip,
+:root[data-ui='win95'] .pchip,
+:root[data-ui='win95'] .st .tab,
+:root[data-ui='win95'] .sw {
+  background: #c0c0c0;
+  color: #000;
+  border: 0;
+  box-shadow: var(--w95-raised);
+  font-weight: 400;
+}
+:root[data-ui='win95'] .fchip[aria-pressed='true'],
+:root[data-ui='win95'] .chip[aria-checked='true'] {
+  background: var(--w95-dither);
+  color: #000;
+  font-weight: 700;
+  box-shadow: var(--w95-sunken);
+}
+:root[data-ui='win95'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='win95'] .fchip:hover,
+:root[data-ui='win95'] .fchip:focus-visible {
+  color: #000;
+  border: 0;
+}
+:root[data-ui='win95'] .chips {
+  background: transparent;
+  padding: 0;
+  gap: 4px;
+}
+:root[data-ui='win95'] .sw[aria-checked='true'] {
+  outline: 1px dotted #000;
+  outline-offset: 1px;
+  box-shadow: var(--w95-sunken);
+}
+:root[data-ui='win95'] .st .strip {
+  background: #c0c0c0;
+  border-bottom: 0;
+  padding: 4px 4px 0;
+  gap: 0;
+  box-shadow: inset 0 -2px #fff;
+}
+:root[data-ui='win95'] .st .tab {
+  padding: 5px 12px;
+  margin-right: 2px;
+  box-shadow:
+    inset 1px 1px #fff,
+    inset -1px 0 #000,
+    inset -2px 0 #808080;
+  position: relative;
+}
+:root[data-ui='win95'] .st .tab[aria-selected='true'] {
+  background: #c0c0c0;
+  font-weight: 700;
+  padding: 7px 14px 5px;
+  margin-top: -2px;
+  z-index: 2;
+}
+:root[data-ui='win95'] .st .tab:hover {
+  color: #000;
+}
+:root[data-ui='win95'] .st .ind {
+  display: none;
+}
+:root[data-ui='win95'] .hero {
+  --fg: #fff;
+  --muted: #e0e6f0;
+  color: #fff;
+  border: 0;
+  box-shadow: var(--w95-sunken);
+}
+:root[data-ui='win95'] .hero .lab {
+  color: #e0e6f0;
+}
+:root[data-ui='win95'] .ring {
+  background: conic-gradient(#000080 calc(var(--p, 0) * 1%), #fff 0);
+  box-shadow: var(--w95-sunken);
+}
+:root[data-ui='win95'] .ring b {
+  background: #c0c0c0;
+  color: #000;
+  box-shadow: var(--w95-raised);
+}
+:root[data-ui='win95'] hr,
+:root[data-ui='win95'] .top {
+  border-color: #808080;
+}
+
+/* marching-ants focus rectangle on buttons: the one animation this style has */
+@keyframes w95-ants {
+  to {
+    background-position:
+      4px 0,
+      4px 100%,
+      0 4px,
+      100% 4px;
+  }
+}
+:root[data-ui='win95'] .btn,
+:root[data-ui='win95'] .fchip,
+:root[data-ui='win95'] .chip,
+:root[data-ui='win95'] .st .tab,
+:root[data-ui='win95'] .w95-start,
+:root[data-ui='win95'] .w95-task {
+  position: relative;
+}
+:root[data-ui='win95'] .btn:focus-visible,
+:root[data-ui='win95'] .fchip:focus-visible,
+:root[data-ui='win95'] .chip:focus-visible,
+:root[data-ui='win95'] .st .tab:focus-visible,
+:root[data-ui='win95'] .w95-start:focus-visible,
+:root[data-ui='win95'] .w95-task:focus-visible {
+  outline: 0;
+}
+:root[data-ui='win95'] .btn:focus-visible::after,
+:root[data-ui='win95'] .fchip:focus-visible::after,
+:root[data-ui='win95'] .chip:focus-visible::after,
+:root[data-ui='win95'] .st .tab:focus-visible::after,
+:root[data-ui='win95'] .w95-start:focus-visible::after,
+:root[data-ui='win95'] .w95-task:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #000 50%, transparent 0) 0 0 / 4px 1px repeat-x,
+    linear-gradient(90deg, #000 50%, transparent 0) 0 100% / 4px 1px repeat-x,
+    linear-gradient(#000 50%, transparent 0) 0 0 / 1px 4px repeat-y,
+    linear-gradient(#000 50%, transparent 0) 100% 0 / 1px 4px repeat-y;
+  animation: w95-ants 0.4s steps(4) infinite;
+}
+
+:root[data-ui='win95'] .gd-x,
+:root[data-ui='win95'] .gd-x:hover,
+:root[data-ui='win95'] .gd-x:focus-visible {
+  top: 30px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  background: #c0c0c0;
+  color: #000;
+  box-shadow: var(--w95-raised);
+}
+
+:root[data-ui='win95'] figcaption,
+:root[data-ui='win95'] .nums b,
+:root[data-ui='win95'] .page-in h3,
+:root[data-ui='win95'] .rs h3 {
+  color: #000;
+}
+
+:root[data-ui='win95'] .toasts,
+:root[data-ui='win95'] .wake {
+  bottom: calc(var(--w95-bar) + 12px);
+}
+:root[data-ui='win95'] .wake .bar {
+  height: 16px;
+  background: #fff;
+  box-shadow: var(--w95-sunken);
+}
+:root[data-ui='win95'] .wake .bar::after {
+  background: repeating-linear-gradient(90deg, #000080 0 8px, transparent 8px 10px);
+  inset: 2px auto 2px 2px;
+}
+/* /stream is full screen: no taskbar room, and the Layer is not mounted there */
+:root[data-ui='win95'] body:has(main:not(.page-in)) {
+  padding-bottom: 0;
+}
+
+:root[data-ui='win95'] .bg:has(> canvas) {
+  display: none;
+}
+
+:root[data-ui='win95'] .stream:has(.bg) {
+  background: #008080;
+}

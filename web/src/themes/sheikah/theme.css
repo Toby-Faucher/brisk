@@ -1,0 +1,772 @@
+/* UI style sheikah: every rule starts with :root[data-ui='sheikah']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/cinzel/500.css';
+@import '@fontsource/cinzel/700.css';
+@import '@fontsource/rajdhani/500.css';
+@import '@fontsource/rajdhani/600.css';
+@import '@fontsource/rajdhani/700.css';
+
+/* ---------- tokens: worn teal stone, cyan runes, orange embers ---------- */
+:root[data-ui='sheikah'] {
+  --bg: #0a1315;
+  --panel: #12201f;
+  --panel2: #1b2f2e;
+  --line: #3a6663;
+  --line-hover: #5cf0ff;
+  --fg: #e0f6f4;
+  --muted: #a9c9c6;
+  --dim: #94b6b3;
+  --ok: #5cf0c0;
+  --warn: #ffa347;
+  --bad: #ff8a73;
+  --font: 'Rajdhani', system-ui, sans-serif;
+  --display: 'Cinzel', Georgia, serif;
+  --r-card: 4px;
+  --r-ctl: 4px;
+  --sk-cyan: #5cf0ff;
+  --sk-glow: rgb(92 240 255 / 0.45);
+  --sk-orange: #ffa347;
+  --sk-stone: linear-gradient(160deg, #1a2d2c 0%, #12201f 55%, #0f1b1b 100%);
+  --dur-enter: 480ms;
+  --rise-enter: 14px;
+  --stagger: 60ms;
+  --dur-page: 220ms;
+  --rise: 6px;
+}
+:root[data-ui='sheikah'][data-accent='mint'] {
+  --accent: #5cf0ff;
+  --accent-fg: #021a1d;
+}
+:root[data-ui='sheikah'] body {
+  background: var(--bg);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+:root[data-ui='sheikah'] ::selection {
+  background: var(--sk-cyan);
+  color: #021a1d;
+}
+:root[data-ui='sheikah'] :focus-visible {
+  outline: 2px solid var(--sk-cyan);
+  outline-offset: 3px;
+  box-shadow: 0 0 12px var(--sk-glow);
+}
+:root[data-ui='sheikah'] h1,
+:root[data-ui='sheikah'] h2,
+:root[data-ui='sheikah'] h3,
+:root[data-ui='sheikah'] h4,
+:root[data-ui='sheikah'] h5 {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root[data-ui='sheikah'] main .bg {
+  display: none;
+}
+:root[data-ui='sheikah'] .top {
+  border-bottom: 0;
+  background: linear-gradient(90deg, transparent, var(--sk-cyan), transparent) bottom / 100% 1px no-repeat;
+  padding-bottom: 14px;
+}
+:root[data-ui='sheikah'] .top h2 {
+  font-size: clamp(26px, 3.4vw, 38px);
+  color: var(--fg);
+  text-shadow: 0 0 18px var(--sk-glow);
+}
+:root[data-ui='sheikah'] .top h2::before {
+  content: '';
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.5em;
+  border: 2px solid var(--sk-cyan);
+  border-radius: 50%;
+  box-shadow:
+    0 0 10px var(--sk-glow),
+    inset 0 0 8px var(--sk-glow);
+  vertical-align: 0.05em;
+  background: radial-gradient(circle, var(--sk-cyan) 0 2px, transparent 3px);
+}
+:root[data-ui='sheikah'] .tag {
+  border-radius: 2px;
+  font: 700 11.5px / 1.3 var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--fg);
+  opacity: 1;
+}
+
+/* ---------- the tablet bezel: a ring of rune icons ---------- */
+:root[data-ui='sheikah'] .side {
+  margin: 12px 0 12px 12px;
+  height: calc(100vh - 24px);
+  width: 226px;
+  padding: 16px 12px;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: radial-gradient(circle at 50% 0, rgb(92 240 255 / 0.1), transparent 55%), var(--sk-stone);
+  backdrop-filter: none;
+  box-shadow:
+    inset 0 0 0 4px #0c1718,
+    inset 0 0 0 5px rgb(92 240 255 / 0.28),
+    0 0 28px rgb(0 0 0 / 0.6);
+}
+/* rune notches on the bezel edge */
+:root[data-ui='sheikah'] .side::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)) 50% 0 / 28px 2px no-repeat,
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)) 50% 100% / 28px 2px no-repeat,
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)) 0 50% / 2px 28px no-repeat,
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)) 100% 50% / 2px 28px no-repeat;
+  filter: drop-shadow(0 0 4px var(--sk-cyan));
+  opacity: 0.8;
+}
+:root[data-ui='sheikah'] .brand {
+  justify-content: center;
+  padding: 4px 0 12px;
+  position: relative;
+}
+:root[data-ui='sheikah'] .brand img {
+  filter: brightness(1.6) saturate(0.4) drop-shadow(0 0 6px var(--sk-glow));
+}
+:root[data-ui='sheikah'] .side .nav {
+  position: relative;
+  overflow: hidden;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font: 600 18px / 1.1 var(--font);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+/* the icon sits in a ring, like one stop on a circle of runes */
+:root[data-ui='sheikah'] .side .nav svg {
+  box-sizing: content-box;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 6px;
+  border: 1.5px solid currentcolor;
+  border-radius: 50%;
+  transition:
+    box-shadow 0.25s,
+    rotate 0.6s;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='sheikah'] .side .nav {
+    animation: sk-nav-in 0.6s ease-out backwards;
+  }
+  :root[data-ui='sheikah'] .side nav .nav:nth-child(2) {
+    animation-delay: 0.08s;
+  }
+  :root[data-ui='sheikah'] .side nav .nav:nth-child(3) {
+    animation-delay: 0.16s;
+  }
+  :root[data-ui='sheikah'] .side nav .nav:nth-child(4) {
+    animation-delay: 0.24s;
+  }
+  :root[data-ui='sheikah'] .side nav .nav:nth-child(5) {
+    animation-delay: 0.32s;
+  }
+  :root[data-ui='sheikah'] .side nav .nav:nth-child(6) {
+    animation-delay: 0.4s;
+  }
+  :root[data-ui='sheikah'] .side a.nav:hover svg {
+    rotate: 90deg;
+  }
+}
+@keyframes sk-nav-in {
+  from {
+    opacity: 0;
+    filter: brightness(2.5);
+    translate: -14px 0;
+  }
+}
+/* the ripple: a ring of light that spreads from the icon when you hover or focus */
+:root[data-ui='sheikah'] .side a.nav::after {
+  content: '';
+  position: absolute;
+  left: 28px;
+  top: 50%;
+  width: 20px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1.5px solid var(--sk-cyan);
+  translate: -50% -50%;
+  scale: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='sheikah'] .side a.nav:hover::after,
+  :root[data-ui='sheikah'] .side a.nav:focus-visible::after {
+    animation: sk-ripple 0.8s ease-out;
+  }
+}
+@keyframes sk-ripple {
+  from {
+    scale: 0.4;
+    opacity: 0.9;
+  }
+  to {
+    scale: 9;
+    opacity: 0;
+  }
+}
+:root[data-ui='sheikah'] .side .nav::before {
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .side a.nav:hover,
+:root[data-ui='sheikah'] .side a.nav:focus-visible {
+  color: var(--sk-cyan);
+  transform: none;
+  background: rgb(92 240 255 / 0.07);
+  border-color: rgb(92 240 255 / 0.5);
+  box-shadow:
+    0 0 14px rgb(92 240 255 / 0.2),
+    inset 0 0 10px rgb(92 240 255 / 0.1);
+}
+:root[data-ui='sheikah'] .side a.nav:hover svg,
+:root[data-ui='sheikah'] .side a.nav:focus-visible svg {
+  box-shadow:
+    0 0 10px var(--sk-glow),
+    inset 0 0 6px var(--sk-glow);
+}
+:root[data-ui='sheikah'] .side .nav[aria-current='page'] {
+  color: var(--sk-cyan);
+  border-color: var(--sk-cyan);
+  background: linear-gradient(90deg, rgb(92 240 255 / 0.18), rgb(92 240 255 / 0.03));
+  text-shadow: 0 0 10px var(--sk-glow);
+  box-shadow:
+    0 0 16px rgb(92 240 255 / 0.25),
+    inset 0 0 12px rgb(92 240 255 / 0.12);
+}
+:root[data-ui='sheikah'] .side .nav[aria-current='page'] svg {
+  background: radial-gradient(circle, rgb(92 240 255 / 0.35), transparent 70%);
+  box-shadow: 0 0 10px var(--sk-glow);
+}
+:root[data-ui='sheikah'] .side .sec {
+  margin: 14px 0 2px;
+  padding: 0 4px;
+  font: 700 12px / 1.2 var(--display);
+  letter-spacing: 0.24em;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:root[data-ui='sheikah'] .side .sec::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line), transparent);
+}
+:root[data-ui='sheikah'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+  font-size: 16px;
+}
+:root[data-ui='sheikah'] .side .soon .tag {
+  margin-left: auto;
+  padding: 0 5px;
+  letter-spacing: 0.06em;
+}
+:root[data-ui='sheikah'] .side .soon svg {
+  border-style: dashed;
+  opacity: 0.7;
+}
+:root[data-ui='sheikah'] .side .wrap {
+  margin-top: auto;
+}
+:root[data-ui='sheikah'] .side .pill {
+  margin-top: auto;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: #0c1718;
+  color: var(--fg);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+:root[data-ui='sheikah'] .side .pill:hover {
+  border-color: var(--sk-orange);
+  box-shadow: 0 0 14px rgb(255 163 71 / 0.3);
+  background: #0c1718;
+}
+:root[data-ui='sheikah'] .side .menu {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0c1718;
+  box-shadow:
+    0 0 24px rgb(0 0 0 / 0.7),
+    inset 0 0 0 3px #12201f;
+  backdrop-filter: none;
+}
+:root[data-ui='sheikah'] .side .menu .it {
+  border-radius: 3px;
+  font-weight: 600;
+}
+:root[data-ui='sheikah'] .side .menu .it:hover,
+:root[data-ui='sheikah'] .side .menu .it:focus-visible {
+  background: rgb(92 240 255 / 0.14);
+  color: var(--sk-cyan);
+}
+
+/* ---------- panels: slate with a double frame and glowing corner runes ---------- */
+:root[data-ui='sheikah'] .card,
+:root[data-ui='sheikah'] .glass,
+:root[data-ui='sheikah'] .hero,
+:root[data-ui='sheikah'] main > .off,
+:root[data-ui='sheikah'] .denied {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)), linear-gradient(var(--sk-cyan), var(--sk-cyan)),
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)), linear-gradient(var(--sk-cyan), var(--sk-cyan)),
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)), linear-gradient(var(--sk-cyan), var(--sk-cyan)),
+    linear-gradient(var(--sk-cyan), var(--sk-cyan)), linear-gradient(var(--sk-cyan), var(--sk-cyan)), var(--sk-stone);
+  background-position:
+    5px 5px,
+    5px 5px,
+    calc(100% - 5px) 5px,
+    calc(100% - 5px) 5px,
+    5px calc(100% - 5px),
+    5px calc(100% - 5px),
+    calc(100% - 5px) calc(100% - 5px),
+    calc(100% - 5px) calc(100% - 5px),
+    0 0;
+  background-size:
+    14px 2px,
+    2px 14px,
+    14px 2px,
+    2px 14px,
+    14px 2px,
+    2px 14px,
+    14px 2px,
+    2px 14px,
+    100% 100%;
+  background-repeat: no-repeat;
+  backdrop-filter: none;
+  box-shadow:
+    inset 0 0 0 3px #0c1718,
+    inset 0 0 0 4px rgb(92 240 255 / 0.14),
+    0 6px 20px rgb(0 0 0 / 0.4);
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+:root[data-ui='sheikah'] .card:hover {
+  border-color: var(--sk-cyan);
+  box-shadow:
+    inset 0 0 0 3px #0c1718,
+    inset 0 0 0 4px rgb(92 240 255 / 0.4),
+    0 0 22px rgb(92 240 255 / 0.2);
+}
+:root[data-ui='sheikah'] .card h4,
+:root[data-ui='sheikah'] .sec h3,
+:root[data-ui='sheikah'] .gd-main h3,
+:root[data-ui='sheikah'] .shelf h4 {
+  font-size: 15px;
+  color: var(--sk-cyan);
+  text-shadow: 0 0 10px rgb(92 240 255 / 0.35);
+}
+:root[data-ui='sheikah'] .card .big {
+  font: 700 44px / 1 var(--display);
+  letter-spacing: 0.02em;
+}
+:root[data-ui='sheikah'] .hero h3,
+:root[data-ui='sheikah'] .gd-t {
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.1;
+  text-shadow: 0 0 22px var(--sk-glow);
+}
+
+/* ---------- buttons, search, fields ---------- */
+:root[data-ui='sheikah'] .btn {
+  padding: 9px 22px;
+  border: 1px solid var(--sk-cyan);
+  border-radius: 3px;
+  font: 700 15px / 1.1 var(--font);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #021a1d;
+  background: var(--sk-cyan);
+  box-shadow: 0 0 14px rgb(92 240 255 / 0.3);
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+:root[data-ui='sheikah'] .btn:hover {
+  background: #0c1718;
+  color: var(--sk-cyan);
+  box-shadow:
+    0 0 22px rgb(92 240 255 / 0.5),
+    inset 0 0 10px rgb(92 240 255 / 0.25);
+  filter: none;
+}
+:root[data-ui='sheikah'] .btn.ghost {
+  color: var(--sk-cyan);
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .btn.ghost:hover {
+  border-color: var(--sk-orange);
+  color: var(--sk-orange);
+  background: rgb(255 163 71 / 0.08);
+  box-shadow: 0 0 16px rgb(255 163 71 / 0.3);
+}
+:root[data-ui='sheikah'] .btn:disabled,
+:root[data-ui='sheikah'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  color: var(--dim);
+  background: var(--panel2);
+  border-color: var(--line);
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .search {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0c1718;
+  box-shadow: inset 0 0 0 2px #12201f;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+:root[data-ui='sheikah'] .search:focus-within {
+  border-color: var(--sk-cyan);
+  box-shadow:
+    inset 0 0 0 2px #12201f,
+    0 0 14px rgb(92 240 255 / 0.3);
+  outline: 0;
+}
+:root[data-ui='sheikah'] .search input[type] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] input[type='text'],
+:root[data-ui='sheikah'] input[type='search'],
+:root[data-ui='sheikah'] input[type='number'],
+:root[data-ui='sheikah'] input[type='password'],
+:root[data-ui='sheikah'] textarea,
+:root[data-ui='sheikah'] select,
+:root[data-ui='sheikah'] .dd {
+  color: var(--fg);
+  background: #0c1718;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+:root[data-ui='sheikah'] input:focus-visible,
+:root[data-ui='sheikah'] textarea:focus-visible,
+:root[data-ui='sheikah'] select:focus-visible {
+  border-color: var(--sk-cyan);
+  outline: 0;
+  box-shadow: 0 0 14px rgb(92 240 255 / 0.3);
+}
+:root[data-ui='sheikah'] input[type='range'],
+:root[data-ui='sheikah'] input[type='checkbox'] {
+  accent-color: var(--sk-cyan);
+}
+:root[data-ui='sheikah'] .dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent);
+}
+
+/* ---------- toasts, tips, drop-downs ---------- */
+:root[data-ui='sheikah'] .toast {
+  border: 1px solid var(--sk-cyan);
+  border-radius: 4px;
+  background: #0c1718;
+  color: var(--fg);
+  box-shadow: 0 0 22px rgb(92 240 255 / 0.25);
+}
+:root[data-ui='sheikah'] .toast.error {
+  border-color: var(--sk-orange);
+  box-shadow: 0 0 22px rgb(255 163 71 / 0.3);
+}
+:root[data-ui='sheikah'] .tip {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0c1718;
+  color: var(--fg);
+  font: 600 13px / 1.3 var(--font);
+  letter-spacing: 0.06em;
+  box-shadow: 0 0 12px rgb(0 0 0 / 0.5);
+}
+:root[data-ui='sheikah'] .dd-menu {
+  border: 1px solid var(--sk-cyan);
+  border-radius: 4px;
+  background: #0c1718;
+  box-shadow: 0 0 22px rgb(92 240 255 / 0.2);
+}
+:root[data-ui='sheikah'] .dd-item {
+  border-radius: 3px;
+  font-weight: 600;
+}
+:root[data-ui='sheikah'] .dd-item[data-highlighted],
+:root[data-ui='sheikah'] .dd-item:hover {
+  background: rgb(92 240 255 / 0.15);
+  color: var(--sk-cyan);
+}
+
+/* ---------- command menu and dialogs: a tablet that wakes up ---------- */
+:root[data-ui='sheikah'] .cm-dim {
+  background: radial-gradient(circle at 50% 40%, rgb(92 240 255 / 0.1), transparent 55%), rgb(3 9 10 / 0.86);
+  backdrop-filter: none;
+}
+:root[data-ui='sheikah'] .cm,
+:root[data-ui='sheikah'] .rs {
+  border: 1px solid var(--sk-cyan);
+  border-radius: 6px;
+  background: var(--sk-stone);
+  backdrop-filter: none;
+  box-shadow:
+    inset 0 0 0 4px #0c1718,
+    inset 0 0 0 5px rgb(92 240 255 / 0.3),
+    0 0 40px rgb(92 240 255 / 0.22);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='sheikah'] :is(.cm, .rs) {
+    transition:
+      opacity var(--dur-page) var(--ease),
+      scale 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+      filter 0.45s;
+  }
+  @starting-style {
+    :root[data-ui='sheikah'] :is(.cm, .rs) {
+      scale: 0.94;
+      filter: brightness(2.2) blur(2px);
+    }
+  }
+  :root[data-ui='sheikah'] :is(.cm, .rs)[data-ending-style] {
+    scale: 0.97;
+  }
+}
+:root[data-ui='sheikah'] .cm-in {
+  font: 600 22px / 1.2 var(--font);
+  letter-spacing: 0.08em;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .cm-in:focus-visible {
+  border: 0;
+  border-bottom: 1px solid var(--sk-cyan);
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .cm-in::placeholder {
+  color: var(--dim);
+}
+:root[data-ui='sheikah'] .cm-it {
+  border-radius: 3px;
+  font-weight: 600;
+}
+:root[data-ui='sheikah'] .cm-it[data-selected],
+:root[data-ui='sheikah'] .cm-it[aria-selected='true'] {
+  background: rgb(92 240 255 / 0.16);
+  color: var(--sk-cyan);
+  box-shadow: inset 2px 0 0 var(--sk-cyan);
+}
+:root[data-ui='sheikah'] kbd,
+:root[data-ui='sheikah'] .k {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0c1718;
+  color: var(--fg);
+  font: 700 11px / 1.3 var(--font);
+  padding: 1px 6px;
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .rs-t,
+:root[data-ui='sheikah'] .mm-h h3 {
+  font-size: 22px;
+}
+
+/* ---------- Settings tabs ---------- */
+:root[data-ui='sheikah'] .st .strip {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0c1718;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-ui='sheikah'] .st .tab {
+  border-radius: 3px;
+  font: 700 15px / 1.1 var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+:root[data-ui='sheikah'] .st .tab:hover {
+  color: var(--sk-cyan);
+}
+:root[data-ui='sheikah'] .st .tab[aria-selected='true'] {
+  color: var(--sk-cyan);
+  text-shadow: 0 0 10px var(--sk-glow);
+}
+:root[data-ui='sheikah'] .st .ind {
+  border-radius: 3px;
+  background: rgb(92 240 255 / 0.12);
+  box-shadow:
+    inset 0 -2px 0 var(--sk-cyan),
+    0 0 14px rgb(92 240 255 / 0.2);
+}
+
+/* ---------- chips, swatches, covers ---------- */
+:root[data-ui='sheikah'] .fchip {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0c1718;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    border-color 0.2s,
+    color 0.2s,
+    box-shadow 0.2s;
+}
+:root[data-ui='sheikah'] .fchip:hover {
+  border-color: var(--sk-cyan);
+  color: var(--sk-cyan);
+}
+:root[data-ui='sheikah'] .fchip[aria-pressed='true'] {
+  color: var(--sk-cyan);
+  border-color: var(--sk-cyan);
+  box-shadow: 0 0 12px rgb(92 240 255 / 0.25);
+}
+:root[data-ui='sheikah'] .sw[aria-checked='true'] {
+  outline: 2px solid var(--sk-cyan);
+  outline-offset: 3px;
+}
+:root[data-ui='sheikah'] .g {
+  transition: translate 0.3s;
+}
+:root[data-ui='sheikah'] .g:hover,
+:root[data-ui='sheikah'] .g:focus-visible {
+  translate: 0 -3px;
+}
+:root[data-ui='sheikah'] .cover {
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.5);
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+:root[data-ui='sheikah'] .g:hover .cover,
+:root[data-ui='sheikah'] .g:focus-visible .cover {
+  border-color: var(--sk-cyan);
+  box-shadow: 0 0 22px rgb(92 240 255 / 0.4);
+}
+:root[data-ui='sheikah'] .g .badge,
+:root[data-ui='sheikah'] .g .pchip,
+:root[data-ui='sheikah'] .g .tchip {
+  border-radius: 2px;
+  background: #0c1718;
+  color: var(--fg);
+  font-weight: 700;
+  border: 1px solid var(--line);
+}
+:root[data-ui='sheikah'] .empty b {
+  font: 700 26px / 1.2 var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- /stream chrome only ---------- */
+:root[data-ui='sheikah'] .stream[data-state='idle'],
+:root[data-ui='sheikah'] .stream[data-state='unsupported'] {
+  background: radial-gradient(circle at 50% 45%, rgb(92 240 255 / 0.1), transparent 50%), var(--bg);
+}
+:root[data-ui='sheikah'] .stream .bar,
+:root[data-ui='sheikah'] .stream .menu {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0c1718;
+  backdrop-filter: none;
+  box-shadow: 0 0 18px rgb(0 0 0 / 0.6);
+}
+:root[data-ui='sheikah'] .stream .ic {
+  border-radius: 4px;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+:root[data-ui='sheikah'] .stream .ic:hover {
+  background: rgb(92 240 255 / 0.15);
+  box-shadow: 0 0 12px rgb(92 240 255 / 0.35);
+}
+:root[data-ui='sheikah'] .stream .chip {
+  border-radius: 3px;
+  background: #0c1718;
+  font-weight: 700;
+}
+
+/* ---------- narrow screens: the bezel becomes a strip across the top ---------- */
+@media (max-width: 800px) {
+  :root[data-ui='sheikah'] .app {
+    flex-direction: column;
+  }
+  :root[data-ui='sheikah'] .side {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px;
+  }
+  :root[data-ui='sheikah'] .brand,
+  :root[data-ui='sheikah'] .side .sec,
+  :root[data-ui='sheikah'] .nav.soon {
+    display: none;
+  }
+  :root[data-ui='sheikah'] .side .nav {
+    padding: 4px 8px 4px 4px;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+  }
+  :root[data-ui='sheikah'] .side .nav svg {
+    width: 14px;
+    height: 14px;
+  }
+  :root[data-ui='sheikah'] .card .big {
+    font-size: 26px;
+  }
+  :root[data-ui='sheikah'] .card h4 {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  :root[data-ui='sheikah'] .side .wrap {
+    margin-top: 0;
+    margin-left: auto;
+  }
+  :root[data-ui='sheikah'] .side .pill {
+    margin-top: 0;
+  }
+}

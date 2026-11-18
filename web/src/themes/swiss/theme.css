@@ -1,0 +1,936 @@
+/* UI style swiss: every rule starts with :root[data-ui='swiss']. Owner: this folder only. See ../README.md. */
+@import '@fontsource-variable/familjen-grotesk/wght.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/* ---------- tokens ---------- */
+:root[data-ui='swiss'],
+:root[data-ui='swiss'][data-accent] {
+  --bg: #f4f3ee;
+  --panel: #f4f3ee;
+  --panel2: #e9e7df;
+  --line: #bdbab0;
+  --line-hover: #111;
+  --rule: #111;
+  --grid: rgb(17 17 17 / 0.075);
+  --fg: #111;
+  --muted: #4d4a44;
+  --dim: #5f5b54;
+  --accent: #d40010;
+  --accent-fg: #fff;
+  --ok: #0a6b36;
+  --warn: #7a4f00;
+  --bad: #d40010;
+  --c-lib: #111;
+  --c-stream: #111;
+  --c-host: #111;
+  --c-set: #111;
+  --c-agent: #111;
+  --c-news: #111;
+  --c-power: #111;
+  --c-hist: #111;
+  --font: 'Familjen Grotesk Variable', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --r-card: 0;
+  --r-ctl: 0;
+  --sw: 208px;
+  --pad: 44px;
+  --ease: cubic-bezier(0.7, 0, 0.2, 1);
+  --dur-page: 120ms;
+  --dur-tab: 110ms;
+  --dur-enter: 260ms;
+  --rise: 0px;
+  --rise-enter: 0px;
+  --rise-scroll: 0px;
+  --stagger: 30ms;
+  color-scheme: light;
+}
+
+/* ---------- ground, type, hard edges ---------- */
+:root[data-ui='swiss'] body {
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 15px;
+  line-height: 1.4;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.005em;
+}
+:root[data-ui='swiss'] *,
+:root[data-ui='swiss'] *::before,
+:root[data-ui='swiss'] *::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-ui='swiss'] rect {
+  rx: 0;
+}
+:root[data-ui='swiss'] ::selection {
+  background: var(--accent);
+  color: #fff;
+}
+:root[data-ui='swiss'] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+:root[data-ui='swiss'] h1,
+:root[data-ui='swiss'] h2,
+:root[data-ui='swiss'] h3,
+:root[data-ui='swiss'] h4 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+:root[data-ui='swiss'] h3,
+:root[data-ui='swiss'] h4 {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+:root[data-ui='swiss'] .mono,
+:root[data-ui='swiss'] kbd,
+:root[data-ui='swiss'] code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  letter-spacing: 0;
+}
+:root[data-ui='swiss'] .lab,
+:root[data-ui='swiss'] .muted {
+  color: var(--muted);
+}
+:root[data-ui='swiss'] .lab {
+  font-size: 13px;
+}
+:root[data-ui='swiss'] ::-webkit-scrollbar-thumb {
+  background: #111;
+  border: 4px solid var(--bg);
+  background-clip: padding-box;
+}
+:root[data-ui='swiss'] ::-webkit-scrollbar-thumb:hover,
+:root[data-ui='swiss'] ::-webkit-scrollbar-thumb:active {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+
+/* ---------- index (the sidebar) ---------- */
+:root[data-ui='swiss'] .side {
+  width: var(--sw);
+  background: var(--bg);
+  border-right: 1px solid var(--rule);
+  padding: 22px 0 18px 22px;
+  gap: 0;
+  counter-reset: idx;
+}
+:root[data-ui='swiss'] .side .brand {
+  padding: 0 0 36px;
+}
+:root[data-ui='swiss'] .side .brand img {
+  display: none;
+}
+:root[data-ui='swiss'] .side .brand::after {
+  content: 'Brisk';
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  line-height: 0.8;
+}
+:root[data-ui='swiss'] .side .nav {
+  position: relative;
+  padding: 7px 14px 7px 0;
+  gap: 0;
+  color: var(--fg);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  border-top: 1px solid var(--line);
+  transition: color 90ms;
+  counter-increment: idx;
+  justify-content: space-between;
+  flex-direction: row-reverse;
+}
+:root[data-ui='swiss'] .side .nav :is(svg, .ico) {
+  display: none;
+}
+:root[data-ui='swiss'] .side .nav::after {
+  content: counter(idx, decimal-leading-zero);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+:root[data-ui='swiss'] .side a.nav:hover {
+  background: none;
+  transform: none;
+  color: var(--accent);
+}
+:root[data-ui='swiss'] .side .nav[aria-current='page'] {
+  color: var(--accent);
+}
+:root[data-ui='swiss'] .side .nav[aria-current='page']::after {
+  color: var(--accent);
+}
+/* the active marker (the router glides this): a red bar on the inside edge */
+:root[data-ui='swiss'] .side .nav[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  inset: -1px auto -1px -22px;
+  width: 6px;
+  background: var(--accent);
+  z-index: auto;
+  box-shadow: none;
+}
+:root[data-ui='swiss'] .side .nav.soon::after {
+  content: none;
+}
+:root[data-ui='swiss'] .side .nav.soon {
+  opacity: 1;
+  color: var(--muted);
+}
+:root[data-ui='swiss'] .side .sec {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 28px 0 6px;
+}
+:root[data-ui='swiss'] .side .soon .tag {
+  order: 3;
+  margin: 0 8px 0 0;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
+/* host pill */
+:root[data-ui='swiss'] .side .pill {
+  gap: 8px;
+  padding: 10px 14px 0 0;
+  border-top: 1px solid var(--rule);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  transition: color 90ms;
+}
+:root[data-ui='swiss'] .side .pill:hover {
+  background: none;
+  color: var(--accent);
+}
+:root[data-ui='swiss'] .side .pill svg {
+  display: none;
+}
+:root[data-ui='swiss'] .side .pill .st {
+  font-size: 11px;
+  color: var(--muted);
+}
+:root[data-ui='swiss'] .side .menu {
+  left: 0;
+  right: 14px;
+  bottom: calc(100% + 8px);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  padding: 0;
+  gap: 0;
+}
+:root[data-ui='swiss'] .side .menu .it {
+  border-top: 1px solid var(--line);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+:root[data-ui='swiss'] .side .menu .it:first-child {
+  border-top: 0;
+}
+:root[data-ui='swiss'] .side .menu .it:hover,
+:root[data-ui='swiss'] .side .menu .it:focus-visible {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* ---------- status dot: a square, no glow ---------- */
+:root[data-ui='swiss'] .dot {
+  width: 8px;
+  height: 8px;
+  animation: none;
+  background: var(--ok);
+}
+
+/* ---------- main column and page titles ---------- */
+:root[data-ui='swiss'] main {
+  padding: 26px var(--pad) 90px;
+}
+:root[data-ui='swiss'] main .top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+  padding: 0 0 14px;
+  border-bottom: 2px solid var(--rule);
+  margin-bottom: 4px;
+}
+:root[data-ui='swiss'] main .top h2 {
+  flex: 0 0 100%;
+  font-size: clamp(64px, 11.2vw, 190px);
+  font-weight: 700;
+  letter-spacing: -0.065em;
+  line-height: 0.82;
+  margin: 0 0 18px -0.04em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+:root[data-ui='swiss'] main .top h2::before {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  margin-bottom: 26px;
+  color: var(--accent);
+  content: 'Brisk';
+}
+:root[data-ui='swiss'][data-swiss-page='home'] main .top h2::before {
+  content: '01 / Overview';
+}
+:root[data-ui='swiss'][data-swiss-page='library'] main .top h2::before {
+  content: '02 / Games';
+}
+:root[data-ui='swiss'][data-swiss-page='history'] main .top h2::before {
+  content: '05 / Sessions';
+}
+:root[data-ui='swiss'][data-swiss-page='machines'] main .top h2::before {
+  content: '04 / Hosts';
+}
+:root[data-ui='swiss'][data-swiss-page='settings'] main .top h2::before {
+  content: '06 / Preferences';
+}
+:root[data-ui='swiss'] main .top h2#session-title {
+  font-size: clamp(44px, 6.4vw, 110px);
+  line-height: 0.9;
+}
+
+/* ---------- buttons, fields, chips ---------- */
+:root[data-ui='swiss'] .btn {
+  background: var(--fg);
+  color: var(--bg);
+  border: 1px solid var(--fg);
+  padding: 7px 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  transition:
+    background 90ms,
+    color 90ms,
+    border-color 90ms;
+}
+:root[data-ui='swiss'] .btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  filter: none;
+  transform: none;
+}
+:root[data-ui='swiss'] .btn:active {
+  transform: none;
+  background: #000;
+}
+:root[data-ui='swiss'] .btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--fg);
+}
+:root[data-ui='swiss'] .btn.ghost:hover {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+:root[data-ui='swiss'] .btn:disabled,
+:root[data-ui='swiss'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--line);
+}
+:root[data-ui='swiss'] .search {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 0;
+  min-width: 240px;
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .search:focus-within {
+  border-bottom-color: var(--accent);
+  outline: 0;
+  box-shadow: 0 2px 0 var(--accent) !important;
+}
+:root[data-ui='swiss'] .search input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-ui='swiss'] .tag {
+  background: transparent;
+  border: 1px solid currentColor;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+:root[data-ui='swiss'] :is(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='file']) {
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: inherit;
+}
+:root[data-ui='swiss'] :is(input, select, textarea):focus {
+  outline: 0;
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent) !important;
+}
+:root[data-ui='swiss'] .fchip {
+  border: 1px solid var(--rule);
+  color: var(--fg);
+  background: transparent;
+  padding: 4px 12px;
+  font-size: 13px;
+  transition:
+    background 90ms,
+    color 90ms;
+}
+:root[data-ui='swiss'] .fchip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+:root[data-ui='swiss'] .fchip[aria-pressed='true'] {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+:root[data-ui='swiss'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='swiss'] .fchip .cnt {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* ---------- cards become ruled rows ---------- */
+:root[data-ui='swiss'] .card {
+  background: transparent;
+  border: 0;
+  border-top: 2px solid var(--rule);
+  padding: 12px 22px 16px 0;
+  transition: none;
+}
+:root[data-ui='swiss'] .card:hover {
+  transform: none;
+  background: transparent;
+  border-color: var(--accent);
+}
+:root[data-ui='swiss'] .bento {
+  gap: 0;
+  grid-auto-rows: 132px;
+  margin-top: 18px;
+}
+:root[data-ui='swiss'] .glass {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+}
+
+/* ---------- dialogs, command menu, toasts ---------- */
+:root[data-ui='swiss'] .cm-dim {
+  background: rgb(244 243 238 / 0.88);
+}
+:root[data-ui='swiss'] :is(.cm, .rs) {
+  background: var(--bg);
+  border: 2px solid var(--rule);
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .toast {
+  background: var(--fg);
+  color: var(--bg);
+  border: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 400;
+}
+:root[data-ui='swiss'] .toast.error {
+  background: var(--accent);
+  color: #fff;
+}
+:root[data-ui='swiss'] .toast .btn.ghost {
+  color: inherit;
+  border-color: currentColor;
+}
+:root[data-ui='swiss'] .toast .btn.ghost:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .toasts {
+  left: auto;
+  right: var(--pad);
+  transform: none;
+  justify-items: end;
+}
+
+/* ---------- headings inside content: small mono captions ---------- */
+:root[data-ui='swiss'] main :is(h3, h4) {
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:root[data-ui='swiss'] main .card h4 {
+  margin-bottom: 4px;
+}
+:root[data-ui='swiss'] main h4 svg {
+  display: none;
+}
+
+/* ---------- Home: the title is drawn by main::before (Home has no heading of its own) ---------- */
+:root[data-ui='swiss'][data-swiss-page='home'] main::before {
+  content: 'Home';
+  display: block;
+  padding-top: 38px;
+  font-size: clamp(64px, 11.2vw, 190px);
+  font-weight: 700;
+  letter-spacing: -0.065em;
+  line-height: 0.82;
+  margin: 0 0 18px;
+  text-indent: -0.04em;
+  padding-bottom: 18px;
+  border-bottom: 2px solid var(--rule);
+}
+:root[data-ui='swiss'][data-swiss-page='home'] main {
+  position: relative;
+}
+:root[data-ui='swiss'][data-swiss-page='home'] main::after {
+  content: '01 / Overview';
+  position: absolute;
+  top: 26px;
+  left: var(--pad);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--accent);
+}
+:root[data-ui='swiss'] .bg {
+  display: none;
+}
+:root[data-ui='swiss'] .bento {
+  margin-top: 0;
+  grid-auto-rows: minmax(132px, auto);
+}
+:root[data-ui='swiss'] .bento .soon {
+  opacity: 1;
+}
+/* the temperature gauges: a flat bar fills along the bottom instead of a ring */
+:root[data-ui='swiss'] div.ring {
+  width: 56px;
+  height: 40px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 0 100% / calc(var(--p, 0) * 1%) 6px no-repeat,
+    var(--panel2);
+  border: 1px solid var(--rule);
+}
+:root[data-ui='swiss'] div.ring b {
+  width: auto;
+  height: auto;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+/* ---------- Library ---------- */
+:root[data-ui='swiss'] .hero {
+  background: transparent !important;
+  border: 0;
+  border-top: 2px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 18px 0;
+  gap: 28px;
+  align-items: flex-end;
+  min-height: 0;
+}
+:root[data-ui='swiss'] .hero .art {
+  display: none;
+}
+:root[data-ui='swiss'] .hero .lab {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+:root[data-ui='swiss'] .hero h3 {
+  font-family: var(--font);
+  font-size: clamp(36px, 5.4vw, 88px);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+  text-transform: none;
+  margin: 6px 0 10px;
+}
+:root[data-ui='swiss'] .hero .pchip,
+:root[data-ui='swiss'] .pchip,
+:root[data-ui='swiss'] .uchip,
+:root[data-ui='swiss'] .tchip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+:root[data-ui='swiss'] .g .name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+:root[data-ui='swiss'] .g .sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+:root[data-ui='swiss'] .g .badge {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 7px;
+}
+:root[data-ui='swiss'] .g .badge.run {
+  background: var(--accent);
+  color: #fff;
+}
+:root[data-ui='swiss'] .g .play {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  transform: none;
+  text-align: center;
+  justify-content: center;
+}
+:root[data-ui='swiss'] .g:hover .play,
+:root[data-ui='swiss'] .g:focus-visible .play {
+  transform: none;
+}
+:root[data-ui='swiss'] .g .glow {
+  display: none;
+}
+:root[data-ui='swiss'] .wrap:hover,
+:root[data-ui='swiss'] .wrap:has(:focus-visible) {
+  transform: none;
+}
+:root[data-ui='swiss'] .off .cover {
+  filter: grayscale(1) contrast(1.05);
+}
+:root[data-ui='swiss'] .off:hover .cover,
+:root[data-ui='swiss'] .off:focus-visible .cover {
+  filter: none;
+}
+:root[data-ui='swiss'] .banner {
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-left: 6px solid var(--accent);
+  padding: 4px 12px;
+}
+:root[data-ui='swiss'] .skel div {
+  background: var(--panel2);
+  animation: none;
+}
+
+/* ---------- game detail ---------- */
+:root[data-ui='swiss'] .gd-side .head {
+  background: transparent !important;
+  min-height: 0;
+  padding: 26px 22px 14px;
+  border-bottom: 2px solid var(--rule);
+}
+:root[data-ui='swiss'] .gd-side .head .art,
+:root[data-ui='swiss'] .gd-side .head .logo {
+  display: none;
+}
+:root[data-ui='swiss'] .gd-t {
+  color: var(--fg);
+  font-size: clamp(34px, 3.8vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 0.92;
+  text-transform: none;
+}
+:root[data-ui='swiss'] .gd-d {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+:root[data-ui='swiss'] .gd-x {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--fg);
+}
+:root[data-ui='swiss'] .gd-x:hover,
+:root[data-ui='swiss'] .gd-x:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+:root[data-ui='swiss'] .gd-side {
+  border-right: 1px solid var(--rule);
+}
+:root[data-ui='swiss'] .alist li.locked {
+  opacity: 1;
+}
+:root[data-ui='swiss'] .alist li.locked b {
+  color: var(--muted);
+}
+:root[data-ui='swiss'] .alist small {
+  color: var(--muted);
+}
+
+/* ---------- History ---------- */
+:root[data-ui='swiss'] .grid .row {
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+:root[data-ui='swiss'] .grid .row span {
+  white-space: nowrap;
+}
+:root[data-ui='swiss'] .spark path {
+  stroke-width: 1.6;
+}
+:root[data-ui='swiss'] h2#session-title {
+  font-size: clamp(44px, 7vw, 120px);
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  line-height: 0.88;
+  overflow-wrap: anywhere;
+}
+:root[data-ui='swiss'] .dh {
+  align-items: flex-end;
+  gap: 26px;
+  padding: 24px 0 20px;
+}
+:root[data-ui='swiss'] .hcover {
+  width: 150px;
+  height: 150px;
+}
+:root[data-ui='swiss'] .gate {
+  border: 1px solid currentColor;
+  background: transparent;
+}
+:root[data-ui='swiss'] .stats {
+  max-width: 640px;
+}
+:root[data-ui='swiss'] .stats dt,
+:root[data-ui='swiss'] .stats dd {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+:root[data-ui='swiss'] figcaption {
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:root[data-ui='swiss'] .chev[aria-disabled='true'] {
+  opacity: 0.55;
+}
+
+/* ---------- Stream (chrome only) ---------- */
+:root[data-ui='swiss'] .stream .bg {
+  display: none;
+}
+:root[data-ui='swiss'] .stream .center.card,
+:root[data-ui='swiss'] .stream .glass {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  padding: 18px 22px;
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .stream .center.card {
+  border-top: 6px solid var(--accent);
+  max-width: 420px;
+}
+:root[data-ui='swiss'] .stream .center.card h3 {
+  font-family: var(--font);
+  font-size: 30px;
+  letter-spacing: -0.05em;
+  text-transform: none;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+:root[data-ui='swiss'] .stream .center.card .row {
+  margin-top: 14px;
+}
+
+:root[data-ui='swiss'] .stream[data-state='idle'],
+:root[data-ui='swiss'] .stream[data-state='unsupported'] {
+  background: var(--bg);
+  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px);
+  background-size: calc((100% - var(--pad) * 2) / 12) 100%;
+  background-position: var(--pad) 0;
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .stream[data-state='idle']::before {
+  content: 'Stream';
+  position: absolute;
+  left: var(--pad);
+  top: 60px;
+  font-size: clamp(64px, 11.2vw, 190px);
+  font-weight: 700;
+  letter-spacing: -0.065em;
+  line-height: 0.82;
+  text-indent: -0.04em;
+  pointer-events: none;
+}
+:root[data-ui='swiss'] .stream[data-state='idle']::after {
+  content: '03 / Live';
+  position: absolute;
+  left: var(--pad);
+  top: 30px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* ---------- menus, tooltips, dialogs ---------- */
+:root[data-ui='swiss'] .tip {
+  background: var(--fg);
+  color: var(--bg);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  padding: 3px 8px;
+}
+:root[data-ui='swiss'] .dd {
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .dd:hover,
+:root[data-ui='swiss'] .dd[data-state='open'] {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+:root[data-ui='swiss'] .dd-menu {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  padding: 0;
+  color: var(--fg);
+}
+:root[data-ui='swiss'] .dd-item {
+  color: var(--fg);
+  border-top: 1px solid var(--line);
+  padding: 7px 12px;
+}
+:root[data-ui='swiss'] .dd-item:first-child {
+  border-top: 0;
+}
+:root[data-ui='swiss'] .dd-item[data-highlighted] {
+  background: var(--fg);
+  color: var(--bg);
+}
+:root[data-ui='swiss'] .dd-item i {
+  color: inherit;
+}
+:root[data-ui='swiss'] .cm {
+  padding: 0;
+  top: 12%;
+}
+:root[data-ui='swiss'] .cm-in {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  padding: 18px 22px 14px;
+  border-bottom: 2px solid var(--accent);
+}
+:root[data-ui='swiss'] .cm-in::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-ui='swiss'] .cm-it {
+  padding: 9px 22px;
+  border-top: 1px solid var(--line);
+}
+:root[data-ui='swiss'] .cm-it[data-selected] {
+  background: var(--fg);
+  color: var(--bg);
+}
+:root[data-ui='swiss'] .cm-it .k,
+:root[data-ui='swiss'] .cm-it[data-selected] .k {
+  color: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: 0.85;
+}
+:root[data-ui='swiss'] .cm-it svg {
+  display: none;
+}
+:root[data-ui='swiss'] .rs {
+  padding: 24px 26px 22px;
+  border-top: 6px solid var(--accent);
+}
+:root[data-ui='swiss'] .rs-t {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+/* ---------- motion: precise and instant. Lines draw; blocks wipe in left to right. ---------- */
+@keyframes swiss-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes swiss-rule {
+  from {
+    background-size: 0 2px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='swiss'] .reveal[data-enter],
+  :root[data-ui='swiss'] .enter[data-enter] {
+    animation: swiss-wipe 380ms var(--ease) calc(var(--i, 0) * var(--stagger)) backwards;
+  }
+  :root[data-ui='swiss'] .page-in {
+    animation: none;
+  }
+  :root[data-ui='swiss'] main .top {
+    background: linear-gradient(var(--rule), var(--rule)) 0 100% / 100% 2px no-repeat;
+    border-bottom: 0;
+    padding-bottom: 16px;
+    animation: swiss-rule 560ms var(--ease) backwards;
+  }
+  /* a red line draws under a nav item and under the tab strip on hover */
+  :root[data-ui='swiss'] .side a.nav {
+    background: linear-gradient(var(--accent), var(--accent)) 0 100% / 0 2px no-repeat;
+    transition:
+      background-size 220ms var(--ease),
+      color 90ms;
+  }
+  :root[data-ui='swiss'] .side a.nav:hover {
+    background-size: calc(100% - 14px) 2px;
+  }
+  :root[data-ui='swiss'] .cm-dim {
+    transition-duration: 90ms;
+  }
+  :root[data-ui='swiss'] :is(.cm, .rs) {
+    transition: opacity 90ms linear;
+  }
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    :root[data-ui='swiss'] .reveal {
+      animation-name: swiss-wipe;
+    }
+  }
+}

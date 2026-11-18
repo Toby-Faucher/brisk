@@ -1,0 +1,1166 @@
+/* UI style sysmac (Classic Mac): every rule starts with :root[data-ui='sysmac']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/pixelify-sans/latin-400.css';
+@import '@fontsource/pixelify-sans/latin-700.css';
+
+:root[data-ui='sysmac'] {
+  --bg: #fff;
+  --panel: #fff;
+  --panel2: #fff;
+  --line: #000;
+  --line-hover: #000;
+  --fg: #000;
+  --muted: #000;
+  --dim: #000;
+  --accent: #000;
+  --accent-fg: #fff;
+  --ok: #000;
+  --warn: #000;
+  --bad: #000;
+  --font: 'Pixelify Sans', Geneva, Chicago, monospace;
+  --mono: 'Pixelify Sans', Monaco, monospace;
+  --r-card: 6px;
+  --r-ctl: 8px;
+  --sm-bar: 30px;
+  --sm-d50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' viewBox='0 0 2 2' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z'/%3E%3C/svg%3E");
+  --sm-d25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' viewBox='0 0 2 2' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h1v1H0z'/%3E%3C/svg%3E");
+  --sm-d75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' viewBox='0 0 2 2' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM1 1h1v1H1z'/%3E%3C/svg%3E");
+  --sm-stripes: repeating-linear-gradient(0deg, #000 0 1px, #fff 1px 3px);
+  --sm-shadow: 3px 3px 0 #000;
+  --c-lib: #000;
+  --c-stream: #000;
+  --c-host: #000;
+  --c-set: #000;
+  --c-agent: #000;
+  --c-news: #000;
+  --c-power: #000;
+  --c-hist: #000;
+  --sm-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath d='M1.5 1.5v11l3-3 2.5 5.5 2-1-2.5-5h4.5z' fill='white' stroke='black'/%3E%3C/svg%3E");
+  color-scheme: light;
+  background: #fff;
+  cursor:
+    var(--sm-arrow) 1 1,
+    default;
+}
+
+/* ---------- the desktop: a 50% dither, and a 1-bit pointer (the watch shows while a page changes) ---------- */
+:root[data-ui='sysmac'] body {
+  background: var(--sm-d50) 0 0 / 2px 2px;
+  color: #000;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.3;
+  -webkit-font-smoothing: none;
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'liga' 0,
+    'clig' 0;
+  padding-top: var(--sm-bar);
+}
+:root[data-ui='sysmac'] *,
+:root[data-ui='sysmac'] a,
+:root[data-ui='sysmac'] button {
+  cursor:
+    var(--sm-arrow) 1 1,
+    default;
+}
+:root[data-ui='sysmac'] input:not([type='checkbox'], [type='radio'], [type='range']),
+:root[data-ui='sysmac'] textarea {
+  cursor: text;
+}
+:root[data-ui='sysmac'].sm-wait,
+:root[data-ui='sysmac'].sm-wait * {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='20' viewBox='0 0 16 20' shape-rendering='crispEdges'%3E%3Crect x='5' y='0.5' width='6' height='4' fill='white' stroke='black'/%3E%3Crect x='5' y='15.5' width='6' height='4' fill='white' stroke='black'/%3E%3Crect x='2.5' y='4.5' width='11' height='11' rx='3' fill='white' stroke='black'/%3E%3Cpath d='M8 6v4h3' fill='none' stroke='black'/%3E%3C/svg%3E")
+    8 10,
+    wait !important;
+}
+:root[data-ui='sysmac'] *,
+:root[data-ui='sysmac'] *::before,
+:root[data-ui='sysmac'] *::after {
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-ui='sysmac'] ::selection {
+  background: #000;
+  color: #fff;
+}
+:root[data-ui='sysmac'] :focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+:root[data-ui='sysmac'] h1,
+:root[data-ui='sysmac'] h2,
+:root[data-ui='sysmac'] h3,
+:root[data-ui='sysmac'] h4 {
+  font-weight: 700;
+  letter-spacing: 0;
+}
+:root[data-ui='sysmac'] .page-in h2 {
+  font-size: 22px;
+}
+:root[data-ui='sysmac'] .lab,
+:root[data-ui='sysmac'] .muted,
+:root[data-ui='sysmac'] .dim {
+  color: #000;
+}
+:root[data-ui='sysmac'] a.link,
+:root[data-ui='sysmac'] .link {
+  text-decoration: underline;
+}
+:root[data-ui='sysmac'] hr,
+:root[data-ui='sysmac'] .top {
+  border-color: #000;
+}
+
+/* ---------- the menu bar: the sidebar becomes the strip across the top ---------- */
+:root[data-ui='sysmac'] .side {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  width: auto;
+  height: var(--sm-bar);
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 96px 0 6px;
+  background: #fff;
+  border-right: 0;
+  border-bottom: 2px solid #000;
+  border-radius: 0 0 0 0;
+  white-space: nowrap;
+}
+:root[data-ui='sysmac'] .brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 6px;
+  border-right: 1px solid #000;
+  margin-right: 4px;
+}
+:root[data-ui='sysmac'] .brand img {
+  display: none;
+}
+:root[data-ui='sysmac'] .brand::before {
+  content: '';
+  width: 16px;
+  height: 18px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='18' viewBox='0 0 16 18' shape-rendering='crispEdges'%3E%3Crect x='1.5' y='0.5' width='13' height='17' rx='2' fill='white' stroke='black'/%3E%3Crect x='3.5' y='2.5' width='9' height='8' fill='white' stroke='black'/%3E%3Crect x='5' y='4' width='1' height='2'/%3E%3Crect x='10' y='4' width='1' height='2'/%3E%3Cpath d='M5 8h1v1h4V8h1' fill='none' stroke='black'/%3E%3Crect x='4' y='13' width='8' height='1'/%3E%3Crect x='10' y='15' width='2' height='1'/%3E%3C/svg%3E")
+    center / 16px 18px no-repeat;
+}
+:root[data-ui='sysmac'] .brand::after {
+  content: 'Brisk';
+  font-weight: 700;
+  font-size: 16px;
+}
+:root[data-ui='sysmac'] .nav {
+  border-radius: 0;
+  padding: 0 13px;
+  color: #000;
+  align-items: center;
+  transition: none;
+  font-size: 15px;
+}
+:root[data-ui='sysmac'] .nav svg {
+  display: none;
+}
+:root[data-ui='sysmac'] a.nav:hover {
+  background: #000;
+  color: #fff;
+  transform: none;
+}
+:root[data-ui='sysmac'] .nav[aria-current='page'] {
+  color: #fff;
+  font-weight: 700;
+}
+:root[data-ui='sysmac'] .nav[aria-current='page']::before {
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+}
+:root[data-ui='sysmac'] .nav:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: -4px;
+}
+:root[data-ui='sysmac'] .nav[aria-current='page']:focus-visible,
+:root[data-ui='sysmac'] a.nav:hover:focus-visible {
+  outline-color: #fff;
+}
+:root[data-ui='sysmac'] .sec {
+  display: none;
+}
+:root[data-ui='sysmac'] .side .soon {
+  opacity: 1;
+  color: #000;
+  gap: 6px;
+  font-style: italic;
+}
+:root[data-ui='sysmac'] .card.soon,
+:root[data-ui='sysmac'] .soon.card {
+  opacity: 1;
+  border-style: dashed;
+}
+:root[data-ui='sysmac'] .side .soon .tag {
+  display: none;
+}
+:root[data-ui='sysmac'] .side .pill {
+  margin: 0 0 0 auto;
+  padding: 0 10px;
+  border-radius: 0;
+  color: #000;
+  border-left: 1px solid #000;
+  align-self: stretch;
+  transition: none;
+}
+:root[data-ui='sysmac'] .side .pill:hover {
+  background: #000;
+  color: #fff;
+}
+:root[data-ui='sysmac'] .side .pill:hover svg {
+  fill: #fff !important;
+}
+:root[data-ui='sysmac'] .side .pill .st {
+  color: inherit;
+  font-size: 13px;
+}
+:root[data-ui='sysmac'] .side .pill svg {
+  fill: #000 !important;
+}
+:root[data-ui='sysmac'] .side .wrap {
+  margin: 0 0 0 auto;
+  position: relative;
+  display: flex;
+}
+:root[data-ui='sysmac'] .side .wrap .pill {
+  margin: 0;
+}
+:root[data-ui='sysmac'] .side .menu {
+  inset: 100% 0 auto auto;
+  width: 250px;
+  margin-top: 3px;
+  padding: 3px;
+  border: 1px solid #000;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: var(--sm-shadow);
+}
+:root[data-ui='sysmac'] .side .it {
+  border-radius: 0;
+  color: #000;
+  padding: 5px 10px;
+}
+:root[data-ui='sysmac'] .side .it:hover,
+:root[data-ui='sysmac'] .side .it:focus-visible {
+  background: #000;
+  color: #fff;
+  outline: 0;
+}
+:root[data-ui='sysmac'] .side .it:hover *,
+:root[data-ui='sysmac'] .side .it:focus-visible * {
+  color: #fff;
+}
+:root[data-ui='sysmac'] .side .it[aria-checked='true'] .name::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath d='M1 6l3 4 7-9' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E")
+    center / 12px 12px no-repeat;
+}
+:root[data-ui='sysmac'] .side .it[aria-checked='true']:hover .name::before,
+:root[data-ui='sysmac'] .side .it[aria-checked='true']:focus-visible .name::before {
+  filter: invert(1);
+}
+:root[data-ui='sysmac'] .side .it[aria-checked='false'] .name {
+  padding-left: 16px;
+}
+:root[data-ui='sysmac'] .side .st {
+  color: inherit;
+}
+
+/* ---------- windows: the page is one, every card is a small one ---------- */
+:root[data-ui='sysmac'] .app {
+  min-height: calc(100vh - var(--sm-bar));
+}
+:root[data-ui='sysmac'] main.page-in {
+  position: relative;
+  margin: 14px 14px 22px;
+  padding: 40px 22px 24px;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 8px;
+  box-shadow: var(--sm-shadow);
+}
+@media (min-width: 1100px) {
+  :root[data-ui='sysmac'] main.page-in {
+    margin-right: 112px;
+  }
+}
+:root[data-ui='sysmac'] main.page-in::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 24px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #000;
+  border-radius: 7px 7px 0 0;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Crect x='0.5' y='0.5' width='12' height='12' fill='white' stroke='black'/%3E%3C/svg%3E")
+    9px 5px / 13px 13px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Crect x='0.5' y='0.5' width='12' height='12' fill='white' stroke='black'/%3E%3Crect x='3.5' y='3.5' width='6' height='6' fill='white' stroke='black'/%3E%3C/svg%3E")
+    right 9px top 5px / 13px 13px no-repeat,
+    linear-gradient(#fff, #fff) right 6px top 0 / 19px 100% no-repeat,
+    linear-gradient(#fff, #fff) 6px 0 / 19px 100% no-repeat,
+    var(--sm-stripes) 0 2px / 100% 20px;
+}
+:root[data-ui='sysmac'] main.page-in::after {
+  content: var(--sm-title, 'Brisk');
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  height: 23px;
+  padding: 0 14px;
+  background: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 22px;
+}
+:root[data-ui='sysmac'] .card,
+:root[data-ui='sysmac'] .denied,
+:root[data-ui='sysmac'] main > .off {
+  position: relative;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+  padding: 12px;
+  transform: none;
+}
+:root[data-ui='sysmac'] .card:hover {
+  transform: none;
+  border-color: #000;
+}
+:root[data-ui='sysmac'] .card > h4:first-of-type,
+:root[data-ui='sysmac'] .card > .head:first-of-type,
+:root[data-ui='sysmac'] .card > [data-grip] + .head,
+:root[data-ui='sysmac'] .denied h1 {
+  margin: -12px -12px 10px;
+  padding: 3px 36px 3px 10px;
+  min-height: 24px;
+  background: #000;
+  color: #fff;
+  border-radius: 4px 4px 0 0;
+  font-size: 14px;
+  line-height: 18px;
+}
+:root[data-ui='sysmac'] .card > .head:first-of-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:root[data-ui='sysmac'] .card > h4:first-of-type *,
+:root[data-ui='sysmac'] .card > .head:first-of-type * {
+  color: #fff;
+}
+:root[data-ui='sysmac'] .card > .head h4 {
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  background: none;
+}
+:root[data-ui='sysmac'] .card > h4:first-of-type svg,
+:root[data-ui='sysmac'] .card > .head:first-of-type svg {
+  fill: #fff !important;
+}
+:root[data-ui='sysmac'] .card > h4 .tag,
+:root[data-ui='sysmac'] .card > .head .tag,
+:root[data-ui='sysmac'] .card > h4 .tc {
+  background: #fff;
+}
+:root[data-ui='sysmac'] .card > h4 .tag,
+:root[data-ui='sysmac'] .card > .head .tag,
+:root[data-ui='sysmac'] .card > h4 .tc * {
+  color: #000;
+}
+:root[data-ui='sysmac'] .card > .head .chips,
+:root[data-ui='sysmac'] .card > .head .chip {
+  color: #000;
+}
+:root[data-ui='sysmac'] .card h4 {
+  color: #000;
+}
+:root[data-ui='sysmac'] .card > h4:first-of-type,
+:root[data-ui='sysmac'] .card > .head:first-of-type h4 {
+  color: #fff;
+}
+:root[data-ui='sysmac'] .grip {
+  top: 0;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  z-index: 3;
+}
+:root[data-ui='sysmac'] .grip:hover,
+:root[data-ui='sysmac'] .grip:focus-visible,
+:root[data-ui='sysmac'] .grip[aria-pressed='true'] {
+  color: #000;
+  background: #fff;
+}
+:root[data-ui='sysmac'] .denied {
+  max-width: 560px;
+}
+:root[data-ui='sysmac'] .denied p {
+  color: #000;
+}
+:root[data-ui='sysmac'] main > .off {
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* ---------- controls ---------- */
+:root[data-ui='sysmac'] .btn,
+:root[data-ui='sysmac'] .btn.ghost {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 9px;
+  box-shadow: none;
+  font-weight: 400;
+  padding: 4px 14px;
+  min-height: 28px;
+  transition: none;
+  filter: none;
+  transform: none;
+  justify-content: center;
+}
+:root[data-ui='sysmac'] .btn:not(.ghost) {
+  font-weight: 700;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #000;
+  margin: 3px;
+}
+:root[data-ui='sysmac'] .btn:hover {
+  filter: none;
+  transform: none;
+  box-shadow: 2px 2px 0 #000;
+}
+:root[data-ui='sysmac'] .btn:not(.ghost):hover {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #000;
+  background: var(--sm-d75) 0 0 / 2px 2px #fff;
+}
+:root[data-ui='sysmac'] .btn:active,
+:root[data-ui='sysmac'] .btn[aria-pressed='true'],
+:root[data-ui='sysmac'] .btn.on {
+  background: #000;
+  color: #fff;
+  transform: none;
+}
+:root[data-ui='sysmac'] .btn:active svg,
+:root[data-ui='sysmac'] .btn[aria-pressed='true'] svg {
+  fill: #fff;
+}
+:root[data-ui='sysmac'] .btn:disabled,
+:root[data-ui='sysmac'] .btn[aria-disabled='true'] {
+  opacity: 1;
+  border-style: dotted;
+  box-shadow: none;
+}
+:root[data-ui='sysmac'] .btn svg {
+  fill: currentColor;
+}
+:root[data-ui='sysmac'] input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+:root[data-ui='sysmac'] textarea,
+:root[data-ui='sysmac'] select,
+:root[data-ui='sysmac'] .search {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 3px;
+  font: inherit;
+}
+:root[data-ui='sysmac'] .search {
+  padding: 3px 8px;
+  min-width: 220px;
+  box-shadow: inset 1px 1px 0 #000;
+}
+:root[data-ui='sysmac'] .search svg {
+  fill: #000;
+}
+:root[data-ui='sysmac'] .search:focus-within {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+:root[data-ui='sysmac'] .search input {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+:root[data-ui='sysmac'] ::placeholder {
+  color: #000;
+  opacity: 1;
+  font-style: italic;
+}
+:root[data-ui='sysmac'] input[type='checkbox'],
+:root[data-ui='sysmac'] input[type='radio'] {
+  accent-color: #000;
+}
+:root[data-ui='sysmac'] .tag {
+  border-radius: 3px;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  padding: 0 6px;
+}
+:root[data-ui='sysmac'] .dotw .halo,
+:root[data-ui='sysmac'] .dotw .was {
+  display: none;
+}
+:root[data-ui='sysmac'] .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  border: 1px solid #000;
+  background: #000;
+  box-shadow: none;
+  animation: none;
+}
+:root[data-ui='sysmac'] .dot.busy {
+  background: var(--sm-d50) 0 0 / 2px 2px #fff;
+}
+:root[data-ui='sysmac'] .dot.down,
+:root[data-ui='sysmac'] .dot.off {
+  background: #fff;
+}
+:root[data-ui='sysmac'] .glass {
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 6px;
+  box-shadow: var(--sm-shadow);
+  color: #000;
+}
+:root[data-ui='sysmac'] .pill:not(.side .pill) {
+  border-radius: 6px;
+}
+
+/* the 1-bit scrollbar: dither track, white thumb, no arrows */
+:root[data-ui='sysmac'] *::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+:root[data-ui='sysmac'] *::-webkit-scrollbar-track {
+  background: var(--sm-d50) 0 0 / 2px 2px #fff;
+  border-left: 1px solid #000;
+}
+:root[data-ui='sysmac'] *::-webkit-scrollbar-corner {
+  background: #fff;
+}
+:root[data-ui='sysmac'] *::-webkit-scrollbar-thumb {
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 0;
+  min-height: 28px;
+}
+:root[data-ui='sysmac'] *::-webkit-scrollbar-thumb:hover,
+:root[data-ui='sysmac'] *::-webkit-scrollbar-thumb:active {
+  background: #000;
+}
+
+/* ---------- dialogs, command menu, toasts, tips ---------- */
+:root[data-ui='sysmac'] .cm,
+:root[data-ui='sysmac'] .rs,
+:root[data-ui='sysmac'] .mp {
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 5px 5px 0 #000;
+}
+:root[data-ui='sysmac'] .cm-dim,
+:root[data-ui='sysmac'] .rs-dim {
+  background: var(--sm-d50) 0 0 / 2px 2px;
+}
+:root[data-ui='sysmac'] .rs:not(.gd, .lb) {
+  padding: 0 0 16px;
+  overflow: hidden;
+}
+:root[data-ui='sysmac'] .rs:not(.gd, .lb) > :not(.rs-t) {
+  margin-inline: 18px;
+}
+:root[data-ui='sysmac'] .rs-t {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0 8px;
+  height: 24px;
+  font-size: 15px;
+  line-height: 24px;
+  border-bottom: 1px solid #000;
+  background: #fff;
+}
+:root[data-ui='sysmac'] .rs-t::before,
+:root[data-ui='sysmac'] .rs-t::after {
+  content: '';
+  flex: 1;
+  height: 14px;
+  background: var(--sm-stripes) 0 1px / 100% 12px;
+}
+:root[data-ui='sysmac'] .rs-t::before {
+  flex: 0 0 13px;
+  height: 13px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Crect x='0.5' y='0.5' width='12' height='12' fill='white' stroke='black'/%3E%3C/svg%3E")
+    center / 13px 13px no-repeat;
+}
+:root[data-ui='sysmac'] .rs.gd {
+  grid-template-rows: 26px minmax(0, 1fr);
+  overflow: hidden;
+}
+:root[data-ui='sysmac'] .rs.gd::before {
+  content: 'Game details';
+  grid-column: 1 / -1;
+  padding: 0 8px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 24px;
+  border-bottom: 1px solid #000;
+  background:
+    linear-gradient(#fff, #fff) center / 130px 100% no-repeat,
+    var(--sm-stripes) 0 2px / 100% 20px;
+}
+:root[data-ui='sysmac'] .cm {
+  padding: 6px;
+}
+:root[data-ui='sysmac'] .cm-in {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 3px;
+  margin-bottom: 4px;
+}
+:root[data-ui='sysmac'] .cm-it {
+  border-radius: 0;
+  color: #000;
+}
+:root[data-ui='sysmac'] .cm-it[data-selected] {
+  background: #000;
+  color: #fff;
+}
+:root[data-ui='sysmac'] .cm-it[data-selected] * {
+  color: #fff;
+}
+:root[data-ui='sysmac'] .cm-it .k {
+  color: #000;
+}
+:root[data-ui='sysmac'] .locked {
+  opacity: 1 !important;
+  font-style: italic;
+}
+:root[data-ui='sysmac'] .toasts .toast {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 6px;
+  box-shadow: var(--sm-shadow);
+}
+:root[data-ui='sysmac'] .tip {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 0;
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* ---------- chips, tabs, covers, rings ---------- */
+:root[data-ui='sysmac'] .fchip,
+:root[data-ui='sysmac'] .chip,
+:root[data-ui='sysmac'] .pchip,
+:root[data-ui='sysmac'] .st .tab,
+:root[data-ui='sysmac'] .sw {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 10px;
+  box-shadow: none;
+  font-weight: 400;
+}
+:root[data-ui='sysmac'] .fchip svg,
+:root[data-ui='sysmac'] .chip svg {
+  fill: currentColor;
+}
+:root[data-ui='sysmac'] .fchip[aria-pressed='true'],
+:root[data-ui='sysmac'] .chip[aria-checked='true'],
+:root[data-ui='sysmac'] .fchip:hover,
+:root[data-ui='sysmac'] .fchip:focus-visible {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+:root[data-ui='sysmac'] .fchip[aria-pressed='true']::before {
+  display: none;
+}
+:root[data-ui='sysmac'] .chips {
+  background: transparent;
+  padding: 0;
+  gap: 6px;
+}
+:root[data-ui='sysmac'] .sw[aria-checked='true'] {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+:root[data-ui='sysmac'] .st .strip {
+  background: #fff;
+  border-bottom: 2px solid #000;
+  gap: 4px;
+  padding: 4px 4px 0;
+  top: 0;
+}
+:root[data-ui='sysmac'] .st .tab {
+  border-radius: 6px 6px 0 0;
+  border-bottom: 0;
+  padding: 4px 14px;
+}
+:root[data-ui='sysmac'] .st .tab[aria-selected='true'] {
+  background: #000;
+  color: #fff;
+  font-weight: 700;
+}
+:root[data-ui='sysmac'] .st .tab:hover {
+  color: #000;
+}
+:root[data-ui='sysmac'] .st .tab[aria-selected='true']:hover {
+  color: #fff;
+}
+:root[data-ui='sysmac'] .st .ind {
+  display: none;
+}
+
+/* covers become dithered 1-bit art: grey, a Bayer pattern over it, then a hard threshold */
+:root[data-ui='sysmac'] .cover {
+  border-radius: 4px;
+  border: 1px solid #000;
+  filter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='t' color-interpolation-filters='sRGB'%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='0 1 1'/%3E%3CfeFuncG type='discrete' tableValues='0 1 1'/%3E%3CfeFuncB type='discrete' tableValues='0 1 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3C/svg%3E#t");
+}
+:root[data-ui='sysmac'] .g:hover .cover,
+:root[data-ui='sysmac'] .g:focus-visible .cover {
+  filter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='t' color-interpolation-filters='sRGB'%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='0 1 1'/%3E%3CfeFuncG type='discrete' tableValues='0 1 1'/%3E%3CfeFuncB type='discrete' tableValues='0 1 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3C/svg%3E#t")
+    invert(1);
+}
+:root[data-ui='sysmac'] .cover::before {
+  background: none;
+}
+:root[data-ui='sysmac'] .cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1' fill='black' fill-opacity='0.38'/%3E%3Crect x='1' y='0' width='1' height='1' fill='white' fill-opacity='0.03'/%3E%3Crect x='2' y='0' width='1' height='1' fill='black' fill-opacity='0.28'/%3E%3Crect x='3' y='0' width='1' height='1' fill='white' fill-opacity='0.13'/%3E%3Crect x='0' y='1' width='1' height='1' fill='white' fill-opacity='0.23'/%3E%3Crect x='1' y='1' width='1' height='1' fill='black' fill-opacity='0.18'/%3E%3Crect x='2' y='1' width='1' height='1' fill='white' fill-opacity='0.33'/%3E%3Crect x='3' y='1' width='1' height='1' fill='black' fill-opacity='0.08'/%3E%3Crect x='0' y='2' width='1' height='1' fill='black' fill-opacity='0.23'/%3E%3Crect x='1' y='2' width='1' height='1' fill='white' fill-opacity='0.18'/%3E%3Crect x='2' y='2' width='1' height='1' fill='black' fill-opacity='0.33'/%3E%3Crect x='3' y='2' width='1' height='1' fill='white' fill-opacity='0.08'/%3E%3Crect x='0' y='3' width='1' height='1' fill='white' fill-opacity='0.38'/%3E%3Crect x='1' y='3' width='1' height='1' fill='black' fill-opacity='0.03'/%3E%3Crect x='2' y='3' width='1' height='1' fill='white' fill-opacity='0.28'/%3E%3Crect x='3' y='3' width='1' height='1' fill='black' fill-opacity='0.13'/%3E%3C/svg%3E")
+    0 0 / 4px 4px;
+  image-rendering: pixelated;
+}
+:root[data-ui='sysmac'] .hero {
+  --fg: #000;
+  --muted: #000;
+  color: #000;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 #000;
+}
+:root[data-ui='sysmac'] .hero .lab {
+  color: #000;
+}
+:root[data-ui='sysmac'] .ring {
+  background: conic-gradient(#000 calc(var(--p, 0) * 1%), #fff 0);
+  border: 1px solid #000;
+}
+:root[data-ui='sysmac'] .ring b {
+  background: #fff;
+  color: #000;
+}
+
+/* ---------- second pass: header chips, tags, hero, dialogs, charts, stream chrome ---------- */
+:root[data-ui='sysmac'] .card > .head .chip,
+:root[data-ui='sysmac'] .card > .head .fchip,
+:root[data-ui='sysmac'] .card > .head .chips > * {
+  background: #000;
+  color: #fff;
+  border-color: #fff;
+}
+:root[data-ui='sysmac'] .card > .head .chip[aria-checked='true'],
+:root[data-ui='sysmac'] .card > .head .chips > [aria-checked='true'],
+:root[data-ui='sysmac'] .card > .head .chips > [aria-pressed='true'] {
+  background: #fff;
+  color: #000;
+  font-weight: 700;
+}
+:root[data-ui='sysmac'] .card > .head .chips > * * {
+  color: inherit;
+}
+:root[data-ui='sysmac'] .tc,
+:root[data-ui='sysmac'] .tc.bare {
+  --tc: #000 !important;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 10px;
+}
+:root[data-ui='sysmac'] .tc.bare {
+  border: 0;
+}
+:root[data-ui='sysmac'] .card > h4 .tc svg,
+:root[data-ui='sysmac'] .card > .head .tc svg,
+:root[data-ui='sysmac'] .tc svg {
+  fill: #000 !important;
+  color: #000;
+}
+:root[data-ui='sysmac'] .hero {
+  background: #fff !important;
+}
+:root[data-ui='sysmac'] .hero .art {
+  inset: 0 0 0 auto;
+  width: 36%;
+  opacity: 1;
+  mask-image: none;
+  border-left: 1px solid #000;
+  filter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='t' color-interpolation-filters='sRGB'%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='0 1 1'/%3E%3CfeFuncG type='discrete' tableValues='0 1 1'/%3E%3CfeFuncB type='discrete' tableValues='0 1 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3C/svg%3E#t");
+}
+:root[data-ui='sysmac'] .hero :is(.pchip, .uchip) {
+  background: #fff;
+  color: #000;
+}
+:root[data-ui='sysmac'] .rs.gd .head {
+  background: #fff !important;
+  border-bottom: 1px solid #000;
+  --fg: #000;
+  color: #000;
+}
+:root[data-ui='sysmac'] .rs.gd .head,
+:root[data-ui='sysmac'] .rs.gd .gd-t,
+:root[data-ui='sysmac'] .rs.gd .gd-d {
+  --fg: #000;
+  color: #000;
+}
+:root[data-ui='sysmac'] .gd-x,
+:root[data-ui='sysmac'] .gd-x:hover,
+:root[data-ui='sysmac'] .gd-x:focus-visible {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 6px;
+  top: 30px;
+}
+:root[data-ui='sysmac'] .gd-x:hover {
+  background: #000;
+  color: #fff;
+}
+:root[data-ui='sysmac'] .gd-x svg {
+  fill: currentColor;
+}
+:root[data-ui='sysmac'] input[type='file']::file-selector-button {
+  font: inherit;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 9px;
+  padding: 3px 12px;
+  margin-right: 8px;
+}
+:root[data-ui='sysmac'] .sw {
+  border-radius: 4px;
+  background-color: #fff !important;
+}
+:root[data-ui='sysmac'] .sw:nth-child(1) {
+  background-image: var(--sm-d25) !important;
+  background-size: 2px 2px !important;
+}
+:root[data-ui='sysmac'] .sw:nth-child(2) {
+  background-image: var(--sm-d50) !important;
+  background-size: 2px 2px !important;
+}
+:root[data-ui='sysmac'] .sw:nth-child(3) {
+  background-image: var(--sm-d75) !important;
+  background-size: 2px 2px !important;
+}
+:root[data-ui='sysmac'] .sw:nth-child(4) {
+  background-image: none !important;
+  background-color: #000 !important;
+}
+:root[data-ui='sysmac'] .sw:nth-child(5) {
+  background-image: repeating-linear-gradient(45deg, #000 0 1px, #fff 1px 4px) !important;
+}
+:root[data-ui='sysmac'] .sw:nth-child(6) {
+  background-image: repeating-linear-gradient(90deg, #000 0 1px, #fff 1px 4px) !important;
+}
+:root[data-ui='sysmac'] figcaption {
+  color: #000;
+}
+:root[data-ui='sysmac'] .chart {
+  background: #fff;
+  border-radius: 6px;
+}
+:root[data-ui='sysmac'] .plot :is(path, rect, line) {
+  fill-opacity: 0 !important;
+}
+:root[data-ui='sysmac'] .cm-dim,
+:root[data-ui='sysmac'] .rs-dim {
+  background: var(--sm-d25) 0 0 / 2px 2px;
+}
+
+/* covers that are plain images get a noise dither instead (a pseudo-element cannot sit on an img) */
+:root[data-ui='sysmac'] :is(img.cover, .hcover, .covers img, .av, .art) {
+  filter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='d' color-interpolation-filters='sRGB' x='0' y='0' width='100%' height='100%'%3E%3CfeColorMatrix type='saturate' values='0' result='g'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='1' seed='4'/%3E%3CfeColorMatrix type='matrix' values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 1' result='n'/%3E%3CfeComposite in='g' in2='n' operator='arithmetic' k1='0' k2='1' k3='1.4' k4='-0.7'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='0 1'/%3E%3CfeFuncG type='discrete' tableValues='0 1'/%3E%3CfeFuncB type='discrete' tableValues='0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3C/svg%3E#d");
+}
+:root[data-ui='sysmac'] .hero .art {
+  filter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='d' color-interpolation-filters='sRGB' x='0' y='0' width='100%' height='100%'%3E%3CfeColorMatrix type='saturate' values='0' result='g'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='1' seed='4'/%3E%3CfeColorMatrix type='matrix' values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 1' result='n'/%3E%3CfeComposite in='g' in2='n' operator='arithmetic' k1='0' k2='1' k3='1.4' k4='-0.7'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='0 1'/%3E%3CfeFuncG type='discrete' tableValues='0 1'/%3E%3CfeFuncB type='discrete' tableValues='0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3C/svg%3E#d");
+}
+:root[data-ui='sysmac'] :is(.badge, .uchip, .tchip, .pchip),
+:root[data-ui='sysmac'] .g :is(.badge, .uchip, .tchip) {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 8px;
+}
+:root[data-ui='sysmac'] .g :is(.badge, .chips) {
+  z-index: 6;
+}
+:root[data-ui='sysmac'] .g :is(.uchip, .tchip) {
+  font-size: 12px;
+}
+:root[data-ui='sysmac'] :is(.badge, .uchip, .tchip) * {
+  color: #000;
+}
+:root[data-ui='sysmac'] .badge i {
+  background: #000;
+  box-shadow: none;
+  border-radius: 0;
+}
+:root[data-ui='sysmac'] .cover .btn {
+  border-radius: 8px;
+}
+
+/* the stream chrome: white 1-bit controls floating over the picture */
+:root[data-ui='sysmac'] .glass.center,
+:root[data-ui='sysmac'] .center.card {
+  position: absolute;
+  padding: 18px 22px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #000;
+  border-radius: 8px;
+}
+:root[data-ui='sysmac'] .bar.glass {
+  border-radius: 8px;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0 #000;
+  gap: 4px;
+}
+:root[data-ui='sysmac'] .bar .ic {
+  border-radius: 4px;
+  color: #000;
+  border: 1px solid transparent;
+}
+:root[data-ui='sysmac'] .bar .ic svg {
+  fill: currentColor !important;
+}
+:root[data-ui='sysmac'] .bar .ic:hover,
+:root[data-ui='sysmac'] .bar .ic:focus-visible,
+:root[data-ui='sysmac'] .bar .ic[aria-pressed='true'],
+:root[data-ui='sysmac'] .bar .ic[aria-expanded='true'] {
+  background: #000;
+  color: #fff;
+  outline: 0;
+}
+:root[data-ui='sysmac'] .bar .ic:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 1px;
+}
+:root[data-ui='sysmac'] .stream :is(.sound, .esc, .up, .pill) {
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 #000;
+}
+:root[data-ui='sysmac'] .spin {
+  border: 2px solid #000;
+  border-top-color: transparent;
+  border-radius: 0;
+}
+:root[data-ui='sysmac'] input[type='range'] {
+  accent-color: #000;
+}
+
+/* ---------- the desktop (Layer.svelte) ---------- */
+:root[data-ui='sysmac'] .sm-clock {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 21;
+  height: var(--sm-bar);
+  width: 96px;
+  padding-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 15px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='sysmac'] .sm-desk {
+  position: fixed;
+  top: calc(var(--sm-bar) + 18px);
+  right: 14px;
+  width: 88px;
+  z-index: 5;
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+:root[data-ui='sysmac'] .sm-trash {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  width: 88px;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+}
+:root[data-ui='sysmac'] .sm-ic {
+  width: 88px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #000;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.1;
+  text-align: center;
+}
+:root[data-ui='sysmac'] .sm-ic i {
+  width: 32px;
+  height: 32px;
+  background-size: 32px 32px;
+  background-repeat: no-repeat;
+}
+:root[data-ui='sysmac'] .sm-ic .disk {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' shape-rendering='crispEdges'%3E%3Crect x='3.5' y='3.5' width='25' height='25' rx='2' fill='white' stroke='black'/%3E%3Crect x='9' y='4' width='14' height='8'/%3E%3Crect x='18' y='6' width='3' height='4' fill='white'/%3E%3Crect x='8.5' y='16.5' width='15' height='11' fill='white' stroke='black'/%3E%3Cpath d='M11 20h10M11 23h10' stroke='black'/%3E%3C/svg%3E");
+}
+:root[data-ui='sysmac'] .sm-ic .doc {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' shape-rendering='crispEdges'%3E%3Cpath d='M6.5 2.5h14l5 5v22h-19z' fill='white' stroke='black'/%3E%3Cpath d='M20.5 2.5v5h5' fill='none' stroke='black'/%3E%3Cpath d='M10.5 18.5h11v6h-11z' fill='white' stroke='black'/%3E%3Cpath d='M12.5 21.5h3M14 20v3' stroke='black'/%3E%3Crect x='18' y='21' width='2' height='2'/%3E%3C/svg%3E");
+}
+:root[data-ui='sysmac'] .sm-ic .can {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' shape-rendering='crispEdges'%3E%3Crect x='5.5' y='7.5' width='21' height='3' fill='white' stroke='black'/%3E%3Crect x='12.5' y='4.5' width='7' height='3' fill='white' stroke='black'/%3E%3Cpath d='M7.5 10.5v18h17v-18' fill='white' stroke='black'/%3E%3Cpath d='M12 13v12M16 13v12M20 13v12' stroke='black'/%3E%3C/svg%3E");
+}
+:root[data-ui='sysmac'] .sm-ic span {
+  max-width: 84px;
+  padding: 0 4px;
+  background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root[data-ui='sysmac'] .sm-ic:hover span,
+:root[data-ui='sysmac'] .sm-ic:focus-visible span {
+  background: #000;
+  color: #fff;
+}
+:root[data-ui='sysmac'] .sm-ic:hover i,
+:root[data-ui='sysmac'] .sm-ic:focus-visible i {
+  filter: invert(1);
+}
+:root[data-ui='sysmac'] .sm-ic:focus-visible {
+  outline-offset: 3px;
+}
+:root[data-ui='sysmac'] .sm-ic.wiggle i {
+  animation: sm-wiggle 0.5s steps(5) 1;
+}
+:root[data-ui='sysmac'] .sm-say {
+  position: absolute;
+  right: 92px;
+  bottom: 18px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid #000;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 2px 2px 0 #000;
+  white-space: nowrap;
+}
+@keyframes sm-wiggle {
+  20% {
+    translate: -3px 0;
+  }
+  40% {
+    translate: 3px 0;
+  }
+  60% {
+    translate: -2px 0;
+  }
+  80% {
+    translate: 2px 0;
+  }
+}
+@media (max-width: 1099px) {
+  :root[data-ui='sysmac'] .sm-desk,
+  :root[data-ui='sysmac'] .sm-trash {
+    display: none;
+  }
+}
+@media (max-width: 1000px) {
+  :root[data-ui='sysmac'] .side .soon {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  :root[data-ui='sysmac'] .sm-clock,
+  :root[data-ui='sysmac'] .side .soon,
+  :root[data-ui='sysmac'] .brand::after {
+    display: none;
+  }
+  :root[data-ui='sysmac'] .side {
+    padding-right: 0;
+  }
+  :root[data-ui='sysmac'] .nav {
+    padding: 0 8px;
+  }
+}
+
+/* ---------- motion: nothing eases, everything snaps (steps) ---------- */
+:root[data-ui='sysmac'] *,
+:root[data-ui='sysmac'] *::before,
+:root[data-ui='sysmac'] *::after {
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+:root[data-ui='sysmac'] .reveal,
+:root[data-ui='sysmac'] .page-in,
+:root[data-ui='sysmac'] .fade-in,
+:root[data-ui='sysmac'] .swap-in {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui='sysmac'] .sm-ic.wiggle i {
+    animation: none;
+  }
+}
+
+/* /stream is full screen: no menu bar room */
+:root[data-ui='sysmac'] body:has(main:not(.page-in)) {
+  padding-top: 0;
+}
+:root[data-ui='sysmac'] .bg:has(> canvas) {
+  display: none;
+}

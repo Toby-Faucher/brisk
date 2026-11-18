@@ -1,0 +1,361 @@
+/* UI style racer: every rule starts with :root[data-ui='racer']. Owner: this folder only. See ../README.md. */
+@import '@fontsource/russo-one/400.css';
+
+:root[data-ui='racer'] {
+  color-scheme: dark;
+  --bg: #24272c;
+  --panel: #2f333a;
+  --panel2: #3a3f47;
+  --line: #4d535d;
+  --line-hover: #8b93a1;
+  --fg: #f7f6f0;
+  --muted: #c6cad2;
+  --dim: #adb3be;
+  --ok: #5de08a;
+  --warn: #ffd21f;
+  --bad: #ff8080;
+  --c-lib: #ffd21f;
+  --c-stream: #7dbcff;
+  --c-host: #5fd6f5;
+  --c-set: #c9d0da;
+  --c-agent: #c9a6ff;
+  --c-news: #ff8f8f;
+  --c-power: #5de08a;
+  --c-hist: #ffa24f;
+  --font: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Russo One', 'Segoe UI', Arial, sans-serif;
+  --race: 'Russo One', 'Arial Black', Impact, sans-serif;
+  --r-card: 6px;
+  --r-ctl: 4px;
+  --side-w: 232px;
+  --bar-h: 64px;
+  --sun: #ffd21f;
+  --rb: #e5322d;
+  --rumble: repeating-linear-gradient(90deg, var(--rb) 0 20px, #fff 20px 40px);
+  --rumble-v: repeating-linear-gradient(180deg, var(--rb) 0 20px, #fff 20px 40px);
+}
+:root[data-ui='racer'] body {
+  background:
+    radial-gradient(70% 50% at 12% -12%, rgb(255 210 31 / 0.16), transparent),
+    radial-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1.4px) 0 0 / 7px 7px,
+    radial-gradient(rgb(0 0 0 / 0.18) 1px, transparent 1.5px) 3px 4px / 11px 11px,
+    var(--bg);
+}
+:root[data-ui='racer'] h1,
+:root[data-ui='racer'] h2,
+:root[data-ui='racer'] h3,
+:root[data-ui='racer'] h4 {
+  font-family: var(--race);
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+:root[data-ui='racer'] .mono,
+:root[data-ui='racer'] .big {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-ui='racer'] :focus-visible {
+  outline: 3px solid var(--sun);
+  outline-offset: 2px;
+}
+:root[data-ui='racer'] main.page-in {
+  padding: calc(var(--bar-h) + 22px) 28px 40px;
+}
+:root[data-ui='racer'] main .page {
+  counter-reset: pos;
+}
+
+/* ---- Pit lane: the sidebar, with a rumble strip along its edge ---- */
+:root[data-ui='racer'] .side {
+  width: var(--side-w);
+  background: linear-gradient(180deg, #1b1d21, #212429);
+  backdrop-filter: none;
+  border-right: 0;
+  padding: 14px 24px 14px 12px;
+  gap: 3px;
+}
+:root[data-ui='racer'] .side::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 12px;
+  background: var(--rumble-v);
+  box-shadow: inset 3px 0 4px rgb(0 0 0 / 0.35);
+}
+:root[data-ui='racer'] .brand {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 4px;
+  justify-content: center;
+  border-bottom: 5px solid var(--sun);
+}
+:root[data-ui='racer'] .brand img {
+  filter: invert(1) hue-rotate(180deg);
+}
+:root[data-ui='racer'] .side nav {
+  counter-reset: gear;
+}
+:root[data-ui='racer'] .side .nav {
+  position: relative;
+  counter-increment: gear;
+  height: 42px;
+  padding: 0 8px 0 10px;
+  gap: 10px;
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--race);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+/* the gear number sits at the right end, like a shift pattern */
+:root[data-ui='racer'] .side a.nav::after {
+  content: counter(gear);
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+  border: 2px solid var(--line);
+  border-radius: 50%;
+}
+:root[data-ui='racer'] .side a.nav:hover {
+  background: var(--panel2);
+  transform: translateX(4px) skewX(-6deg);
+}
+:root[data-ui='racer'] .side .nav[aria-current='page'] {
+  color: var(--accent-fg);
+}
+:root[data-ui='racer'] .side .nav[aria-current='page']::before {
+  background: var(--accent);
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.4);
+  transform: skewX(-8deg);
+}
+:root[data-ui='racer'] .side .nav[aria-current='page']::after {
+  color: var(--accent-fg);
+  border-color: var(--accent-fg);
+}
+:root[data-ui='racer'] .side .nav[aria-current='page'] svg {
+  color: var(--accent-fg);
+  stroke: var(--accent-fg);
+}
+:root[data-ui='racer'] .side .soon {
+  opacity: 1;
+  color: var(--dim);
+}
+:root[data-ui='racer'] .side .soon .tag {
+  background: none;
+  border: 1px dashed var(--dim);
+  color: var(--dim);
+  border-radius: 2px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='racer'] .side .sec {
+  font-family: var(--race);
+  font-style: italic;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--sun);
+  padding: 16px 10px 4px;
+}
+/* host pill: a fuel-gauge plate */
+:root[data-ui='racer'] .pill {
+  border-radius: 4px;
+  background: #111316;
+  border: 2px solid var(--line);
+  border-left: 6px solid var(--ok);
+  font-family: var(--race);
+  font-size: 13px;
+}
+:root[data-ui='racer'] .side .wrap,
+:root[data-ui='racer'] .side > .pill {
+  margin-top: auto;
+}
+:root[data-ui='racer'] .pill:hover {
+  border-color: var(--sun);
+  border-left-color: var(--ok);
+}
+:root[data-ui='racer'] .menu,
+:root[data-ui='racer'] .glass {
+  background: #1d2024;
+  backdrop-filter: none;
+  border: 0 solid transparent;
+  border-top-width: 8px;
+  border-image: var(--rumble) 8 0 0 0 / 8px 0 0 0 stretch;
+  border-radius: 0;
+  box-shadow:
+    0 0 0 2px var(--line),
+    0 24px 60px rgb(0 0 0 / 0.6);
+}
+:root[data-ui='racer'] .menu .it:hover,
+:root[data-ui='racer'] .menu .it:focus-visible {
+  background: var(--sun);
+  color: #1a1400;
+}
+:root[data-ui='racer'] .cm-dim {
+  background: rgb(10 11 13 / 0.68);
+}
+
+/* ---- Position boards: cards and controls ---- */
+:root[data-ui='racer'] .card {
+  position: relative;
+  isolation: isolate;
+  counter-increment: pos;
+  background: linear-gradient(135deg, var(--panel), #292c32);
+  border: 0;
+  border-left: 6px solid var(--lane, var(--line));
+  border-radius: 4px 18px 4px 4px;
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.35);
+}
+/* the Library hero: a chequered band along its foot */
+:root[data-ui='racer'] .hero {
+  border: 0;
+  border-left: 8px solid var(--sun);
+  border-radius: 4px 28px 4px 4px;
+}
+:root[data-ui='racer'] .hero::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 12px;
+  background: conic-gradient(#fff 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0 / 12px 12px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+/* the big position number, set behind the content */
+:root[data-ui='racer'] .card::before {
+  content: counter(pos);
+  position: absolute;
+  z-index: -1;
+  right: 14px;
+  top: 2px;
+  font: italic 400 54px / 1 var(--race);
+  color: rgb(255 255 255 / 0.07);
+  pointer-events: none;
+}
+:root[data-ui='racer'] main:not(.page-in) .card::before {
+  content: none;
+}
+:root[data-ui='racer'] .card:nth-child(3n + 1) {
+  --lane: var(--sun);
+}
+:root[data-ui='racer'] .card:nth-child(3n + 2) {
+  --lane: #c9cfd8;
+}
+:root[data-ui='racer'] .card:nth-child(3n) {
+  --lane: #e08a3c;
+}
+:root[data-ui='racer'] .card h4 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-ui='racer'] main .top > h1,
+:root[data-ui='racer'] main .top > h2 {
+  display: inline-block;
+  padding: 2px 22px 4px 16px;
+  font-size: 26px;
+  text-transform: uppercase;
+  background: var(--sun);
+  color: #1a1400;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+}
+:root[data-ui='racer'] .btn {
+  font-family: var(--race);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transform: skewX(-8deg);
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.45);
+}
+:root[data-ui='racer'] .btn:hover {
+  filter: brightness(1.1);
+  transform: skewX(-8deg) translateY(-2px);
+  box-shadow: 0 6px 0 rgb(0 0 0 / 0.45);
+}
+:root[data-ui='racer'] .btn:active {
+  transform: skewX(-8deg) translateY(3px);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.45);
+}
+:root[data-ui='racer'] .btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  box-shadow: 0 0 0 2px var(--line) inset;
+}
+:root[data-ui='racer'] .btn.ghost:hover {
+  box-shadow: 0 0 0 2px var(--sun) inset;
+}
+:root[data-ui='racer'] .btn:disabled {
+  box-shadow: none;
+}
+:root[data-ui='racer'] .big {
+  font-family: var(--race);
+  font-style: italic;
+  font-weight: 400;
+}
+/* lap-time style durations on History */
+:root[data-ui='racer'] .grid > .card .row.mono {
+  font-family: var(--race);
+  font-style: italic;
+  color: var(--sun);
+  letter-spacing: 0.04em;
+}
+:root[data-ui='racer'] .gate {
+  border-radius: 2px;
+  font-family: var(--race);
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ui='racer'] .card {
+    transition:
+      translate 0.2s var(--spring-snappy),
+      box-shadow 0.2s;
+  }
+  :root[data-ui='racer'] .card:hover {
+    translate: 4px 0;
+    box-shadow: -4px 4px 0 rgb(0 0 0 / 0.35);
+  }
+}
+
+/* narrow windows: the pit lane keeps only its gear numbers */
+@media (max-width: 800px) {
+  :root[data-ui='racer'] {
+    --side-w: 84px;
+  }
+  :root[data-ui='racer'] .side {
+    padding: 12px 20px 12px 6px;
+  }
+  :root[data-ui='racer'] .side .nav {
+    font-size: 0;
+    gap: 0;
+    justify-content: center;
+    padding: 0;
+  }
+  :root[data-ui='racer'] .side a.nav::after,
+  :root[data-ui='racer'] .brand,
+  :root[data-ui='racer'] .side .sec,
+  :root[data-ui='racer'] .side .soon .tag,
+  :root[data-ui='racer'] .pill .name,
+  :root[data-ui='racer'] .pill .st {
+    display: none;
+  }
+  :root[data-ui='racer'] .pill {
+    justify-content: center;
+    padding: 9px 0;
+  }
+  :root[data-ui='racer'] main.page-in {
+    padding-inline: 14px;
+  }
+}
+
+/* the original dims locked achievements to .6; on this near-black that falls under AA */
+:root[data-ui='racer'] .alist li.locked {
+  opacity: 0.78;
+}
